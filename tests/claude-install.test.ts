@@ -18,6 +18,7 @@ const EXPECTED_DEST_PATHS = [
   path.join(".claude", "commands", "leanrigor-review.md"),
   path.join(".claude", "commands", "leanrigor-commit.md"),
   path.join(".claude", "agents", "leanrigor-triage.md"),
+  path.join(".claude", "leanrigor", "sequential-workflow.md"),
   path.join(".claude", "leanrigor", "protect-git.sh"),
   path.join(".claude", "settings.json"),
 ];
@@ -366,4 +367,3 @@ describe("Claude plugin asset structure validation", () => {
     expect(content).toContain("exit 0");
   });
 });
-

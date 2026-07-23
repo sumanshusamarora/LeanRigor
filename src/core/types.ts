@@ -7,6 +7,20 @@ export type ModelProfile = "small" | "medium" | "large" | "inherit";
 export type ReviewLevel = "sanity" | "integrated" | "deep" | "specialist";
 export type TestLevel = "none" | "sanity" | "targeted" | "package" | "full";
 export type ParallelismRecommendation = "sequential" | "candidate";
+export type WorkflowLifecycleState =
+  | "created"
+  | "triaging"
+  | "awaiting_clarification"
+  | "awaiting_approach_approval"
+  | "planning"
+  | "awaiting_plan_approval"
+  | "executing"
+  | "validating"
+  | "reviewing"
+  | "awaiting_commit_approval"
+  | "completed"
+  | "blocked"
+  | "cancelled";
 
 export interface TriageOutput {
   version: 1;
@@ -114,4 +128,113 @@ export interface WorkflowState {
     | "completed";
   decisions: Array<{ question: string; answer: string; timestamp: string }>;
   updatedAt: string;
+}
+
+export interface ApproachRecommendation {
+  required: boolean;
+  approved: boolean;
+  proposed: string;
+  preferredBecause: string;
+  alternatives: string[];
+  primaryRisks: string[];
+  validationStrategy: string[];
+  rejectedReason?: string;
+}
+
+export interface WorkflowPhase {
+  id: string;
+  objective: string;
+  rationale: string;
+  dependencies: string[];
+  expectedFilesOrAreas: string[];
+  acceptanceCriteria: string[];
+  validationCommands: string[];
+  riskLevel: RiskLevel;
+  modelTier: ModelProfile;
+  status: "pending" | "active" | "completed" | "blocked";
+  startedAt?: string;
+  completedAt?: string;
+  filesChanged: string[];
+  commandsRun: string[];
+  validationResults: ValidationEvidence[];
+  scopeDeviations: string[];
+}
+
+export interface ExecutionPlan {
+  version: 1;
+  summary: string;
+  principles: string[];
+  phases: WorkflowPhase[];
+  approvedAt?: string;
+  revisionRequests: Array<{ feedback: string; timestamp: string }>;
+}
+
+export interface ValidationEvidence {
+  phaseId?: string;
+  command: string;
+  exitStatus: number | null;
+  result: string;
+  status: "passed" | "failed" | "skipped";
+  skipped: boolean;
+  skippedReason?: string;
+  timestamp: string;
+}
+
+export interface IntegratedReviewResult {
+  status: "passed" | "needs_repair" | "needs_replan" | "blocked";
+  summary: string;
+  findings: string[];
+  repairScope?: string;
+  reviewedAt: string;
+}
+
+export interface CommitPlanGroup {
+  message: string;
+  files: string[];
+  rationale: string;
+  commands: string[];
+}
+
+export interface CommitPlan {
+  generatedAt: string;
+  groups: CommitPlanGroup[];
+  note: string;
+}
+
+export interface SequentialWorkflowState {
+  version: 2;
+  id: string;
+  revision: number;
+  state: WorkflowLifecycleState;
+  request: string;
+  root: string;
+  mode: WorkflowMode;
+  createdAt: string;
+  updatedAt: string;
+  triage?: TriageOutput;
+  triageRun?: {
+    source: "model" | "deterministic-fallback";
+    provider: string;
+    model?: string;
+    attempts: number;
+    warnings: string[];
+  };
+  clarification?: {
+    question: string;
+    reason: string;
+    answer?: string;
+    answeredAt?: string;
+  };
+  approach?: ApproachRecommendation;
+  plan?: ExecutionPlan;
+  validation: ValidationEvidence[];
+  review?: IntegratedReviewResult;
+  commitPlan?: CommitPlan;
+  repairAttempts: number;
+  blockers: string[];
+  events: Array<{
+    state: WorkflowLifecycleState;
+    message: string;
+    timestamp: string;
+  }>;
 }

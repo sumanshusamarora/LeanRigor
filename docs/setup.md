@@ -38,6 +38,11 @@ leanrigor triage "Fix a README typo" --provider deterministic --root /path/to/re
 
 # Triage using the configured small model (auto falls back to deterministic)
 leanrigor triage "Fix the assignment regression" --provider auto --root /path/to/repository
+
+# Start and resume the persisted sequential workflow
+leanrigor flow start "Fix the assignment regression" --provider auto --root /path/to/repository
+leanrigor flow status <workflow-id> --root /path/to/repository
+leanrigor flow resume <workflow-id> --root /path/to/repository
 ```
 
 ## Initialisation
@@ -57,6 +62,7 @@ repository guidance files such as `AGENTS.md`, `CLAUDE.md`, and
 .claude/commands/leanrigor-review.md
 .claude/commands/leanrigor-commit.md
 .claude/agents/leanrigor-triage.md
+.claude/leanrigor/sequential-workflow.md
 .claude/leanrigor/protect-git.sh
 .claude/settings.json
 ```
@@ -99,7 +105,7 @@ Example output:
 ```
 LeanRigor CLI: 0.1.0-draft
 Platform: Claude Code
-Claude assets available: 1
+Claude assets available: 2
 Claude CLI: not found on PATH
 
 Model tier resolution:
@@ -107,7 +113,6 @@ Model tier resolution:
   medium: sonnet (source: config, Claude alias)
   large: opus (source: config, Claude alias)
 
-Claude assets installed: 8/8
+Claude assets installed: 9/9
 Status: current
 ```
-

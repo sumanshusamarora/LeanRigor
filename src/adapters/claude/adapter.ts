@@ -7,7 +7,7 @@ import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
 import { isClaudeAlias, resolveModelTier } from "../../config/models.js";
 
 /** Version stamp embedded in every generated asset. Increment when assets change in a breaking way. */
-export const ASSET_VERSION = 1;
+export const ASSET_VERSION = 2;
 
 /** String embedded in every LeanRigor-generated file for ownership detection. */
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";
@@ -50,6 +50,7 @@ function assetManifest(triageModel: string): Array<{ src: string; dest: string; 
     { src: path.join(plugin, "commands", "leanrigor-status.md"), dest: path.join(".claude", "commands", "leanrigor-status.md") },
     { src: path.join(plugin, "commands", "leanrigor-review.md"), dest: path.join(".claude", "commands", "leanrigor-review.md") },
     { src: path.join(plugin, "commands", "leanrigor-commit.md"), dest: path.join(".claude", "commands", "leanrigor-commit.md") },
+    { src: path.join(plugin, "leanrigor", "sequential-workflow.md"), dest: path.join(".claude", "leanrigor", "sequential-workflow.md") },
     {
       src: path.join(plugin, "agents", "leanrigor-triage.md.tpl"),
       dest: path.join(".claude", "agents", "leanrigor-triage.md"),
@@ -302,4 +303,3 @@ async function loadConfigForUninstall(root: string): Promise<LeanRigorConfig> {
     return defaultConfig();
   }
 }
-

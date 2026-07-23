@@ -1,37 +1,39 @@
-<!-- generated_by: leanrigor | asset_version: 1 -->
+<!-- generated_by: leanrigor | asset_version: 2 -->
 # /leanrigor
 
-Orchestrate the LeanRigor adaptive engineering workflow for a coding request.
+Primary LeanRigor entry point for a persisted sequential coding workflow.
 
-## Purpose
-
-Triage the request, clarify any blocking ambiguity, recommend a proportional
-workflow approach, produce a concise execution plan, and obtain explicit user
-approval before implementing anything.
+Read `.claude/leanrigor/sequential-workflow.md` first.
 
 ## Behaviour
 
-1. Run `leanrigor triage "$ARGUMENTS" --provider auto` to classify the request.
-2. Read the triage result from `.leanrigor/workflow.json`.
-3. If clarification is required, ask the **single** blocking question returned by
-   triage and record the answer before continuing.
-4. Report the recommended approach (Fast / Standard / Rigorous) with a brief
-   rationale.
-5. Produce a concise, proportional execution plan: objectives, affected files,
-   validation steps, and review level.
-6. **Stop. Present the plan and wait for explicit user approval before writing
-   any implementation code.**
+1. Inspect current state:
+   - If `$ARGUMENTS` is present, run `leanrigor flow start "$ARGUMENTS" --provider auto`.
+   - If no request is present, run `leanrigor flow status`; if needed, run
+     `leanrigor flow list` and resume the active workflow selected by the user.
+2. Present the next required action from LeanRigor state.
+3. For `awaiting_clarification`, ask exactly the persisted question and stop.
+   After the user answers, run `leanrigor flow answer <workflow-id> "<answer>"`.
+4. For `awaiting_approach_approval`, present the persisted recommendation,
+   risks, alternatives, and validation strategy. Stop for explicit approval or
+   rejection before running `approve-approach` or `reject-approach`.
+5. For `awaiting_plan_approval`, present the persisted phased plan. Stop for
+   explicit approval or revision before running `approve-plan` or `revise-plan`.
+6. For `executing`, work only on the single active phase. After edits, record
+   changed files and commands with `leanrigor flow phase-complete`.
+7. For `validating`, run proportional validation, then record every result with
+   `leanrigor flow record-validation`. Do not mark validation successful without
+   evidence or a skipped-validation reason.
+8. For `reviewing` or after validation, inspect the full diff and record the
+   integrated review with `leanrigor flow record-review`.
+9. For `awaiting_commit_approval`, show `leanrigor flow commit-plan`. Do not run
+   git commit or push.
 
-## What this command must not do automatically
+## Constraints
 
-- Modify or create implementation files before the plan is approved
-- Run `git commit` or `git push` under any circumstances
-- Spawn additional sub-agents automatically in this workflow
-- Modify files outside the declared task scope
-
-## After approval
-
-Implement the approved plan following the LeanRigor review and validation
-policy for the selected mode, then use `/leanrigor-commit` to propose commits.
+- Do not bypass approval gates.
+- Do not spawn sub-agents, create worktrees, or use parallel execution.
+- Do not run git commit or git push.
+- Do not modify files outside the active phase without recording scope deviation.
 
 $ARGUMENTS

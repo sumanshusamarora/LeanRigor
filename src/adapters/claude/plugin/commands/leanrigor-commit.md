@@ -1,23 +1,23 @@
-<!-- generated_by: leanrigor | asset_version: 1 -->
+<!-- generated_by: leanrigor | asset_version: 2 -->
 # /leanrigor-commit
 
 Prepare a LeanRigor commit proposal without executing it.
 
 ## Behaviour
 
-1. Run `leanrigor status` to confirm the workflow is at or near the
-   commit-preparation phase.
-2. Inspect the diff:
+1. Run `leanrigor flow status` to confirm the workflow is in
+   `awaiting_commit_approval`.
+2. Run `leanrigor flow commit-plan <workflow-id>` and present the proposal.
+3. Inspect the diff when useful:
    - Staged changes: `git diff --cached`
    - All changes: `git diff HEAD`
-3. Group changes by cohesive functionality following the task graph in
-   `.leanrigor/workflow.json` where available.
-4. Propose commit groups with:
-   - Conventional commit messages (`type(scope): description`)
-   - Exact `git add` and `git commit` commands for each group
-   - Rationale for each grouping
-5. **Present the proposal and stop. Wait for explicit user confirmation before
-   executing any git commands.**
+4. Confirm the proposal contains:
+   - commit messages
+   - file groups
+   - exact commands
+   - rationale
+5. Present the proposal and stop. Wait for explicit user confirmation before
+   executing any git commands.
 
 ## Constraints
 

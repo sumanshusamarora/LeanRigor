@@ -25,12 +25,13 @@ The Claude adapter ships a complete plugin integration. The installation model i
 npm package (dist/adapters/claude/plugin/)
   ├── commands/          ← installed to .claude/commands/
   ├── agents/            ← installed to .claude/agents/
-  └── hooks/             ← installed to .claude/leanrigor/
+  ├── hooks/             ← installed to .claude/leanrigor/
+  └── leanrigor/          ← shared command reference
 
 Target repository (.claude/)
   ├── commands/          ← five /leanrigor-* commands
   ├── agents/            ← leanrigor-triage subagent
-  ├── leanrigor/         ← protect-git.sh hook script
+  ├── leanrigor/         ← protect-git.sh and sequential-workflow.md
   └── settings.json      ← hooks configuration
 ```
 
@@ -92,7 +93,7 @@ If uncertainty remains, the safer adjacent workflow mode is selected.
 
 - **Fast** — inspect, implement, targeted validation, diff review, commit proposal.
 - **Standard** — blocking clarification, recommendation, concise plan, implementation, targeted/package validation, integrated review.
-- **Rigorous** — explicit invariants, architecture review, required tests, largeer isolation, broad validation, high-risk review.
+- **Rigorous** — explicit approach gate, risk boundary confirmation, stronger validation, deep or specialist review when triggered.
 
 
 ## Triage contract and policy enforcement
@@ -117,6 +118,29 @@ Users may request additional review manually, but configured mandatory safety ch
 ## Execution graph and ownership
 
 Each task declares read sets, write sets, dependencies, validation commands, and status. Parallel tasks must have disjoint write sets. The first draft provides shared-worktree file leases; isolated worktrees are the intended next isolation strategy.
+
+## Persisted sequential flow
+
+The `leanrigor flow` command group is the first complete end-to-end workflow for
+Claude Code. It stores each workflow at `.leanrigor/workflows/<id>.json` using a
+versioned schema. Writes are atomic and guarded by an optimistic revision check.
+
+The persisted lifecycle is:
+
+`created -> triaging -> awaiting_clarification? -> awaiting_approach_approval? -> planning -> awaiting_plan_approval -> executing -> validating -> reviewing -> awaiting_commit_approval -> completed`
+
+`blocked` and `cancelled` are explicit escape states.
+
+The CLI/state contract is deliberately narrow: LeanRigor records the original
+request, repository root, triage result, approach recommendation, phase plan,
+approvals, phase timestamps, changed files, commands run, validation evidence,
+integrated review result, repair attempts, blockers, and commit proposal.
+Claude Code performs the actual edits and command execution in the active
+session, then records concise evidence back into state.
+
+This implementation is sequential only. It does not add parallel agents,
+worktrees, OpenCode, Codex, CodeGraph, marketplace files, or per-phase
+completion hooks.
 
 ## Safety boundaries
 

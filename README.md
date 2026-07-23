@@ -4,7 +4,7 @@ A first-draft, local workflow controller for applying proportional engineering d
 
 ## Status
 
-This repository is an architectural and functional draft. The TypeScript CLI now installs dependencies, type checks, builds to `dist/`, passes the Vitest suite, and has been verified through local `npm pack` installation. Claude Code integration is scaffolded; production-grade agent dispatch and isolated worktrees are future work.
+This repository is an architectural and functional draft. The TypeScript CLI now installs dependencies, type checks, builds to `dist/`, passes the Vitest suite, and has a first complete persisted sequential workflow for Claude Code. Parallel agents, isolated worktrees, OpenCode, and autonomous commit execution remain future work.
 
 ## Principles
 
@@ -32,6 +32,10 @@ npx leanrigor doctor --adapter claude --root /path/to/repository
 
 # Triage a request
 npx leanrigor triage "Fix the assignment regression" --provider deterministic --root /path/to/repository
+
+# Start the persisted sequential workflow
+npx leanrigor flow start "Fix the assignment regression" --provider deterministic --root /path/to/repository
+npx leanrigor flow status <workflow-id> --root /path/to/repository
 ```
 
 ## Documents
@@ -46,8 +50,8 @@ npx leanrigor triage "Fix the assignment regression" --provider deterministic --
 
 ## Deliberate limitations
 
-- Triage currently has a deterministic fallback; live model invocation belongs in the harness adapter.
-- Parallel execution interfaces exist, but the first draft does not autonomously spawn coding agents.
+- Triage has a deterministic fallback; model-backed triage is available through the Claude adapter when configured.
+- The first complete workflow is sequential. It does not autonomously spawn coding agents.
 - File leases are in-memory in the core draft.
 - Worktree isolation is documented but not implemented.
 - Commit planning is intentionally conservative and requires human review.
@@ -57,6 +61,15 @@ npx leanrigor triage "Fix the assignment regression" --provider deterministic --
 The Claude adapter uses the configured `small` tier—the provider-resolved `haiku` alias by default—for bounded task triage. Triage output is schema validated and then subjected to deterministic repository policy. Fast mode requires positive low-risk evidence; high-risk triggers escalate to Rigorous.
 
 A lightweight preflight runs for every task. Standard, Rigorous, and multi-agent implementations receive automatic integrated review; Fast mode receives a final diff sanity check.
+
+## Sequential flow
+
+`leanrigor flow start "<request>"` creates a repository-local workflow under
+`.leanrigor/workflows/`, persists triage, asks at most one blocking
+clarification, gates Standard/Rigorous approach approval, requires plan
+approval for every mode, unlocks one phase at a time, records validation
+evidence, requires a final integrated review, and generates a commit proposal
+without committing.
 
 ## Model-backed triage
 
