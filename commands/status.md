@@ -1,19 +1,25 @@
 ---
-description: Report the current repository-local LeanRigor workflow state.
+description: Show concise human-readable LeanRigor workflow status.
 argument-hint: "[workflow-id]"
 ---
 
 # /leanrigor:status
 
-Run:
+Use `plugin-skills/sequential-workflow` as the workflow UX contract.
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/leanrigor" flow status $ARGUMENTS
-```
+Invoke `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor` internally.
 
-Report lifecycle state, mode, pending user action, current phase objective,
-completion-gate status, criteria progress, validation status, repair attempts,
-scope deviations, blockers or pending-review reason, review state, and next
-valid command. State is repository-local under `.leanrigor/`.
+Behaviour:
+
+1. If a workflow ID is supplied, inspect it with `flow next <id> --json`.
+2. Otherwise discover the active workflow with `flow active --json`.
+3. If multiple active workflows exist, show ID, request, state, mode, and
+   updated time, then ask the user to choose.
+4. Render a concise status report: workflow ID, request, mode, state, current
+   phase, pending decision, completion-gate status, repair attempts, blockers,
+   and next action.
+
+Do not print raw JSON or shell commands in normal status output. Show underlying
+commands only in troubleshooting mode or when explicitly requested.
 
 $ARGUMENTS

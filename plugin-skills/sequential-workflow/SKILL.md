@@ -3,16 +3,15 @@ name: leanrigor-sequential-workflow
 description: Use when running LeanRigor's persisted sequential workflow in Claude Code.
 ---
 
-LeanRigor runs as a global Claude Code plugin while keeping repository-specific
-state local to the current repository.
+LeanRigor is Claude's persisted workflow controller. Users interact in plain
+language; Claude invokes LeanRigor CLI transitions internally and renders
+concise workflow summaries.
 
-Global plugin files live under `${CLAUDE_PLUGIN_ROOT}`. Invoke the CLI through:
+Use the plugin-owned runtime internally:
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/leanrigor" flow ...
-```
+`${CLAUDE_PLUGIN_ROOT}/bin/leanrigor`
 
-Repository-local files:
+Repository-local state:
 
 - `.leanrigor/config.json`
 - `.leanrigor/workflows/`
@@ -20,27 +19,90 @@ Repository-local files:
 Do not create or modify repository `.claude/` files in marketplace mode. Do not
 commit, push, create worktrees, or spawn parallel agents automatically.
 
-Workflow:
+## Conversational Flow
 
-`created -> triaging -> awaiting_clarification? -> awaiting_approach_approval? -> planning -> awaiting_plan_approval -> executing -> validating -> reviewing -> awaiting_commit_approval -> completed`
+`/leanrigor:start` is the primary command and owns the normal workflow:
 
-`blocked` and `cancelled` are explicit escape states.
+`triage summary -> Approach approval? -> Plan approval -> sequential execution -> per-phase completion gate -> final integrated review -> commit proposal`
 
-Phase lifecycle during `executing`:
+Use `flow active --json` to discover repository workflows and `flow next
+--json` to read the next gate. Use transition commands internally after user
+approval. Do not show shell commands during normal use.
+
+Labels must stay distinct:
+
+- `Approach approval`
+- `Plan approval`
+- `Phase completion review`
+- `Final integrated review`
+- `Commit proposal`
+
+Do not call an approach summary a plan. Do not ask for plan approval until
+persisted phases exist.
+
+## Active Workflow Selection
+
+- One active workflow: resume it.
+- No active workflow: start only when the user supplied a request.
+- Multiple active workflows: show ID, request, state, mode, and updated time;
+  ask the user to choose.
+- Completed and cancelled workflows are not selected by default.
+- Never attach a new request to an unrelated active workflow silently.
+
+## Natural Responses
+
+Interpret common responses using the current persisted state:
+
+- `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach, then immediately render the generated plan for plan approval.
+- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan and begin the first phase.
+- `revise ...`: revise the current approach/plan when that gate is active.
+- `reject because ...`: reject the approach with the supplied reason.
+- `cancel`: cancel the workflow after confirming intent when destructive to progress.
+- `show plan` / `show status`: render persisted plan/status.
+- `repair it` at `needs_repair`: start the bounded repair requested by the gate.
+- `continue` at `needs_repair`, `needs_review`, or `needs_replan`: do not bypass the gate; explain the required repair, review, or replan.
+
+Ask one concise clarification for ambiguous responses.
+
+## Phase And Review Rules
+
+During execution, each phase must pass:
 
 `active -> targeted validation -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
 
-Phase rules:
+Run declared validation or explicitly record skipped validation with a reason.
+Submit criterion evidence, changed files, validation, assumptions, risks, and
+scope deviations with `flow phase-complete`. Follow the returned gate decision;
+Claude must not unlock the next phase itself.
 
-- Keep phases as small functional outcomes with one objective, a deliverable,
-  acceptance criteria, bounded expected areas, validation expectations, and
-  meaningful dependencies.
-- Work only on the active phase.
-- Run declared validation or explicitly record skipped validation with a reason.
-- Submit concise criterion evidence, changed files, scope deviations,
-  assumptions, and remaining risks through `flow phase-complete`.
-- Follow the returned gate decision. Do not mark a phase done because Claude
-  believes it is done, and do not unlock the next phase yourself.
-- Use `flow repair` only for bounded repairs requested by the gate.
-- Escalate incomplete, uncertain, blocked, or out-of-scope work instead of
-  summarizing it as successful.
+Final integrated review remains required after all phase gates pass.
+
+## Presentation
+
+Render human summaries first:
+
+- workflow ID, request, mode, state;
+- current phase and completion-gate status;
+- criteria and validation progress;
+- repair attempts, blockers, and next action;
+- concise phase list or commit groups when relevant.
+
+Avoid raw JSON, repeated methodology, full state-machine dumps, and shell
+commands in normal output.
+
+## Troubleshooting
+
+If a LeanRigor command fails, show:
+
+```text
+I could not run the LeanRigor transition automatically.
+
+You can retry, or run:
+<exact command>
+
+Error:
+<concise error>
+```
+
+Raw commands belong only in this troubleshooting fallback, manual/advanced
+documentation, or when the user explicitly asks for them.

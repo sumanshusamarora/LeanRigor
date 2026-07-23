@@ -1,12 +1,32 @@
 # Workflow
 
-LeanRigor now provides a persisted sequential workflow under
+LeanRigor provides a persisted sequential workflow under
 `.leanrigor/workflows/<workflow-id>.json`.
 
-Use the `flow` command group for end-to-end orchestration:
+In Claude Code, the normal user experience is conversational:
+
+```text
+/leanrigor:start Add campaign selection to lead assignments
+-> triage summary
+-> Approach approval, when required
+-> Plan approval
+-> sequential execution
+-> per-phase completion gate
+-> Final integrated review
+-> Commit proposal
+```
+
+Claude invokes LeanRigor transitions internally. Users normally reply with
+plain language such as `Approve`, `Revise the plan to separate the migration`,
+`Continue`, `Repair it`, `Show status`, or `Cancel`. Raw CLI commands are shown
+only for troubleshooting, advanced/manual use, or explicit user request.
+
+## Advanced CLI
 
 ```bash
 leanrigor flow start "Fix the assignment regression" --provider auto
+leanrigor flow active --json
+leanrigor flow next <workflow-id> --json
 leanrigor flow status <workflow-id>
 leanrigor flow answer <workflow-id> "<answer>"
 leanrigor flow approve-approach <workflow-id>
@@ -19,6 +39,18 @@ leanrigor flow record-review <workflow-id> --status passed --summary "Integrated
 leanrigor flow commit-plan <workflow-id>
 leanrigor flow complete <workflow-id>
 ```
+
+`flow active --json` supports safe workflow discovery:
+
+- one active workflow: resume it;
+- none: start only when a request is available;
+- multiple: show ID, request, state, mode, and updated time;
+- completed and cancelled workflows are not selected by default.
+
+`flow next --json` returns the current gate label, pending decision, allowed
+natural-language intents, human-readable summary data, and internal operation
+names. It intentionally treats shell commands as troubleshooting details rather
+than normal user-facing output.
 
 ## Lifecycle
 

@@ -1,27 +1,20 @@
 <!-- generated_by: leanrigor | asset_version: 2 -->
 # /leanrigor-commit
 
-Prepare a LeanRigor commit proposal without executing it.
+Show the persisted LeanRigor commit proposal without executing it.
+
+Read `.claude/leanrigor/sequential-workflow.md` first.
 
 ## Behaviour
 
-1. Run `leanrigor flow status` to confirm the workflow is in
-   `awaiting_commit_approval`.
-2. Run `leanrigor flow commit-plan <workflow-id>` and present the proposal.
-3. Inspect the diff when useful:
-   - Staged changes: `git diff --cached`
-   - All changes: `git diff HEAD`
-4. Confirm the proposal contains:
-   - commit messages
-   - file groups
-   - exact commands
-   - rationale
-5. Present the proposal and stop. Wait for explicit user confirmation before
-   executing any git commands.
+1. Use `leanrigor flow next --json` internally for the active or supplied
+   workflow.
+2. If the workflow is not at `Commit proposal`, explain the current gate and
+   next action instead of creating another workflow.
+3. If a proposal exists, render grouped commit messages, files, and rationale.
+4. State clearly that no commit or push has occurred.
+5. Ask for explicit user direction before any git action. Never push.
 
-## Constraints
+Do not print raw CLI syntax except for troubleshooting or explicit user request.
 
-- Do not run `git commit` without explicit user confirmation
-- Do not run `git push` under any circumstances
-- Do not amend, rebase, or rewrite history
-- Do not stage or unstage files without user direction
+$ARGUMENTS

@@ -1,44 +1,26 @@
 <!-- generated_by: leanrigor | asset_version: 2 -->
 # /leanrigor
 
-Primary LeanRigor entry point for a persisted sequential coding workflow.
+Primary conversational LeanRigor workflow command.
 
 Read `.claude/leanrigor/sequential-workflow.md` first.
 
 ## Behaviour
 
-1. Inspect current state:
-   - If `$ARGUMENTS` is present, run `leanrigor flow start "$ARGUMENTS" --provider auto`.
-   - If no request is present, run `leanrigor flow status`; if needed, run
-     `leanrigor flow list` and resume the active workflow selected by the user.
-2. Present the next required action from LeanRigor state.
-3. For `awaiting_clarification`, ask exactly the persisted question and stop.
-   After the user answers, run `leanrigor flow answer <workflow-id> "<answer>"`.
-4. For `awaiting_approach_approval`, present the persisted recommendation,
-   risks, alternatives, and validation strategy. Stop for explicit approval or
-   rejection before running `approve-approach` or `reject-approach`.
-5. For `awaiting_plan_approval`, present the persisted phased plan. Stop for
-   explicit approval or revision before running `approve-plan` or `revise-plan`.
-6. For `executing`, work only on the single active phase. Run or explicitly
-   skip declared validation, record results, then submit criterion evidence,
-   changed files, assumptions, risks, and scope deviations with
-   `leanrigor flow phase-complete --evidence-file <path>`.
-7. Follow the returned completion-gate decision. Do not mark a phase done
-   because Claude says it is done, and do not unlock the next phase yourself.
-8. For `validating`, run proportional validation, then record every result with
-   `leanrigor flow record-validation`. Do not mark validation successful without
-   evidence or a skipped-validation reason.
-9. For `reviewing` or after validation, inspect the full diff and record the
-   integrated review with `leanrigor flow record-review`.
-10. For `awaiting_commit_approval`, show `leanrigor flow commit-plan`. Do not run
-   git commit or push.
+1. Use `leanrigor flow active --json` and `leanrigor flow next --json`
+   internally to find the current gate.
+2. If `$ARGUMENTS` is a new request and no active workflow exists, start the
+   workflow internally, then render the next gate.
+3. If one active workflow exists, resume it and interpret `$ARGUMENTS` as a
+   natural-language response when present.
+4. If multiple active workflows exist, present the selection and ask the user
+   to choose.
+5. Render distinct `Approach approval`, `Plan approval`, `Phase completion
+   review`, `Final integrated review`, and `Commit proposal` states.
+6. After user approval, invoke the transition internally and continue to the
+   next meaningful gate before replying.
 
-## Constraints
-
-- Do not bypass approval gates.
-- Do not spawn sub-agents, create worktrees, or use parallel execution.
-- Do not run git commit or git push.
-- Do not modify files outside the active phase without recording scope deviation.
-- Do not hide incomplete, uncertain, or out-of-scope work under a successful summary.
+Normal output must not ask users to copy-paste LeanRigor CLI commands. Show
+commands only in troubleshooting fallback or when explicitly requested.
 
 $ARGUMENTS

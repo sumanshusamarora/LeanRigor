@@ -1,23 +1,25 @@
 ---
-description: Show the LeanRigor commit proposal without committing.
+description: Show the persisted LeanRigor commit proposal without committing.
 argument-hint: "[workflow-id]"
 ---
 
 # /leanrigor:commit
 
-Confirm the workflow is in `awaiting_commit_approval`:
+Use `plugin-skills/sequential-workflow` as the workflow UX contract.
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/leanrigor" flow status $ARGUMENTS
-```
+Invoke `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor` internally.
 
-Then show:
+Behaviour:
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/leanrigor" flow commit-plan <workflow-id>
-```
+1. Inspect the active or supplied workflow with `flow next --json`.
+2. If the workflow is not at `Commit proposal`, explain the current gate and
+   next action instead of creating another workflow.
+3. When a commit proposal exists, read it internally and render grouped commit
+   messages, files, and rationale.
+4. Clearly state that no commit or push has occurred.
+5. Ask for explicit user direction before any git action. Never push.
 
-Present proposed commit messages, file groups, rationale, and exact commands.
-Never run `git commit` or `git push`.
+Do not print raw LeanRigor CLI syntax unless troubleshooting or explicitly
+requested.
 
 $ARGUMENTS

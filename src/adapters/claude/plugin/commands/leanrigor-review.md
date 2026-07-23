@@ -1,30 +1,23 @@
 <!-- generated_by: leanrigor | asset_version: 2 -->
 # /leanrigor-review
 
-Review the current implementation diff using the LeanRigor review policy.
+Show or perform the valid LeanRigor review step.
 
 Read `.claude/leanrigor/sequential-workflow.md` first.
 
 ## Behaviour
 
-1. Run `leanrigor flow status` to determine the active workflow, mode, phase
-   completion, validation evidence, and required review level.
-2. Inspect the diff:
-   - Staged changes: `git diff --cached`
-   - Unstaged changes: `git diff`
-3. Apply the review level determined by the workflow mode:
-   - **Fast** → sanity check: scan for obvious errors, secrets, scope drift
-   - **Standard** → integrated review: logic, tests, contract compliance
-   - **Rigorous** → deep review: architecture, security, edge cases, invariants
-4. Record the final integrated review:
-   - `passed` when the diff is ready for commit proposal
-   - `needs_repair` with the smallest repair scope
-   - `needs_replan` when the approved plan no longer fits
-   - `blocked` when safe continuation needs external input
-5. Run `leanrigor flow record-review <workflow-id> --status <status> --summary "<summary>"`.
+1. Use `leanrigor flow next --json` internally for the active or supplied
+   workflow.
+2. If a phase gate needs attention, render `Phase completion review` with
+   failed/uncertain criteria, validation state, scope deviations, and required
+   repair/replan action.
+3. If all phases passed and final review is pending, inspect the current diff,
+   perform the configured integrated review, and record the result internally.
+4. If a commit proposal already exists, show `Commit proposal`; do not create a
+   duplicate review workflow.
 
-## Constraints
+Do not silently repair during review. Do not commit or push. Show raw commands
+only for troubleshooting or explicit user request.
 
-- Do not commit or push
-- Do not modify implementation files during review
-- Do not silently auto-fix findings during review.
+$ARGUMENTS

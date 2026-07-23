@@ -159,43 +159,67 @@ marketplace mode, prefix them with `leanrigor:`; for example,
 
 ### `/leanrigor` or `/leanrigor:start`
 
-Orchestrates the full adaptive workflow:
+Primary conversational command. It starts or resumes the active repository
+workflow and owns the normal interaction:
 
-1. Starts or resumes `leanrigor flow`
-2. Asks the single persisted blocking clarification question if required
-3. Presents approach approval for Standard and Rigorous work
-4. Presents the persisted sequential plan and waits for approval
-5. Executes one active small functional phase at a time in the Claude session
-6. Runs or explicitly skips phase validation, then submits structured
+1. Starts a workflow when no active workflow exists and a request is supplied
+2. Resumes one active workflow automatically
+3. Shows a concise selection when multiple active workflows exist
+4. Asks the single persisted blocking clarification question if required
+5. Presents `Approach approval` for Standard and Rigorous work
+6. After approach approval, internally generates and renders `Plan approval`
+7. Executes one active small functional phase at a time in the Claude session
+8. Runs or explicitly skips phase validation, then submits structured
    completion evidence to the per-phase gate
-7. Follows `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
+9. Follows `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
    `blocked`; Claude does not unlock the next phase itself
-8. Records final integrated review after all phase gates pass
-9. Shows a commit proposal without committing
+10. Records final integrated review after all phase gates pass
+11. Shows a commit proposal without committing
+
+Users normally reply in plain language: `Approve`, `Looks good`, `Continue`,
+`Revise ...`, `Reject because ...`, `Repair it`, `Show plan`, `Show status`, or
+`Cancel`. Ambiguous replies get one concise clarification.
 
 ### `/leanrigor-plan` or `/leanrigor:plan`
 
-Plan only, no implementation. It uses the same persisted flow gates and stops
-at plan approval.
+Shows or advances planning for the active workflow. It shows an existing plan
+when one exists, continues from approach approval to plan generation when the
+user approves, accepts revision feedback, and starts a workflow only when no
+active workflow exists and a request is supplied. It does not modify
+implementation files.
 
 ### `/leanrigor-status` or `/leanrigor:status`
 
-Reports the current workflow state from `.leanrigor/workflows/`: lifecycle
-state, mode, current phase objective, completion-gate status, criteria progress,
-validation status, repair attempts, scope deviations, pending user action, review, blockers,
-and next valid commands.
+Reports human-readable status: workflow ID, request, mode, state, current
+phase, pending decision, completion-gate status, repair attempts, blockers, and
+next action. It does not default to raw JSON or shell commands.
 
 ### `/leanrigor-review` or `/leanrigor:review`
 
-Reviews the current diff against the LeanRigor review policy for the active
-workflow mode and records `passed`, `needs_repair`, `needs_replan`, or
-`blocked` with `leanrigor flow record-review`.
+Shows `Phase completion review` when a phase gate needs repair/review/replan,
+or performs the `Final integrated review` when all phases have passed and final
+review is pending. It does not create duplicate review workflows.
 
 ### `/leanrigor-commit` or `/leanrigor:commit`
 
-Inspects the diff and proposes cohesive commit groups with conventional commit
-messages and exact git commands. Does not execute commits without explicit
-confirmation.
+Shows the persisted `Commit proposal`, grouped by message, files, and
+rationale. It clearly states that no commit or push has occurred. It never
+commits automatically and never pushes.
+
+## Troubleshooting mode
+
+Claude commands normally invoke LeanRigor internally. If an internal transition
+fails, Claude shows the exact command only in this fallback shape:
+
+```text
+I could not run the LeanRigor transition automatically.
+
+You can retry, or run:
+<exact command>
+
+Error:
+<concise error>
+```
 
 ## Persistence and resume
 

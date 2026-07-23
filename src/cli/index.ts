@@ -11,6 +11,15 @@ import { runTriage } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
 import type { InstallReport, UninstallReport } from "../adapters/types.js";
 import {
+  activeWorkflowSelection,
+  currentPhaseObject,
+  phaseRepairBudget,
+  resolveSingleActiveWorkflow,
+  workflowNextSummary,
+  type ActiveWorkflowSelection,
+  type WorkflowNextSummary
+} from "../core/ux.js";
+import {
   answerClarification,
   approveApproach,
   approvePlan,
@@ -30,10 +39,10 @@ import {
   startFlow,
   startPhase
 } from "../core/flow.js";
-import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence } from "../core/types.js";
+import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowMode } from "../core/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.1.0-draft");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
 
 program.command("setup")
   .alias("init")
@@ -117,7 +126,7 @@ program.command("triage")
 program.command("status").option("--root <path>", "repository root", process.cwd()).action(async ({ root }) => {
   const active = await loadLatestFlow(root).catch(() => undefined);
   if (active) {
-    printFlowState(active);
+    printHumanStatus(active);
     return;
   }
   const state = await loadWorkflow(root);
@@ -323,13 +332,35 @@ flow.command("complete")
 flow.command("status")
   .argument("[workflow-id]")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, { root }) => {
+  .option("--json", "print raw workflow JSON for automation")
+  .action(async (workflowId, { root, json }) => {
     const state = workflowId ? await resumeFlow(root, workflowId) : await loadLatestFlow(root);
     if (!state) {
       console.log("No workflows found.");
       return;
     }
-    printFlowState(state);
+    if (json) printFlowState(state);
+    else printHumanStatus(state);
+  });
+
+flow.command("active")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured active-workflow selection data")
+  .action(async ({ root, json }) => {
+    const selection = await activeWorkflowSelection(root);
+    if (json) console.log(JSON.stringify(selection, null, 2));
+    else printActiveSelection(selection);
+  });
+
+flow.command("next")
+  .argument("[workflow-id]")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured next-step data")
+  .action(async (workflowId, { root, json }) => {
+    const state = workflowId ? await resumeFlow(root, workflowId) : await resolveSingleActiveWorkflow(root);
+    const summary = workflowNextSummary(state);
+    if (json) console.log(JSON.stringify(summary, null, 2));
+    else printNextSummary(summary);
   });
 
 flow.command("resume")
@@ -451,6 +482,51 @@ function printFlowState(state: SequentialWorkflowState): void {
   }, null, 2));
 }
 
+function printHumanStatus(state: SequentialWorkflowState): void {
+  const next = workflowNextSummary(state);
+  const phase = currentPhaseObject(state);
+  const lines = [
+    `LeanRigor - ${next.label}`,
+    "",
+    `Workflow: ${state.id}`,
+    `Request: ${state.request}`,
+    `Mode: ${labelMode(state.mode)}`,
+    `State: ${state.state}`,
+    phase ? `Current phase: ${phase.id} - ${phase.objective}` : undefined,
+    phase ? `Completion gate: ${phase.completion?.decision ?? (phase.status === "active" ? "pending" : "not started")}` : undefined,
+    phase ? `Repair attempts: ${phase.repairAttempts.length}/${phaseRepairBudget(state)}` : undefined,
+    state.blockers.length > 0 ? `Blockers: ${state.blockers.join("; ")}` : undefined,
+    next.pendingDecision ? `Pending decision: ${next.pendingDecision}` : undefined,
+    `Next action: ${next.pendingAction}`
+  ].filter((line): line is string => line !== undefined);
+  console.log(lines.join("\n"));
+}
+
+function printActiveSelection(selection: ActiveWorkflowSelection): void {
+  console.log(`LeanRigor - Active workflows\n\n${selection.message}`);
+  for (const workflow of selection.workflows) {
+    console.log(`- ${workflow.id} | ${workflow.state} | ${labelMode(workflow.mode)} | ${workflow.request} | updated ${workflow.updatedAt}`);
+  }
+}
+
+function printNextSummary(summary: WorkflowNextSummary): void {
+  const lines = [
+    `LeanRigor - ${summary.label}`,
+    "",
+    `Workflow: ${summary.workflow.id}`,
+    `Request: ${summary.workflow.request}`,
+    `Mode: ${labelMode(summary.workflow.mode)}`,
+    `State: ${summary.workflow.state}`,
+    summary.pendingDecision ? `Pending decision: ${summary.pendingDecision}` : undefined,
+    `Next action: ${summary.pendingAction}`
+  ].filter((line): line is string => line !== undefined);
+  console.log(lines.join("\n"));
+}
+
+function labelMode(mode: WorkflowMode): string {
+  return mode[0].toUpperCase() + mode.slice(1);
+}
+
 function currentPhaseStatus(state: SequentialWorkflowState): unknown {
   const active = state.plan?.phases.find((phase) => phase.status === "active")
     ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
@@ -483,11 +559,6 @@ function summariseCriteria(criteria: CriterionCompletionEvidence[]): { met: numb
     uncertain: criteria.filter((criterion) => criterion.status === "uncertain").length,
     notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
   };
-}
-
-function phaseRepairBudget(state: SequentialWorkflowState): number {
-  if (state.mode === "fast") return 1;
-  return 2;
 }
 
 function pendingUserAction(state: SequentialWorkflowState): string | null {

@@ -14,17 +14,21 @@
 - Automatic model-backed triage with schema validation, deterministic policy overrides, one retry, and deterministic fallback.
 - Fast/Standard/Rigorous workflow assessment, introspection rules, review levels, execution graph, file ownership, and commit planning primitives.
 - Persisted sequential workflow orchestration for Claude Code:
-  - `leanrigor flow start`, `answer`, `approve-approach`, `reject-approach`, `approve-plan`, `revise-plan`, `phase-start`, `phase-complete`, `phase-status`, `repair`, `record-validation`, `record-review`, `commit-plan`, `complete`, `status`, `list`, `resume`, and `cancel`.
+  - `leanrigor flow start`, `answer`, `approve-approach`, `reject-approach`, `approve-plan`, `revise-plan`, `phase-start`, `phase-complete`, `phase-status`, `repair`, `record-validation`, `record-review`, `commit-plan`, `complete`, `active`, `next`, `status`, `list`, `resume`, and `cancel`.
   - Versioned workflow files under `.leanrigor/workflows/<workflow-id>.json`.
   - Explicit lifecycle states from `created` through `awaiting_commit_approval`, plus `completed`, `blocked`, and `cancelled`.
   - Atomic writes, schema validation on read/write, corrupted-state errors, and optimistic revision checks.
   - At most one blocking clarification, mode-specific approach gates, explicit plan approval, small cohesive phase sizing, per-phase completion gates, criterion evidence, sequential unlocking only after gate pass, validation evidence, scope deviation escalation, bounded per-phase and integrated repair loops, final integrated review, replan/blocked handling, and commit proposals without commit execution.
+  - Claude UX helpers for active workflow selection and next-gate summaries so commands can render conversational status without exposing raw CLI syntax during normal use.
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
   - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
   - Global `/leanrigor:start`, `/leanrigor:plan`, `/leanrigor:status`,
     `/leanrigor:review`, and `/leanrigor:commit` commands, triage agent,
     workflow skill, hook config, plugin launcher, and bundled runtime.
+  - Marketplace and project-local command assets now treat `/leanrigor:start`
+    as the primary conversational workflow and reserve raw commands for
+    troubleshooting/manual use.
   - `npm run build:claude-plugin` bundles the CLI and dependencies to `runtime/leanrigor-cli.js`.
   - `npm run validate:claude-plugin` validates manifests, assets, executable bits, path containment, versions, and runs `claude plugin validate . --strict` when available.
 - Production TypeScript compilation is separated from test type checking: `npm run build` emits only `src/**/*.ts` to `dist/`, while `npm run typecheck` also checks `tests/**/*.ts` without emitting them.
@@ -52,7 +56,7 @@ All commands below were run in this environment on July 23, 2026.
 
 - `npm install` — passed.
 - `npm run typecheck` — passed.
-- `npm test` — passed; 11 test files and 104 tests passed.
+- `npm test` — passed; 12 test files and 118 tests passed.
 - `npm run build` — passed; plugin assets copied to `dist/adapters/claude/plugin/`.
 - `npm run validate:claude-plugin` — passed.
 - `npm run lint` — passed.
@@ -89,8 +93,16 @@ All commands below were run in this environment on July 23, 2026.
   - introduced an unexpected documentation-phase runtime change,
   - confirmed `needs_replan` or `needs_review`,
   - confirmed no automatic commit was created.
-- Real Claude Code smoke for this iteration was not run: `claude` was installed
-  at version 2.1.214, but `claude auth status` reported `loggedIn: false`.
+- Packed-tarball conversational UX smoke test in disposable Git repositories — passed:
+  - verified `flow active --json` returns `none`, `one`, and `multiple`,
+  - verified `flow next --json` returns `Approach approval` and `Plan approval`
+    labels without raw approval commands,
+  - verified approving approach internally advances to persisted plan approval,
+  - verified human `flow status` output is concise and command-free,
+  - confirmed no automatic commit was created.
+- Real Claude Code conversational smoke for this iteration was not run:
+  `claude` was installed at version 2.1.214, but `claude auth status` reported
+  `loggedIn: false`.
 - Native Claude Code marketplace smoke from this working tree — partially
   verified in a real Claude Code session:
   - `claude plugin marketplace add ./` — passed.

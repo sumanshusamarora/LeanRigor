@@ -1,27 +1,22 @@
 <!-- generated_by: leanrigor | asset_version: 2 -->
 # /leanrigor-plan
 
-Produce or revise a persisted LeanRigor sequential plan without modifying files.
+Show, generate, approve, or revise the persisted LeanRigor plan.
 
 Read `.claude/leanrigor/sequential-workflow.md` first.
 
-## Purpose
-
-Drive the workflow only through planning gates. Deliver the plan and stop.
-
 ## Behaviour
 
-1. Run `leanrigor flow status` or `leanrigor flow start "$ARGUMENTS" --provider auto`.
-2. If clarification or approach approval is pending, present that gate and stop.
-3. If approach approval is explicit, run `leanrigor flow approve-approach <workflow-id>`.
-4. Present the persisted phases from `leanrigor flow status <workflow-id>`.
-5. If the user requests changes, run `leanrigor flow revise-plan <workflow-id> "<feedback>"`.
-6. Stop before implementation until the user explicitly approves the plan.
+1. Use `leanrigor flow active --json` and `leanrigor flow next --json`
+   internally.
+2. Show an existing plan when one exists; do not create a duplicate workflow.
+3. If approach approval is pending, render `Approach approval`; after approval,
+   invoke the transition internally and immediately render `Plan approval`.
+4. If no active workflow exists and `$ARGUMENTS` is a request, start one.
+5. If the user gives revision feedback, revise the persisted plan internally
+   and render the revised phases.
 
-## Constraints
-
-- Do not modify implementation files.
-- Do not bypass clarification, approach, or plan approval gates.
-- Do not commit or push.
+Do not modify implementation files from this command. Do not show raw CLI
+commands except for troubleshooting or explicit user request.
 
 $ARGUMENTS

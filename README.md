@@ -83,7 +83,7 @@ For local development or a pre-publish install:
 npm install
 npm run build
 npm pack
-npm install -g ./leanrigor-0.1.0-draft.tgz
+npm install -g ./leanrigor-0.2.0-draft.tgz
 ```
 
 You can also run the CLI directly from the repository:
@@ -107,9 +107,23 @@ npx leanrigor flow start "Fix a README typo" --provider deterministic --root /pa
 
 ## Workflow
 
-`leanrigor flow start "<request>"` creates a workflow under
-`.leanrigor/workflows/` and persists the original request, repository root,
-triage result, mode, risk, complexity, assumptions, and timestamps.
+For Claude Code, `/leanrigor:start` is the primary entry point:
+
+```text
+/leanrigor:start Add a short usage section to README.md
+```
+
+Claude presents triage, approach approval when needed, the phased plan, phase
+completion gates, final review, and the commit proposal conversationally. Users
+normally respond with plain language such as `Approve`, `Revise the plan to
+separate the migration`, `Continue`, or `Show status`. Claude invokes
+LeanRigor CLI transitions internally and only shows shell commands for
+troubleshooting or when explicitly requested.
+
+Manual CLI use remains available. `leanrigor flow start "<request>"` creates a
+workflow under `.leanrigor/workflows/` and persists the original request,
+repository root, triage result, mode, risk, complexity, assumptions, and
+timestamps.
 
 The lifecycle is:
 
@@ -138,6 +152,11 @@ then returns `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
 `blocked`. Failed validation blocks progression, unexpected scope deviations are
 recorded and escalated when material, and repair attempts are bounded by mode.
 The final integrated review still runs after all per-phase gates pass.
+
+Active workflow selection is conservative: one active workflow is resumed, no
+workflow starts only when a request is supplied, and multiple active workflows
+are shown as a short selection list. Completed and cancelled workflows are not
+selected by default.
 
 ## Principles
 

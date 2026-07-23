@@ -56,9 +56,16 @@ leanrigor triage "Fix the assignment regression" --provider auto --root /path/to
 
 # Start and resume the persisted sequential workflow
 leanrigor flow start "Fix the assignment regression" --provider auto --root /path/to/repository
+leanrigor flow active --json --root /path/to/repository
+leanrigor flow next <workflow-id> --json --root /path/to/repository
 leanrigor flow status <workflow-id> --root /path/to/repository
 leanrigor flow resume <workflow-id> --root /path/to/repository
 ```
+
+In Claude Code, prefer `/leanrigor:start` for normal workflow use. Claude
+invokes LeanRigor transitions internally and renders human-readable gates, so
+users should not need to copy-paste shell commands unless troubleshooting or
+manually operating the CLI.
 
 ## Initialisation
 
@@ -159,7 +166,7 @@ These are heuristics, not mechanical file-count limits.
 Example output:
 
 ```
-LeanRigor CLI: 0.1.0-draft
+LeanRigor CLI: 0.2.0-draft
 Platform: Claude Code
 Claude assets available: 2
 Claude CLI: not found on PATH
@@ -172,3 +179,29 @@ Model tier resolution:
 Claude assets installed: 9/9
 Status: current
 ```
+
+## Troubleshooting workflow commands
+
+If a Claude command cannot invoke LeanRigor automatically, it should show:
+
+```text
+I could not run the LeanRigor transition automatically.
+
+You can retry, or run:
+<exact command>
+
+Error:
+<concise error>
+```
+
+For manual diagnosis:
+
+```bash
+leanrigor flow active --json --root /path/to/repository
+leanrigor flow next <workflow-id> --json --root /path/to/repository
+leanrigor flow status <workflow-id> --json --root /path/to/repository
+```
+
+`active` excludes completed and cancelled workflows by default. When multiple
+active workflows exist, choose by workflow ID instead of starting another
+workflow accidentally.

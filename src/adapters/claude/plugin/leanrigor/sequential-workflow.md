@@ -1,28 +1,53 @@
 <!-- generated_by: leanrigor | asset_version: 2 -->
-# LeanRigor Sequential Workflow
+# LeanRigor Conversational Workflow
 
-Use `leanrigor flow` as the persisted source of truth. Claude Code performs repository inspection, edits, validation commands, and review in the active coding session; LeanRigor records state, gates, phase evidence, review outcome, and commit proposals.
+Use `leanrigor flow` as the persisted source of truth. Users should respond in
+plain language; Claude invokes LeanRigor transitions internally and renders
+concise summaries.
 
-Lifecycle:
+Normal flow:
 
-`created -> triaging -> awaiting_clarification? -> awaiting_approach_approval? -> planning -> awaiting_plan_approval -> executing -> validating -> reviewing -> awaiting_commit_approval -> completed`
+`triage summary -> Approach approval? -> Plan approval -> sequential execution -> per-phase completion gate -> final integrated review -> commit proposal`
 
-`blocked` and `cancelled` are explicit escape states.
+Use `leanrigor flow active --json` to discover active workflows and
+`leanrigor flow next --json` to inspect the current gate. Do not show shell
+commands during normal use.
 
-During `executing`, each phase must pass:
+Labels:
 
-`active -> targeted validation -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
+- `Approach approval`
+- `Plan approval`
+- `Phase completion review`
+- `Final integrated review`
+- `Commit proposal`
 
 Rules:
 
-- Ask at most one blocking clarification question, exactly as persisted.
-- Never plan or edit past an approval gate.
-- Execute one active phase at a time. Phases are small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, validation expectations, and meaningful dependencies.
-- Run declared validation or explicitly record skipped validation with a reason.
-- Submit structured criterion evidence, changed files, validation, assumptions, risks, and scope deviations with `flow phase-complete`.
-- Follow the returned gate decision. Do not mark a phase done because Claude says it is done, and do not unlock the next phase yourself.
-- Fast may skip the separate approach gate only when LeanRigor marks it unnecessary.
-- Standard and Rigorous require approach and plan approval.
-- Final integrated review is required before commit proposal.
-- Use `leanrigor flow record-review` with `passed`, `needs_repair`, `needs_replan`, or `blocked`.
-- Never run `git commit`, `git push`, amend, rebase, or deploy automatically.
+- One active workflow: resume it.
+- No active workflow: start only when the user supplied a request.
+- Multiple active workflows: show ID, request, state, mode, updated time, and ask the user to choose.
+- Interpret `approve`, `looks good`, and `continue` according to the current gate.
+- Approval at approach immediately generates and renders the actual phased plan.
+- Approval at plan starts execution.
+- `continue` must not bypass `needs_repair`, `needs_review`, or `needs_replan`.
+- Ask one concise clarification for ambiguous responses.
+- Run or skip declared validation with a reason, then submit phase completion evidence.
+- Final integrated review remains required after all phase gates pass.
+- Never run `git commit`, `git push`, amend, rebase, deploy, create worktrees, or spawn parallel agents automatically.
+
+Presentation:
+
+- Human-readable first: workflow ID, request, mode, state, current phase, gate status, criteria/validation progress, repair attempts, blockers, and next action.
+- Do not print raw JSON or CLI commands unless troubleshooting or explicitly requested.
+
+Troubleshooting fallback:
+
+```text
+I could not run the LeanRigor transition automatically.
+
+You can retry, or run:
+<exact command>
+
+Error:
+<concise error>
+```

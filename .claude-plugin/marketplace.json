@@ -10,7 +10,7 @@
       "name": "leanrigor",
       "source": "./",
       "description": "Persisted sequential Fast, Standard, and Rigorous coding workflows for Claude Code.",
-      "version": "0.1.0-draft",
+      "version": "0.2.0-draft",
       "author": {
         "name": "Sam Arora"
       },

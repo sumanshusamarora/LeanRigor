@@ -69,6 +69,14 @@ Claude Code namespaces marketplace plugin commands as `/plugin-name:command`.
 LeanRigor therefore keeps the command segment concise. The primary entry point
 is `/leanrigor:start`.
 
+`/leanrigor:start` owns the conversational workflow. Claude starts or resumes
+the active repository workflow, asks for approach/plan approval in plain
+language, advances deterministic transitions internally after approval, and
+renders phase gates, final review, and commit proposal without asking users to
+copy-paste shell commands. `/leanrigor:plan`, `/leanrigor:status`,
+`/leanrigor:review`, and `/leanrigor:commit` inspect or resume the same
+persisted workflow instead of creating duplicates.
+
 The npm/project-local fallback still exposes unqualified commands such as
 `/leanrigor` because it installs command files into the target repository's
 `.claude/commands/` directory.

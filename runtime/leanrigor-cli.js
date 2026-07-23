@@ -20697,9 +20697,216 @@ function unique(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+// src/core/ux.ts
+async function activeWorkflowSelection(root) {
+  const flows = (await listFlows(root)).filter((flow2) => !["completed", "cancelled"].includes(flow2.state));
+  const workflows = flows.map((flow2) => ({
+    id: flow2.id,
+    request: flow2.request,
+    state: flow2.state,
+    mode: flow2.mode,
+    updatedAt: flow2.updatedAt
+  }));
+  if (workflows.length === 0) {
+    return { status: "none", workflows, message: "No active LeanRigor workflow exists in this repository." };
+  }
+  if (workflows.length === 1) {
+    return { status: "one", workflow: workflows[0], workflows, message: "One active LeanRigor workflow is available." };
+  }
+  return { status: "multiple", workflows, message: "Multiple active LeanRigor workflows require user selection." };
+}
+async function resolveSingleActiveWorkflow(root) {
+  const selection = await activeWorkflowSelection(root);
+  if (selection.status === "none") throw new Error("No active LeanRigor workflow exists. Start one with a request.");
+  if (selection.status === "multiple") throw new Error("Multiple active LeanRigor workflows exist. Choose a workflow ID before continuing.");
+  if (!selection.workflow) throw new Error("Active workflow selection is missing workflow details.");
+  return resumeFlow(root, selection.workflow.id);
+}
+function workflowNextSummary(state) {
+  const workflow = workflowListSummary(state);
+  const phase2 = currentPhaseObject(state);
+  const base = {
+    workflow,
+    troubleshooting: {
+      showCommandsOnlyOnFailure: true,
+      internalOperations: internalOperationsFor(state)
+    }
+  };
+  if (state.state === "awaiting_clarification") {
+    return {
+      ...base,
+      label: "Clarification",
+      userDecisionRequired: true,
+      pendingDecision: "Answer the single blocking clarification question.",
+      pendingAction: state.clarification?.question ?? "What specific behaviour should change?",
+      allowedIntents: ["answer", "cancel", "show status"],
+      summary: { reason: state.clarification?.reason }
+    };
+  }
+  if (state.state === "awaiting_approach_approval") {
+    return {
+      ...base,
+      label: "Approach approval",
+      userDecisionRequired: true,
+      pendingDecision: "Approve this approach, request changes, reject it, or cancel.",
+      pendingAction: "Approve this approach, request changes, or cancel?",
+      allowedIntents: ["approve", "looks good", "continue", "revise", "reject", "cancel", "show status"],
+      summary: {
+        proposed: state.approach?.proposed,
+        preferredBecause: state.approach?.preferredBecause,
+        risks: state.approach?.primaryRisks ?? [],
+        validation: state.approach?.validationStrategy ?? []
+      }
+    };
+  }
+  if (state.state === "awaiting_plan_approval") {
+    return {
+      ...base,
+      label: "Plan approval",
+      userDecisionRequired: true,
+      pendingDecision: "Approve this plan, request changes, or cancel.",
+      pendingAction: "Approve this plan, request changes, or cancel?",
+      allowedIntents: ["approve", "looks good", "continue", "revise", "cancel", "show status", "show plan"],
+      summary: {
+        phases: state.plan?.phases.map((candidate, index) => ({
+          number: index + 1,
+          id: candidate.id,
+          objective: candidate.objective,
+          status: candidate.status,
+          validation: candidate.validationCommands
+        })) ?? [],
+        validation: unique2(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? [])
+      }
+    };
+  }
+  if (state.state === "executing" && phase2) {
+    const needsIntervention = ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status);
+    return {
+      ...base,
+      label: needsIntervention ? "Phase completion review" : "Phase execution",
+      userDecisionRequired: needsIntervention,
+      pendingDecision: needsIntervention ? phase2.completion?.reason ?? "The active phase needs intervention." : null,
+      pendingAction: phaseNextAction(phase2.status),
+      allowedIntents: phaseIntents(phase2.status),
+      summary: {
+        phase: phase2.id,
+        objective: phase2.objective,
+        status: phase2.status,
+        completionGate: phase2.completion?.decision ?? "pending",
+        criteria: phase2.completion ? summariseCriteria(phase2.completion.criteria) : void 0,
+        validation: phase2.completion?.validation.status ?? "pending",
+        repairAttempts: phase2.repairAttempts.length,
+        scopeDeviations: phase2.scopeDeviations
+      }
+    };
+  }
+  if (state.state === "validating" || state.state === "reviewing") {
+    return {
+      ...base,
+      label: "Final integrated review",
+      userDecisionRequired: false,
+      pendingDecision: null,
+      pendingAction: "Run the final integrated review and record the result.",
+      allowedIntents: ["continue", "show status", "cancel"],
+      summary: {
+        validation: state.validation.map((evidence) => ({ command: evidence.command, status: evidence.status, result: evidence.result })),
+        review: state.review
+      }
+    };
+  }
+  if (state.state === "awaiting_commit_approval") {
+    return {
+      ...base,
+      label: "Commit proposal",
+      userDecisionRequired: true,
+      pendingDecision: "Review the commit proposal. No commit or push has occurred.",
+      pendingAction: "Review the proposal, ask for changes, complete the workflow, or cancel.",
+      allowedIntents: ["show proposal", "complete", "cancel", "show status"],
+      summary: { commitPlan: commitPlanSummary(state.commitPlan) }
+    };
+  }
+  if (state.state === "blocked") {
+    return {
+      ...base,
+      label: "Blocked",
+      userDecisionRequired: true,
+      pendingDecision: state.blockers[0] ?? "Workflow is blocked.",
+      pendingAction: "Resolve the blocker, revise the workflow, or cancel.",
+      allowedIntents: ["show status", "cancel"],
+      summary: { blockers: state.blockers }
+    };
+  }
+  return {
+    ...base,
+    label: "Workflow status",
+    userDecisionRequired: false,
+    pendingDecision: null,
+    pendingAction: "Inspect the workflow state.",
+    allowedIntents: ["show status", "cancel"],
+    summary: {}
+  };
+}
+function currentPhaseObject(state) {
+  return state.plan?.phases.find((phase2) => phase2.status === "active") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
+}
+function phaseRepairBudget(state) {
+  if (state.mode === "fast") return 1;
+  return 2;
+}
+function workflowListSummary(state) {
+  return {
+    id: state.id,
+    request: state.request,
+    state: state.state,
+    mode: state.mode,
+    updatedAt: state.updatedAt
+  };
+}
+function phaseNextAction(status) {
+  if (status === "needs_repair") return "Repair the phase within the gate's requested scope; continue cannot bypass repair.";
+  if (status === "needs_review") return "Review the uncertain phase evidence or revise the plan.";
+  if (status === "needs_replan") return "Revise the plan before continuing.";
+  if (status === "blocked") return "Resolve the blocker or cancel.";
+  return "Execute the active phase, record validation, and submit completion evidence.";
+}
+function phaseIntents(status) {
+  if (status === "needs_repair") return ["repair it", "revise", "show status", "cancel"];
+  if (status === "needs_review") return ["review", "revise", "show status", "cancel"];
+  if (status === "needs_replan") return ["revise", "show status", "cancel"];
+  if (status === "blocked") return ["show status", "cancel"];
+  return ["continue", "show status", "show plan", "cancel"];
+}
+function internalOperationsFor(state) {
+  if (state.state === "awaiting_clarification") return ["answer"];
+  if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
+  if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["record-validation", "phase-complete", "repair", "revise-plan", "cancel"];
+  if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
+  if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
+  return ["status"];
+}
+function commitPlanSummary(plan) {
+  return plan ? {
+    generatedAt: plan.generatedAt,
+    note: plan.note,
+    groups: plan.groups.map((group) => ({ message: group.message, files: group.files, rationale: group.rationale }))
+  } : void 0;
+}
+function summariseCriteria(criteria) {
+  return {
+    met: criteria.filter((criterion) => criterion.status === "met").length,
+    notMet: criteria.filter((criterion) => criterion.status === "not_met").length,
+    uncertain: criteria.filter((criterion) => criterion.status === "uncertain").length,
+    notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
+  };
+}
+function unique2(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.1.0-draft");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const configDir = path6.join(root, ".leanrigor");
@@ -20762,7 +20969,7 @@ program2.command("triage").argument("<request>").option("--root <path>", "reposi
 program2.command("status").option("--root <path>", "repository root", process.cwd()).action(async ({ root }) => {
   const active = await loadLatestFlow(root).catch(() => void 0);
   if (active) {
-    printFlowState(active);
+    printHumanStatus(active);
     return;
   }
   const state = await loadWorkflow(root);
@@ -20875,13 +21082,25 @@ flow.command("commit-plan").argument("<workflow-id>").option("--root <path>", "r
 flow.command("complete").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
   printFlowState(await completeFlow(root, workflowId2));
 });
-flow.command("status").argument("[workflow-id]").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
+flow.command("status").argument("[workflow-id]").option("--root <path>", "repository root", process.cwd()).option("--json", "print raw workflow JSON for automation").action(async (workflowId2, { root, json: json2 }) => {
   const state = workflowId2 ? await resumeFlow(root, workflowId2) : await loadLatestFlow(root);
   if (!state) {
     console.log("No workflows found.");
     return;
   }
-  printFlowState(state);
+  if (json2) printFlowState(state);
+  else printHumanStatus(state);
+});
+flow.command("active").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured active-workflow selection data").action(async ({ root, json: json2 }) => {
+  const selection = await activeWorkflowSelection(root);
+  if (json2) console.log(JSON.stringify(selection, null, 2));
+  else printActiveSelection(selection);
+});
+flow.command("next").argument("[workflow-id]").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured next-step data").action(async (workflowId2, { root, json: json2 }) => {
+  const state = workflowId2 ? await resumeFlow(root, workflowId2) : await resolveSingleActiveWorkflow(root);
+  const summary = workflowNextSummary(state);
+  if (json2) console.log(JSON.stringify(summary, null, 2));
+  else printNextSummary(summary);
 });
 flow.command("resume").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
   printFlowState(await resumeFlow(root, workflowId2));
@@ -20959,7 +21178,7 @@ function printFlowState(state) {
       completionGate: phase2.completion ? {
         decision: phase2.completion.decision,
         reason: phase2.completion.reason,
-        criteria: summariseCriteria(phase2.completion.criteria),
+        criteria: summariseCriteria2(phase2.completion.criteria),
         validation: phase2.completion.validation.status,
         dependentPhasesMayProceed: phase2.completion.dependentPhasesMayProceed
       } : void 0,
@@ -20983,6 +21202,49 @@ function printFlowState(state) {
     updatedAt: state.updatedAt
   }, null, 2));
 }
+function printHumanStatus(state) {
+  const next = workflowNextSummary(state);
+  const phase2 = currentPhaseObject(state);
+  const lines = [
+    `LeanRigor - ${next.label}`,
+    "",
+    `Workflow: ${state.id}`,
+    `Request: ${state.request}`,
+    `Mode: ${labelMode(state.mode)}`,
+    `State: ${state.state}`,
+    phase2 ? `Current phase: ${phase2.id} - ${phase2.objective}` : void 0,
+    phase2 ? `Completion gate: ${phase2.completion?.decision ?? (phase2.status === "active" ? "pending" : "not started")}` : void 0,
+    phase2 ? `Repair attempts: ${phase2.repairAttempts.length}/${phaseRepairBudget(state)}` : void 0,
+    state.blockers.length > 0 ? `Blockers: ${state.blockers.join("; ")}` : void 0,
+    next.pendingDecision ? `Pending decision: ${next.pendingDecision}` : void 0,
+    `Next action: ${next.pendingAction}`
+  ].filter((line) => line !== void 0);
+  console.log(lines.join("\n"));
+}
+function printActiveSelection(selection) {
+  console.log(`LeanRigor - Active workflows
+
+${selection.message}`);
+  for (const workflow of selection.workflows) {
+    console.log(`- ${workflow.id} | ${workflow.state} | ${labelMode(workflow.mode)} | ${workflow.request} | updated ${workflow.updatedAt}`);
+  }
+}
+function printNextSummary(summary) {
+  const lines = [
+    `LeanRigor - ${summary.label}`,
+    "",
+    `Workflow: ${summary.workflow.id}`,
+    `Request: ${summary.workflow.request}`,
+    `Mode: ${labelMode(summary.workflow.mode)}`,
+    `State: ${summary.workflow.state}`,
+    summary.pendingDecision ? `Pending decision: ${summary.pendingDecision}` : void 0,
+    `Next action: ${summary.pendingAction}`
+  ].filter((line) => line !== void 0);
+  console.log(lines.join("\n"));
+}
+function labelMode(mode2) {
+  return mode2[0].toUpperCase() + mode2.slice(1);
+}
 function currentPhaseStatus(state) {
   const active = state.plan?.phases.find((phase2) => phase2.status === "active") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
   return active ? formatPhaseStatus(state, active.id) : void 0;
@@ -20996,7 +21258,7 @@ function formatPhaseStatus(state, phaseId) {
     objective: phase2.objective,
     status: phase2.status,
     completionGate: completion?.decision ?? (phase2.status === "active" ? "pending" : "not_started"),
-    criteria: completion ? summariseCriteria(completion.criteria) : { met: 0, notMet: 0, uncertain: phase2.acceptanceCriteria.length, notApplicable: 0 },
+    criteria: completion ? summariseCriteria2(completion.criteria) : { met: 0, notMet: 0, uncertain: phase2.acceptanceCriteria.length, notApplicable: 0 },
     validation: completion?.validation.status ?? (phase2.validationResults.length > 0 ? "recorded" : "pending"),
     repairAttempts: `${phase2.repairAttempts.length}/${phaseRepairBudget(state)}`,
     scopeDeviations: phase2.scopeDeviations,
@@ -21005,17 +21267,13 @@ function formatPhaseStatus(state, phaseId) {
     nextAction: nextActions(state)[0] ?? null
   };
 }
-function summariseCriteria(criteria) {
+function summariseCriteria2(criteria) {
   return {
     met: criteria.filter((criterion) => criterion.status === "met").length,
     notMet: criteria.filter((criterion) => criterion.status === "not_met").length,
     uncertain: criteria.filter((criterion) => criterion.status === "uncertain").length,
     notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
   };
-}
-function phaseRepairBudget(state) {
-  if (state.mode === "fast") return 1;
-  return 2;
 }
 function pendingUserAction(state) {
   if (state.state === "awaiting_clarification") return "Answer the single blocking clarification question.";
