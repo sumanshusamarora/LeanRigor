@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { z } from "zod";
@@ -25,8 +25,13 @@ import type {
   ValidationEvidence,
   WorkflowLifecycleState,
   WorkflowMode,
+  WorkflowEvent,
+  WorkflowLockOwnerType,
   WorkflowPhase
 } from "./types.js";
+import { acquireWorkflowLock, releaseWorkflowLock } from "./workflow-lock.js";
+import { RevisionConflictError, atomicWriteJson } from "./workflow-store.js";
+import { calculateReadyPhases, dependencyIds, refreshPhaseReadiness, validatePhaseDag } from "./scheduler.js";
 
 export const WORKFLOW_DIR = path.join(".leanrigor", "workflows");
 export const STATE_VERSION = 2;
@@ -52,6 +57,7 @@ const riskSchema = z.enum(["none", "low", "medium", "high"]);
 const modelProfileSchema = z.enum(["small", "medium", "large", "inherit"]);
 const criterionStatusSchema = z.enum(["met", "not_met", "uncertain", "not_applicable"]);
 const completionDecisionSchema = z.enum(["completed", "needs_repair", "needs_review", "needs_replan", "blocked"]);
+const phaseStatusSchema = z.enum(["planned", "ready", "leased", "running", "completion_pending", "completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
 
 const triageSchema = z.object({
   version: z.literal(1),
@@ -143,7 +149,8 @@ const phaseCompletionRecordSchema = z.object({
   reason: z.string(),
   repairAttempt: z.number().int().min(0),
   timestamp: z.string(),
-  workflowRevision: z.number().int().min(0)
+  workflowRevision: z.number().int().min(0),
+  leaseOwnerId: z.string().optional()
 });
 
 const phaseSchema = z.object({
@@ -151,12 +158,16 @@ const phaseSchema = z.object({
   objective: z.string().min(1),
   rationale: z.string().min(1),
   dependencies: z.array(z.string()),
+  dependsOn: z.array(z.string()).default([]),
+  expectedReadAreas: z.array(z.string()).default([]),
+  expectedWriteAreas: z.array(z.string()).default([]),
   expectedFilesOrAreas: z.array(z.string()),
   acceptanceCriteria: z.array(z.string().min(1)),
   validationCommands: z.array(z.string()),
   riskLevel: riskSchema,
   modelTier: modelProfileSchema,
-  status: z.enum(["pending", "active", "completed", "needs_repair", "needs_review", "needs_replan", "blocked"]),
+  status: z.preprocess((value) => value === "pending" ? "planned" : value === "active" ? "running" : value, phaseStatusSchema),
+  ownershipUncertain: z.boolean().optional(),
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
   filesChanged: z.array(z.string()),
@@ -180,15 +191,41 @@ const planSchema = z.object({
     ctx.addIssue({ code: "custom", path: ["phases"], message: "Phase IDs must be unique." });
   }
   for (const phase of plan.phases) {
-    for (const dependency of phase.dependencies) {
+    for (const dependency of dependencyIds(phase as WorkflowPhase)) {
       if (!ids.has(dependency)) {
         ctx.addIssue({ code: "custom", path: ["phases", phase.id, "dependencies"], message: `Missing dependency ${dependency}.` });
       }
     }
   }
+  for (const issue of validatePhaseDag(plan as ExecutionPlan)) {
+    ctx.addIssue({ code: "custom", path: ["phases"], message: issue });
+  }
   for (const issue of validatePlanQuality(plan)) {
     ctx.addIssue({ code: "custom", path: ["phases"], message: issue });
   }
+});
+
+const phaseLeaseSchema = z.object({
+  phaseId: z.string().min(1),
+  ownerId: z.string().min(1),
+  ownerType: z.enum(["cli", "claude-session", "agent", "system"]).default("cli"),
+  acquiredAt: z.string(),
+  heartbeatAt: z.string(),
+  expiresAt: z.string(),
+  workflowRevisionAtAcquire: z.number().int().min(0),
+  allowedWriteAreas: z.array(z.string()),
+  releasedAt: z.string().optional()
+});
+
+const workflowEventSchema = z.object({
+  eventId: z.string().min(1),
+  timestamp: z.string(),
+  actorId: z.string().min(1),
+  type: z.string().min(1),
+  workflowRevisionBefore: z.number().int().min(0),
+  workflowRevisionAfter: z.number().int().min(0),
+  phaseId: z.string().optional(),
+  summary: z.string().min(1)
 });
 
 const workflowStateSchema = z.object({
@@ -244,13 +281,10 @@ const workflowStateSchema = z.object({
     })),
     note: z.string()
   }).optional(),
+  phaseLeases: z.record(z.string(), phaseLeaseSchema).default({}),
   repairAttempts: z.number().int().min(0),
   blockers: z.array(z.string()),
-  events: z.array(z.object({
-    state: lifecycleStateSchema,
-    message: z.string(),
-    timestamp: z.string()
-  }))
+  events: z.array(workflowEventSchema).default([])
 });
 
 export class WorkflowNotFoundError extends Error {}
@@ -258,6 +292,19 @@ export class WorkflowStateError extends Error {}
 export class InvalidTransitionError extends Error {}
 export class StaleWorkflowError extends Error {}
 export class CorruptedWorkflowError extends Error {}
+
+export interface MutationOptions {
+  expectedRevision?: number;
+  ownerId?: string;
+  ownerType?: WorkflowLockOwnerType;
+  operation?: string;
+  lockTimeoutSeconds?: number;
+}
+
+const DEFAULT_OWNER_ID = "cli";
+const DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
+const DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
+const MAX_EVENTS = 200;
 
 export interface FlowStartOptions {
   request: string;
@@ -280,9 +327,10 @@ export async function startFlow(options: FlowStartOptions): Promise<SequentialWo
     createdAt: now,
     updatedAt: now,
     validation: [],
+    phaseLeases: {},
     repairAttempts: 0,
     blockers: [],
-    events: [{ state: "created", message: "Workflow created.", timestamp: now }]
+    events: [workflowEvent({ type: "workflow_created", actorId: "system", before: 0, after: 0, summary: "Workflow created.", at: now })]
   };
 
   await saveFlowState(root, state, { create: true });
@@ -304,6 +352,7 @@ export async function answerClarification(args: {
   answer: string;
   config: LeanRigorConfig;
   provider?: TriageProvider;
+  mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, async (state) => {
     assertState(state, ["awaiting_clarification"]);
@@ -315,7 +364,7 @@ export async function answerClarification(args: {
       answer: args.answer,
       answeredAt: timestamp()
     };
-    answered.events.push({ state: answered.state, message: "Blocking clarification answered.", timestamp: timestamp() });
+    appendEvent(answered, "clarification_answered", "Blocking clarification answered.");
 
     const triageRun = await runTriage({
       request: `${answered.request}\n\nClarification answer: ${args.answer}`,
@@ -325,31 +374,31 @@ export async function answerClarification(args: {
     });
     const next = applyTriageResult(answered, triageRun, args.config, { clarificationAlreadyAnswered: true });
     return next;
-  });
+  }, { ...args.mutation, operation: "answer_clarification" });
 }
 
-export async function approveApproach(root: string, workflowId: string, config?: LeanRigorConfig): Promise<SequentialWorkflowState> {
+export async function approveApproach(root: string, workflowId: string, config?: LeanRigorConfig, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
     next.approach = { ...state.approach, approved: true };
-    next.events.push({ state: "awaiting_approach_approval", message: "Approach approved.", timestamp: timestamp() });
+    appendEvent(next, "approach_approved", "Approach approved.");
     return withPlan(next, config);
-  });
+  }, { ...mutation, operation: "approve_approach" });
 }
 
-export async function rejectApproach(root: string, workflowId: string, reason: string): Promise<SequentialWorkflowState> {
+export async function rejectApproach(root: string, workflowId: string, reason: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     const next = structuredClone(state);
     next.approach = next.approach ? { ...next.approach, rejectedReason: reason } : undefined;
     next.blockers = [`Approach rejected: ${reason}`];
     return transition(next, "blocked", "Approach rejected; workflow blocked pending a new request or manual restart.");
-  });
+  }, { ...mutation, operation: "reject_approach" });
 }
 
-export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig): Promise<SequentialWorkflowState> {
+export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
@@ -363,33 +412,35 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
     next.commitPlan = undefined;
     next.blockers = [];
     return transition(next, "awaiting_plan_approval", "Plan revised and awaiting approval.");
-  });
+  }, { ...mutation, operation: "revise_plan" });
 }
 
-export async function approvePlan(root: string, workflowId: string): Promise<SequentialWorkflowState> {
+export async function approvePlan(root: string, workflowId: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
     const plan = state.plan;
     next.plan = { ...plan, approvedAt: timestamp() };
-    next.plan.phases = plan.phases.map((phase, index) => index === 0
-      ? { ...phase, status: "active", startedAt: timestamp() }
-      : { ...phase, status: "pending" });
-    return transition(next, "executing", `Plan approved. Phase ${next.plan.phases[0]?.id ?? "unknown"} is active.`);
-  });
+    next.plan.phases = plan.phases.map((phase) => ({ ...phase, status: "planned" }));
+    const executing = transition(next, "executing", "Plan approved. Ready phases will be derived from DAG dependencies and ownership.");
+    refreshPhaseReadiness(executing);
+    return executing;
+  }, { ...mutation, operation: "approve_plan" });
 }
 
-export async function startPhase(root: string, workflowId: string, phaseId?: string): Promise<SequentialWorkflowState> {
+export async function startPhase(root: string, workflowId: string, phaseId?: string, mutation?: MutationOptions & { config?: LeanRigorConfig }): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["executing"]);
     const next = structuredClone(state);
     const phase = selectStartablePhase(next, phaseId);
-    phase.status = "active";
+    const ownerId = mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    phase.status = "running";
     phase.startedAt = phase.startedAt ?? timestamp();
-    next.events.push({ state: "executing", message: `Phase ${phase.id} started.`, timestamp: timestamp() });
+    next.phaseLeases[phase.id] = phaseLease(phase, ownerId, mutation?.ownerType ?? "cli", next.revision, mutation?.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS);
+    appendEvent(next, "phase_started", `Phase ${phase.id} leased and started by ${ownerId}.`, phase.id);
     return next;
-  });
+  }, { ...mutation, operation: "phase_start" });
 }
 
 export async function completePhase(args: {
@@ -407,6 +458,7 @@ export async function completePhase(args: {
   blockedReason?: string;
   requestedRepairScope?: string;
   modelDecision?: CompletionGateDecision;
+  mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
@@ -416,7 +468,13 @@ export async function completePhase(args: {
     if (!plan) throw new WorkflowStateError("Cannot complete a phase without a plan.");
     const phase = plan.phases.find((candidate) => candidate.id === args.phaseId);
     if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
-    if (phase.status !== "active") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an active phase can enter the completion gate.`);
+    const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    const lease = next.phaseLeases[phase.id];
+    if (phase.status !== "running" && phase.status !== "leased") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only a leased or running phase can enter the completion gate.`);
+    if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
+      throw new InvalidTransitionError(`Phase ${phase.id} completion requires an active lease held by ${ownerId}.`);
+    }
+    phase.status = "completion_pending";
     phase.filesChanged = unique([...phase.filesChanged, ...(args.filesChanged ?? [])]);
     phase.commandsRun = [...phase.commandsRun, ...(args.commandsRun ?? [])];
     for (const evidence of args.validation ?? []) {
@@ -435,17 +493,19 @@ export async function completePhase(args: {
       remainingRisks: args.remainingRisks,
       blockedReason: args.blockedReason,
       requestedRepairScope: args.requestedRepairScope,
-      config: args.config
+      config: args.config,
+      leaseOwnerId: ownerId
     });
     phase.completion = completion;
     phase.status = completion.decision;
     if (completion.decision === "completed") phase.completedAt = timestamp();
+    if (completion.decision === "completed") next.phaseLeases[phase.id] = { ...lease, releasedAt: timestamp() };
     const repair = phase.repairAttempts.at(-1);
     if (repair && !repair.outcome) {
       repair.validation = phase.validationResults;
       repair.outcome = completion.decision;
     }
-    next.events.push({ state: "executing", message: `Phase ${phase.id} completion gate: ${completion.decision}. ${completion.reason}`, timestamp: timestamp() });
+    appendEvent(next, "phase_completion_evaluated", `Phase ${phase.id} completion gate: ${completion.decision}. ${completion.reason}`, phase.id);
 
     if (completion.decision === "blocked") {
       next.blockers = [completion.reason];
@@ -453,18 +513,16 @@ export async function completePhase(args: {
     }
     if (completion.decision !== "completed") return next;
 
-    const nextPhase = plan.phases.find((candidate) => candidate.status === "pending" && candidate.dependencies.every((id) => phaseById(plan, id)?.status === "completed"));
+    const nextPhase = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
     if (nextPhase) {
-      nextPhase.status = "active";
-      nextPhase.startedAt = timestamp();
-      next.events.push({ state: "executing", message: `Phase ${nextPhase.id} started after completion gate passed.`, timestamp: timestamp() });
+      appendEvent(next, "phase_ready", `Phase ${nextPhase.id} became ready after completion gate passed.`, nextPhase.id);
       return next;
     }
 
     const unfinished = plan.phases.find((candidate) => candidate.status !== "completed");
     if (unfinished) return next;
     return transition(next, "validating", "All phases completed; targeted validation is required.");
-  });
+  }, { ...args.mutation, operation: "phase_complete" });
 }
 
 export async function repairPhase(args: {
@@ -474,6 +532,7 @@ export async function repairPhase(args: {
   reason: string;
   requestedScope?: string;
   config: LeanRigorConfig;
+  mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
@@ -492,7 +551,7 @@ export async function repairPhase(args: {
         phase.completion.dependentPhasesMayProceed = false;
         phase.completion.reason = `Repair budget exhausted after ${phase.repairAttempts.length} attempt(s).`;
       }
-      next.events.push({ state: "executing", message: `Phase ${phase.id} repair budget exhausted.`, timestamp: timestamp() });
+      appendEvent(next, "phase_repair_exhausted", `Phase ${phase.id} repair budget exhausted.`, phase.id);
       return next;
     }
     const attempt: PhaseRepairAttempt = {
@@ -503,12 +562,14 @@ export async function repairPhase(args: {
       timestamp: timestamp()
     };
     phase.repairAttempts.push(attempt);
-    phase.status = "active";
+    const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    phase.status = "running";
     phase.startedAt = timestamp();
     phase.completedAt = undefined;
-    next.events.push({ state: "executing", message: `Phase ${phase.id} repair attempt ${attempt.attempt}/${budget} started.`, timestamp: timestamp() });
+    next.phaseLeases[phase.id] = phaseLease(phase, ownerId, args.mutation?.ownerType ?? "cli", next.revision, args.config.execution.phaseLeaseTimeoutSeconds);
+    appendEvent(next, "phase_repair_started", `Phase ${phase.id} repair attempt ${attempt.attempt}/${budget} started.`, phase.id);
     return next;
-  });
+  }, { ...args.mutation, operation: "repair_phase" });
 }
 
 export async function recordValidation(args: {
@@ -520,6 +581,7 @@ export async function recordValidation(args: {
   result: string;
   skipped?: boolean;
   skippedReason?: string;
+  mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing", "validating", "reviewing"]);
@@ -538,9 +600,9 @@ export async function recordValidation(args: {
     next.validation.push(evidence);
     const phase = args.phaseId && next.plan ? phaseById(next.plan, args.phaseId) : undefined;
     if (phase) phase.validationResults.push(evidence);
-    next.events.push({ state: next.state, message: `Validation recorded: ${evidence.command} (${evidence.status}).`, timestamp: timestamp() });
+    appendEvent(next, "validation_recorded", `Validation recorded: ${evidence.command} (${evidence.status}).`, evidence.phaseId);
     return next;
-  });
+  }, { ...args.mutation, operation: "record_validation" });
 }
 
 export async function recordReview(args: {
@@ -551,6 +613,7 @@ export async function recordReview(args: {
   findings?: string[];
   repairScope?: string;
   config: LeanRigorConfig;
+  mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["validating", "reviewing"]);
@@ -581,7 +644,7 @@ export async function recordReview(args: {
       }
       next.repairAttempts += 1;
       appendRepairPhase(next, args.repairScope ?? "Address the integrated review findings.");
-      return transition(next, "executing", "Integrated review requested repair; a repair phase is active.");
+      return transition(next, "executing", "Integrated review requested repair; a repair phase is ready.");
     }
     if (args.status === "needs_replan") {
       next.blockers = ["Integrated review requires replanning before more execution."];
@@ -589,7 +652,7 @@ export async function recordReview(args: {
     }
     next.blockers = args.findings?.length ? args.findings : [args.summary];
     return transition(next, "blocked", "Integrated review blocked the workflow.");
-  });
+  }, { ...args.mutation, operation: "record_review" });
 }
 
 export async function getCommitPlan(root: string, workflowId: string): Promise<CommitPlan> {
@@ -600,22 +663,127 @@ export async function getCommitPlan(root: string, workflowId: string): Promise<C
   return state.commitPlan;
 }
 
-export async function completeFlow(root: string, workflowId: string): Promise<SequentialWorkflowState> {
+export async function completeFlow(root: string, workflowId: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_commit_approval"]);
     return transition(structuredClone(state), "completed", "Workflow completed by explicit user action. No commit was executed.");
-  });
+  }, { ...mutation, operation: "complete_flow" });
 }
 
-export async function cancelFlow(root: string, workflowId: string): Promise<SequentialWorkflowState> {
+export async function cancelFlow(root: string, workflowId: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     if (["completed", "cancelled"].includes(state.state)) throw new InvalidTransitionError(`Workflow is already ${state.state}.`);
     return transition(structuredClone(state), "cancelled", "Workflow cancelled by user.");
-  });
+  }, { ...mutation, operation: "cancel_flow" });
 }
 
 export async function resumeFlow(root: string, workflowId: string): Promise<SequentialWorkflowState> {
   return loadFlowState(root, workflowId);
+}
+
+export function readyPhases(state: SequentialWorkflowState, config?: LeanRigorConfig) {
+  return calculateReadyPhases(state, config);
+}
+
+export async function leasePhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  ownerId: string;
+  ownerType?: WorkflowLockOwnerType;
+  config?: LeanRigorConfig;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (!state.plan) throw new WorkflowStateError("Cannot lease a phase without a plan.");
+    refreshPhaseReadiness(state, args.config);
+    const phase = phaseById(state.plan, args.phaseId);
+    if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    const existing = state.phaseLeases[phase.id];
+    if (existing && !existing.releasedAt && Date.parse(existing.expiresAt) > Date.now()) {
+      throw new InvalidTransitionError(`Phase ${phase.id} already has an active lease held by ${existing.ownerId}.`);
+    }
+    if (phase.status !== "ready") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only ready phases can be leased.`);
+    phase.status = "leased";
+    state.phaseLeases[phase.id] = phaseLease(phase, args.ownerId, args.ownerType ?? "cli", state.revision, args.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS);
+    appendEvent(state, "phase_lease_acquired", `Phase ${phase.id} leased by ${args.ownerId}.`, phase.id, args.ownerId);
+    return state;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, ownerType: args.ownerType ?? args.mutation?.ownerType, operation: "lease_phase" });
+}
+
+export async function heartbeatPhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  ownerId: string;
+  config?: LeanRigorConfig;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    const lease = state.phaseLeases[args.phaseId];
+    if (!lease || lease.releasedAt) throw new InvalidTransitionError(`Phase ${args.phaseId} has no active lease.`);
+    if (lease.ownerId !== args.ownerId) throw new InvalidTransitionError(`Phase ${args.phaseId} lease is owned by ${lease.ownerId}, not ${args.ownerId}.`);
+    const now = timestamp();
+    lease.heartbeatAt = now;
+    lease.expiresAt = new Date(Date.parse(now) + (args.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS) * 1000).toISOString();
+    appendEvent(state, "phase_lease_refreshed", `Phase ${args.phaseId} lease refreshed by ${args.ownerId}.`, args.phaseId, args.ownerId);
+    return state;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "heartbeat_phase" });
+}
+
+export async function releasePhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  ownerId: string;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    if (!state.plan) throw new WorkflowStateError("Cannot release a phase without a plan.");
+    const phase = phaseById(state.plan, args.phaseId);
+    if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    const lease = state.phaseLeases[args.phaseId];
+    if (!lease || lease.releasedAt) throw new InvalidTransitionError(`Phase ${args.phaseId} has no active lease.`);
+    if (lease.ownerId !== args.ownerId) throw new InvalidTransitionError(`Phase ${args.phaseId} lease is owned by ${lease.ownerId}, not ${args.ownerId}.`);
+    state.phaseLeases[args.phaseId] = { ...lease, releasedAt: timestamp() };
+    if (phase.status === "leased" || phase.status === "running") phase.status = "ready";
+    appendEvent(state, "phase_lease_released", `Phase ${args.phaseId} lease released by ${args.ownerId}.`, args.phaseId, args.ownerId);
+    return state;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "release_phase" });
+}
+
+export async function recoverLeases(args: {
+  root: string;
+  workflowId: string;
+  now?: Date;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    if (!state.plan) return state;
+    const nowMs = (args.now ?? new Date()).getTime();
+    for (const phase of state.plan.phases) {
+      const lease = state.phaseLeases[phase.id];
+      if (!lease || lease.releasedAt || Date.parse(lease.expiresAt) > nowMs) continue;
+      const recoveredAt = new Date(nowMs).toISOString();
+      state.phaseLeases[phase.id] = { ...lease, releasedAt: recoveredAt };
+      if (phase.completion && phase.status !== "completed") {
+        phase.status = "needs_review";
+        appendEvent(state, "phase_lease_expired", `Expired lease from ${lease.ownerId} recovered with completion evidence; phase needs review.`, phase.id);
+      } else if (phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending") {
+        phase.status = state.state === "executing" && state.blockers.length === 0 && dependencyIds(phase).every((id) => phaseById(state.plan!, id)?.status === "completed")
+          ? "ready"
+          : "needs_replan";
+        appendEvent(state, "phase_lease_expired", `Expired lease from ${lease.ownerId} recovered at ${recoveredAt}; phase moved to ${phase.status}.`, phase.id);
+      }
+    }
+    refreshPhaseReadiness(state);
+    return state;
+  }, { ...args.mutation, operation: "recover_leases" });
+}
+
+export function workflowEvents(state: SequentialWorkflowState): WorkflowEvent[] {
+  return state.events;
 }
 
 export async function listFlows(root: string): Promise<Array<{ id: string; state: WorkflowLifecycleState; mode: WorkflowMode; request: string; updatedAt: string }>> {
@@ -653,14 +821,14 @@ export async function loadFlowState(root: string, workflowId: string): Promise<S
     throw error;
   }
   try {
-    return workflowStateSchema.parse(JSON.parse(raw)) as SequentialWorkflowState;
+    return workflowStateSchema.parse(migrateWorkflowState(JSON.parse(raw), root, workflowId)) as SequentialWorkflowState;
   } catch (error) {
     throw new CorruptedWorkflowError(`Workflow state is corrupted: ${file}. ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 export async function saveFlowState(root: string, state: SequentialWorkflowState, options: { create?: boolean; expectedRevision?: number } = {}): Promise<void> {
-  const parsed = workflowStateSchema.parse({ ...state, updatedAt: state.updatedAt }) as SequentialWorkflowState;
+  const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id)) as SequentialWorkflowState;
   const dir = path.join(path.resolve(root), WORKFLOW_DIR);
   await mkdir(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
@@ -677,34 +845,46 @@ export async function saveFlowState(root: string, state: SequentialWorkflowState
   if (options.expectedRevision !== undefined) {
     const current = await loadFlowState(root, parsed.id);
     if (current.revision !== options.expectedRevision) {
-      throw new StaleWorkflowError(`Workflow ${parsed.id} has revision ${current.revision}; expected ${options.expectedRevision}. Reload before writing.`);
+      throw new RevisionConflictError(options.expectedRevision, current.revision);
     }
   }
 
-  const temp = path.join(dir, `.${parsed.id}.${process.pid}.${randomUUID()}.tmp`);
-  await writeFile(temp, JSON.stringify(parsed, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
-  try {
-    await rename(temp, target);
-  } catch (error) {
-    await rm(temp, { force: true }).catch(() => undefined);
-    throw error;
-  }
+  await atomicWriteJson(target, parsed);
 }
 
 export async function updateFlowState(
   root: string,
   workflowId: string,
-  mutate: (state: SequentialWorkflowState) => SequentialWorkflowState | Promise<SequentialWorkflowState>
+  mutate: (state: SequentialWorkflowState) => SequentialWorkflowState | Promise<SequentialWorkflowState>,
+  options: MutationOptions = {}
 ): Promise<SequentialWorkflowState> {
-  const current = await loadFlowState(root, workflowId);
-  const mutated = await mutate(structuredClone(current));
-  const next = workflowStateSchema.parse({
-    ...mutated,
-    revision: current.revision + 1,
-    updatedAt: timestamp()
-  }) as SequentialWorkflowState;
-  await saveFlowState(root, next, { expectedRevision: current.revision });
-  return next;
+  const ownerId = options.ownerId ?? DEFAULT_OWNER_ID;
+  const lock = await acquireWorkflowLock({
+    root,
+    workflowId,
+    ownerId,
+    ownerType: options.ownerType ?? "cli",
+    operation: options.operation ?? "state_transition",
+    timeoutSeconds: options.lockTimeoutSeconds ?? DEFAULT_LOCK_TIMEOUT_SECONDS
+  });
+  try {
+    const current = await loadFlowState(root, workflowId);
+    if (options.expectedRevision !== undefined && current.revision !== options.expectedRevision) {
+      throw new RevisionConflictError(options.expectedRevision, current.revision);
+    }
+    const mutated = await mutate(structuredClone(current));
+    refreshPhaseReadiness(mutated);
+    const next = workflowStateSchema.parse({
+      ...mutated,
+      revision: current.revision + 1,
+      updatedAt: timestamp(),
+      events: boundEvents(mutated.events)
+    }) as SequentialWorkflowState;
+    await saveFlowState(root, next, { expectedRevision: current.revision });
+    return next;
+  } finally {
+    await releaseWorkflowLock(root, workflowId, lock.ownerId).catch(() => undefined);
+  }
 }
 
 export function nextActions(state: SequentialWorkflowState): string[] {
@@ -723,7 +903,7 @@ export function nextActions(state: SequentialWorkflowState): string[] {
         `leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`
       ];
     case "executing": {
-      const active = state.plan?.phases.find((phase) => phase.status === "active");
+      const active = state.plan?.phases.find((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending");
       const repair = state.plan?.phases.find((phase) => phase.status === "needs_repair");
       const review = state.plan?.phases.find((phase) => phase.status === "needs_review");
       const replan = state.plan?.phases.find((phase) => phase.status === "needs_replan");
@@ -735,7 +915,7 @@ export function nextActions(state: SequentialWorkflowState): string[] {
           `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
           `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
         ]
-        : [`leanrigor flow phase-start ${id} --root "${state.root}"`];
+        : [`leanrigor flow ready ${id} --root "${state.root}"`, `leanrigor flow phase-start ${id} --root "${state.root}"`];
     }
     case "validating":
       return [
@@ -777,7 +957,7 @@ function applyTriageResult(
   };
   next.mode = triage.workflow.finalMode;
   next.blockers = [];
-  next.events.push({ state: "triaging", message: `Triage completed in ${next.mode} mode.`, timestamp: timestamp() });
+  appendEvent(next, "triage_completed", `Triage completed in ${next.mode} mode.`);
 
   if (triage.clarification.required && !options.clarificationAlreadyAnswered) {
     next.clarification = {
@@ -1116,22 +1296,29 @@ function phase(args: {
   rationale: string;
   dependencies: string[];
   areas: string[];
+  readAreas?: string[];
   acceptance: string[];
   validationCommands: string[];
   riskLevel: RiskLevel;
   modelTier: ModelProfile;
 }): WorkflowPhase {
+  const areas = unique(args.areas);
+  const readAreas = unique(args.readAreas ?? areas);
   return {
     id: args.id,
     objective: args.objective,
     rationale: args.rationale,
     dependencies: args.dependencies,
-    expectedFilesOrAreas: args.areas,
+    dependsOn: args.dependencies,
+    expectedReadAreas: readAreas,
+    expectedWriteAreas: areas,
+    expectedFilesOrAreas: areas,
     acceptanceCriteria: args.acceptance,
     validationCommands: args.validationCommands,
     riskLevel: args.riskLevel,
     modelTier: args.modelTier,
-    status: "pending",
+    status: "planned",
+    ownershipUncertain: !areas.some(isPathLikeArea),
     filesChanged: [],
     commandsRun: [],
     validationResults: [],
@@ -1175,7 +1362,7 @@ function readPackageJsonSync(root: string): { scripts?: Record<string, string> }
 function appendRepairPhase(state: SequentialWorkflowState, repairScope: string): void {
   if (!state.plan) throw new WorkflowStateError("Cannot append a repair phase without a plan.");
   for (const phase of state.plan.phases) {
-    if (phase.status === "active") phase.status = "blocked";
+    if (phase.status === "running" || phase.status === "leased") phase.status = "blocked";
   }
   const previous = state.plan.phases.at(-1)?.id;
   const id = `repair-${state.repairAttempts}`;
@@ -1192,8 +1379,7 @@ function appendRepairPhase(state: SequentialWorkflowState, repairScope: string):
   }));
   const repair = state.plan.phases.at(-1);
   if (repair) {
-    repair.status = "active";
-    repair.startedAt = timestamp();
+    repair.status = "ready";
   }
 }
 
@@ -1239,6 +1425,7 @@ function buildCompletionRecord(args: {
   blockedReason?: string;
   requestedRepairScope?: string;
   config?: LeanRigorConfig;
+  leaseOwnerId?: string;
 }): PhaseCompletionRecord {
   const criteria = normaliseCriteria(args.phase, args.criteria);
   const validation = summarisePhaseValidation(args.phase, args.state.mode, args.config);
@@ -1266,7 +1453,8 @@ function buildCompletionRecord(args: {
     reason: args.blockedReason ?? policy.reason ?? args.requestedRepairScope ?? "Completion gate evaluated.",
     repairAttempt: args.phase.repairAttempts.length,
     timestamp: timestamp(),
-    workflowRevision: args.state.revision
+    workflowRevision: args.state.revision,
+    leaseOwnerId: args.leaseOwnerId
   };
 }
 
@@ -1427,15 +1615,15 @@ function escapeRegex(value: string): string {
 function selectStartablePhase(state: SequentialWorkflowState, phaseId?: string): WorkflowPhase {
   if (!state.plan) throw new WorkflowStateError("Cannot start a phase without a plan.");
   const plan = state.plan;
-  if (plan.phases.some((phase) => phase.status === "active")) {
-    throw new InvalidTransitionError("A phase is already active; complete it before starting another.");
+  if (plan.phases.some((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending")) {
+    throw new InvalidTransitionError("A phase is already leased or running; complete or release it before starting another sequential phase.");
   }
   const phase = phaseId
     ? plan.phases.find((candidate) => candidate.id === phaseId)
-    : plan.phases.find((candidate) => candidate.status === "pending" && candidate.dependencies.every((id) => phaseById(plan, id)?.status === "completed"));
+    : plan.phases.find((candidate) => candidate.status === "ready" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
   if (!phase) throw new WorkflowStateError("No startable phase found.");
-  if (phase.status !== "pending") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only a pending phase can be started.`);
-  const blockedDependency = phase.dependencies.find((id) => phaseById(plan, id)?.status !== "completed");
+  if (phase.status !== "ready") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only a ready phase can be started.`);
+  const blockedDependency = dependencyIds(phase).find((id) => phaseById(plan, id)?.status !== "completed");
   if (blockedDependency) throw new InvalidTransitionError(`Phase ${phase.id} depends on incomplete phase ${blockedDependency}.`);
   return phase;
 }
@@ -1489,11 +1677,138 @@ function validationStrategy(mode: WorkflowMode, triage: TriageOutput): string[] 
   ];
 }
 
+function phaseLease(phase: WorkflowPhase, ownerId: string, ownerType: WorkflowLockOwnerType, workflowRevisionAtAcquire: number, timeoutSeconds: number) {
+  const now = timestamp();
+  return {
+    phaseId: phase.id,
+    ownerId,
+    ownerType,
+    acquiredAt: now,
+    heartbeatAt: now,
+    expiresAt: new Date(Date.parse(now) + timeoutSeconds * 1000).toISOString(),
+    workflowRevisionAtAcquire,
+    allowedWriteAreas: phase.expectedWriteAreas.length > 0 ? phase.expectedWriteAreas : phase.expectedFilesOrAreas
+  };
+}
+
+function appendEvent(state: SequentialWorkflowState, type: string, summary: string, phaseId?: string, actorId = DEFAULT_OWNER_ID): void {
+  state.events.push(workflowEvent({
+    type,
+    actorId,
+    before: state.revision,
+    after: state.revision + 1,
+    summary,
+    phaseId
+  }));
+  state.events = boundEvents(state.events);
+}
+
+function workflowEvent(args: {
+  type: string;
+  actorId: string;
+  before: number;
+  after: number;
+  summary: string;
+  phaseId?: string;
+  at?: string;
+}): WorkflowEvent {
+  return {
+    eventId: `evt-${randomUUID().slice(0, 12)}`,
+    timestamp: args.at ?? timestamp(),
+    actorId: args.actorId,
+    type: args.type,
+    workflowRevisionBefore: args.before,
+    workflowRevisionAfter: args.after,
+    phaseId: args.phaseId,
+    summary: args.summary
+  };
+}
+
+function boundEvents(events: WorkflowEvent[]): WorkflowEvent[] {
+  return events.slice(-MAX_EVENTS);
+}
+
+function migrateWorkflowState(raw: unknown, root: string, workflowId: string): unknown {
+  const value = raw as Record<string, unknown>;
+  if (value.version === 1 && "currentPhase" in value) {
+    const now = typeof value.updatedAt === "string" ? value.updatedAt : timestamp();
+    return {
+      version: STATE_VERSION,
+      id: workflowId,
+      revision: 0,
+      state: "created",
+      request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
+      root: path.resolve(root),
+      mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
+      createdAt: now,
+      updatedAt: now,
+      validation: [],
+      phaseLeases: {},
+      repairAttempts: 0,
+      blockers: [],
+      events: [workflowEvent({ type: "legacy_workflow_loaded", actorId: "system", before: 0, after: 0, summary: "Legacy workflow loaded with safe defaults.", at: now })]
+    };
+  }
+  const migrated = { ...value };
+  migrated.version = STATE_VERSION;
+  migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId;
+  migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path.resolve(root);
+  migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp();
+  migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
+  migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
+  migrated.phaseLeases = migrated.phaseLeases && typeof migrated.phaseLeases === "object" ? migrated.phaseLeases : {};
+  migrated.repairAttempts = typeof migrated.repairAttempts === "number" ? migrated.repairAttempts : 0;
+  migrated.blockers = Array.isArray(migrated.blockers) ? migrated.blockers : [];
+  migrated.events = migrateEvents(migrated.events, migrated.revision as number);
+  if (migrated.plan && typeof migrated.plan === "object") {
+    const plan = migrated.plan as { phases?: unknown[] };
+    plan.phases = (plan.phases ?? []).map((phase, index) => migratePhase(phase, index));
+  }
+  return migrated;
+}
+
+function migratePhase(raw: unknown, index: number): unknown {
+  const phase = { ...(raw as Record<string, unknown>) };
+  phase.id = typeof phase.id === "string" && phase.id.trim() ? phase.id : `phase-${index + 1}`;
+  phase.dependencies = Array.isArray(phase.dependencies) ? phase.dependencies : Array.isArray(phase.dependsOn) ? phase.dependsOn : [];
+  phase.dependsOn = Array.isArray(phase.dependsOn) ? phase.dependsOn : phase.dependencies;
+  phase.expectedFilesOrAreas = Array.isArray(phase.expectedFilesOrAreas) ? phase.expectedFilesOrAreas : Array.isArray(phase.expectedWriteAreas) ? phase.expectedWriteAreas : [];
+  phase.expectedWriteAreas = Array.isArray(phase.expectedWriteAreas) && phase.expectedWriteAreas.length > 0 ? phase.expectedWriteAreas : phase.expectedFilesOrAreas;
+  phase.expectedReadAreas = Array.isArray(phase.expectedReadAreas) && phase.expectedReadAreas.length > 0 ? phase.expectedReadAreas : phase.expectedFilesOrAreas;
+  if (phase.status === "pending") phase.status = "planned";
+  if (phase.status === "active") phase.status = "running";
+  phase.ownershipUncertain = typeof phase.ownershipUncertain === "boolean" ? phase.ownershipUncertain : !(phase.expectedWriteAreas as string[]).some(isPathLikeArea);
+  phase.filesChanged = Array.isArray(phase.filesChanged) ? phase.filesChanged : [];
+  phase.commandsRun = Array.isArray(phase.commandsRun) ? phase.commandsRun : [];
+  phase.validationResults = Array.isArray(phase.validationResults) ? phase.validationResults : [];
+  phase.scopeDeviations = Array.isArray(phase.scopeDeviations) ? phase.scopeDeviations : [];
+  phase.repairAttempts = Array.isArray(phase.repairAttempts) ? phase.repairAttempts : [];
+  return phase;
+}
+
+function migrateEvents(raw: unknown, revision: number): WorkflowEvent[] {
+  if (!Array.isArray(raw)) return [];
+  return boundEvents(raw.map((event, index) => {
+    const item = event as Record<string, unknown>;
+    if (typeof item.eventId === "string") return item as unknown as WorkflowEvent;
+    return {
+      eventId: `evt-migrated-${index}`,
+      timestamp: typeof item.timestamp === "string" ? item.timestamp : timestamp(),
+      actorId: "system",
+      type: "legacy_event",
+      workflowRevisionBefore: revision,
+      workflowRevisionAfter: revision,
+      summary: typeof item.message === "string" ? item.message : "Legacy workflow event."
+    };
+  }));
+}
+
 function transition(state: SequentialWorkflowState, nextState: WorkflowLifecycleState, message: string): SequentialWorkflowState {
   const next = structuredClone(state);
   next.state = nextState;
   next.updatedAt = timestamp();
-  next.events.push({ state: nextState, message, timestamp: next.updatedAt });
+  appendEvent(next, "workflow_state_changed", message);
   return next;
 }
 

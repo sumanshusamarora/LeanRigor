@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path7 = __require("node:path");
+    var path10 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path7.resolve(baseDir, baseName);
+          const localBin = path10.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path7.extname(baseName))) return void 0;
+          if (sourceExt.includes(path10.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path7.resolve(
-            path7.dirname(resolvedScriptPath),
+          executableDir = path10.resolve(
+            path10.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path7.basename(
+            const legacyName = path10.basename(
               this._scriptPath,
-              path7.extname(this._scriptPath)
+              path10.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path7.extname(executableFile));
+        launchWithNode = sourceExt.includes(path10.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path7.basename(filename, path7.extname(filename));
+        this._name = path10.basename(filename, path10.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path8) {
-        if (path8 === void 0) return this._executableDir;
-        this._executableDir = path8;
+      executableDir(path11) {
+        if (path11 === void 0) return this._executableDir;
+        this._executableDir = path11;
         return this;
       }
       /**
@@ -3722,10 +3722,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path7) {
-  if (!path7)
+function getElementAtPath(obj, path10) {
+  if (!path10)
     return obj;
-  return path7.reduce((acc, key) => acc?.[key], obj);
+  return path10.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4053,11 +4053,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path7, issues) {
+function prefixIssues(path10, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path7);
+    iss.path.unshift(path10);
     return iss;
   });
 }
@@ -4274,16 +4274,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path7 = []) => {
+  const processError = (error52, path10 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path7, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4310,17 +4310,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path7 = []) => {
+  const processError = (error52, path10 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path7, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4352,8 +4352,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path7 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path7) {
+  const path10 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path10) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17783,13 +17783,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path7 = ref.slice(1).split("/").filter(Boolean);
-  if (path7.length === 0) {
+  const path10 = ref.slice(1).split("/").filter(Boolean);
+  if (path10.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path7[0] === defsKey) {
-    const key = path7[1];
+  if (path10[0] === defsKey) {
+    const key = path10[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18672,6 +18672,13 @@ var init_schema = __esm({
         isolation: external_exports.enum(["shared-worktree", "isolated-worktrees"]).default("shared-worktree"),
         forbidSharedWrites: external_exports.boolean().default(true)
       }).prefault({}),
+      execution: external_exports.object({
+        maxParallelPhases: external_exports.number().int().min(1).max(16).default(1),
+        workflowLockTimeoutSeconds: external_exports.number().int().min(1).max(3600).default(30),
+        phaseLeaseTimeoutSeconds: external_exports.number().int().min(5).max(86400).default(900),
+        writeReadConflictsBlock: external_exports.boolean().default(true),
+        sensitivePaths: external_exports.array(external_exports.string().min(1)).default([])
+      }).prefault({}),
       git: external_exports.object({
         autoCommit: external_exports.boolean().default(false),
         requireConfirmation: external_exports.boolean().default(true),
@@ -18767,8 +18774,8 @@ var {
 // src/cli/index.ts
 init_load();
 init_defaults();
-import { mkdir as mkdir4, readdir as readdir2, readFile as readFile6, writeFile as writeFile4 } from "node:fs/promises";
-import path6 from "node:path";
+import { mkdir as mkdir5, readdir as readdir2, readFile as readFile8, writeFile as writeFile4 } from "node:fs/promises";
+import path9 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
@@ -19433,10 +19440,10 @@ init_schema();
 
 // src/core/flow.ts
 init_zod();
-import { randomUUID } from "node:crypto";
-import { mkdir as mkdir3, readFile as readFile5, rename, rm, writeFile as writeFile3 } from "node:fs/promises";
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir4, readFile as readFile7 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path5 from "node:path";
+import path8 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -19456,8 +19463,383 @@ function commitCommands(proposal) {
   return [`git add ${quoted}`, `git commit -m '${proposal.message.replaceAll("'", "'\\''")}'`];
 }
 
+// src/core/workflow-lock.ts
+import { open as open2, readFile as readFile6, mkdir as mkdir3, rm as rm2, writeFile as writeFile3 } from "node:fs/promises";
+import os from "node:os";
+import path6 from "node:path";
+
+// src/core/workflow-store.ts
+import { open, readFile as readFile5, rename, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import path5 from "node:path";
+var RevisionConflictError = class extends Error {
+  constructor(expectedRevision, actualRevision) {
+    super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
+    this.expectedRevision = expectedRevision;
+    this.actualRevision = actualRevision;
+  }
+  expectedRevision;
+  actualRevision;
+  code = "revision_conflict";
+};
+async function atomicWriteJson(file2, value) {
+  const dir = path5.dirname(file2);
+  const temp = path5.join(dir, `.${path5.basename(file2)}.${process.pid}.${randomUUID()}.tmp`);
+  const handle = await open(temp, "wx");
+  try {
+    await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename(temp, file2);
+    await fsyncDirectory(dir);
+  } catch (error51) {
+    await rm(temp, { force: true }).catch(() => void 0);
+    throw error51;
+  }
+}
+async function fsyncDirectory(dir) {
+  try {
+    const handle = await open(dir, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+  }
+}
+
+// src/core/workflow-lock.ts
+var WorkflowLockBusyError = class extends Error {
+  constructor(lock) {
+    super(`Workflow ${lock.workflowId} is locked by ${lock.ownerId} for ${lock.operation} until ${lock.expiresAt}.`);
+    this.lock = lock;
+  }
+  lock;
+  code = "workflow_lock_busy";
+};
+var WorkflowLockOwnershipError = class extends Error {
+  code = "workflow_lock_owner_mismatch";
+};
+function lockPath(root, workflowId2) {
+  return path6.join(path6.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+}
+async function acquireWorkflowLock(options) {
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const lock = buildLock(options, now);
+  const file2 = lockPath(options.root, options.workflowId);
+  await mkdir3(path6.dirname(file2), { recursive: true });
+  try {
+    const handle = await open2(file2, "wx");
+    try {
+      await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return lock;
+  } catch (error51) {
+    if (error51.code !== "EEXIST") throw error51;
+  }
+  const existing = await readWorkflowLock(options.root, options.workflowId);
+  if (!existing) return acquireWorkflowLock(options);
+  if (Date.parse(existing.expiresAt) > now.getTime()) throw new WorkflowLockBusyError(existing);
+  await rm2(file2, { force: true });
+  try {
+    const handle = await open2(file2, "wx");
+    try {
+      await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return lock;
+  } catch (error51) {
+    if (error51.code === "EEXIST") {
+      const current = await readWorkflowLock(options.root, options.workflowId);
+      if (current) throw new WorkflowLockBusyError(current);
+    }
+    throw error51;
+  }
+}
+async function releaseWorkflowLock(root, workflowId2, ownerId) {
+  const existing = await readWorkflowLock(root, workflowId2);
+  if (!existing) return;
+  if (existing.ownerId !== ownerId) throw new WorkflowLockOwnershipError(`Workflow lock is owned by ${existing.ownerId}, not ${ownerId}.`);
+  await rm2(lockPath(root, workflowId2), { force: true });
+}
+async function readWorkflowLock(root, workflowId2) {
+  try {
+    return JSON.parse(await readFile6(lockPath(root, workflowId2), "utf8"));
+  } catch (error51) {
+    if (error51.code === "ENOENT") return void 0;
+    throw error51;
+  }
+}
+function buildLock(options, now) {
+  return {
+    workflowId: options.workflowId,
+    ownerId: options.ownerId,
+    ownerType: options.ownerType ?? "cli",
+    operation: options.operation,
+    acquiredAt: now.toISOString(),
+    heartbeatAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + options.timeoutSeconds * 1e3).toISOString(),
+    processId: process.pid,
+    host: os.hostname()
+  };
+}
+
+// src/core/ownership.ts
+import path7 from "node:path";
+var DEFAULT_SENSITIVE_PATHS = [
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "tsconfig*.json",
+  ".git/**",
+  ".github/**",
+  "migrations/**",
+  "schema/**",
+  "infra/**"
+];
+var OwnershipPatternError = class extends Error {
+};
+function normalizeOwnershipPattern(value) {
+  const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!trimmed || path7.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+    throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
+  }
+  return trimmed.replace(/\/+/g, "/");
+}
+function phaseWriteAreas(phase2) {
+  return unique((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(normalizeMaybe));
+}
+function phaseReadAreas(phase2) {
+  return unique((phase2.expectedReadAreas.length > 0 ? phase2.expectedReadAreas : []).map(normalizeMaybe));
+}
+function ownershipIsExplicit(phase2, mode2) {
+  const writes = phaseWriteAreas(phase2).filter(isPathLikeArea);
+  if (mode2 === "fast") return writes.length > 0 && !phase2.ownershipUncertain;
+  return writes.length > 0 && phaseReadAreas(phase2).length > 0 && !phase2.ownershipUncertain;
+}
+function detectOwnershipConflicts(phases, config2) {
+  const conflicts = [];
+  for (let i = 0; i < phases.length; i += 1) {
+    for (let j = i + 1; j < phases.length; j += 1) {
+      const phaseA = phases[i];
+      const phaseB = phases[j];
+      const writesA = phaseWriteAreas(phaseA);
+      const writesB = phaseWriteAreas(phaseB);
+      const readsA = phaseReadAreas(phaseA);
+      const readsB = phaseReadAreas(phaseB);
+      const writeWrite = overlappingPatterns(writesA, writesB);
+      if (writeWrite.length > 0) conflicts.push(conflict(phaseA.id, phaseB.id, "write_write", writeWrite, "blocking"));
+      const sensitive = sharedSensitive(writesA, writesB, config2);
+      if (sensitive.length > 0) conflicts.push(conflict(phaseA.id, phaseB.id, "sensitive_shared", sensitive, "blocking"));
+      const writeRead = unique([...overlappingPatterns(writesA, readsB), ...overlappingPatterns(writesB, readsA)]);
+      if (writeRead.length > 0) {
+        conflicts.push(conflict(phaseA.id, phaseB.id, "write_read", writeRead, config2?.execution.writeReadConflictsBlock ?? true ? "blocking" : "review"));
+      }
+    }
+  }
+  return conflicts;
+}
+function patternsOverlap(a, b) {
+  const left = normalizeMaybe(a);
+  const right = normalizeMaybe(b);
+  if (left === "**" || right === "**") return true;
+  if (left === right) return true;
+  if (left.endsWith("/**") && right.startsWith(left.slice(0, -3))) return true;
+  if (right.endsWith("/**") && left.startsWith(right.slice(0, -3))) return true;
+  if (!hasGlob(left) && !hasGlob(right)) {
+    return left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
+  }
+  return globMightOverlap(left, right);
+}
+function sensitivePaths(config2) {
+  return unique([...DEFAULT_SENSITIVE_PATHS, ...config2?.execution.sensitivePaths ?? []].map(normalizeMaybe));
+}
+function overlappingPatterns(a, b) {
+  const paths = [];
+  for (const left of a) {
+    for (const right of b) {
+      if (patternsOverlap(left, right)) paths.push(left === right ? left : `${left} <-> ${right}`);
+    }
+  }
+  return unique(paths);
+}
+function sharedSensitive(a, b, config2) {
+  return sensitivePaths(config2).filter((sensitive) => a.some((pattern) => patternsOverlap(pattern, sensitive)) && b.some((pattern) => patternsOverlap(pattern, sensitive)));
+}
+function conflict(phaseA, phaseB, kind, paths, severity) {
+  return { phaseA, phaseB, kind, paths, severity };
+}
+function globMightOverlap(a, b) {
+  const rootA = a.split("*")[0].replace(/\/$/, "");
+  const rootB = b.split("*")[0].replace(/\/$/, "");
+  if (!rootA || !rootB) return true;
+  return rootA.startsWith(rootB) || rootB.startsWith(rootA);
+}
+function normalizeMaybe(value) {
+  try {
+    return normalizeOwnershipPattern(value);
+  } catch {
+    return value.trim();
+  }
+}
+function isPathLikeArea(area) {
+  return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
+}
+function hasGlob(value) {
+  return value.includes("*");
+}
+function unique(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+// src/core/scheduler.ts
+var PhaseDagError = class extends Error {
+};
+function validatePhaseDag(plan) {
+  const issues = [];
+  const ids = /* @__PURE__ */ new Set();
+  for (const phase2 of plan.phases) {
+    if (ids.has(phase2.id)) issues.push(`Phase ${phase2.id} is duplicated.`);
+    ids.add(phase2.id);
+    if (phase2.dependencies.includes(phase2.id) || phase2.dependsOn.includes(phase2.id)) issues.push(`Phase ${phase2.id} depends on itself.`);
+  }
+  for (const phase2 of plan.phases) {
+    for (const dependency of dependencyIds(phase2)) {
+      if (!ids.has(dependency)) issues.push(`Phase ${phase2.id} depends on missing phase ${dependency}.`);
+    }
+  }
+  const visiting = /* @__PURE__ */ new Set();
+  const visited = /* @__PURE__ */ new Set();
+  const byId = new Map(plan.phases.map((phase2) => [phase2.id, phase2]));
+  const visit = (id) => {
+    if (visiting.has(id)) {
+      issues.push(`Dependency cycle detected at ${id}.`);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of dependencyIds(byId.get(id))) visit(dependency);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const phase2 of plan.phases) visit(phase2.id);
+  return unique2(issues);
+}
+function topologicalPhaseOrder(plan) {
+  const issues = validatePhaseDag(plan);
+  if (issues.length > 0) throw new PhaseDagError(issues.join("; "));
+  const completed = /* @__PURE__ */ new Set();
+  const remaining = new Map(plan.phases.map((phase2) => [phase2.id, phase2]));
+  const order = [];
+  while (remaining.size > 0) {
+    const wave = [...remaining.values()].filter((phase2) => dependencyIds(phase2).every((id) => completed.has(id))).sort((a, b) => a.id.localeCompare(b.id));
+    if (wave.length === 0) throw new PhaseDagError("No topological progress is possible.");
+    for (const phase2 of wave) {
+      remaining.delete(phase2.id);
+      completed.add(phase2.id);
+      order.push(phase2.id);
+    }
+  }
+  return order;
+}
+function refreshPhaseReadiness(state, config2) {
+  if (!state.plan || state.state !== "executing") return;
+  const schedule = calculateReadyPhases(state, config2);
+  const ready = new Set(schedule.readyPhases.map((phase2) => phase2.phaseId));
+  for (const phase2 of state.plan.phases) {
+    if (terminalPhaseStatuses.has(phase2.status) || activePhaseStatuses.has(phase2.status)) continue;
+    phase2.status = ready.has(phase2.id) ? "ready" : "planned";
+  }
+}
+function calculateReadyPhases(state, config2) {
+  const maxParallelPhases = config2?.execution.maxParallelPhases ?? 1;
+  const blockedReasons = [];
+  if (!state.plan) {
+    return emptySchedule(state, maxParallelPhases, ["Workflow has no approved plan."]);
+  }
+  const dagIssues = validatePhaseDag(state.plan);
+  if (dagIssues.length > 0) return emptySchedule(state, maxParallelPhases, dagIssues);
+  if (state.state !== "executing") return emptySchedule(state, maxParallelPhases, [`Workflow state ${state.state} is not executable.`]);
+  if (state.blockers.length > 0) return emptySchedule(state, maxParallelPhases, state.blockers);
+  if (state.plan.phases.some((phase2) => phase2.status === "needs_replan" || phase2.status === "blocked")) {
+    return emptySchedule(state, maxParallelPhases, ["Workflow has a blocked or replanning phase."]);
+  }
+  const activeLeasedPhases = state.plan.phases.filter((phase2) => activePhaseStatuses.has(phase2.status));
+  const activeConflicts = detectOwnershipConflicts(activeLeasedPhases, config2).filter((conflict2) => conflict2.severity === "blocking");
+  const candidates = topologicalPhaseOrder(state.plan).map((id) => phaseById(state.plan, id)).filter((phase2) => Boolean(phase2)).filter((phase2) => phase2.status === "ready" || phase2.status === "planned").filter((phase2) => dependencyIds(phase2).every((id) => phaseById(state.plan, id)?.status === "completed")).filter((phase2) => !hasActiveLease(state, phase2.id));
+  const candidateConflicts = detectOwnershipConflicts([...candidates, ...activeLeasedPhases], config2).filter((conflict2) => conflict2.severity === "blocking");
+  const activeIds = new Set(activeLeasedPhases.map((phase2) => phase2.id));
+  const readyPhases2 = [];
+  for (const phase2 of candidates) {
+    const blockedBy = [];
+    if ((state.mode === "standard" || state.mode === "rigorous") && !ownershipIsExplicit(phase2, state.mode)) {
+      blockedBy.push(`${state.mode} mode requires explicit read/write ownership before parallel eligibility.`);
+    }
+    const conflicts = candidateConflicts.filter((conflict2) => conflict2.phaseA === phase2.id || conflict2.phaseB === phase2.id).filter((conflict2) => conflict2.severity === "blocking");
+    if (activeConflicts.length > 0) blockedBy.push("Active leased phases already have unresolved ownership conflicts.");
+    readyPhases2.push({ phaseId: phase2.id, objective: phase2.objective, blockedBy, conflictsWith: conflicts });
+  }
+  const dispatchable = selectDispatchable(readyPhases2, activeIds, maxParallelPhases);
+  return {
+    workflowId: state.id,
+    revision: state.revision,
+    readyPhases: readyPhases2,
+    eligibleCount: readyPhases2.length,
+    dispatchableCount: dispatchable.length,
+    maxParallelPhases,
+    blockedReasons
+  };
+}
+function selectDispatchable(readyPhases2, activeIds, maxParallelPhases) {
+  const selected = [];
+  for (const phase2 of readyPhases2) {
+    if (selected.length >= maxParallelPhases) break;
+    if (phase2.blockedBy.length > 0) continue;
+    if (phase2.conflictsWith.some((conflict2) => activeIds.has(conflict2.phaseA) || activeIds.has(conflict2.phaseB))) continue;
+    if (phase2.conflictsWith.some((conflict2) => selected.some((candidate) => candidate.phaseId === conflict2.phaseA || candidate.phaseId === conflict2.phaseB))) continue;
+    selected.push(phase2);
+  }
+  return selected;
+}
+function dependencyIds(phase2) {
+  return unique2([...phase2?.dependencies ?? [], ...phase2?.dependsOn ?? []]);
+}
+var activePhaseStatuses = /* @__PURE__ */ new Set(["leased", "running", "completion_pending"]);
+var terminalPhaseStatuses = /* @__PURE__ */ new Set(["completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
+function hasActiveLease(state, phaseId) {
+  const lease = state.phaseLeases[phaseId];
+  return Boolean(lease && !lease.releasedAt && Date.parse(lease.expiresAt) > Date.now());
+}
+function phaseById(plan, id) {
+  return plan.phases.find((phase2) => phase2.id === id);
+}
+function emptySchedule(state, maxParallelPhases, blockedReasons) {
+  return {
+    workflowId: state.id,
+    revision: state.revision,
+    readyPhases: [],
+    eligibleCount: 0,
+    dispatchableCount: 0,
+    maxParallelPhases,
+    blockedReasons
+  };
+}
+function unique2(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
 // src/core/flow.ts
-var WORKFLOW_DIR = path5.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path8.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -19479,6 +19861,7 @@ var riskSchema = external_exports.enum(["none", "low", "medium", "high"]);
 var modelProfileSchema = external_exports.enum(["small", "medium", "large", "inherit"]);
 var criterionStatusSchema = external_exports.enum(["met", "not_met", "uncertain", "not_applicable"]);
 var completionDecisionSchema = external_exports.enum(["completed", "needs_repair", "needs_review", "needs_replan", "blocked"]);
+var phaseStatusSchema = external_exports.enum(["planned", "ready", "leased", "running", "completion_pending", "completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
 var triageSchema = external_exports.object({
   version: external_exports.literal(1),
   task: external_exports.object({
@@ -19565,19 +19948,24 @@ var phaseCompletionRecordSchema = external_exports.object({
   reason: external_exports.string(),
   repairAttempt: external_exports.number().int().min(0),
   timestamp: external_exports.string(),
-  workflowRevision: external_exports.number().int().min(0)
+  workflowRevision: external_exports.number().int().min(0),
+  leaseOwnerId: external_exports.string().optional()
 });
 var phaseSchema = external_exports.object({
   id: external_exports.string().min(1),
   objective: external_exports.string().min(1),
   rationale: external_exports.string().min(1),
   dependencies: external_exports.array(external_exports.string()),
+  dependsOn: external_exports.array(external_exports.string()).default([]),
+  expectedReadAreas: external_exports.array(external_exports.string()).default([]),
+  expectedWriteAreas: external_exports.array(external_exports.string()).default([]),
   expectedFilesOrAreas: external_exports.array(external_exports.string()),
   acceptanceCriteria: external_exports.array(external_exports.string().min(1)),
   validationCommands: external_exports.array(external_exports.string()),
   riskLevel: riskSchema,
   modelTier: modelProfileSchema,
-  status: external_exports.enum(["pending", "active", "completed", "needs_repair", "needs_review", "needs_replan", "blocked"]),
+  status: external_exports.preprocess((value) => value === "pending" ? "planned" : value === "active" ? "running" : value, phaseStatusSchema),
+  ownershipUncertain: external_exports.boolean().optional(),
   startedAt: external_exports.string().optional(),
   completedAt: external_exports.string().optional(),
   filesChanged: external_exports.array(external_exports.string()),
@@ -19600,15 +19988,39 @@ var planSchema = external_exports.object({
     ctx.addIssue({ code: "custom", path: ["phases"], message: "Phase IDs must be unique." });
   }
   for (const phase2 of plan.phases) {
-    for (const dependency of phase2.dependencies) {
+    for (const dependency of dependencyIds(phase2)) {
       if (!ids.has(dependency)) {
         ctx.addIssue({ code: "custom", path: ["phases", phase2.id, "dependencies"], message: `Missing dependency ${dependency}.` });
       }
     }
   }
+  for (const issue2 of validatePhaseDag(plan)) {
+    ctx.addIssue({ code: "custom", path: ["phases"], message: issue2 });
+  }
   for (const issue2 of validatePlanQuality(plan)) {
     ctx.addIssue({ code: "custom", path: ["phases"], message: issue2 });
   }
+});
+var phaseLeaseSchema = external_exports.object({
+  phaseId: external_exports.string().min(1),
+  ownerId: external_exports.string().min(1),
+  ownerType: external_exports.enum(["cli", "claude-session", "agent", "system"]).default("cli"),
+  acquiredAt: external_exports.string(),
+  heartbeatAt: external_exports.string(),
+  expiresAt: external_exports.string(),
+  workflowRevisionAtAcquire: external_exports.number().int().min(0),
+  allowedWriteAreas: external_exports.array(external_exports.string()),
+  releasedAt: external_exports.string().optional()
+});
+var workflowEventSchema = external_exports.object({
+  eventId: external_exports.string().min(1),
+  timestamp: external_exports.string(),
+  actorId: external_exports.string().min(1),
+  type: external_exports.string().min(1),
+  workflowRevisionBefore: external_exports.number().int().min(0),
+  workflowRevisionAfter: external_exports.number().int().min(0),
+  phaseId: external_exports.string().optional(),
+  summary: external_exports.string().min(1)
 });
 var workflowStateSchema = external_exports.object({
   version: external_exports.literal(STATE_VERSION),
@@ -19663,13 +20075,10 @@ var workflowStateSchema = external_exports.object({
     })),
     note: external_exports.string()
   }).optional(),
+  phaseLeases: external_exports.record(external_exports.string(), phaseLeaseSchema).default({}),
   repairAttempts: external_exports.number().int().min(0),
   blockers: external_exports.array(external_exports.string()),
-  events: external_exports.array(external_exports.object({
-    state: lifecycleStateSchema,
-    message: external_exports.string(),
-    timestamp: external_exports.string()
-  }))
+  events: external_exports.array(workflowEventSchema).default([])
 });
 var WorkflowNotFoundError = class extends Error {
 };
@@ -19681,8 +20090,12 @@ var StaleWorkflowError = class extends Error {
 };
 var CorruptedWorkflowError = class extends Error {
 };
+var DEFAULT_OWNER_ID = "cli";
+var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
+var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
+var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path5.resolve(options.root);
+  const root = path8.resolve(options.root);
   const now = timestamp();
   let state = {
     version: STATE_VERSION,
@@ -19695,9 +20108,10 @@ async function startFlow(options) {
     createdAt: now,
     updatedAt: now,
     validation: [],
+    phaseLeases: {},
     repairAttempts: 0,
     blockers: [],
-    events: [{ state: "created", message: "Workflow created.", timestamp: now }]
+    events: [workflowEvent({ type: "workflow_created", actorId: "system", before: 0, after: 0, summary: "Workflow created.", at: now })]
   };
   await saveFlowState(root, state, { create: true });
   state = await updateFlowState(root, state.id, (current) => transition(current, "triaging", "Task triage started."));
@@ -19720,7 +20134,7 @@ async function answerClarification(args) {
       answer: args.answer,
       answeredAt: timestamp()
     };
-    answered.events.push({ state: answered.state, message: "Blocking clarification answered.", timestamp: timestamp() });
+    appendEvent(answered, "clarification_answered", "Blocking clarification answered.");
     const triageRun = await runTriage({
       request: `${answered.request}
 
@@ -19731,28 +20145,28 @@ Clarification answer: ${args.answer}`,
     });
     const next = applyTriageResult(answered, triageRun, args.config, { clarificationAlreadyAnswered: true });
     return next;
-  });
+  }, { ...args.mutation, operation: "answer_clarification" });
 }
-async function approveApproach(root, workflowId2, config2) {
+async function approveApproach(root, workflowId2, config2, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
     next.approach = { ...state.approach, approved: true };
-    next.events.push({ state: "awaiting_approach_approval", message: "Approach approved.", timestamp: timestamp() });
+    appendEvent(next, "approach_approved", "Approach approved.");
     return withPlan(next, config2);
-  });
+  }, { ...mutation, operation: "approve_approach" });
 }
-async function rejectApproach(root, workflowId2, reason) {
+async function rejectApproach(root, workflowId2, reason, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     const next = structuredClone(state);
     next.approach = next.approach ? { ...next.approach, rejectedReason: reason } : void 0;
     next.blockers = [`Approach rejected: ${reason}`];
     return transition(next, "blocked", "Approach rejected; workflow blocked pending a new request or manual restart.");
-  });
+  }, { ...mutation, operation: "reject_approach" });
 }
-async function revisePlan(root, workflowId2, feedback, config2) {
+async function revisePlan(root, workflowId2, feedback, config2, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
@@ -19766,29 +20180,33 @@ async function revisePlan(root, workflowId2, feedback, config2) {
     next.commitPlan = void 0;
     next.blockers = [];
     return transition(next, "awaiting_plan_approval", "Plan revised and awaiting approval.");
-  });
+  }, { ...mutation, operation: "revise_plan" });
 }
-async function approvePlan(root, workflowId2) {
+async function approvePlan(root, workflowId2, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
     const plan = state.plan;
     next.plan = { ...plan, approvedAt: timestamp() };
-    next.plan.phases = plan.phases.map((phase2, index) => index === 0 ? { ...phase2, status: "active", startedAt: timestamp() } : { ...phase2, status: "pending" });
-    return transition(next, "executing", `Plan approved. Phase ${next.plan.phases[0]?.id ?? "unknown"} is active.`);
-  });
+    next.plan.phases = plan.phases.map((phase2) => ({ ...phase2, status: "planned" }));
+    const executing = transition(next, "executing", "Plan approved. Ready phases will be derived from DAG dependencies and ownership.");
+    refreshPhaseReadiness(executing);
+    return executing;
+  }, { ...mutation, operation: "approve_plan" });
 }
-async function startPhase(root, workflowId2, phaseId) {
+async function startPhase(root, workflowId2, phaseId, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["executing"]);
     const next = structuredClone(state);
     const phase2 = selectStartablePhase(next, phaseId);
-    phase2.status = "active";
+    const ownerId = mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    phase2.status = "running";
     phase2.startedAt = phase2.startedAt ?? timestamp();
-    next.events.push({ state: "executing", message: `Phase ${phase2.id} started.`, timestamp: timestamp() });
+    next.phaseLeases[phase2.id] = phaseLease(phase2, ownerId, mutation?.ownerType ?? "cli", next.revision, mutation?.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS);
+    appendEvent(next, "phase_started", `Phase ${phase2.id} leased and started by ${ownerId}.`, phase2.id);
     return next;
-  });
+  }, { ...mutation, operation: "phase_start" });
 }
 async function completePhase(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
@@ -19799,8 +20217,14 @@ async function completePhase(args) {
     if (!plan) throw new WorkflowStateError("Cannot complete a phase without a plan.");
     const phase2 = plan.phases.find((candidate) => candidate.id === args.phaseId);
     if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
-    if (phase2.status !== "active") throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only an active phase can enter the completion gate.`);
-    phase2.filesChanged = unique([...phase2.filesChanged, ...args.filesChanged ?? []]);
+    const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    const lease = next.phaseLeases[phase2.id];
+    if (phase2.status !== "running" && phase2.status !== "leased") throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only a leased or running phase can enter the completion gate.`);
+    if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
+      throw new InvalidTransitionError(`Phase ${phase2.id} completion requires an active lease held by ${ownerId}.`);
+    }
+    phase2.status = "completion_pending";
+    phase2.filesChanged = unique3([...phase2.filesChanged, ...args.filesChanged ?? []]);
     phase2.commandsRun = [...phase2.commandsRun, ...args.commandsRun ?? []];
     for (const evidence of args.validation ?? []) {
       validateWorkflowEvidence(evidence);
@@ -19808,7 +20232,7 @@ async function completePhase(args) {
       phase2.validationResults.push(evidence);
     }
     const detectedDeviations = detectScopeDeviations(phase2, args.config);
-    phase2.scopeDeviations = unique([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
+    phase2.scopeDeviations = unique3([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
     const completion = buildCompletionRecord({
       state: next,
       phase: phase2,
@@ -19817,33 +20241,33 @@ async function completePhase(args) {
       remainingRisks: args.remainingRisks,
       blockedReason: args.blockedReason,
       requestedRepairScope: args.requestedRepairScope,
-      config: args.config
+      config: args.config,
+      leaseOwnerId: ownerId
     });
     phase2.completion = completion;
     phase2.status = completion.decision;
     if (completion.decision === "completed") phase2.completedAt = timestamp();
+    if (completion.decision === "completed") next.phaseLeases[phase2.id] = { ...lease, releasedAt: timestamp() };
     const repair = phase2.repairAttempts.at(-1);
     if (repair && !repair.outcome) {
       repair.validation = phase2.validationResults;
       repair.outcome = completion.decision;
     }
-    next.events.push({ state: "executing", message: `Phase ${phase2.id} completion gate: ${completion.decision}. ${completion.reason}`, timestamp: timestamp() });
+    appendEvent(next, "phase_completion_evaluated", `Phase ${phase2.id} completion gate: ${completion.decision}. ${completion.reason}`, phase2.id);
     if (completion.decision === "blocked") {
       next.blockers = [completion.reason];
       return transition(next, "blocked", `Phase ${phase2.id} is blocked.`);
     }
     if (completion.decision !== "completed") return next;
-    const nextPhase = plan.phases.find((candidate) => candidate.status === "pending" && candidate.dependencies.every((id) => phaseById(plan, id)?.status === "completed"));
+    const nextPhase = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById2(plan, id)?.status === "completed"));
     if (nextPhase) {
-      nextPhase.status = "active";
-      nextPhase.startedAt = timestamp();
-      next.events.push({ state: "executing", message: `Phase ${nextPhase.id} started after completion gate passed.`, timestamp: timestamp() });
+      appendEvent(next, "phase_ready", `Phase ${nextPhase.id} became ready after completion gate passed.`, nextPhase.id);
       return next;
     }
     const unfinished = plan.phases.find((candidate) => candidate.status !== "completed");
     if (unfinished) return next;
     return transition(next, "validating", "All phases completed; targeted validation is required.");
-  });
+  }, { ...args.mutation, operation: "phase_complete" });
 }
 async function repairPhase(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
@@ -19852,7 +20276,7 @@ async function repairPhase(args) {
     const next = structuredClone(state);
     const plan = next.plan;
     if (!plan) throw new WorkflowStateError("Cannot repair a phase without a plan.");
-    const phase2 = phaseById(plan, args.phaseId);
+    const phase2 = phaseById2(plan, args.phaseId);
     if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
     if (phase2.status !== "needs_repair") throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only needs_repair can be repaired.`);
     const budget = args.config.completionGate.maxRepairAttempts[next.mode];
@@ -19863,7 +20287,7 @@ async function repairPhase(args) {
         phase2.completion.dependentPhasesMayProceed = false;
         phase2.completion.reason = `Repair budget exhausted after ${phase2.repairAttempts.length} attempt(s).`;
       }
-      next.events.push({ state: "executing", message: `Phase ${phase2.id} repair budget exhausted.`, timestamp: timestamp() });
+      appendEvent(next, "phase_repair_exhausted", `Phase ${phase2.id} repair budget exhausted.`, phase2.id);
       return next;
     }
     const attempt = {
@@ -19874,12 +20298,14 @@ async function repairPhase(args) {
       timestamp: timestamp()
     };
     phase2.repairAttempts.push(attempt);
-    phase2.status = "active";
+    const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    phase2.status = "running";
     phase2.startedAt = timestamp();
     phase2.completedAt = void 0;
-    next.events.push({ state: "executing", message: `Phase ${phase2.id} repair attempt ${attempt.attempt}/${budget} started.`, timestamp: timestamp() });
+    next.phaseLeases[phase2.id] = phaseLease(phase2, ownerId, args.mutation?.ownerType ?? "cli", next.revision, args.config.execution.phaseLeaseTimeoutSeconds);
+    appendEvent(next, "phase_repair_started", `Phase ${phase2.id} repair attempt ${attempt.attempt}/${budget} started.`, phase2.id);
     return next;
-  });
+  }, { ...args.mutation, operation: "repair_phase" });
 }
 async function recordValidation(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
@@ -19897,11 +20323,11 @@ async function recordValidation(args) {
     validateWorkflowEvidence(evidence);
     const next = structuredClone(state);
     next.validation.push(evidence);
-    const phase2 = args.phaseId && next.plan ? phaseById(next.plan, args.phaseId) : void 0;
+    const phase2 = args.phaseId && next.plan ? phaseById2(next.plan, args.phaseId) : void 0;
     if (phase2) phase2.validationResults.push(evidence);
-    next.events.push({ state: next.state, message: `Validation recorded: ${evidence.command} (${evidence.status}).`, timestamp: timestamp() });
+    appendEvent(next, "validation_recorded", `Validation recorded: ${evidence.command} (${evidence.status}).`, evidence.phaseId);
     return next;
-  });
+  }, { ...args.mutation, operation: "record_validation" });
 }
 async function recordReview(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
@@ -19932,7 +20358,7 @@ async function recordReview(args) {
       }
       next.repairAttempts += 1;
       appendRepairPhase(next, args.repairScope ?? "Address the integrated review findings.");
-      return transition(next, "executing", "Integrated review requested repair; a repair phase is active.");
+      return transition(next, "executing", "Integrated review requested repair; a repair phase is ready.");
     }
     if (args.status === "needs_replan") {
       next.blockers = ["Integrated review requires replanning before more execution."];
@@ -19940,7 +20366,7 @@ async function recordReview(args) {
     }
     next.blockers = args.findings?.length ? args.findings : [args.summary];
     return transition(next, "blocked", "Integrated review blocked the workflow.");
-  });
+  }, { ...args.mutation, operation: "record_review" });
 }
 async function getCommitPlan(root, workflowId2) {
   const state = await loadFlowState(root, workflowId2);
@@ -19949,23 +20375,94 @@ async function getCommitPlan(root, workflowId2) {
   }
   return state.commitPlan;
 }
-async function completeFlow(root, workflowId2) {
+async function completeFlow(root, workflowId2, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["awaiting_commit_approval"]);
     return transition(structuredClone(state), "completed", "Workflow completed by explicit user action. No commit was executed.");
-  });
+  }, { ...mutation, operation: "complete_flow" });
 }
-async function cancelFlow(root, workflowId2) {
+async function cancelFlow(root, workflowId2, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
     if (["completed", "cancelled"].includes(state.state)) throw new InvalidTransitionError(`Workflow is already ${state.state}.`);
     return transition(structuredClone(state), "cancelled", "Workflow cancelled by user.");
-  });
+  }, { ...mutation, operation: "cancel_flow" });
 }
 async function resumeFlow(root, workflowId2) {
   return loadFlowState(root, workflowId2);
 }
+function readyPhases(state, config2) {
+  return calculateReadyPhases(state, config2);
+}
+async function leasePhase(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (!state.plan) throw new WorkflowStateError("Cannot lease a phase without a plan.");
+    refreshPhaseReadiness(state, args.config);
+    const phase2 = phaseById2(state.plan, args.phaseId);
+    if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    const existing = state.phaseLeases[phase2.id];
+    if (existing && !existing.releasedAt && Date.parse(existing.expiresAt) > Date.now()) {
+      throw new InvalidTransitionError(`Phase ${phase2.id} already has an active lease held by ${existing.ownerId}.`);
+    }
+    if (phase2.status !== "ready") throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only ready phases can be leased.`);
+    phase2.status = "leased";
+    state.phaseLeases[phase2.id] = phaseLease(phase2, args.ownerId, args.ownerType ?? "cli", state.revision, args.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS);
+    appendEvent(state, "phase_lease_acquired", `Phase ${phase2.id} leased by ${args.ownerId}.`, phase2.id, args.ownerId);
+    return state;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, ownerType: args.ownerType ?? args.mutation?.ownerType, operation: "lease_phase" });
+}
+async function heartbeatPhase(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    const lease = state.phaseLeases[args.phaseId];
+    if (!lease || lease.releasedAt) throw new InvalidTransitionError(`Phase ${args.phaseId} has no active lease.`);
+    if (lease.ownerId !== args.ownerId) throw new InvalidTransitionError(`Phase ${args.phaseId} lease is owned by ${lease.ownerId}, not ${args.ownerId}.`);
+    const now = timestamp();
+    lease.heartbeatAt = now;
+    lease.expiresAt = new Date(Date.parse(now) + (args.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS) * 1e3).toISOString();
+    appendEvent(state, "phase_lease_refreshed", `Phase ${args.phaseId} lease refreshed by ${args.ownerId}.`, args.phaseId, args.ownerId);
+    return state;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "heartbeat_phase" });
+}
+async function releasePhase(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    if (!state.plan) throw new WorkflowStateError("Cannot release a phase without a plan.");
+    const phase2 = phaseById2(state.plan, args.phaseId);
+    if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    const lease = state.phaseLeases[args.phaseId];
+    if (!lease || lease.releasedAt) throw new InvalidTransitionError(`Phase ${args.phaseId} has no active lease.`);
+    if (lease.ownerId !== args.ownerId) throw new InvalidTransitionError(`Phase ${args.phaseId} lease is owned by ${lease.ownerId}, not ${args.ownerId}.`);
+    state.phaseLeases[args.phaseId] = { ...lease, releasedAt: timestamp() };
+    if (phase2.status === "leased" || phase2.status === "running") phase2.status = "ready";
+    appendEvent(state, "phase_lease_released", `Phase ${args.phaseId} lease released by ${args.ownerId}.`, args.phaseId, args.ownerId);
+    return state;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "release_phase" });
+}
+async function recoverLeases(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    if (!state.plan) return state;
+    const nowMs = (args.now ?? /* @__PURE__ */ new Date()).getTime();
+    for (const phase2 of state.plan.phases) {
+      const lease = state.phaseLeases[phase2.id];
+      if (!lease || lease.releasedAt || Date.parse(lease.expiresAt) > nowMs) continue;
+      const recoveredAt = new Date(nowMs).toISOString();
+      state.phaseLeases[phase2.id] = { ...lease, releasedAt: recoveredAt };
+      if (phase2.completion && phase2.status !== "completed") {
+        phase2.status = "needs_review";
+        appendEvent(state, "phase_lease_expired", `Expired lease from ${lease.ownerId} recovered with completion evidence; phase needs review.`, phase2.id);
+      } else if (phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending") {
+        phase2.status = state.state === "executing" && state.blockers.length === 0 && dependencyIds(phase2).every((id) => phaseById2(state.plan, id)?.status === "completed") ? "ready" : "needs_replan";
+        appendEvent(state, "phase_lease_expired", `Expired lease from ${lease.ownerId} recovered at ${recoveredAt}; phase moved to ${phase2.status}.`, phase2.id);
+      }
+    }
+    refreshPhaseReadiness(state);
+    return state;
+  }, { ...args.mutation, operation: "recover_leases" });
+}
+function workflowEvents(state) {
+  return state.events;
+}
 async function listFlows(root) {
-  const dir = path5.join(path5.resolve(root), WORKFLOW_DIR);
+  const dir = path8.join(path8.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -19989,25 +20486,25 @@ async function loadFlowState(root, workflowId2) {
   const file2 = workflowPath(root, workflowId2);
   let raw;
   try {
-    raw = await readFile5(file2, "utf8");
+    raw = await readFile7(file2, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") throw new WorkflowNotFoundError(`Workflow not found: ${workflowId2}`);
     throw error51;
   }
   try {
-    return workflowStateSchema.parse(JSON.parse(raw));
+    return workflowStateSchema.parse(migrateWorkflowState(JSON.parse(raw), root, workflowId2));
   } catch (error51) {
     throw new CorruptedWorkflowError(`Workflow state is corrupted: ${file2}. ${error51 instanceof Error ? error51.message : String(error51)}`);
   }
 }
 async function saveFlowState(root, state, options = {}) {
-  const parsed = workflowStateSchema.parse({ ...state, updatedAt: state.updatedAt });
-  const dir = path5.join(path5.resolve(root), WORKFLOW_DIR);
-  await mkdir3(dir, { recursive: true });
+  const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
+  const dir = path8.join(path8.resolve(root), WORKFLOW_DIR);
+  await mkdir4(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
     try {
-      await readFile5(target, "utf8");
+      await readFile7(target, "utf8");
       throw new StaleWorkflowError(`Workflow already exists: ${parsed.id}`);
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -20016,28 +20513,39 @@ async function saveFlowState(root, state, options = {}) {
   if (options.expectedRevision !== void 0) {
     const current = await loadFlowState(root, parsed.id);
     if (current.revision !== options.expectedRevision) {
-      throw new StaleWorkflowError(`Workflow ${parsed.id} has revision ${current.revision}; expected ${options.expectedRevision}. Reload before writing.`);
+      throw new RevisionConflictError(options.expectedRevision, current.revision);
     }
   }
-  const temp = path5.join(dir, `.${parsed.id}.${process.pid}.${randomUUID()}.tmp`);
-  await writeFile3(temp, JSON.stringify(parsed, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
-  try {
-    await rename(temp, target);
-  } catch (error51) {
-    await rm(temp, { force: true }).catch(() => void 0);
-    throw error51;
-  }
+  await atomicWriteJson(target, parsed);
 }
-async function updateFlowState(root, workflowId2, mutate) {
-  const current = await loadFlowState(root, workflowId2);
-  const mutated = await mutate(structuredClone(current));
-  const next = workflowStateSchema.parse({
-    ...mutated,
-    revision: current.revision + 1,
-    updatedAt: timestamp()
+async function updateFlowState(root, workflowId2, mutate, options = {}) {
+  const ownerId = options.ownerId ?? DEFAULT_OWNER_ID;
+  const lock = await acquireWorkflowLock({
+    root,
+    workflowId: workflowId2,
+    ownerId,
+    ownerType: options.ownerType ?? "cli",
+    operation: options.operation ?? "state_transition",
+    timeoutSeconds: options.lockTimeoutSeconds ?? DEFAULT_LOCK_TIMEOUT_SECONDS
   });
-  await saveFlowState(root, next, { expectedRevision: current.revision });
-  return next;
+  try {
+    const current = await loadFlowState(root, workflowId2);
+    if (options.expectedRevision !== void 0 && current.revision !== options.expectedRevision) {
+      throw new RevisionConflictError(options.expectedRevision, current.revision);
+    }
+    const mutated = await mutate(structuredClone(current));
+    refreshPhaseReadiness(mutated);
+    const next = workflowStateSchema.parse({
+      ...mutated,
+      revision: current.revision + 1,
+      updatedAt: timestamp(),
+      events: boundEvents(mutated.events)
+    });
+    await saveFlowState(root, next, { expectedRevision: current.revision });
+    return next;
+  } finally {
+    await releaseWorkflowLock(root, workflowId2, lock.ownerId).catch(() => void 0);
+  }
 }
 function nextActions(state) {
   const id = state.id;
@@ -20055,7 +20563,7 @@ function nextActions(state) {
         `leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`
       ];
     case "executing": {
-      const active = state.plan?.phases.find((phase2) => phase2.status === "active");
+      const active = state.plan?.phases.find((phase2) => phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending");
       const repair = state.plan?.phases.find((phase2) => phase2.status === "needs_repair");
       const review = state.plan?.phases.find((phase2) => phase2.status === "needs_review");
       const replan = state.plan?.phases.find((phase2) => phase2.status === "needs_replan");
@@ -20065,7 +20573,7 @@ function nextActions(state) {
       return active ? [
         `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
         `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
-      ] : [`leanrigor flow phase-start ${id} --root "${state.root}"`];
+      ] : [`leanrigor flow ready ${id} --root "${state.root}"`, `leanrigor flow phase-start ${id} --root "${state.root}"`];
     }
     case "validating":
       return [
@@ -20101,7 +20609,7 @@ function applyTriageResult(state, triageRun, config2, options = {}) {
   };
   next.mode = triage.workflow.finalMode;
   next.blockers = [];
-  next.events.push({ state: "triaging", message: `Triage completed in ${next.mode} mode.`, timestamp: timestamp() });
+  appendEvent(next, "triage_completed", `Triage completed in ${next.mode} mode.`);
   if (triage.clarification.required && !options.clarificationAlreadyAnswered) {
     next.clarification = {
       question: triage.clarification.question ?? "What specific behaviour or outcome should change?",
@@ -20117,7 +20625,7 @@ function enforceOneClarification(triage, clarificationAlreadyAnswered) {
   if (!clarificationAlreadyAnswered || !triage.clarification.required) return triage;
   const next = structuredClone(triage);
   next.clarification = { required: false, question: null, reason: null };
-  next.assumptions = unique([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
+  next.assumptions = unique3([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
   return next;
 }
 function withPlan(state, config2) {
@@ -20209,7 +20717,7 @@ function standardPhases(targets, validationCommands, boundaries) {
         objective: "Add focused regression coverage for the changed behavior.",
         rationale: "Regression evidence should be reviewable separately from implementation edits.",
         dependencies: ["phase-2"],
-        areas: unique([...targets, "nearby tests or package checks"]),
+        areas: unique3([...targets, "nearby tests or package checks"]),
         acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
         validationCommands,
         riskLevel: "medium",
@@ -20234,7 +20742,7 @@ function standardPhases(targets, validationCommands, boundaries) {
       objective: "Add focused regression coverage for the changed behavior.",
       rationale: "Coverage is materially distinct from implementation and proves the behavior under review.",
       dependencies: ["phase-1"],
-      areas: unique([...targets, "nearby tests or package checks"]),
+      areas: unique3([...targets, "nearby tests or package checks"]),
       acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
       validationCommands,
       riskLevel: "medium",
@@ -20257,7 +20765,7 @@ function standardPhases(targets, validationCommands, boundaries) {
   return phases;
 }
 function rigorousPhases(targets, validationCommands, triage, boundaries) {
-  const highRiskAreas = unique([
+  const highRiskAreas = unique3([
     ...targets,
     ...triage.escalationReasons.map((reason) => `risk: ${reason}`)
   ]);
@@ -20290,7 +20798,7 @@ function rigorousPhases(targets, validationCommands, triage, boundaries) {
       objective: "Add high-risk regression and integration validation evidence.",
       rationale: "Rigorous mode requires broader evidence before final integrated review.",
       dependencies: ["phase-2"],
-      areas: unique([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
+      areas: unique3([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
       acceptance: ["Targeted and broader checks are recorded or explicitly skipped with reasons.", "The diff is ready for deep integrated review."],
       validationCommands,
       riskLevel: "high",
@@ -20352,10 +20860,10 @@ function validatePlanQuality(plan, mode2, config2) {
     visited.add(id);
   };
   for (const phase2 of plan.phases) visit(phase2.id);
-  if (mode2 === "fast" && plan.phases.length === 1) return unique(issues);
+  if (mode2 === "fast" && plan.phases.length === 1) return unique3(issues);
   const broadPhase = plan.phases.find((phase2) => boundaryWordCount(phase2.objective) > 1 && !/coverage|validation|documentation/.test(phase2.objective.toLowerCase()));
   if (broadPhase) issues.push(`Phase ${broadPhase.id} mixes architectural boundaries.`);
-  return unique(issues);
+  return unique3(issues);
 }
 function hasMultiplePrimaryObjectives(objective) {
   const lower = objective.toLowerCase();
@@ -20382,17 +20890,23 @@ function boundaryWordCount(value) {
   ].filter(Boolean).length;
 }
 function phase(args) {
+  const areas = unique3(args.areas);
+  const readAreas = unique3(args.readAreas ?? areas);
   return {
     id: args.id,
     objective: args.objective,
     rationale: args.rationale,
     dependencies: args.dependencies,
-    expectedFilesOrAreas: args.areas,
+    dependsOn: args.dependencies,
+    expectedReadAreas: readAreas,
+    expectedWriteAreas: areas,
+    expectedFilesOrAreas: areas,
     acceptanceCriteria: args.acceptance,
     validationCommands: args.validationCommands,
     riskLevel: args.riskLevel,
     modelTier: args.modelTier,
-    status: "pending",
+    status: "planned",
+    ownershipUncertain: !areas.some(isPathLikeArea2),
     filesChanged: [],
     commandsRun: [],
     validationResults: [],
@@ -20407,25 +20921,25 @@ function defaultValidationCommands(root, mode2, triage) {
   if (triage.task.type === "documentation") {
     if (scripts.lint) commands.push("npm run lint");
     commands.push("git diff --check");
-    return unique(commands);
+    return unique3(commands);
   }
   if (mode2 === "fast") {
     if (scripts.typecheck) commands.push("npm run typecheck");
     if (scripts.test) commands.push("npm test -- --runInBand");
     commands.push("git diff --check");
-    return unique(commands);
+    return unique3(commands);
   }
   if (scripts.test) commands.push("npm test");
   if (scripts.typecheck) commands.push("npm run typecheck");
   if (scripts.lint) commands.push("npm run lint");
   if (mode2 === "rigorous" && scripts.build) commands.push("npm run build");
   commands.push("git diff --check");
-  return unique(commands);
+  return unique3(commands);
 }
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path5.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path8.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -20433,7 +20947,7 @@ function readPackageJsonSync(root) {
 function appendRepairPhase(state, repairScope) {
   if (!state.plan) throw new WorkflowStateError("Cannot append a repair phase without a plan.");
   for (const phase2 of state.plan.phases) {
-    if (phase2.status === "active") phase2.status = "blocked";
+    if (phase2.status === "running" || phase2.status === "leased") phase2.status = "blocked";
   }
   const previous = state.plan.phases.at(-1)?.id;
   const id = `repair-${state.repairAttempts}`;
@@ -20450,8 +20964,7 @@ function appendRepairPhase(state, repairScope) {
   }));
   const repair = state.plan.phases.at(-1);
   if (repair) {
-    repair.status = "active";
-    repair.startedAt = timestamp();
+    repair.status = "ready";
   }
 }
 function buildCommitPlan(state) {
@@ -20506,14 +21019,15 @@ function buildCompletionRecord(args) {
     filesChanged: args.phase.filesChanged,
     validation,
     scopeDeviations: args.phase.scopeDeviations,
-    assumptions: unique(args.assumptions ?? []),
-    remainingRisks: unique(args.remainingRisks ?? []),
+    assumptions: unique3(args.assumptions ?? []),
+    remainingRisks: unique3(args.remainingRisks ?? []),
     dependentPhasesMayProceed: decision === "completed",
     decision,
     reason: args.blockedReason ?? policy.reason ?? args.requestedRepairScope ?? "Completion gate evaluated.",
     repairAttempt: args.phase.repairAttempts.length,
     timestamp: timestamp(),
-    workflowRevision: args.state.revision
+    workflowRevision: args.state.revision,
+    leaseOwnerId: args.leaseOwnerId
   };
 }
 function normaliseCriteria(phase2, supplied) {
@@ -20523,7 +21037,7 @@ function normaliseCriteria(phase2, supplied) {
     return {
       criterion,
       status: suppliedCriterion?.status ?? "uncertain",
-      evidence: unique(suppliedCriterion?.evidence ?? [])
+      evidence: unique3(suppliedCriterion?.evidence ?? [])
     };
   });
 }
@@ -20576,7 +21090,7 @@ function decideCompletionGate(args) {
 }
 function detectScopeDeviations(phase2, config2) {
   const deviations = [];
-  const expected = phase2.expectedFilesOrAreas.filter(isPathLikeArea);
+  const expected = phase2.expectedFilesOrAreas.filter(isPathLikeArea2);
   if (expected.length > 0) {
     for (const file2 of phase2.filesChanged) {
       if (!expected.some((area) => areaMatchesFile(area, file2))) deviations.push(`changed file outside expected scope: ${file2}`);
@@ -20602,7 +21116,7 @@ function detectScopeDeviations(phase2, config2) {
       deviations.push(`documentation phase changed runtime behavior: ${file2}`);
     }
   }
-  return unique(deviations);
+  return unique3(deviations);
 }
 function gateRequiresEvidence(config2) {
   return config2?.completionGate.requireEvidence ?? true;
@@ -20616,7 +21130,7 @@ function allowSkippedValidation(mode2, config2) {
 function sameCommand(recorded, expected) {
   return recorded.trim() === expected.trim();
 }
-function isPathLikeArea(area) {
+function isPathLikeArea2(area) {
   return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
 }
 function areaMatchesFile(area, file2) {
@@ -20631,7 +21145,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path5.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path8.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -20649,17 +21163,17 @@ function escapeRegex2(value) {
 function selectStartablePhase(state, phaseId) {
   if (!state.plan) throw new WorkflowStateError("Cannot start a phase without a plan.");
   const plan = state.plan;
-  if (plan.phases.some((phase3) => phase3.status === "active")) {
-    throw new InvalidTransitionError("A phase is already active; complete it before starting another.");
+  if (plan.phases.some((phase3) => phase3.status === "running" || phase3.status === "leased" || phase3.status === "completion_pending")) {
+    throw new InvalidTransitionError("A phase is already leased or running; complete or release it before starting another sequential phase.");
   }
-  const phase2 = phaseId ? plan.phases.find((candidate) => candidate.id === phaseId) : plan.phases.find((candidate) => candidate.status === "pending" && candidate.dependencies.every((id) => phaseById(plan, id)?.status === "completed"));
+  const phase2 = phaseId ? plan.phases.find((candidate) => candidate.id === phaseId) : plan.phases.find((candidate) => candidate.status === "ready" && dependencyIds(candidate).every((id) => phaseById2(plan, id)?.status === "completed"));
   if (!phase2) throw new WorkflowStateError("No startable phase found.");
-  if (phase2.status !== "pending") throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only a pending phase can be started.`);
-  const blockedDependency = phase2.dependencies.find((id) => phaseById(plan, id)?.status !== "completed");
+  if (phase2.status !== "ready") throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only a ready phase can be started.`);
+  const blockedDependency = dependencyIds(phase2).find((id) => phaseById2(plan, id)?.status !== "completed");
   if (blockedDependency) throw new InvalidTransitionError(`Phase ${phase2.id} depends on incomplete phase ${blockedDependency}.`);
   return phase2;
 }
-function phaseById(plan, id) {
+function phaseById2(plan, id) {
   return plan.phases.find((phase2) => phase2.id === id);
 }
 function validateWorkflowEvidence(evidence) {
@@ -20695,11 +21209,123 @@ function validationStrategy(mode2, triage) {
     `${triage.workflow.reviewLevel} integrated review`
   ];
 }
+function phaseLease(phase2, ownerId, ownerType, workflowRevisionAtAcquire, timeoutSeconds) {
+  const now = timestamp();
+  return {
+    phaseId: phase2.id,
+    ownerId,
+    ownerType,
+    acquiredAt: now,
+    heartbeatAt: now,
+    expiresAt: new Date(Date.parse(now) + timeoutSeconds * 1e3).toISOString(),
+    workflowRevisionAtAcquire,
+    allowedWriteAreas: phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas
+  };
+}
+function appendEvent(state, type, summary, phaseId, actorId = DEFAULT_OWNER_ID) {
+  state.events.push(workflowEvent({
+    type,
+    actorId,
+    before: state.revision,
+    after: state.revision + 1,
+    summary,
+    phaseId
+  }));
+  state.events = boundEvents(state.events);
+}
+function workflowEvent(args) {
+  return {
+    eventId: `evt-${randomUUID2().slice(0, 12)}`,
+    timestamp: args.at ?? timestamp(),
+    actorId: args.actorId,
+    type: args.type,
+    workflowRevisionBefore: args.before,
+    workflowRevisionAfter: args.after,
+    phaseId: args.phaseId,
+    summary: args.summary
+  };
+}
+function boundEvents(events) {
+  return events.slice(-MAX_EVENTS);
+}
+function migrateWorkflowState(raw, root, workflowId2) {
+  const value = raw;
+  if (value.version === 1 && "currentPhase" in value) {
+    const now = typeof value.updatedAt === "string" ? value.updatedAt : timestamp();
+    return {
+      version: STATE_VERSION,
+      id: workflowId2,
+      revision: 0,
+      state: "created",
+      request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
+      root: path8.resolve(root),
+      mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
+      createdAt: now,
+      updatedAt: now,
+      validation: [],
+      phaseLeases: {},
+      repairAttempts: 0,
+      blockers: [],
+      events: [workflowEvent({ type: "legacy_workflow_loaded", actorId: "system", before: 0, after: 0, summary: "Legacy workflow loaded with safe defaults.", at: now })]
+    };
+  }
+  const migrated = { ...value };
+  migrated.version = STATE_VERSION;
+  migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
+  migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path8.resolve(root);
+  migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp();
+  migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
+  migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
+  migrated.phaseLeases = migrated.phaseLeases && typeof migrated.phaseLeases === "object" ? migrated.phaseLeases : {};
+  migrated.repairAttempts = typeof migrated.repairAttempts === "number" ? migrated.repairAttempts : 0;
+  migrated.blockers = Array.isArray(migrated.blockers) ? migrated.blockers : [];
+  migrated.events = migrateEvents(migrated.events, migrated.revision);
+  if (migrated.plan && typeof migrated.plan === "object") {
+    const plan = migrated.plan;
+    plan.phases = (plan.phases ?? []).map((phase2, index) => migratePhase(phase2, index));
+  }
+  return migrated;
+}
+function migratePhase(raw, index) {
+  const phase2 = { ...raw };
+  phase2.id = typeof phase2.id === "string" && phase2.id.trim() ? phase2.id : `phase-${index + 1}`;
+  phase2.dependencies = Array.isArray(phase2.dependencies) ? phase2.dependencies : Array.isArray(phase2.dependsOn) ? phase2.dependsOn : [];
+  phase2.dependsOn = Array.isArray(phase2.dependsOn) ? phase2.dependsOn : phase2.dependencies;
+  phase2.expectedFilesOrAreas = Array.isArray(phase2.expectedFilesOrAreas) ? phase2.expectedFilesOrAreas : Array.isArray(phase2.expectedWriteAreas) ? phase2.expectedWriteAreas : [];
+  phase2.expectedWriteAreas = Array.isArray(phase2.expectedWriteAreas) && phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas;
+  phase2.expectedReadAreas = Array.isArray(phase2.expectedReadAreas) && phase2.expectedReadAreas.length > 0 ? phase2.expectedReadAreas : phase2.expectedFilesOrAreas;
+  if (phase2.status === "pending") phase2.status = "planned";
+  if (phase2.status === "active") phase2.status = "running";
+  phase2.ownershipUncertain = typeof phase2.ownershipUncertain === "boolean" ? phase2.ownershipUncertain : !phase2.expectedWriteAreas.some(isPathLikeArea2);
+  phase2.filesChanged = Array.isArray(phase2.filesChanged) ? phase2.filesChanged : [];
+  phase2.commandsRun = Array.isArray(phase2.commandsRun) ? phase2.commandsRun : [];
+  phase2.validationResults = Array.isArray(phase2.validationResults) ? phase2.validationResults : [];
+  phase2.scopeDeviations = Array.isArray(phase2.scopeDeviations) ? phase2.scopeDeviations : [];
+  phase2.repairAttempts = Array.isArray(phase2.repairAttempts) ? phase2.repairAttempts : [];
+  return phase2;
+}
+function migrateEvents(raw, revision) {
+  if (!Array.isArray(raw)) return [];
+  return boundEvents(raw.map((event, index) => {
+    const item = event;
+    if (typeof item.eventId === "string") return item;
+    return {
+      eventId: `evt-migrated-${index}`,
+      timestamp: typeof item.timestamp === "string" ? item.timestamp : timestamp(),
+      actorId: "system",
+      type: "legacy_event",
+      workflowRevisionBefore: revision,
+      workflowRevisionAfter: revision,
+      summary: typeof item.message === "string" ? item.message : "Legacy workflow event."
+    };
+  }));
+}
 function transition(state, nextState, message) {
   const next = structuredClone(state);
   next.state = nextState;
   next.updatedAt = timestamp();
-  next.events.push({ state: nextState, message, timestamp: next.updatedAt });
+  appendEvent(next, "workflow_state_changed", message);
   return next;
 }
 function assertState(state, allowed) {
@@ -20709,10 +21335,10 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path5.join(path5.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path8.join(path8.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
-  return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+  return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID2().slice(0, 8)}`;
 }
 function label(mode2) {
   return mode2[0].toUpperCase() + mode2.slice(1);
@@ -20720,7 +21346,7 @@ function label(mode2) {
 function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
-function unique(values) {
+function unique3(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -20802,7 +21428,7 @@ function workflowNextSummary(state) {
           status: candidate.status,
           validation: candidate.validationCommands
         })) ?? [],
-        validation: unique2(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? [])
+        validation: unique4(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? [])
       }
     };
   }
@@ -20874,7 +21500,7 @@ function workflowNextSummary(state) {
   };
 }
 function currentPhaseObject(state) {
-  return state.plan?.phases.find((phase2) => phase2.status === "active") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
+  return state.plan?.phases.find((phase2) => phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending") ?? state.plan?.phases.find((phase2) => phase2.status === "ready") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
 }
 function phaseRepairBudget(state) {
   if (state.mode === "fast") return 1;
@@ -20894,7 +21520,8 @@ function phaseNextAction(status) {
   if (status === "needs_review") return "Review the uncertain phase evidence or revise the plan.";
   if (status === "needs_replan") return "Revise the plan before continuing.";
   if (status === "blocked") return "Resolve the blocker or cancel.";
-  return "Execute the active phase, record validation, and submit completion evidence.";
+  if (status === "ready") return "Execute the ready phase after acquiring the internal phase lease, record validation, and submit completion evidence.";
+  return "Execute the leased phase, record validation, and submit completion evidence.";
 }
 function phaseIntents(status) {
   if (status === "needs_repair") return ["repair it", "revise", "show status", "cancel"];
@@ -20907,7 +21534,7 @@ function internalOperationsFor(state) {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
-  if (state.state === "executing") return ["record-validation", "phase-complete", "repair", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
   return ["status"];
@@ -20927,7 +21554,7 @@ function summariseCriteria(criteria) {
     notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
   };
 }
-function unique2(values) {
+function unique4(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -20936,8 +21563,8 @@ var program2 = new Command();
 program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-  const configDir = path6.join(root, ".leanrigor");
-  await mkdir4(configDir, { recursive: true });
+  const configDir = path9.join(root, ".leanrigor");
+  await mkdir5(configDir, { recursive: true });
   const config2 = await initConfig(root);
   const report = await new ClaudeAdapter().install(root, config2, forceOwnedFiles);
   console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
@@ -20948,11 +21575,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path6.join(root, ".leanrigor", "config.json");
+    const configPath = path9.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path6.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path9.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -21018,32 +21645,33 @@ flow.command("start").argument("<request>").option("--root <path>", "repository 
   });
   printFlowState(state);
 });
-flow.command("answer").argument("<workflow-id>").argument("<answer>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (workflowId2, answer, options) => {
+flow.command("answer").argument("<workflow-id>").argument("<answer>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, answer, options) => {
   const config2 = await ensureRepositoryConfig(options.root);
   printFlowState(await answerClarification({
     root: options.root,
     workflowId: workflowId2,
     answer,
     config: config2,
-    provider: triageProvider(options.provider)
+    provider: triageProvider(options.provider),
+    mutation: mutationOptions(options)
   }));
 });
-flow.command("approve-approach").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
-  printFlowState(await approveApproach(root, workflowId2, await ensureRepositoryConfig(root)));
+flow.command("approve-approach").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  printFlowState(await approveApproach(options.root, workflowId2, await ensureRepositoryConfig(options.root), mutationOptions(options)));
 });
-flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reason <reason>", "reason for rejection").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root, reason }) => {
-  printFlowState(await rejectApproach(root, workflowId2, reason));
+flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reason <reason>", "reason for rejection").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  printFlowState(await rejectApproach(options.root, workflowId2, options.reason, mutationOptions(options)));
 });
-flow.command("approve-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
-  printFlowState(await approvePlan(root, workflowId2));
+flow.command("approve-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  printFlowState(await approvePlan(options.root, workflowId2, mutationOptions(options)));
 });
-flow.command("revise-plan").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, feedback, { root }) => {
-  printFlowState(await revisePlan(root, workflowId2, feedback, await ensureRepositoryConfig(root)));
+flow.command("revise-plan").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
+  printFlowState(await revisePlan(options.root, workflowId2, feedback, await ensureRepositoryConfig(options.root), mutationOptions(options)));
 });
-flow.command("phase-start").argument("<workflow-id>").argument("[phase-id]").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, phaseId, { root }) => {
-  printFlowState(await startPhase(root, workflowId2, phaseId));
+flow.command("phase-start").argument("<workflow-id>").argument("[phase-id]").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "phase lease owner ID", "cli").action(async (workflowId2, phaseId, options) => {
+  printFlowState(await startPhase(options.root, workflowId2, phaseId, { ...mutationOptions(options), config: await ensureRepositoryConfig(options.root) }));
 });
-flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--evidence-file <path>", "JSON completion evidence file").option("--files <files>", "comma-separated files changed").option("--command <command>", "command run during the phase", collect, []).option("--deviation <deviation>", "scope deviation to record", collect, []).option("--assumption <assumption>", "assumption introduced during execution", collect, []).option("--risk <risk>", "remaining risk", collect, []).option("--blocked-reason <reason>", "external blocker preventing completion").action(async (workflowId2, phaseId, options) => {
+flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--evidence-file <path>", "JSON completion evidence file").option("--files <files>", "comma-separated files changed").option("--command <command>", "command run during the phase", collect, []).option("--deviation <deviation>", "scope deviation to record", collect, []).option("--assumption <assumption>", "assumption introduced during execution", collect, []).option("--risk <risk>", "remaining risk", collect, []).option("--blocked-reason <reason>", "external blocker preventing completion").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "phase lease owner ID", "cli").action(async (workflowId2, phaseId, options) => {
   const evidence = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
   const config2 = await ensureRepositoryConfig(options.root);
   printFlowState(await completePhase({
@@ -21060,8 +21688,39 @@ flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").
     remainingRisks: uniqueCli([...evidence.remainingRisks ?? [], ...options.risk]),
     blockedReason: options.blockedReason ?? evidence.blockedReason,
     requestedRepairScope: evidence.requestedRepairScope,
-    modelDecision: evidence.modelDecision
+    modelDecision: evidence.modelDecision,
+    mutation: mutationOptions(options)
   }));
+});
+flow.command("ready").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured ready phase schedule").action(async (workflowId2, options) => {
+  const schedule = readyPhases(await resumeFlow(options.root, workflowId2), await ensureRepositoryConfig(options.root));
+  if (options.json) console.log(JSON.stringify(schedule, null, 2));
+  else console.log(`${schedule.dispatchableCount}/${schedule.eligibleCount} phase(s) dispatchable; max parallel phases ${schedule.maxParallelPhases}.`);
+});
+flow.command("lease-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
+  const state = await leasePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+  if (options.json) printFlowState(state);
+  else console.log(`Phase ${phaseId} leased by ${options.owner}.`);
+});
+flow.command("heartbeat-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
+  const state = await heartbeatPhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+  if (options.json) printFlowState(state);
+  else console.log(`Phase ${phaseId} lease refreshed by ${options.owner}.`);
+});
+flow.command("release-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
+  const state = await releasePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, mutation: mutationOptions(options) });
+  if (options.json) printFlowState(state);
+  else console.log(`Phase ${phaseId} lease released by ${options.owner}.`);
+});
+flow.command("recover-leases").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").option("--json", "print workflow JSON summary").action(async (workflowId2, options) => {
+  const state = await recoverLeases({ root: options.root, workflowId: workflowId2, mutation: mutationOptions(options) });
+  if (options.json) printFlowState(state);
+  else console.log(`Recovered expired leases for ${workflowId2}.`);
+});
+flow.command("events").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured event history").action(async (workflowId2, options) => {
+  const events = workflowEvents(await resumeFlow(options.root, workflowId2));
+  if (options.json) console.log(JSON.stringify(events, null, 2));
+  else for (const event of events) console.log(`${event.timestamp} ${event.type}: ${event.summary}`);
 });
 flow.command("phase-status").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, phaseId, { root }) => {
   const state = await resumeFlow(root, workflowId2);
@@ -21069,17 +21728,18 @@ flow.command("phase-status").argument("<workflow-id>").argument("<phase-id>").op
   if (!phase2) throw new Error(`Unknown phase: ${phaseId}`);
   console.log(JSON.stringify(formatPhaseStatus(state, phaseId), null, 2));
 });
-flow.command("repair").argument("<workflow-id>").argument("<phase-id>").requiredOption("--reason <reason>", "reason the repair is needed").option("--scope <scope>", "requested bounded repair scope").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, phaseId, options) => {
+flow.command("repair").argument("<workflow-id>").argument("<phase-id>").requiredOption("--reason <reason>", "reason the repair is needed").option("--scope <scope>", "requested bounded repair scope").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "phase lease owner ID", "cli").action(async (workflowId2, phaseId, options) => {
   printFlowState(await repairPhase({
     root: options.root,
     workflowId: workflowId2,
     phaseId,
     reason: options.reason,
     requestedScope: options.scope,
-    config: await ensureRepositoryConfig(options.root)
+    config: await ensureRepositoryConfig(options.root),
+    mutation: mutationOptions(options)
   }));
 });
-flow.command("record-validation").argument("<workflow-id>").requiredOption("--command <command>", "validation command").option("--root <path>", "repository root", process.cwd()).option("--phase <phase-id>", "phase ID").option("--exit <code>", "exit status", "0").option("--result <result>", "concise validation result", "").option("--skipped", "record skipped validation").option("--reason <reason>", "reason validation was skipped").action(async (workflowId2, options) => {
+flow.command("record-validation").argument("<workflow-id>").requiredOption("--command <command>", "validation command").option("--root <path>", "repository root", process.cwd()).option("--phase <phase-id>", "phase ID").option("--exit <code>", "exit status", "0").option("--result <result>", "concise validation result", "").option("--skipped", "record skipped validation").option("--reason <reason>", "reason validation was skipped").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await recordValidation({
     root: options.root,
     workflowId: workflowId2,
@@ -21088,10 +21748,11 @@ flow.command("record-validation").argument("<workflow-id>").requiredOption("--co
     exitStatus: options.skipped ? null : Number.parseInt(options.exit, 10),
     result: options.result || (options.skipped ? "Validation skipped." : "Validation command recorded."),
     skipped: Boolean(options.skipped),
-    skippedReason: options.reason
+    skippedReason: options.reason,
+    mutation: mutationOptions(options)
   }));
 });
-flow.command("record-review").argument("<workflow-id>").requiredOption("--status <status>", "passed, needs_repair, needs_replan, or blocked").requiredOption("--summary <summary>", "concise review summary").option("--root <path>", "repository root", process.cwd()).option("--finding <finding>", "review finding", collect, []).option("--repair-scope <scope>", "smallest repair scope when repair is needed").action(async (workflowId2, options) => {
+flow.command("record-review").argument("<workflow-id>").requiredOption("--status <status>", "passed, needs_repair, needs_replan, or blocked").requiredOption("--summary <summary>", "concise review summary").option("--root <path>", "repository root", process.cwd()).option("--finding <finding>", "review finding", collect, []).option("--repair-scope <scope>", "smallest repair scope when repair is needed").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   const config2 = await ensureRepositoryConfig(options.root);
   printFlowState(await recordReview({
     root: options.root,
@@ -21100,14 +21761,15 @@ flow.command("record-review").argument("<workflow-id>").requiredOption("--status
     summary: options.summary,
     findings: options.finding,
     repairScope: options.repairScope,
-    config: config2
+    config: config2,
+    mutation: mutationOptions(options)
   }));
 });
 flow.command("commit-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
   console.log(JSON.stringify(await getCommitPlan(root, workflowId2), null, 2));
 });
-flow.command("complete").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
-  printFlowState(await completeFlow(root, workflowId2));
+flow.command("complete").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  printFlowState(await completeFlow(options.root, workflowId2, mutationOptions(options)));
 });
 flow.command("status").argument("[workflow-id]").option("--root <path>", "repository root", process.cwd()).option("--json", "print raw workflow JSON for automation").action(async (workflowId2, { root, json: json2 }) => {
   const state = workflowId2 ? await resumeFlow(root, workflowId2) : await loadLatestFlow(root);
@@ -21135,8 +21797,8 @@ flow.command("resume").argument("<workflow-id>").option("--root <path>", "reposi
 flow.command("list").option("--root <path>", "repository root", process.cwd()).action(async ({ root }) => {
   console.log(JSON.stringify(await listFlows(root), null, 2));
 });
-flow.command("cancel").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
-  printFlowState(await cancelFlow(root, workflowId2));
+flow.command("cancel").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  printFlowState(await cancelFlow(options.root, workflowId2, mutationOptions(options)));
 });
 function printInstallReport(report) {
   if (report.installed.length > 0) {
@@ -21240,7 +21902,7 @@ function printHumanStatus(state) {
     `Mode: ${labelMode(state.mode)}`,
     `State: ${state.state}`,
     phase2 ? `Current phase: ${phase2.id} - ${phase2.objective}` : void 0,
-    phase2 ? `Completion gate: ${phase2.completion?.decision ?? (phase2.status === "active" ? "pending" : "not started")}` : void 0,
+    phase2 ? `Completion gate: ${phase2.completion?.decision ?? (["leased", "running", "completion_pending"].includes(phase2.status) ? "pending" : "not started")}` : void 0,
     phase2 ? `Repair attempts: ${phase2.repairAttempts.length}/${phaseRepairBudget(state)}` : void 0,
     state.blockers.length > 0 ? `Blockers: ${state.blockers.join("; ")}` : void 0,
     next.pendingDecision ? `Pending decision: ${next.pendingDecision}` : void 0,
@@ -21273,7 +21935,7 @@ function labelMode(mode2) {
   return mode2[0].toUpperCase() + mode2.slice(1);
 }
 function currentPhaseStatus(state) {
-  const active = state.plan?.phases.find((phase2) => phase2.status === "active") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
+  const active = state.plan?.phases.find((phase2) => phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending") ?? state.plan?.phases.find((phase2) => phase2.status === "ready") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
   return active ? formatPhaseStatus(state, active.id) : void 0;
 }
 function formatPhaseStatus(state, phaseId) {
@@ -21284,7 +21946,7 @@ function formatPhaseStatus(state, phaseId) {
     phase: phase2.id,
     objective: phase2.objective,
     status: phase2.status,
-    completionGate: completion?.decision ?? (phase2.status === "active" ? "pending" : "not_started"),
+    completionGate: completion?.decision ?? (phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending" ? "pending" : "not_started"),
     criteria: completion ? summariseCriteria2(completion.criteria) : { met: 0, notMet: 0, uncertain: phase2.acceptanceCriteria.length, notApplicable: 0 },
     validation: completion?.validation.status ?? (phase2.validationResults.length > 0 ? "recorded" : "pending"),
     repairAttempts: `${phase2.repairAttempts.length}/${phaseRepairBudget(state)}`,
@@ -21310,8 +21972,14 @@ function pendingUserAction(state) {
   if (state.state === "blocked") return "Resolve the blocker or cancel the workflow.";
   return null;
 }
+function mutationOptions(options) {
+  return {
+    expectedRevision: options.expectedRevision === void 0 ? void 0 : Number.parseInt(options.expectedRevision, 10),
+    ownerId: options.owner ?? "cli"
+  };
+}
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile6(path6.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile8(path9.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {
@@ -21344,8 +22012,8 @@ async function initConfig(root) {
   return ensureRepositoryConfig(root);
 }
 async function ensureRepositoryConfig(root) {
-  const configPath = path6.join(root, ".leanrigor", "config.json");
-  const existing = await readFile6(configPath, "utf8").catch(() => void 0);
+  const configPath = path9.join(root, ".leanrigor", "config.json");
+  const existing = await readFile8(configPath, "utf8").catch(() => void 0);
   if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));
   const config2 = defaultConfig();
   config2.instructions = await detectInstructions(root);
@@ -21353,9 +22021,9 @@ async function ensureRepositoryConfig(root) {
   return config2;
 }
 async function writeConfig(root, config2) {
-  const dir = path6.join(root, ".leanrigor");
-  await mkdir4(dir, { recursive: true });
-  await writeFile4(path6.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
+  const dir = path9.join(root, ".leanrigor");
+  await mkdir5(dir, { recursive: true });
+  await writeFile4(path9.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
 }
 async function detectInstructions(root) {
   const candidates = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
@@ -21366,6 +22034,16 @@ function capitalise(value) {
   return value[0].toUpperCase() + value.slice(1);
 }
 await program2.parseAsync().catch((error51) => {
+  if (error51 instanceof RevisionConflictError) {
+    console.error(JSON.stringify({
+      ok: false,
+      code: error51.code,
+      expectedRevision: error51.expectedRevision,
+      actualRevision: error51.actualRevision
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
   const message = error51 instanceof Error ? error51.message : String(error51);
   console.error(`LeanRigor error: ${message}`);
   process.exitCode = 1;

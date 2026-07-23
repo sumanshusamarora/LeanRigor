@@ -21,6 +21,7 @@ import {
   revisePlan,
   saveFlowState,
   startFlow,
+  startPhase,
   validatePlanQuality
 } from "../src/core/flow.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
@@ -154,11 +155,11 @@ describe("sequential workflow orchestration", () => {
     const planned = await approveApproach(root, started.id);
     const executing = await approvePlan(root, planned.id);
 
-    expect(executing.plan?.phases.map((phase) => phase.status)).toEqual(["active", "pending"]);
+    expect(executing.plan?.phases.map((phase) => phase.status)).toEqual(["ready", "planned"]);
 
     const afterPhase1 = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"]);
     expect(afterPhase1.state).toBe("executing");
-    expect(afterPhase1.plan?.phases.map((phase) => phase.status)).toEqual(["completed", "active"]);
+    expect(afterPhase1.plan?.phases.map((phase) => phase.status)).toEqual(["completed", "ready"]);
     expect(afterPhase1.plan?.phases[0]?.completion?.dependentPhasesMayProceed).toBe(true);
   });
 
@@ -166,6 +167,7 @@ describe("sequential workflow orchestration", () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
     const executing = await approvePlan(root, started.id);
+    await startPhase(root, executing.id, "phase-1");
 
     const gated = await completePhase({
       root,
@@ -186,7 +188,7 @@ describe("sequential workflow orchestration", () => {
 
     const failed = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"], { validationStatus: "failed" });
 
-    expect(failed.plan?.phases.map((phase) => phase.status)).toEqual(["needs_repair", "pending"]);
+    expect(failed.plan?.phases.map((phase) => phase.status)).toEqual(["needs_repair", "planned"]);
     expect(failed.plan?.phases[0]?.completion?.validation.status).toBe("failed");
   });
 
@@ -202,7 +204,7 @@ describe("sequential workflow orchestration", () => {
 
     expect(repaired.plan?.phases[0]?.status).toBe("completed");
     expect(repaired.plan?.phases[0]?.validationResults.some((evidence) => evidence.status === "failed")).toBe(true);
-    expect(repaired.plan?.phases[1]?.status).toBe("active");
+    expect(repaired.plan?.phases[1]?.status).toBe("ready");
   });
 
   it("uncertain criteria require review", async () => {
@@ -447,13 +449,16 @@ async function completePhaseWithEvidence(root: string, state: SequentialWorkflow
   config?: ReturnType<typeof defaultConfig>;
   modelDecision?: "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
 } = {}): Promise<SequentialWorkflowState> {
-  const current = await resumeFlow(root, state.id);
-  const phase = current.plan?.phases.find((candidate) => candidate.id === phaseId);
-  if (!phase) throw new Error(`Missing phase ${phaseId}`);
-  for (const evidence of validationEvidenceFor(phase, options.validationStatus ?? "passed")) {
+    const current = await resumeFlow(root, state.id);
+    const phase = current.plan?.phases.find((candidate) => candidate.id === phaseId);
+    if (!phase) throw new Error(`Missing phase ${phaseId}`);
+  const executable = phase.status === "ready" ? await startPhase(root, state.id, phaseId) : current;
+  const runningPhase = executable.plan?.phases.find((candidate) => candidate.id === phaseId);
+  if (!runningPhase) throw new Error(`Missing phase ${phaseId}`);
+  for (const evidence of validationEvidenceFor(runningPhase, options.validationStatus ?? "passed")) {
     await recordValidation({
       root,
-      workflowId: state.id,
+      workflowId: executable.id,
       phaseId,
       command: evidence.command,
       exitStatus: evidence.exitStatus,
@@ -464,12 +469,12 @@ async function completePhaseWithEvidence(root: string, state: SequentialWorkflow
   }
   return completePhase({
     root,
-    workflowId: state.id,
+    workflowId: executable.id,
     phaseId,
     config: options.config ?? defaultConfig(),
-    criteria: options.criteria ?? metCriteria(phase),
+    criteria: options.criteria ?? metCriteria(runningPhase),
     filesChanged,
-    commandsRun: phase.validationCommands,
+    commandsRun: runningPhase.validationCommands,
     scopeDeviations: options.scopeDeviations,
     assumptions: options.assumptions,
     remainingRisks: options.remainingRisks,

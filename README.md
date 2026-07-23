@@ -154,12 +154,22 @@ migrations, APIs/contracts, and production-impacting changes. Claude loads the
 core methodology plus the selected mode overlay, then only the specific
 methodology files relevant to the current step.
 
-During execution, the active phase must run or explicitly skip its declared
-validation and submit structured completion evidence. The deterministic gate
-then returns `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
-`blocked`. Failed validation blocks progression, unexpected scope deviations are
-recorded and escalated when material, and repair attempts are bounded by mode.
-The final integrated review still runs after all per-phase gates pass.
+During execution, LeanRigor derives ready phases from an explicit dependency
+DAG. The default remains sequential: `execution.maxParallelPhases` is `1`, and
+LeanRigor does not spawn parallel agents. Internally, a ready phase is leased to
+the current owner before work starts, then it must run or explicitly skip its
+declared validation and submit structured completion evidence. The
+deterministic gate then returns `completed`, `needs_repair`, `needs_review`,
+`needs_replan`, or `blocked`. Failed validation blocks progression, unexpected
+scope deviations are recorded and escalated when material, and repair attempts
+are bounded by mode. The final integrated review still runs after all per-phase
+gates pass.
+
+Workflow mutations use atomic revisioned persistence and persistent workflow
+locks. Phase leases, ownership metadata, stale-lease recovery, and
+conflict-aware ready scheduling make the engine parallel-ready, but higher
+parallelism currently only changes scheduling recommendations; it does not
+launch agents or create worktrees.
 
 Active workflow selection is conservative: one active workflow is resumed, no
 workflow starts only when a request is supplied, and multiple active workflows
@@ -172,7 +182,7 @@ selected by default.
 - Fast, Standard, and Rigorous workflows.
 - Capability-based model routing instead of vendor coupling.
 - Blocking questions only, one at a time.
-- Sequential phase execution in this iteration.
+- Sequential execution by default, with a parallel-ready phase DAG and leases.
 - Small cohesive phase sizing by functional outcome and dependency boundary.
 - Per-phase completion gates with criterion evidence and deterministic policy.
 - Targeted validation with persisted evidence.
@@ -212,8 +222,8 @@ the current Superpowers repository.
 | Testing | RED-GREEN-REFACTOR TDD is documented for features, bugs, refactors, and behavior changes. | Proportional testing: sanity for Fast, targeted/unit/integration defaults for Standard, broader/risk-specific checks for Rigorous. |
 | Debugging | Systematic root-cause process before fixes. | Reproduce, observe, narrow, hypothesize, test, root-cause, minimal fix, regression coverage, with depth by mode. |
 | Review | Task and final code review are part of documented execution flows. | Sanity, integrated, deep, and specialist review levels feed LeanRigor completion gates. |
-| Worktrees | Documented worktree skill detects/creates isolated workspaces. | Not implemented in this iteration; worktrees remain backlog. |
-| Subagents | Documented subagent-driven development dispatches implementers and reviewers. | Not implemented in this iteration; execution is sequential in one active session. |
+| Worktrees | Documented worktree skill detects/creates isolated workspaces. | Not implemented in this iteration; worktree isolation remains backlog. |
+| Subagents | Documented subagent-driven development dispatches implementers and reviewers. | Not implemented in this iteration; scheduling is parallel-ready but execution remains sequential unless driven manually. |
 | Adaptive mode selection | The README documents a strong default workflow; no claim is made here about risk-based mode selection. | Built-in adaptive mode selection with deterministic escalation for high-risk triggers. |
 | Model-tier routing | Subagent documentation advises choosing models by role and task complexity. | Portable small/medium/large routing is built into configuration and workflow stages. |
 | Completion evidence | Verification-before-completion requires fresh evidence before success claims. | Completion gates persist criterion evidence, validation records, scope deviations, risks, and final review. |
@@ -235,16 +245,18 @@ and
 - Current Claude Code marketplace commands are namespaced by plugin name.
 - Triage has deterministic fallback; model-backed triage is available through
   the Claude adapter when configured.
-- The current workflow is sequential and does not autonomously spawn coding
+- The current workflow is parallel-ready but does not autonomously spawn coding
   agents.
-- File leases are in-memory in the core draft.
+- Durable workflow locks and phase leases exist; worktree isolation and merge
+  orchestration do not.
 - Worktree isolation is documented but not implemented.
 - Commit planning is intentionally conservative and requires human review.
 
 ## Backlog
 
-1. Optional CodeGraph inspection provider
-2. Persistent file leases and stronger concurrency protection
-3. Parallel agents and worktree isolation
-4. OpenCode adapter
-5. Codex adapter
+1. Worktree isolation and integration workspace
+2. Parallel phase agent orchestration
+3. Integrated merge/conflict repair workflow
+4. Optional CodeGraph inspection provider
+5. OpenCode adapter
+6. Codex adapter

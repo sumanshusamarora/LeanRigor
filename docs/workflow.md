@@ -31,8 +31,10 @@ leanrigor flow status <workflow-id>
 leanrigor flow answer <workflow-id> "<answer>"
 leanrigor flow approve-approach <workflow-id>
 leanrigor flow approve-plan <workflow-id>
+leanrigor flow ready <workflow-id> --json
+leanrigor flow phase-start <workflow-id> phase-1 --owner <session-id>
 leanrigor flow record-validation <workflow-id> --phase phase-1 --command "npm test" --exit 0 --result "targeted tests passed"
-leanrigor flow phase-complete <workflow-id> phase-1 --evidence-file phase-1-completion.json
+leanrigor flow phase-complete <workflow-id> phase-1 --owner <session-id> --evidence-file phase-1-completion.json
 leanrigor flow phase-status <workflow-id> phase-1
 leanrigor flow repair <workflow-id> phase-1 --reason "Targeted validation failed"
 leanrigor flow record-review <workflow-id> --status passed --summary "Integrated review passed"
@@ -62,7 +64,7 @@ than normal user-facing output.
 | `awaiting_approach_approval` | Standard/Rigorous approach gate is pending. | `flow approve-approach` or `flow reject-approach`. |
 | `planning` | Sequential plan is being generated. | Internal transition to plan approval. |
 | `awaiting_plan_approval` | Phased plan is ready but implementation is blocked. | `flow approve-plan` or `flow revise-plan`. |
-| `executing` | Exactly one phase is active or awaiting repair/review/replan after its completion gate. | Record phase validation, submit completion evidence, repair, review, or replan. |
+| `executing` | One or more phases may be ready in the DAG; default dispatch remains one phase at a time. | Start/lease a ready phase, record validation, submit completion evidence, repair, review, or replan. |
 | `validating` | All phase gates passed; final validation/review is still required. | `flow record-validation`, then review. |
 | `reviewing` | Final integrated review is being recorded. | `flow record-review`. |
 | `awaiting_commit_approval` | Review passed and a commit proposal exists. | Inspect proposal; optionally `flow complete`. |
@@ -94,10 +96,12 @@ blocks the workflow rather than silently choosing a different path.
 
 ## Planning
 
-Plans are sequential and sized by functional outcome and dependency boundary.
+Plans are DAGs sized by functional outcome and dependency boundary. Default
+execution remains sequential, but phases have stable IDs and explicit
+dependency IDs so readiness can be derived deterministically.
 Each phase should usually have one primary objective, a clear deliverable,
-acceptance criteria, bounded expected write areas, validation commands, and a
-meaningful dependency relationship to later phases.
+acceptance criteria, bounded expected read/write areas, validation commands,
+and a meaningful dependency relationship to later phases.
 
 Plan validation checks that phase dependencies are acyclic, criteria are
 inspectable, validation expectations are present, and no phase is an obvious
@@ -115,7 +119,8 @@ Mode differences:
 | Rigorous | Isolate migrations, security-sensitive work, public contracts, production infrastructure, destructive operations, and other high-risk boundaries. |
 
 The implementation intentionally avoids parallel agents, worktrees, OpenCode,
-Codex, and CodeGraph.
+Codex, and CodeGraph. Higher `execution.maxParallelPhases` values change
+scheduler recommendations only.
 
 Planning methodology is loaded from `methodology/planning.md` plus the current
 mode overlay. Plans should include the desired outcome, inspected current
@@ -125,7 +130,7 @@ public contract, data, and production-impacting boundaries when present.
 
 ## Execution Contract
 
-LeanRigor CLI owns durable state and approval gates. Claude Code owns the actual
+LeanRigor CLI owns durable state, locks, leases, and approval gates. Claude Code owns the actual
 repository inspection, edits, command execution, and review work in the active
 session. After each significant step Claude records concise evidence back into
 LeanRigor with `flow record-validation`, `flow phase-complete`, and
@@ -134,13 +139,63 @@ LeanRigor with `flow record-validation`, `flow phase-complete`, and
 Each phase lifecycle is:
 
 ```text
-active -> targeted validation -> completion gate
+planned -> ready -> leased/running -> targeted validation -> completion gate
 -> completed | needs_repair | needs_review | needs_replan | blocked
 ```
 
-A phase does not transition directly from active execution to completed. The
-next dependent phase unlocks only when the completion gate returns
-`completed`.
+A phase does not transition directly from ready execution to completed. A ready
+phase must be leased to an explicit owner, and completion must be submitted by
+that same owner while the lease is active. The next dependent phase unlocks only
+when the completion gate returns `completed`.
+
+## Concurrency Controls
+
+Every state-changing command uses revisioned atomic persistence:
+
+1. acquire the workflow lock;
+2. load current workflow state;
+3. verify `--expected-revision` when supplied;
+4. validate and apply one transition;
+5. increment revision once;
+6. write through a temporary file and atomic rename;
+7. release the lock after ownership verification.
+
+Revision conflicts are explicit:
+
+```json
+{
+  "ok": false,
+  "code": "revision_conflict",
+  "expectedRevision": 12,
+  "actualRevision": 13
+}
+```
+
+Workflow locks protect short mutations only. Phase leases protect future
+long-running owners. `lease-phase`, `heartbeat-phase`, `release-phase`, and
+`recover-leases` are advanced troubleshooting commands; normal Claude use calls
+them internally. Expired leases without completion evidence return to `ready`
+when dependencies remain valid. Expired leases with partial evidence move to
+`needs_review`. Incompatible workflow/dependency changes move to
+`needs_replan`. Recovery is idempotent and never marks a phase completed.
+
+`flow ready --json` reports all theoretically ready phases plus
+`dispatchableCount` after `execution.maxParallelPhases` and conflicts are
+applied. Default `maxParallelPhases` is `1`.
+
+## Ownership Conflicts
+
+Phases declare repository-relative expected read and write areas. Supported
+patterns are literal paths, directory paths, `*`, and trailing `/**`.
+Path-based ownership is conservative scheduling metadata, not proof of semantic
+isolation.
+
+Blocking conflicts include overlapping write/write areas, write/read overlap
+when `execution.writeReadConflictsBlock` is true, and shared sensitive paths.
+Sensitive defaults include package manifests and lockfiles, TypeScript config,
+`.git/**`, `.github/**`, `migrations/**`, `schema/**`, and `infra/**`.
+Standard and Rigorous phases without explicit ownership are not parallel
+eligible.
 
 Completion evidence persists:
 
@@ -284,7 +339,7 @@ leanrigor flow cancel <workflow-id> --root /path/to/repository
 
 Workflow state is repository-local and survives process restarts, Claude Code
 restarts, and context compaction. Reads and writes are schema-validated; writes
-are atomic and guarded by an optimistic revision check.
+are atomic, guarded by a persistent workflow lock, and checked by revision.
 
 Status and resume expose the current phase objective, gate decision, criteria
 progress, validation status, repair attempts, scope deviations, blocker or

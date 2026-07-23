@@ -183,7 +183,8 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
 }
 
 export function currentPhaseObject(state: SequentialWorkflowState): WorkflowPhase | undefined {
-  return state.plan?.phases.find((phase) => phase.status === "active")
+  return state.plan?.phases.find((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending")
+    ?? state.plan?.phases.find((phase) => phase.status === "ready")
     ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
 }
 
@@ -207,7 +208,8 @@ function phaseNextAction(status: string): string {
   if (status === "needs_review") return "Review the uncertain phase evidence or revise the plan.";
   if (status === "needs_replan") return "Revise the plan before continuing.";
   if (status === "blocked") return "Resolve the blocker or cancel.";
-  return "Execute the active phase, record validation, and submit completion evidence.";
+  if (status === "ready") return "Execute the ready phase after acquiring the internal phase lease, record validation, and submit completion evidence.";
+  return "Execute the leased phase, record validation, and submit completion evidence.";
 }
 
 function phaseIntents(status: string): string[] {
@@ -222,7 +224,7 @@ function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
-  if (state.state === "executing") return ["record-validation", "phase-complete", "repair", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
   return ["status"];

@@ -173,13 +173,21 @@ workflow and owns the normal interaction:
 4. Asks the single persisted blocking clarification question if required
 5. Presents `Approach approval` for Standard and Rigorous work
 6. After approach approval, internally generates and renders `Plan approval`
-7. Executes one active small functional phase at a time in the Claude session
-8. Runs or explicitly skips phase validation, then submits structured
+7. Derives ready phases, acquires an internal lease for one ready phase with a
+   stable session owner, and executes that phase in the Claude session
+8. Refreshes long-running leases where practical, rereads state on revision
+   conflicts, and never retries rejected transitions blindly
+9. Runs or explicitly skips phase validation, then submits structured
    completion evidence to the per-phase gate
-9. Follows `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
+10. Follows `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
    `blocked`; Claude does not unlock the next phase itself
-10. Records final integrated review after all phase gates pass
-11. Shows a commit proposal without committing
+11. Records final integrated review after all phase gates pass
+12. Shows a commit proposal without committing
+
+The workflow engine is parallel-ready: workflow locks, phase leases, DAG
+readiness, and ownership conflict checks are persisted. Execution remains
+sequential by default (`execution.maxParallelPhases: 1`) and the Claude adapter
+does not spawn parallel agents or create worktrees.
 
 After the mode is known, the workflow instruction tells Claude to load
 `core.md`, the selected mode overlay, and only the methodology files needed for
@@ -235,8 +243,8 @@ Error:
 ## Persistence and resume
 
 Each workflow is stored as `.leanrigor/workflows/<workflow-id>.json`. State is
-versioned, schema-validated on read and write, written atomically, and protected
-by an optimistic revision check. Use:
+versioned, schema-validated on read and write, written atomically, protected by
+a persistent workflow lock, and guarded by monotonic revision checks. Use:
 
 ```bash
 leanrigor flow list --root /path/to/repository

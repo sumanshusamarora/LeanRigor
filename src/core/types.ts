@@ -9,7 +9,19 @@ export type TestLevel = "none" | "sanity" | "targeted" | "package" | "full";
 export type ParallelismRecommendation = "sequential" | "candidate";
 export type CriterionStatus = "met" | "not_met" | "uncertain" | "not_applicable";
 export type CompletionGateDecision = "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
-export type PhaseStatus = "pending" | "active" | CompletionGateDecision;
+export type PhaseStatus =
+  | "planned"
+  | "ready"
+  | "leased"
+  | "running"
+  | "completion_pending"
+  | "completed"
+  | "needs_repair"
+  | "needs_review"
+  | "needs_replan"
+  | "blocked"
+  | "cancelled";
+export type WorkflowLockOwnerType = "cli" | "claude-session" | "agent" | "system";
 export type WorkflowLifecycleState =
   | "created"
   | "triaging"
@@ -149,12 +161,16 @@ export interface WorkflowPhase {
   objective: string;
   rationale: string;
   dependencies: string[];
+  dependsOn: string[];
+  expectedReadAreas: string[];
+  expectedWriteAreas: string[];
   expectedFilesOrAreas: string[];
   acceptanceCriteria: string[];
   validationCommands: string[];
   riskLevel: RiskLevel;
   modelTier: ModelProfile;
   status: PhaseStatus;
+  ownershipUncertain?: boolean;
   startedAt?: string;
   completedAt?: string;
   filesChanged: string[];
@@ -219,6 +235,7 @@ export interface PhaseCompletionRecord {
   repairAttempt: number;
   timestamp: string;
   workflowRevision: number;
+  leaseOwnerId?: string;
 }
 
 export interface IntegratedReviewResult {
@@ -240,6 +257,41 @@ export interface CommitPlan {
   generatedAt: string;
   groups: CommitPlanGroup[];
   note: string;
+}
+
+export interface WorkflowLock {
+  workflowId: string;
+  ownerId: string;
+  ownerType: WorkflowLockOwnerType;
+  operation: string;
+  acquiredAt: string;
+  heartbeatAt: string;
+  expiresAt: string;
+  processId?: number;
+  host?: string;
+}
+
+export interface PhaseLease {
+  phaseId: string;
+  ownerId: string;
+  ownerType: WorkflowLockOwnerType;
+  acquiredAt: string;
+  heartbeatAt: string;
+  expiresAt: string;
+  workflowRevisionAtAcquire: number;
+  allowedWriteAreas: string[];
+  releasedAt?: string;
+}
+
+export interface WorkflowEvent {
+  eventId: string;
+  timestamp: string;
+  actorId: string;
+  type: string;
+  workflowRevisionBefore: number;
+  workflowRevisionAfter: number;
+  phaseId?: string;
+  summary: string;
 }
 
 export interface SequentialWorkflowState {
@@ -271,11 +323,8 @@ export interface SequentialWorkflowState {
   validation: ValidationEvidence[];
   review?: IntegratedReviewResult;
   commitPlan?: CommitPlan;
+  phaseLeases: Record<string, PhaseLease>;
   repairAttempts: number;
   blockers: string[];
-  events: Array<{
-    state: WorkflowLifecycleState;
-    message: string;
-    timestamp: string;
-  }>;
+  events: WorkflowEvent[];
 }

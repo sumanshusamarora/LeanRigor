@@ -410,6 +410,42 @@
         }
       }
     },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "maxParallelPhases": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "default": 1
+        },
+        "workflowLockTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "default": 30
+        },
+        "phaseLeaseTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 86400,
+          "default": 900
+        },
+        "writeReadConflictsBlock": {
+          "type": "boolean",
+          "default": true
+        },
+        "sensitivePaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
     "git": {
       "type": "object",
       "properties": {

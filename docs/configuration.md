@@ -36,6 +36,23 @@ settings most relevant to methodology and safety. The schema source of truth is
 - `risk.rigorousPaths`: paths that should escalate review or mode when touched.
 - `risk.protectedPaths`: paths such as `.git/**`, `.env`, and `secrets/**`.
 
+## Execution And Concurrency
+
+- `execution.maxParallelPhases`: default `1`. Values above `1` affect ready
+  phase scheduling recommendations only; LeanRigor does not spawn agents yet.
+- `execution.workflowLockTimeoutSeconds`: default `30`. Short-lived persistent
+  lock timeout for state mutations.
+- `execution.phaseLeaseTimeoutSeconds`: default `900`. Durable phase lease
+  timeout for future long-running owners.
+- `execution.writeReadConflictsBlock`: default `true`. Treat write/read path
+  overlap as a blocking scheduling conflict.
+- `execution.sensitivePaths`: additional repository-relative path patterns that
+  should conflict broadly during scheduling.
+
+Built-in sensitive paths include package manifests and lockfiles,
+`tsconfig*.json`, `.git/**`, `.github/**`, `migrations/**`, `schema/**`, and
+`infra/**`.
+
 ## Methodology Relationship
 
 Configuration and deterministic policy decide what is required. The shared

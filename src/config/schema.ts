@@ -111,6 +111,13 @@ export const leanRigorConfigSchema = z.object({
     isolation: z.enum(["shared-worktree", "isolated-worktrees"]).default("shared-worktree"),
     forbidSharedWrites: z.boolean().default(true)
   }).prefault({}),
+  execution: z.object({
+    maxParallelPhases: z.number().int().min(1).max(16).default(1),
+    workflowLockTimeoutSeconds: z.number().int().min(1).max(3600).default(30),
+    phaseLeaseTimeoutSeconds: z.number().int().min(5).max(86400).default(900),
+    writeReadConflictsBlock: z.boolean().default(true),
+    sensitivePaths: z.array(z.string().min(1)).default([])
+  }).prefault({}),
   git: z.object({
     autoCommit: z.boolean().default(false),
     requireConfirmation: z.boolean().default(true),

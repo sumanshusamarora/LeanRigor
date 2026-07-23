@@ -12,7 +12,8 @@ import {
   recordReview,
   recordValidation,
   resumeFlow,
-  startFlow
+  startFlow,
+  startPhase
 } from "../src/core/flow.js";
 import { activeWorkflowSelection, workflowNextSummary } from "../src/core/ux.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
@@ -206,10 +207,13 @@ async function completePhaseWithEvidence(
   const current = await resumeFlow(root, state.id);
   const phase = current.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!phase) throw new Error(`Missing phase ${phaseId}`);
-  for (const evidence of validationEvidenceFor(phase, validationStatus)) {
+  const executable = phase.status === "ready" ? await startPhase(root, state.id, phaseId) : current;
+  const runningPhase = executable.plan?.phases.find((candidate) => candidate.id === phaseId);
+  if (!runningPhase) throw new Error(`Missing phase ${phaseId}`);
+  for (const evidence of validationEvidenceFor(runningPhase, validationStatus)) {
     await recordValidation({
       root,
-      workflowId: state.id,
+      workflowId: executable.id,
       phaseId,
       command: evidence.command,
       exitStatus: evidence.exitStatus,
@@ -220,12 +224,12 @@ async function completePhaseWithEvidence(
   }
   return completePhase({
     root,
-    workflowId: state.id,
+    workflowId: executable.id,
     phaseId,
     config: defaultConfig(),
-    criteria: metCriteria(phase),
+    criteria: metCriteria(runningPhase),
     filesChanged,
-    commandsRun: phase.validationCommands
+    commandsRun: runningPhase.validationCommands
   });
 }
 

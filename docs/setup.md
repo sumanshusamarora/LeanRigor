@@ -204,9 +204,16 @@ For manual diagnosis:
 ```bash
 leanrigor flow active --json --root /path/to/repository
 leanrigor flow next <workflow-id> --json --root /path/to/repository
+leanrigor flow ready <workflow-id> --json --root /path/to/repository
+leanrigor flow events <workflow-id> --json --root /path/to/repository
 leanrigor flow status <workflow-id> --json --root /path/to/repository
 ```
 
 `active` excludes completed and cancelled workflows by default. When multiple
 active workflows exist, choose by workflow ID instead of starting another
 workflow accidentally.
+
+Revision conflicts mean another process updated the workflow between read and
+write. Reread status/next, then decide the next transition from the latest
+state. Lease commands are intended for troubleshooting or adapter internals;
+normal Claude usage should not display them unless a transition fails.

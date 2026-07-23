@@ -17,8 +17,9 @@
   - `leanrigor flow start`, `answer`, `approve-approach`, `reject-approach`, `approve-plan`, `revise-plan`, `phase-start`, `phase-complete`, `phase-status`, `repair`, `record-validation`, `record-review`, `commit-plan`, `complete`, `active`, `next`, `status`, `list`, `resume`, and `cancel`.
   - Versioned workflow files under `.leanrigor/workflows/<workflow-id>.json`.
   - Explicit lifecycle states from `created` through `awaiting_commit_approval`, plus `completed`, `blocked`, and `cancelled`.
-  - Atomic writes, schema validation on read/write, corrupted-state errors, and optimistic revision checks.
-  - At most one blocking clarification, mode-specific approach gates, explicit plan approval, small cohesive phase sizing, per-phase completion gates, criterion evidence, sequential unlocking only after gate pass, validation evidence, scope deviation escalation, bounded per-phase and integrated repair loops, final integrated review, replan/blocked handling, and commit proposals without commit execution.
+  - Atomic revisioned writes, persistent workflow locks, schema validation on read/write, corrupted-state errors, and structured revision conflicts.
+  - Explicit phase DAG states (`planned`, `ready`, `leased`, `running`, `completion_pending`, `completed`, repair/review/replan/block states), durable phase leases, stale lease recovery, ready-phase scheduling, ownership metadata, and conservative path-conflict detection.
+  - At most one blocking clarification, mode-specific approach gates, explicit plan approval, small cohesive phase sizing, per-phase completion gates, criterion evidence, default sequential execution, validation evidence, scope deviation escalation, bounded per-phase and integrated repair loops, final integrated review, replan/blocked handling, and commit proposals without commit execution.
   - Claude UX helpers for active workflow selection and next-gate summaries so commands can render conversational status without exposing raw CLI syntax during normal use.
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
@@ -59,14 +60,13 @@ All commands below were run in this environment on July 23, 2026.
 
 - `npm install` — passed.
 - `npm run typecheck` — passed.
-- `npm test` — passed; 13 test files and 130 tests passed.
+- `npm test` — passed; 14 test files and 138 tests passed.
 - `npm run build` — passed; plugin assets copied to `dist/adapters/claude/plugin/`.
 - `npm run validate:claude-plugin` — passed.
 - `npm run lint` — passed.
 - `npm pack --pack-destination <temporary-directory> --json` — passed; tarball
   contains project-local Claude assets, native marketplace plugin files,
-  methodology assets, bundled runtime, and the `dist/core/flow.js`
-  orchestration module.
+  methodology assets, bundled runtime, and the workflow concurrency modules.
 - Clean temporary install of the generated tarball — passed.
 - Packed-install `leanrigor --help` — passed.
 - Packed-install `leanrigor init --adapter claude --root <temporary-repository>` — passed; 21 assets installed.
@@ -153,8 +153,7 @@ All commands below were run in this environment on July 23, 2026.
   `/leanrigor:start` for marketplace installs and the npm/project-local
   fallback for unqualified `/leanrigor`.
 - OpenCode support remains a roadmap item; no OpenCode adapter was added.
-- Parallel execution interfaces and policy primitives exist, but this workflow does not autonomously spawn coding agents.
-- File leases remain in-memory in the core draft.
+- Parallel-ready workflow locks, phase leases, DAG scheduling, and ownership conflict checks exist, but this workflow does not autonomously spawn coding agents.
 - Worktree isolation is documented but not implemented.
 - Commit planning remains conservative and requires human review.
 - Hook asset installation and path resolution are tested. Live hook firing in

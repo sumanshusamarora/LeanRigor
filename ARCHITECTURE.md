@@ -158,13 +158,23 @@ Users may request additional review manually, but configured mandatory safety ch
 
 ## Execution graph and ownership
 
-Each task declares read sets, write sets, dependencies, validation commands, and status. Parallel execution is not implemented in the current sequential workflow.
+Each phase declares stable IDs, explicit dependency IDs, expected read areas,
+expected write areas, validation commands, and an explicit DAG status. The
+scheduler derives readiness from dependency completion, workflow state, active
+phase leases, ownership conflicts, and `execution.maxParallelPhases`.
+
+This iteration makes the engine parallel-ready but does not launch multiple
+agents. Default `execution.maxParallelPhases` is `1`, so normal execution
+remains sequential.
 
 ## Persisted sequential flow
 
 The `leanrigor flow` command group is the first complete end-to-end workflow for
 Claude Code. It stores each workflow at `.leanrigor/workflows/<id>.json` using a
-versioned schema. Writes are atomic and guarded by an optimistic revision check.
+versioned schema with monotonic `revision` and `updatedAt`. State-changing
+operations acquire a persistent workflow lock, reload current state, verify an
+optional expected revision, apply one transition, increment revision once, and
+persist by temp-file write, fsync where practical, and atomic rename.
 
 The persisted lifecycle is:
 
@@ -185,10 +195,11 @@ planner validates one primary objective, acyclic dependencies, inspectable
 acceptance criteria, validation expectations, bounded expected areas, and broad
 container phases before presenting the plan for approval.
 
-During execution, each active phase must pass targeted validation and an
+During execution, a ready phase is leased to an explicit owner before work
+starts. Each leased/running phase must pass targeted validation and an
 evidence-based completion gate before dependents unlock:
 
-`active -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
+`planned -> ready -> leased/running -> completion_pending -> completed | needs_repair | needs_review | needs_replan | blocked`
 
 Completion records persist objective, criterion statuses and evidence, changed
 files, validation outcomes and skipped reasons, scope deviations, assumptions,
@@ -199,8 +210,21 @@ changed files outside expected scope, high-risk path triggers, migration or new
 dependency detection, public contract changes, repair budgets, and dependency
 status override optimistic agent or model judgement.
 
-This implementation is sequential only. It does not add parallel agents,
-worktrees, OpenCode, Codex, or CodeGraph.
+Workflow locks protect short state transitions only. Phase leases are durable
+records for future long-running owners and include owner ID, acquisition and
+heartbeat timestamps, expiry, revision at acquisition, and allowed write areas.
+Expired leases are recovered idempotently: no evidence returns to `ready` when
+dependencies remain valid; partial evidence moves to `needs_review`; invalidated
+workflow/dependency state moves to `needs_replan`.
+
+Ownership conflict detection is conservative. Write/write overlap blocks,
+write/read overlap blocks by default, sensitive shared files block, and missing
+ownership prevents Standard/Rigorous parallel eligibility. Path matching uses
+normalized repository-relative paths and simple `*`/`**` patterns; it is a
+scheduling safeguard, not semantic isolation.
+
+This implementation does not add parallel agents, worktrees, OpenCode, Codex,
+or CodeGraph.
 
 ## Safety boundaries
 
@@ -208,11 +232,12 @@ The framework prepares but does not automatically execute commits. Pushes, deplo
 
 ## Backlog
 
-1. Optional CodeGraph inspection provider
-2. Persistent file leases and stronger concurrency protection
-3. Parallel agents and worktree isolation
-4. OpenCode adapter
-5. Codex adapter
+1. Worktree isolation and integration workspace
+2. Parallel phase agent orchestration
+3. Integrated merge/conflict repair workflow
+4. Optional CodeGraph inspection provider
+5. OpenCode adapter
+6. Codex adapter
 
 ## Model-backed triage runtime
 

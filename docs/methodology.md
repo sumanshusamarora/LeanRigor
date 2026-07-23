@@ -85,5 +85,6 @@ Claude submits to those gates.
 - Methodology is prompt guidance, not a formal proof system.
 - LeanRigor does not provide a complete security audit by itself.
 - Real Claude behavior must still be smoke-tested after prompt changes.
-- Parallel agents, worktrees, persistent file leases, OpenCode, Codex, and
-  CodeGraph remain backlog items, not part of this iteration.
+- Parallel agent dispatch, worktrees, OpenCode, Codex, and CodeGraph remain
+  backlog items, not part of this iteration. Workflow locks, phase leases, and
+  conflict-aware scheduling are implemented as the concurrency foundation.

@@ -27,18 +27,25 @@ import {
   completeFlow,
   completePhase,
   getCommitPlan,
+  heartbeatPhase,
+  leasePhase,
   listFlows,
   loadLatestFlow,
   nextActions,
   repairPhase,
   recordReview,
   recordValidation,
+  recoverLeases,
   rejectApproach,
+  releasePhase,
   resumeFlow,
   revisePlan,
+  readyPhases,
   startFlow,
-  startPhase
+  startPhase,
+  workflowEvents
 } from "../core/flow.js";
+import { RevisionConflictError } from "../core/workflow-store.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowMode } from "../core/types.js";
 
 const program = new Command();
@@ -164,6 +171,8 @@ flow.command("answer")
   .argument("<answer>")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, answer, options) => {
     const config = await ensureRepositoryConfig(options.root);
     printFlowState(await answerClarification({
@@ -171,46 +180,57 @@ flow.command("answer")
       workflowId,
       answer,
       config,
-      provider: triageProvider(options.provider)
+      provider: triageProvider(options.provider),
+      mutation: mutationOptions(options)
     }));
   });
 
 flow.command("approve-approach")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, { root }) => {
-    printFlowState(await approveApproach(root, workflowId, await ensureRepositoryConfig(root)));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, options) => {
+    printFlowState(await approveApproach(options.root, workflowId, await ensureRepositoryConfig(options.root), mutationOptions(options)));
   });
 
 flow.command("reject-approach")
   .argument("<workflow-id>")
   .requiredOption("--reason <reason>", "reason for rejection")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, { root, reason }) => {
-    printFlowState(await rejectApproach(root, workflowId, reason));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, options) => {
+    printFlowState(await rejectApproach(options.root, workflowId, options.reason, mutationOptions(options)));
   });
 
 flow.command("approve-plan")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, { root }) => {
-    printFlowState(await approvePlan(root, workflowId));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, options) => {
+    printFlowState(await approvePlan(options.root, workflowId, mutationOptions(options)));
   });
 
 flow.command("revise-plan")
   .argument("<workflow-id>")
   .argument("<feedback>")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, feedback, { root }) => {
-    printFlowState(await revisePlan(root, workflowId, feedback, await ensureRepositoryConfig(root)));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, feedback, options) => {
+    printFlowState(await revisePlan(options.root, workflowId, feedback, await ensureRepositoryConfig(options.root), mutationOptions(options)));
   });
 
 flow.command("phase-start")
   .argument("<workflow-id>")
   .argument("[phase-id]")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, phaseId, { root }) => {
-    printFlowState(await startPhase(root, workflowId, phaseId));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "phase lease owner ID", "cli")
+  .action(async (workflowId, phaseId, options) => {
+    printFlowState(await startPhase(options.root, workflowId, phaseId, { ...mutationOptions(options), config: await ensureRepositoryConfig(options.root) }));
   });
 
 flow.command("phase-complete")
@@ -224,6 +244,8 @@ flow.command("phase-complete")
   .option("--assumption <assumption>", "assumption introduced during execution", collect, [])
   .option("--risk <risk>", "remaining risk", collect, [])
   .option("--blocked-reason <reason>", "external blocker preventing completion")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "phase lease owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
     const evidence = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
     const config = await ensureRepositoryConfig(options.root);
@@ -241,8 +263,80 @@ flow.command("phase-complete")
       remainingRisks: uniqueCli([...(evidence.remainingRisks ?? []), ...options.risk]),
       blockedReason: options.blockedReason ?? evidence.blockedReason,
       requestedRepairScope: evidence.requestedRepairScope,
-      modelDecision: evidence.modelDecision
+      modelDecision: evidence.modelDecision,
+      mutation: mutationOptions(options)
     }));
+  });
+
+flow.command("ready")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured ready phase schedule")
+  .action(async (workflowId, options) => {
+    const schedule = readyPhases(await resumeFlow(options.root, workflowId), await ensureRepositoryConfig(options.root));
+    if (options.json) console.log(JSON.stringify(schedule, null, 2));
+    else console.log(`${schedule.dispatchableCount}/${schedule.eligibleCount} phase(s) dispatchable; max parallel phases ${schedule.maxParallelPhases}.`);
+  });
+
+flow.command("lease-phase")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--owner <id>", "phase lease owner ID")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, phaseId, options) => {
+    const state = await leasePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    if (options.json) printFlowState(state);
+    else console.log(`Phase ${phaseId} leased by ${options.owner}.`);
+  });
+
+flow.command("heartbeat-phase")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--owner <id>", "phase lease owner ID")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, phaseId, options) => {
+    const state = await heartbeatPhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    if (options.json) printFlowState(state);
+    else console.log(`Phase ${phaseId} lease refreshed by ${options.owner}.`);
+  });
+
+flow.command("release-phase")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--owner <id>", "phase lease owner ID")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, phaseId, options) => {
+    const state = await releasePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, mutation: mutationOptions(options) });
+    if (options.json) printFlowState(state);
+    else console.log(`Phase ${phaseId} lease released by ${options.owner}.`);
+  });
+
+flow.command("recover-leases")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, options) => {
+    const state = await recoverLeases({ root: options.root, workflowId, mutation: mutationOptions(options) });
+    if (options.json) printFlowState(state);
+    else console.log(`Recovered expired leases for ${workflowId}.`);
+  });
+
+flow.command("events")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured event history")
+  .action(async (workflowId, options) => {
+    const events = workflowEvents(await resumeFlow(options.root, workflowId));
+    if (options.json) console.log(JSON.stringify(events, null, 2));
+    else for (const event of events) console.log(`${event.timestamp} ${event.type}: ${event.summary}`);
   });
 
 flow.command("phase-status")
@@ -262,6 +356,8 @@ flow.command("repair")
   .requiredOption("--reason <reason>", "reason the repair is needed")
   .option("--scope <scope>", "requested bounded repair scope")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "phase lease owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
     printFlowState(await repairPhase({
       root: options.root,
@@ -269,7 +365,8 @@ flow.command("repair")
       phaseId,
       reason: options.reason,
       requestedScope: options.scope,
-      config: await ensureRepositoryConfig(options.root)
+      config: await ensureRepositoryConfig(options.root),
+      mutation: mutationOptions(options)
     }));
   });
 
@@ -282,6 +379,8 @@ flow.command("record-validation")
   .option("--result <result>", "concise validation result", "")
   .option("--skipped", "record skipped validation")
   .option("--reason <reason>", "reason validation was skipped")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
     printFlowState(await recordValidation({
       root: options.root,
@@ -291,7 +390,8 @@ flow.command("record-validation")
       exitStatus: options.skipped ? null : Number.parseInt(options.exit, 10),
       result: options.result || (options.skipped ? "Validation skipped." : "Validation command recorded."),
       skipped: Boolean(options.skipped),
-      skippedReason: options.reason
+      skippedReason: options.reason,
+      mutation: mutationOptions(options)
     }));
   });
 
@@ -302,6 +402,8 @@ flow.command("record-review")
   .option("--root <path>", "repository root", process.cwd())
   .option("--finding <finding>", "review finding", collect, [])
   .option("--repair-scope <scope>", "smallest repair scope when repair is needed")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
     const config = await ensureRepositoryConfig(options.root);
     printFlowState(await recordReview({
@@ -311,7 +413,8 @@ flow.command("record-review")
       summary: options.summary,
       findings: options.finding,
       repairScope: options.repairScope,
-      config
+      config,
+      mutation: mutationOptions(options)
     }));
   });
 
@@ -325,8 +428,10 @@ flow.command("commit-plan")
 flow.command("complete")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, { root }) => {
-    printFlowState(await completeFlow(root, workflowId));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, options) => {
+    printFlowState(await completeFlow(options.root, workflowId, mutationOptions(options)));
   });
 
 flow.command("status")
@@ -379,8 +484,10 @@ flow.command("list")
 flow.command("cancel")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async (workflowId, { root }) => {
-    printFlowState(await cancelFlow(root, workflowId));
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, options) => {
+    printFlowState(await cancelFlow(options.root, workflowId, mutationOptions(options)));
   });
 
 // ---------------------------------------------------------------------------
@@ -493,7 +600,7 @@ function printHumanStatus(state: SequentialWorkflowState): void {
     `Mode: ${labelMode(state.mode)}`,
     `State: ${state.state}`,
     phase ? `Current phase: ${phase.id} - ${phase.objective}` : undefined,
-    phase ? `Completion gate: ${phase.completion?.decision ?? (phase.status === "active" ? "pending" : "not started")}` : undefined,
+    phase ? `Completion gate: ${phase.completion?.decision ?? (["leased", "running", "completion_pending"].includes(phase.status) ? "pending" : "not started")}` : undefined,
     phase ? `Repair attempts: ${phase.repairAttempts.length}/${phaseRepairBudget(state)}` : undefined,
     state.blockers.length > 0 ? `Blockers: ${state.blockers.join("; ")}` : undefined,
     next.pendingDecision ? `Pending decision: ${next.pendingDecision}` : undefined,
@@ -528,7 +635,8 @@ function labelMode(mode: WorkflowMode): string {
 }
 
 function currentPhaseStatus(state: SequentialWorkflowState): unknown {
-  const active = state.plan?.phases.find((phase) => phase.status === "active")
+  const active = state.plan?.phases.find((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending")
+    ?? state.plan?.phases.find((phase) => phase.status === "ready")
     ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
   return active ? formatPhaseStatus(state, active.id) : undefined;
 }
@@ -541,7 +649,7 @@ function formatPhaseStatus(state: SequentialWorkflowState, phaseId: string): unk
     phase: phase.id,
     objective: phase.objective,
     status: phase.status,
-    completionGate: completion?.decision ?? (phase.status === "active" ? "pending" : "not_started"),
+    completionGate: completion?.decision ?? (phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending" ? "pending" : "not_started"),
     criteria: completion ? summariseCriteria(completion.criteria) : { met: 0, notMet: 0, uncertain: phase.acceptanceCriteria.length, notApplicable: 0 },
     validation: completion?.validation.status ?? (phase.validationResults.length > 0 ? "recorded" : "pending"),
     repairAttempts: `${phase.repairAttempts.length}/${phaseRepairBudget(state)}`,
@@ -568,6 +676,13 @@ function pendingUserAction(state: SequentialWorkflowState): string | null {
   if (state.state === "awaiting_commit_approval") return "Review the commit proposal; LeanRigor will not commit automatically.";
   if (state.state === "blocked") return "Resolve the blocker or cancel the workflow.";
   return null;
+}
+
+function mutationOptions(options: { expectedRevision?: string; owner?: string }) {
+  return {
+    expectedRevision: options.expectedRevision === undefined ? undefined : Number.parseInt(options.expectedRevision, 10),
+    ownerId: options.owner ?? "cli"
+  };
 }
 
 interface CompletionEvidenceFile {
@@ -641,6 +756,16 @@ async function detectInstructions(root: string): Promise<string[]> {
 }
 function capitalise(value: string): string { return value[0].toUpperCase() + value.slice(1); }
 await program.parseAsync().catch((error: unknown) => {
+  if (error instanceof RevisionConflictError) {
+    console.error(JSON.stringify({
+      ok: false,
+      code: error.code,
+      expectedRevision: error.expectedRevision,
+      actualRevision: error.actualRevision
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
   const message = error instanceof Error ? error.message : String(error);
   console.error(`LeanRigor error: ${message}`);
   process.exitCode = 1;
