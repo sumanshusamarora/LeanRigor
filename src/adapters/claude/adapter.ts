@@ -125,8 +125,9 @@ export class ClaudeAdapter implements HarnessAdapter {
       // (e.g. leanrigor-triage.md) the expected content depends on the current config.
       // If the triage model was changed after installation, the hashes will differ even
       // without user edits. In that case the file is skipped (preserved), which is the
-      // safe default. Run `leanrigor uninstall --adapter claude --force-owned-files` to
-      // remove all LeanRigor-owned files regardless of content.
+      // safe default. To remove all LeanRigor-owned files, delete them manually or run
+      // `leanrigor uninstall --adapter claude` after resetting the config to the original
+      // model tier.
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
       if (expected !== undefined && sha256(existing) !== sha256(expected)) {
         // User has modified this owned file (or config changed) — preserve it

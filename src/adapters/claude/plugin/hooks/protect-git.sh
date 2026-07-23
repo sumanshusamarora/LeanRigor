@@ -15,7 +15,7 @@
 # Hook format follows Claude Code settings.json PreToolUse conventions.
 
 set -uo pipefail
-INPUT=$(cat 2>/dev/null) || INPUT=""
+INPUT=$(cat 2>/dev/null || true)
 
 # Fail open if stdin is empty or does not look like tool-input JSON
 if [ -z "$INPUT" ] || ! echo "$INPUT" | grep -qE '"command"[[:space:]]*:'; then
@@ -26,7 +26,8 @@ fi
 if command -v jq >/dev/null 2>&1; then
   CMD=$(echo "$INPUT" | jq -r '.command // empty' 2>/dev/null) || CMD=""
 else
-  # Fallback: extract the value of the "command" key using a tight regex
+  # Fallback (best-effort for environments without jq): extract the value of the "command" key
+  # using a tight regex. This does not handle escaped quotes or deeply nested JSON correctly.
   CMD=$(echo "$INPUT" | grep -oE '"command"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*:[[:space:]]*"\(.*\)"/\1/') || CMD=""
 fi
 
