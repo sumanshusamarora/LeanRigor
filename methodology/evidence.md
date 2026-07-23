@@ -8,6 +8,7 @@ Completion claims must be backed by concrete evidence.
 - Passing command with exit code.
 - Focused regression test.
 - Direct diff inspection.
+- Workspace identity and diff identity for LeanRigor phase worktrees.
 - Observed runtime behavior.
 - Schema or contract validation.
 - Reproducible before/after result.
@@ -40,3 +41,7 @@ remaining uncertainty
 - If a check was skipped, state why, what manual evidence exists, and what risk
   remains.
 - Distinguish verified, inferred, and unverified statements.
+- For workspace-backed phases, include the phase workspace path, base commit,
+  changed files, untracked files, diff hash, and internal transfer commit
+  recorded by LeanRigor. Do not treat phase-level validation as proof that the
+  combined integration worktree passes.

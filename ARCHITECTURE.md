@@ -223,8 +223,53 @@ ownership prevents Standard/Rigorous parallel eligibility. Path matching uses
 normalized repository-relative paths and simple `*`/`**` patterns; it is a
 scheduling safeguard, not semantic isolation.
 
-This implementation does not add parallel agents, worktrees, OpenCode, Codex,
-or CodeGraph.
+## Git workspace isolation
+
+LeanRigor now has a Git substrate for future parallel execution while keeping
+orchestration sequential by default. Workspace setup runs a real Git preflight:
+valid worktree, non-bare repository, readable worktree metadata, current HEAD,
+canonical repository root, original branch or detached-HEAD state, frozen base
+commit, writable LeanRigor workspace root, supported Git worktree operations,
+and no active merge, rebase, cherry-pick, revert, or bisect.
+
+The default workspace root is outside the source tree:
+
+```text
+<repository-parent>/.leanrigor-worktrees/<repository-name>/<workflow-id>/
+```
+
+Each workflow gets one integration worktree from the frozen base commit and one
+dedicated integration branch:
+
+```text
+leanrigor/<workflow-short-id>/integration
+```
+
+Each leased phase may get one isolated phase worktree and phase branch:
+
+```text
+leanrigor/<workflow-short-id>/<phase-id>
+```
+
+Names are sanitized, bounded, persisted, and collision-checked. LeanRigor
+stores sidecar ownership metadata and never deletes a worktree only because its
+name looks familiar.
+
+Transfer strategy is `internal-commit`. After the phase completion gate passes,
+LeanRigor stages relevant tracked and untracked changes in the phase worktree,
+excludes ignored files by default, rejects unsafe symlink escapes, records a
+stable diff hash, and creates an internal commit on the LeanRigor-owned phase
+branch. Internal commits are not pushed and are not presented as the final user
+commit. Integration cherry-picks approved internal commits into the integration
+worktree. Textual conflicts are detected, persisted, and left inspectable; no
+semantic merge or ours/theirs policy is attempted.
+
+Combined validation runs with the integration worktree as `cwd`. Final
+integrated review is eligible only when all completed phases are integrated and
+the current integration head has passing combined validation.
+
+This implementation does not add parallel agents, OpenCode, Codex, or
+CodeGraph.
 
 ## Safety boundaries
 
@@ -232,12 +277,11 @@ The framework prepares but does not automatically execute commits. Pushes, deplo
 
 ## Backlog
 
-1. Worktree isolation and integration workspace
-2. Parallel phase agent orchestration
-3. Integrated merge/conflict repair workflow
-4. Optional CodeGraph inspection provider
-5. OpenCode adapter
-6. Codex adapter
+1. Parallel phase agent orchestration
+2. Integrated conflict-repair and semantic merge workflow
+3. Optional CodeGraph inspection provider
+4. OpenCode adapter
+5. Codex adapter
 
 ## Model-backed triage runtime
 

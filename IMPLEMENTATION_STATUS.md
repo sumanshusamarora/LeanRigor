@@ -21,6 +21,16 @@
   - Explicit phase DAG states (`planned`, `ready`, `leased`, `running`, `completion_pending`, `completed`, repair/review/replan/block states), durable phase leases, stale lease recovery, ready-phase scheduling, ownership metadata, and conservative path-conflict detection.
   - At most one blocking clarification, mode-specific approach gates, explicit plan approval, small cohesive phase sizing, per-phase completion gates, criterion evidence, default sequential execution, validation evidence, scope deviation escalation, bounded per-phase and integrated repair loops, final integrated review, replan/blocked handling, and commit proposals without commit execution.
   - Claude UX helpers for active workflow selection and next-gate summaries so commands can render conversational status without exposing raw CLI syntax during normal use.
+- Git workspace isolation for approved workflows:
+  - Git preflight for valid non-bare worktrees, supported worktree operations, canonical root, HEAD/base capture, original branch or detached HEAD, operation-in-progress detection, readable worktree metadata, writable workspace root, and nested-repository ambiguity.
+  - Dedicated LeanRigor integration worktree and branch per workflow.
+  - Dedicated phase worktree and branch per active leased phase.
+  - Deterministic sanitized branch/path naming with collision checks and persisted ownership metadata.
+  - Internal LeanRigor transfer commits after phase completion gates pass; no final user commit and no push.
+  - Git evidence capture for changed files, relevant untracked files, diff hash, binary indicators, file-mode changes, workspace path, base commit, and workspace head.
+  - Controlled `integrate-phase`, idempotent already-integrated handling, dependency order enforcement, cherry-pick textual conflict detection, and persisted conflict metadata.
+  - `integration-status`, `validate-integration`, conservative `workspace-cleanup`, and idempotent `workspace-recover`.
+  - Final integrated review for workspace-backed workflows requires every completed phase to be integrated and the current integration head to have passing combined validation.
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
   - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
@@ -60,7 +70,7 @@ All commands below were run in this environment on July 23, 2026.
 
 - `npm install` — passed.
 - `npm run typecheck` — passed.
-- `npm test` — passed; 14 test files and 138 tests passed.
+- `npm test` — passed; 15 test files and 143 tests passed.
 - `npm run build` — passed; plugin assets copied to `dist/adapters/claude/plugin/`.
 - `npm run validate:claude-plugin` — passed.
 - `npm run lint` — passed.
@@ -153,8 +163,9 @@ All commands below were run in this environment on July 23, 2026.
   `/leanrigor:start` for marketplace installs and the npm/project-local
   fallback for unqualified `/leanrigor`.
 - OpenCode support remains a roadmap item; no OpenCode adapter was added.
-- Parallel-ready workflow locks, phase leases, DAG scheduling, and ownership conflict checks exist, but this workflow does not autonomously spawn coding agents.
-- Worktree isolation is documented but not implemented.
+- Parallel-ready workflow locks, phase leases, DAG scheduling, ownership
+  conflict checks, and Git worktree isolation exist, but this workflow does not
+  autonomously spawn coding agents.
 - Commit planning remains conservative and requires human review.
 - Hook asset installation and path resolution are tested. Live hook firing in
   Claude Code was not independently triggered during the marketplace smoke.
@@ -165,6 +176,10 @@ All commands below were run in this environment on July 23, 2026.
 
 ## Next implementation step
 
-Run a real authenticated Claude Code before/after behavior smoke for a Standard
-task, then publish/refresh the marketplace plugin from a clean tree after
-validation.
+Next backlog order:
+
+1. Parallel phase agent orchestration
+2. Integrated conflict-repair and semantic merge workflow
+3. Optional CodeGraph inspection provider
+4. OpenCode adapter
+5. Codex adapter

@@ -442,6 +442,53 @@
             "minLength": 1
           },
           "default": []
+        },
+        "workspaceStrategy": {
+          "enum": [
+            "none",
+            "git-worktree"
+          ],
+          "default": "git-worktree"
+        },
+        "workspaceRoot": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "default": null
+        },
+        "retainCompletedPhaseWorktrees": {
+          "type": "boolean",
+          "default": true
+        },
+        "retainIntegrationWorktree": {
+          "type": "boolean",
+          "default": true
+        },
+        "integrationTransferStrategy": {
+          "enum": [
+            "internal-commit"
+          ],
+          "default": "internal-commit"
+        },
+        "workspaceBranchPrefix": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._/-]+$",
+          "default": "leanrigor"
+        },
+        "maxWorkspacePathLength": {
+          "type": "integer",
+          "minimum": 80,
+          "maximum": 1024,
+          "default": 220
+        },
+        "internalCommitSigning": {
+          "enum": [
+            "disabled",
+            "git-config"
+          ],
+          "default": "disabled"
         }
       },
       "additionalProperties": false

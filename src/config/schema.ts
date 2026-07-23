@@ -116,7 +116,15 @@ export const leanRigorConfigSchema = z.object({
     workflowLockTimeoutSeconds: z.number().int().min(1).max(3600).default(30),
     phaseLeaseTimeoutSeconds: z.number().int().min(5).max(86400).default(900),
     writeReadConflictsBlock: z.boolean().default(true),
-    sensitivePaths: z.array(z.string().min(1)).default([])
+    sensitivePaths: z.array(z.string().min(1)).default([]),
+    workspaceStrategy: z.enum(["none", "git-worktree"]).default("git-worktree"),
+    workspaceRoot: z.string().min(1).nullable().default(null),
+    retainCompletedPhaseWorktrees: z.boolean().default(true),
+    retainIntegrationWorktree: z.boolean().default(true),
+    integrationTransferStrategy: z.enum(["internal-commit"]).default("internal-commit"),
+    workspaceBranchPrefix: z.string().regex(/^[A-Za-z0-9._/-]+$/).default("leanrigor"),
+    maxWorkspacePathLength: z.number().int().min(80).max(1024).default(220),
+    internalCommitSigning: z.enum(["disabled", "git-config"]).default("disabled")
   }).prefault({}),
   git: z.object({
     autoCommit: z.boolean().default(false),

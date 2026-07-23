@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path10 = __require("node:path");
+    var path11 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path10.resolve(baseDir, baseName);
+          const localBin = path11.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path10.extname(baseName))) return void 0;
+          if (sourceExt.includes(path11.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path10.resolve(
-            path10.dirname(resolvedScriptPath),
+          executableDir = path11.resolve(
+            path11.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path10.basename(
+            const legacyName = path11.basename(
               this._scriptPath,
-              path10.extname(this._scriptPath)
+              path11.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path10.extname(executableFile));
+        launchWithNode = sourceExt.includes(path11.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path10.basename(filename, path10.extname(filename));
+        this._name = path11.basename(filename, path11.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path11) {
-        if (path11 === void 0) return this._executableDir;
-        this._executableDir = path11;
+      executableDir(path12) {
+        if (path12 === void 0) return this._executableDir;
+        this._executableDir = path12;
         return this;
       }
       /**
@@ -3722,10 +3722,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path10) {
-  if (!path10)
+function getElementAtPath(obj, path11) {
+  if (!path11)
     return obj;
-  return path10.reduce((acc, key) => acc?.[key], obj);
+  return path11.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4053,11 +4053,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path10, issues) {
+function prefixIssues(path11, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path10);
+    iss.path.unshift(path11);
     return iss;
   });
 }
@@ -4274,16 +4274,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path10 = []) => {
+  const processError = (error52, path11 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4310,17 +4310,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path10 = []) => {
+  const processError = (error52, path11 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4352,8 +4352,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path10 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path10) {
+  const path11 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path11) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17783,13 +17783,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path10 = ref.slice(1).split("/").filter(Boolean);
-  if (path10.length === 0) {
+  const path11 = ref.slice(1).split("/").filter(Boolean);
+  if (path11.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path10[0] === defsKey) {
-    const key = path10[1];
+  if (path11[0] === defsKey) {
+    const key = path11[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18677,7 +18677,15 @@ var init_schema = __esm({
         workflowLockTimeoutSeconds: external_exports.number().int().min(1).max(3600).default(30),
         phaseLeaseTimeoutSeconds: external_exports.number().int().min(5).max(86400).default(900),
         writeReadConflictsBlock: external_exports.boolean().default(true),
-        sensitivePaths: external_exports.array(external_exports.string().min(1)).default([])
+        sensitivePaths: external_exports.array(external_exports.string().min(1)).default([]),
+        workspaceStrategy: external_exports.enum(["none", "git-worktree"]).default("git-worktree"),
+        workspaceRoot: external_exports.string().min(1).nullable().default(null),
+        retainCompletedPhaseWorktrees: external_exports.boolean().default(true),
+        retainIntegrationWorktree: external_exports.boolean().default(true),
+        integrationTransferStrategy: external_exports.enum(["internal-commit"]).default("internal-commit"),
+        workspaceBranchPrefix: external_exports.string().regex(/^[A-Za-z0-9._/-]+$/).default("leanrigor"),
+        maxWorkspacePathLength: external_exports.number().int().min(80).max(1024).default(220),
+        internalCommitSigning: external_exports.enum(["disabled", "git-config"]).default("disabled")
       }).prefault({}),
       git: external_exports.object({
         autoCommit: external_exports.boolean().default(false),
@@ -18774,8 +18782,8 @@ var {
 // src/cli/index.ts
 init_load();
 init_defaults();
-import { mkdir as mkdir5, readdir as readdir2, readFile as readFile8, writeFile as writeFile4 } from "node:fs/promises";
-import path9 from "node:path";
+import { mkdir as mkdir6, readdir as readdir3, readFile as readFile9, writeFile as writeFile5 } from "node:fs/promises";
+import path10 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
@@ -19440,10 +19448,11 @@ init_schema();
 
 // src/core/flow.ts
 init_zod();
+init_defaults();
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir4, readFile as readFile7 } from "node:fs/promises";
+import { mkdir as mkdir5, readFile as readFile8 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path8 from "node:path";
+import path9 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -19463,138 +19472,15 @@ function commitCommands(proposal) {
   return [`git add ${quoted}`, `git commit -m '${proposal.message.replaceAll("'", "'\\''")}'`];
 }
 
-// src/core/workflow-lock.ts
-import { open as open2, readFile as readFile6, mkdir as mkdir3, rm as rm2, writeFile as writeFile3 } from "node:fs/promises";
-import os from "node:os";
+// src/core/git-workspace.ts
+import { createHash as createHash2 } from "node:crypto";
+import { execFile } from "node:child_process";
+import { access as access2, constants, lstat, mkdir as mkdir3, readFile as readFile5, readdir as readdir2, readlink, realpath, stat, writeFile as writeFile3 } from "node:fs/promises";
 import path6 from "node:path";
-
-// src/core/workflow-store.ts
-import { open, readFile as readFile5, rename, rm } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import path5 from "node:path";
-var RevisionConflictError = class extends Error {
-  constructor(expectedRevision, actualRevision) {
-    super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
-    this.expectedRevision = expectedRevision;
-    this.actualRevision = actualRevision;
-  }
-  expectedRevision;
-  actualRevision;
-  code = "revision_conflict";
-};
-async function atomicWriteJson(file2, value) {
-  const dir = path5.dirname(file2);
-  const temp = path5.join(dir, `.${path5.basename(file2)}.${process.pid}.${randomUUID()}.tmp`);
-  const handle = await open(temp, "wx");
-  try {
-    await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  try {
-    await rename(temp, file2);
-    await fsyncDirectory(dir);
-  } catch (error51) {
-    await rm(temp, { force: true }).catch(() => void 0);
-    throw error51;
-  }
-}
-async function fsyncDirectory(dir) {
-  try {
-    const handle = await open(dir, "r");
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  } catch {
-  }
-}
-
-// src/core/workflow-lock.ts
-var WorkflowLockBusyError = class extends Error {
-  constructor(lock) {
-    super(`Workflow ${lock.workflowId} is locked by ${lock.ownerId} for ${lock.operation} until ${lock.expiresAt}.`);
-    this.lock = lock;
-  }
-  lock;
-  code = "workflow_lock_busy";
-};
-var WorkflowLockOwnershipError = class extends Error {
-  code = "workflow_lock_owner_mismatch";
-};
-function lockPath(root, workflowId2) {
-  return path6.join(path6.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
-}
-async function acquireWorkflowLock(options) {
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  const lock = buildLock(options, now);
-  const file2 = lockPath(options.root, options.workflowId);
-  await mkdir3(path6.dirname(file2), { recursive: true });
-  try {
-    const handle = await open2(file2, "wx");
-    try {
-      await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    return lock;
-  } catch (error51) {
-    if (error51.code !== "EEXIST") throw error51;
-  }
-  const existing = await readWorkflowLock(options.root, options.workflowId);
-  if (!existing) return acquireWorkflowLock(options);
-  if (Date.parse(existing.expiresAt) > now.getTime()) throw new WorkflowLockBusyError(existing);
-  await rm2(file2, { force: true });
-  try {
-    const handle = await open2(file2, "wx");
-    try {
-      await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    return lock;
-  } catch (error51) {
-    if (error51.code === "EEXIST") {
-      const current = await readWorkflowLock(options.root, options.workflowId);
-      if (current) throw new WorkflowLockBusyError(current);
-    }
-    throw error51;
-  }
-}
-async function releaseWorkflowLock(root, workflowId2, ownerId) {
-  const existing = await readWorkflowLock(root, workflowId2);
-  if (!existing) return;
-  if (existing.ownerId !== ownerId) throw new WorkflowLockOwnershipError(`Workflow lock is owned by ${existing.ownerId}, not ${ownerId}.`);
-  await rm2(lockPath(root, workflowId2), { force: true });
-}
-async function readWorkflowLock(root, workflowId2) {
-  try {
-    return JSON.parse(await readFile6(lockPath(root, workflowId2), "utf8"));
-  } catch (error51) {
-    if (error51.code === "ENOENT") return void 0;
-    throw error51;
-  }
-}
-function buildLock(options, now) {
-  return {
-    workflowId: options.workflowId,
-    ownerId: options.ownerId,
-    ownerType: options.ownerType ?? "cli",
-    operation: options.operation,
-    acquiredAt: now.toISOString(),
-    heartbeatAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + options.timeoutSeconds * 1e3).toISOString(),
-    processId: process.pid,
-    host: os.hostname()
-  };
-}
+import { promisify } from "node:util";
 
 // src/core/ownership.ts
-import path7 from "node:path";
+import path5 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -19611,7 +19497,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path7.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path5.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -19838,8 +19724,819 @@ function unique2(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+// src/core/git-workspace.ts
+var execFileAsync = promisify(execFile);
+var OWNERSHIP_VERSION = 1;
+var MAX_GIT_OUTPUT = 64 * 1024 * 1024;
+var GitWorkspaceError = class extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.code = code;
+    this.details = details;
+  }
+  code;
+  details;
+};
+async function preflightGitRepository(root, config2) {
+  const warnings = [];
+  let repositoryRoot;
+  try {
+    repositoryRoot = await canonical((await git(root, ["rev-parse", "--show-toplevel"])).trim());
+  } catch {
+    return { ok: false, code: "not_git_worktree", message: "Path is not inside a Git worktree." };
+  }
+  const bare = (await git(repositoryRoot, ["rev-parse", "--is-bare-repository"]).catch(() => "true")).trim();
+  if (bare === "true") return { ok: false, code: "bare_repository", repositoryRoot };
+  const versionText = (await git(repositoryRoot, ["--version"]).catch(() => "")).trim();
+  if (!gitVersionSupportsWorktree(versionText)) {
+    return { ok: false, code: "unsupported_git_version", repositoryRoot, message: versionText };
+  }
+  const gitCommonDir = await resolveGitPath(repositoryRoot, (await git(repositoryRoot, ["rev-parse", "--git-common-dir"])).trim());
+  const gitDir = await resolveGitPath(repositoryRoot, (await git(repositoryRoot, ["rev-parse", "--git-dir"])).trim());
+  const operation = await gitOperationInProgress(gitCommonDir, gitDir);
+  if (operation) return { ok: false, code: "git_operation_in_progress", operation, repositoryRoot, gitCommonDir };
+  let originalHead;
+  try {
+    originalHead = (await git(repositoryRoot, ["rev-parse", "--verify", "HEAD"])).trim();
+  } catch {
+    return { ok: false, code: "missing_head", repositoryRoot, gitCommonDir };
+  }
+  const originalBranch = (await git(repositoryRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => "")).trim() || void 0;
+  const worktreeMetadataReadable = await git(repositoryRoot, ["worktree", "list", "--porcelain"]).then(() => true).catch(() => false);
+  if (!worktreeMetadataReadable) return { ok: false, code: "worktree_metadata_unreadable", repositoryRoot, gitCommonDir };
+  const nested = await findNestedRepositories(repositoryRoot);
+  if (nested.length > 0) {
+    return { ok: false, code: "nested_repository_ambiguous", repositoryRoot, gitCommonDir, message: nested.join(", ") };
+  }
+  const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config2);
+  if (isPathInside(workspaceRoot, repositoryRoot) && !isPathInside(workspaceRoot, gitCommonDir)) {
+    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot };
+  }
+  if (workspaceRoot.length > config2.execution.maxWorkspacePathLength) {
+    return { ok: false, code: "workspace_path_too_long", repositoryRoot, gitCommonDir, workspaceRoot };
+  }
+  const writable = await mkdir3(workspaceRoot, { recursive: true }).then(() => access2(workspaceRoot, constants.W_OK)).then(() => true).catch(() => false);
+  if (!writable) return { ok: false, code: "workspace_root_not_writable", repositoryRoot, gitCommonDir, workspaceRoot };
+  const dirty = (await git(repositoryRoot, ["status", "--porcelain=v1", "--untracked-files=all"])).trim();
+  if (dirty) warnings.push("User working tree has local changes outside the LeanRigor workflow baseline.");
+  return {
+    ok: true,
+    repositoryRoot,
+    gitCommonDir,
+    baseCommit: originalHead,
+    originalHead,
+    originalBranch,
+    workspaceRoot,
+    warnings
+  };
+}
+async function ensureIntegrationWorkspace(state, config2) {
+  if (config2.execution.workspaceStrategy === "none") {
+    throw new GitWorkspaceError("workspace_strategy_disabled", "Git worktree workspaces are disabled by configuration.");
+  }
+  const preflight = await requirePreflight(state.root, config2);
+  const existing = state.git;
+  if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
+  const names = workspaceNames(state.id, void 0, config2);
+  const workflowRoot = path6.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path6.join(workflowRoot, "integration");
+  ensurePathLength(integrationPath, config2);
+  await ensurePathAvailable(integrationPath, state.id, "integration");
+  const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
+  const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
+  await mkdir3(path6.dirname(integrationPath), { recursive: true });
+  await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
+  const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
+  const now = timestamp();
+  await writeOwnershipMetadata(workflowRoot, {
+    version: OWNERSHIP_VERSION,
+    generatedBy: "leanrigor",
+    workflowId: state.id,
+    workspaceType: "integration",
+    path: integrationPath,
+    branch: integrationBranch,
+    repositoryRoot: preflight.repositoryRoot,
+    createdAt: now
+  });
+  const context = existing?.context ?? {
+    repositoryRoot: preflight.repositoryRoot,
+    gitCommonDir: preflight.gitCommonDir,
+    baseCommit: preflight.baseCommit,
+    originalHead: preflight.originalHead,
+    originalBranch: preflight.originalBranch,
+    createdAt: now,
+    integrationBranch,
+    integrationWorktreePath: integrationPath,
+    workspaceRoot: preflight.workspaceRoot,
+    branchPrefix: config2.execution.workspaceBranchPrefix,
+    transferStrategy: "internal-commit"
+  };
+  return {
+    context,
+    integration: {
+      path: integrationPath,
+      branch: integrationBranch,
+      baseCommit: context.baseCommit,
+      headCommit,
+      status: "ready",
+      integratedPhaseIds: existing?.integration.integratedPhaseIds ?? [],
+      conflictingPhaseIds: existing?.integration.conflictingPhaseIds ?? [],
+      conflictedFiles: existing?.integration.conflictedFiles ?? []
+    },
+    phaseWorkspaces: existing?.phaseWorkspaces ?? {},
+    integrationValidation: existing?.integrationValidation
+  };
+}
+async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
+  if (!state.plan) throw new GitWorkspaceError("missing_plan", "Cannot create a phase workspace without an approved plan.");
+  const gitState = state.git ?? await ensureIntegrationWorkspace(state, config2);
+  const phase2 = state.plan.phases.find((candidate) => candidate.id === phaseId);
+  if (!phase2) throw new GitWorkspaceError("unknown_phase", `Unknown phase: ${phaseId}`);
+  const lease = state.phaseLeases[phaseId];
+  if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
+    throw new GitWorkspaceError("phase_workspace_requires_lease", `Phase ${phaseId} workspace requires an active lease held by ${ownerId}.`);
+  }
+  if (!["leased", "running"].includes(phase2.status)) {
+    throw new GitWorkspaceError("phase_not_leased", `Phase ${phaseId} is ${phase2.status}; only a leased phase can create a workspace.`);
+  }
+  const existing = gitState.phaseWorkspaces[phaseId];
+  if (existing && await ownedWorktreeExists(existing.path, state.id, "phase", phaseId)) return gitState;
+  const missingDependencies = dependencyIds(phase2).filter((dependency) => !gitState.integration.integratedPhaseIds.includes(dependency));
+  if (missingDependencies.length > 0) {
+    throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
+  }
+  const names = workspaceNames(state.id, phaseId, config2);
+  const workflowRoot = path6.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path6.join(workflowRoot, "phases", names.phasePathSegment);
+  ensurePathLength(phasePath, config2);
+  await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
+  const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
+  await mkdir3(path6.dirname(phasePath), { recursive: true });
+  await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
+  const now = timestamp();
+  await writeOwnershipMetadata(workflowRoot, {
+    version: OWNERSHIP_VERSION,
+    generatedBy: "leanrigor",
+    workflowId: state.id,
+    workspaceType: "phase",
+    phaseId,
+    path: phasePath,
+    branch: names.phaseBranch,
+    repositoryRoot: gitState.context.repositoryRoot,
+    createdAt: now
+  });
+  const workspace = {
+    phaseId,
+    leaseOwnerId: ownerId,
+    path: phasePath,
+    branch: names.phaseBranch,
+    baseCommit: gitState.integration.headCommit,
+    createdAt: now,
+    updatedAt: now,
+    status: "active"
+  };
+  return {
+    ...gitState,
+    phaseWorkspaces: { ...gitState.phaseWorkspaces, [phaseId]: workspace }
+  };
+}
+async function captureApprovedPhaseChange(state, phase2, ownerId, config2) {
+  if (!state.git) return void 0;
+  const workspace = state.git.phaseWorkspaces[phase2.id];
+  if (!workspace) throw new GitWorkspaceError("phase_workspace_missing", `Phase ${phase2.id} has no isolated workspace.`);
+  if (workspace.leaseOwnerId !== ownerId) {
+    throw new GitWorkspaceError("phase_workspace_owner_mismatch", `Phase workspace is owned by ${workspace.leaseOwnerId}, not ${ownerId}.`);
+  }
+  if (!await ownedWorktreeExists(workspace.path, state.id, "phase", phase2.id)) {
+    throw new GitWorkspaceError("phase_workspace_unowned", `Phase workspace ownership metadata is missing or invalid: ${workspace.path}`);
+  }
+  const branch = (await git(workspace.path, ["branch", "--show-current"])).trim();
+  if (branch !== workspace.branch) throw new GitWorkspaceError("phase_workspace_branch_mismatch", `Phase workspace is on ${branch}, expected ${workspace.branch}.`);
+  const currentHead = (await git(workspace.path, ["rev-parse", "HEAD"])).trim();
+  const gitDir = await resolveGitPath(workspace.path, (await git(workspace.path, ["rev-parse", "--git-dir"])).trim());
+  const commonDir = await resolveGitPath(workspace.path, (await git(workspace.path, ["rev-parse", "--git-common-dir"])).trim());
+  const operation = await gitOperationInProgress(commonDir, gitDir);
+  if (operation) throw new GitWorkspaceError("git_operation_in_progress", `Phase workspace has an active Git operation: ${operation}`, { operation });
+  const statusEntries = parsePorcelain(await git(workspace.path, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]));
+  const untrackedFiles = statusEntries.filter((entry) => entry.index === "?" || entry.workingTree === "?").map((entry) => entry.path).sort();
+  await git(workspace.path, ["add", "-A", "--", "."]);
+  const changedFiles = splitNul(await git(workspace.path, ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMRTD"])).sort();
+  await rejectUnsafeSymlinks(workspace.path, changedFiles);
+  const diff = await git(workspace.path, ["diff", "--cached", "--binary", "--full-index"], { maxBuffer: MAX_GIT_OUTPUT });
+  const diffHash = createHash2("sha256").update(workspace.baseCommit).update("\0").update(diff).digest("hex");
+  const binaryFiles = parseBinaryFiles(await git(workspace.path, ["diff", "--cached", "--numstat", "-z"]));
+  const fileModeChanges = parseModeChanges(await git(workspace.path, ["diff", "--cached", "--summary"]));
+  if (changedFiles.length === 0) {
+    return {
+      workspacePath: workspace.path,
+      baseCommit: workspace.baseCommit,
+      workspaceHead: currentHead,
+      changedFiles: [],
+      diffHash,
+      untrackedFiles: [],
+      transferStrategy: "internal-commit",
+      binaryFiles: [],
+      fileModeChanges: []
+    };
+  }
+  const commitArgs = [
+    "-c",
+    "user.name=LeanRigor",
+    "-c",
+    "user.email=leanrigor@local",
+    ...config2.execution.internalCommitSigning === "disabled" ? ["-c", "commit.gpgsign=false"] : [],
+    "commit",
+    "-m",
+    `leanrigor: internal phase ${phase2.id}`,
+    "-m",
+    `Workflow: ${state.id}`,
+    "-m",
+    "Internal transfer commit only; not the final user commit."
+  ];
+  await git(workspace.path, commitArgs, { maxBuffer: MAX_GIT_OUTPUT });
+  const workspaceHead = (await git(workspace.path, ["rev-parse", "HEAD"])).trim();
+  return {
+    workspacePath: workspace.path,
+    baseCommit: workspace.baseCommit,
+    workspaceHead,
+    changedFiles,
+    diffHash,
+    untrackedFiles,
+    validationCommitOrPatch: workspaceHead,
+    transferStrategy: "internal-commit",
+    binaryFiles,
+    fileModeChanges
+  };
+}
+async function inspectPhaseWorkspaceChanges(state, phase2, ownerId) {
+  if (!state.git) return void 0;
+  const workspace = state.git.phaseWorkspaces[phase2.id];
+  if (!workspace) throw new GitWorkspaceError("phase_workspace_missing", `Phase ${phase2.id} has no isolated workspace.`);
+  if (workspace.leaseOwnerId !== ownerId) {
+    throw new GitWorkspaceError("phase_workspace_owner_mismatch", `Phase workspace is owned by ${workspace.leaseOwnerId}, not ${ownerId}.`);
+  }
+  const statusEntries = parsePorcelain(await git(workspace.path, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]));
+  const untrackedFiles = statusEntries.filter((entry) => entry.index === "?" || entry.workingTree === "?").map((entry) => entry.path).sort();
+  await git(workspace.path, ["add", "-A", "--", "."]);
+  try {
+    const changedFiles = splitNul(await git(workspace.path, ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMRTD"])).sort();
+    await rejectUnsafeSymlinks(workspace.path, changedFiles);
+    const diff = await git(workspace.path, ["diff", "--cached", "--binary", "--full-index"], { maxBuffer: MAX_GIT_OUTPUT });
+    return {
+      changedFiles,
+      diffHash: createHash2("sha256").update(workspace.baseCommit).update("\0").update(diff).digest("hex"),
+      untrackedFiles,
+      binaryFiles: parseBinaryFiles(await git(workspace.path, ["diff", "--cached", "--numstat", "-z"])),
+      fileModeChanges: parseModeChanges(await git(workspace.path, ["diff", "--cached", "--summary"]))
+    };
+  } finally {
+    await git(workspace.path, ["reset", "-q", "--mixed", "HEAD", "--"]).catch(() => void 0);
+  }
+}
+async function applyApprovedPhaseToIntegration(state, phaseId) {
+  if (!state.git) throw new GitWorkspaceError("workspace_not_initialized", "Workflow has no Git workspace state.");
+  if (!state.plan) throw new GitWorkspaceError("missing_plan", "Cannot integrate without a plan.");
+  const phase2 = state.plan.phases.find((candidate) => candidate.id === phaseId);
+  if (!phase2) throw new GitWorkspaceError("unknown_phase", `Unknown phase: ${phaseId}`);
+  if (phase2.status !== "completed" || !phase2.completion?.gitEvidence) {
+    return { state, result: { ok: false, code: "integration_rejected", phaseId, nextAction: "complete_phase_gate" } };
+  }
+  if (state.git.integration.integratedPhaseIds.includes(phaseId)) {
+    return { state, result: { ok: true, code: "already_integrated", phaseId, integrationHead: state.git.integration.headCommit } };
+  }
+  const missingDependencies = dependencyIds(phase2).filter((dependency) => !state.git.integration.integratedPhaseIds.includes(dependency));
+  if (missingDependencies.length > 0) {
+    throw new GitWorkspaceError("integration_order_violation", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
+  }
+  const evidence = phase2.completion.gitEvidence;
+  const workspace = state.git.phaseWorkspaces[phaseId];
+  if (!workspace || workspace.path !== evidence.workspacePath) throw new GitWorkspaceError("phase_workspace_evidence_mismatch", "Phase workspace does not match approved Git evidence.");
+  if (evidence.validationCommitOrPatch) {
+    const actual = (await git(workspace.path, ["rev-parse", "HEAD"])).trim();
+    if (actual !== evidence.validationCommitOrPatch) throw new GitWorkspaceError("phase_diff_identity_mismatch", "Phase workspace HEAD no longer matches approved Git evidence.");
+  }
+  await requireCleanIntegrationWorkspace(state.git);
+  const next = structuredClone(state);
+  const gitState = next.git;
+  gitState.integration.status = "integration_pending";
+  if (!evidence.validationCommitOrPatch) {
+    gitState.integration.integratedPhaseIds = stableUnique([...gitState.integration.integratedPhaseIds, phaseId]);
+    gitState.phaseWorkspaces[phaseId] = { ...gitState.phaseWorkspaces[phaseId], status: "integrated", updatedAt: timestamp() };
+    gitState.integration.status = "ready";
+    gitState.integrationValidation = void 0;
+    return { state: next, result: { ok: true, code: "integrated", phaseId, integrationHead: gitState.integration.headCommit } };
+  }
+  try {
+    await git(gitState.integration.path, ["cherry-pick", evidence.validationCommitOrPatch], { maxBuffer: MAX_GIT_OUTPUT });
+  } catch {
+    const conflictingFiles = splitLines(await git(gitState.integration.path, ["diff", "--name-only", "--diff-filter=U"]).catch(() => "")).sort();
+    gitState.integration.status = "blocked";
+    gitState.integration.conflictingPhaseIds = stableUnique([...gitState.integration.conflictingPhaseIds, phaseId]);
+    gitState.integration.conflictedFiles = stableUnique([...gitState.integration.conflictedFiles, ...conflictingFiles]);
+    gitState.phaseWorkspaces[phaseId] = { ...gitState.phaseWorkspaces[phaseId], status: "conflicted", updatedAt: timestamp() };
+    return {
+      state: next,
+      result: {
+        ok: false,
+        code: "integration_conflict",
+        phaseId,
+        conflictingFiles,
+        nextAction: "create_conflict_repair"
+      }
+    };
+  }
+  const integrationHead = (await git(gitState.integration.path, ["rev-parse", "HEAD"])).trim();
+  gitState.integration.headCommit = integrationHead;
+  gitState.integration.status = "ready";
+  gitState.integration.integratedPhaseIds = stableUnique([...gitState.integration.integratedPhaseIds, phaseId]);
+  gitState.integration.conflictingPhaseIds = gitState.integration.conflictingPhaseIds.filter((id) => id !== phaseId);
+  gitState.phaseWorkspaces[phaseId] = { ...gitState.phaseWorkspaces[phaseId], status: "integrated", updatedAt: timestamp() };
+  gitState.integrationValidation = void 0;
+  return { state: next, result: { ok: true, code: "integrated", phaseId, integrationHead } };
+}
+function integrationStatus(state) {
+  const integrated = state.git?.integration.integratedPhaseIds ?? [];
+  const conflicted = state.git?.integration.conflictingPhaseIds ?? [];
+  const completed = state.plan?.phases.filter((phase2) => phase2.status === "completed").map((phase2) => phase2.id) ?? [];
+  const pending = completed.filter((id) => !integrated.includes(id) && !conflicted.includes(id));
+  const blocked = state.plan ? pending.filter((id) => dependencyIds(state.plan.phases.find((phase2) => phase2.id === id)).some((dependency) => conflicted.includes(dependency))) : [];
+  const validation = state.git?.integrationValidation;
+  const finalReviewEligible = Boolean(
+    state.git && completed.length > 0 && pending.length === 0 && conflicted.length === 0 && state.plan?.phases.every((phase2) => phase2.status === "completed") && validation?.status === "passed" && validation.integrationCommit === state.git.integration.headCommit
+  );
+  return {
+    workflowId: state.id,
+    integrationHead: state.git?.integration.headCommit,
+    integratedPhaseIds: integrated,
+    pendingPhaseIds: pending,
+    conflictedPhaseIds: conflicted,
+    blockedPhaseIds: blocked,
+    validation,
+    finalReviewEligible
+  };
+}
+async function runIntegrationValidation(state) {
+  if (!state.git) throw new GitWorkspaceError("workspace_not_initialized", "Workflow has no Git workspace state.");
+  if (!state.plan) throw new GitWorkspaceError("missing_plan", "Cannot validate integration without a plan.");
+  const status = integrationStatus(state);
+  if (status.pendingPhaseIds.length > 0 || status.conflictedPhaseIds.length > 0) {
+    throw new GitWorkspaceError("integration_not_ready_for_validation", "All completed phases must be integrated before combined validation.", status);
+  }
+  await requireCleanIntegrationWorkspace(state.git);
+  const startedAt = timestamp();
+  const commands = stableUnique(state.plan.phases.flatMap((phase2) => phase2.validationCommands));
+  const evidence = [];
+  if (commands.length === 0) {
+    evidence.push({
+      command: "combined validation",
+      exitStatus: null,
+      result: "No workflow-level validation commands were declared.",
+      status: "skipped",
+      skipped: true,
+      skippedReason: "No validation commands declared by the approved plan.",
+      timestamp: timestamp()
+    });
+  } else {
+    for (const command of commands) {
+      const result = await runShellCommand(command, state.git.integration.path);
+      evidence.push({
+        command,
+        exitStatus: result.exitStatus,
+        result: result.output.slice(0, 4e3),
+        status: result.exitStatus === 0 ? "passed" : "failed",
+        skipped: false,
+        timestamp: timestamp()
+      });
+    }
+  }
+  const failed = evidence.some((item) => item.status === "failed");
+  const skippedOnly = evidence.length > 0 && evidence.every((item) => item.status === "skipped");
+  const next = structuredClone(state);
+  next.git.integrationValidation = {
+    integrationCommit: next.git.integration.headCommit,
+    commands: evidence,
+    startedAt,
+    completedAt: timestamp(),
+    status: failed ? "failed" : skippedOnly ? "skipped" : "passed"
+  };
+  next.git.integration.status = failed ? "needs_repair" : "ready_for_final_review";
+  return next;
+}
+async function cleanupOwnedWorkspaces(state, mode2) {
+  const report = { workflowId: state.id, mode: mode2, removedWorktrees: [], retainedWorktrees: [], removedBranches: [], needsReview: [] };
+  if (!state.git) return report;
+  const phases = Object.values(state.git.phaseWorkspaces);
+  for (const workspace of phases) {
+    const owned = await ownedWorktreeExists(workspace.path, state.id, "phase", workspace.phaseId);
+    if (!owned) {
+      report.retainedWorktrees.push({ path: workspace.path, reason: "ownership metadata missing or mismatched" });
+      report.needsReview.push(workspace.path);
+      continue;
+    }
+    const dirty = await worktreeDirty(workspace.path);
+    if (dirty) {
+      report.retainedWorktrees.push({ path: workspace.path, reason: "workspace contains unrecorded changes" });
+      continue;
+    }
+    if (mode2 === "archive") {
+      report.retainedWorktrees.push({ path: workspace.path, reason: "archive mode preserves owned worktrees in place for manual archival" });
+      continue;
+    }
+    const phase2 = state.plan?.phases.find((candidate) => candidate.id === workspace.phaseId);
+    if (mode2 === "safe" && (workspace.status !== "integrated" || phase2?.status !== "completed")) {
+      report.retainedWorktrees.push({ path: workspace.path, reason: "phase is not integrated" });
+      continue;
+    }
+    await git(state.git.context.repositoryRoot, ["worktree", "remove", workspace.path]).catch((error51) => {
+      throw new GitWorkspaceError("workspace_remove_failed", String(error51), { path: workspace.path });
+    });
+    report.removedWorktrees.push(workspace.path);
+    if (workspace.status === "integrated") {
+      await git(state.git.context.repositoryRoot, ["branch", "-D", workspace.branch]).then(() => report.removedBranches.push(workspace.branch)).catch(() => void 0);
+    }
+  }
+  report.retainedWorktrees.push({ path: state.git.integration.path, reason: "integration workspace retained by default" });
+  return report;
+}
+async function workspaceStatus(state, config2) {
+  return {
+    workflowId: state.id,
+    git: state.git,
+    preflight: await preflightGitRepository(state.root, config2),
+    phaseWorkspaces: Object.values(state.git?.phaseWorkspaces ?? {})
+  };
+}
+async function recoverWorkspaceState(state) {
+  const next = structuredClone(state);
+  const facts = [];
+  const needsReview = [];
+  if (!next.git) return { workflowId: next.id, facts: ["No Git workspace state is persisted."], needsReview, state: next };
+  for (const workspace of Object.values(next.git.phaseWorkspaces)) {
+    const exists = await pathExists(workspace.path);
+    const owned = exists && await ownedWorktreeExists(workspace.path, next.id, "phase", workspace.phaseId);
+    if (!exists) {
+      facts.push(`Phase workspace missing: ${workspace.phaseId}`);
+      workspace.status = "abandoned";
+      needsReview.push(workspace.phaseId);
+      continue;
+    }
+    if (!owned) {
+      facts.push(`Phase workspace ownership uncertain: ${workspace.phaseId}`);
+      workspace.status = "needs_repair";
+      needsReview.push(workspace.phaseId);
+      continue;
+    }
+    const lease = next.phaseLeases[workspace.phaseId];
+    if (lease && !lease.releasedAt && Date.parse(lease.expiresAt) <= Date.now() && await worktreeDirty(workspace.path)) {
+      const phase2 = next.plan?.phases.find((candidate) => candidate.id === workspace.phaseId);
+      if (phase2 && phase2.status !== "completed") phase2.status = "needs_review";
+      workspace.status = "abandoned";
+      facts.push(`Expired lease preserved with workspace changes: ${workspace.phaseId}`);
+      needsReview.push(workspace.phaseId);
+    }
+  }
+  if (!await ownedWorktreeExists(next.git.integration.path, next.id, "integration")) {
+    facts.push("Integration workspace missing or ownership uncertain.");
+    next.git.integration.status = "needs_review";
+    needsReview.push("integration");
+  }
+  return { workflowId: next.id, facts, needsReview, state: next };
+}
+async function requirePreflight(root, config2) {
+  const preflight = await preflightGitRepository(root, config2);
+  if (!preflight.ok) throw new GitWorkspaceError(preflight.code ?? "git_preflight_failed", preflight.message ?? "Git preflight failed.", preflight);
+  return preflight;
+}
+async function requireCleanIntegrationWorkspace(gitState) {
+  const gitDir = await resolveGitPath(gitState.integration.path, (await git(gitState.integration.path, ["rev-parse", "--git-dir"])).trim());
+  const commonDir = await resolveGitPath(gitState.integration.path, (await git(gitState.integration.path, ["rev-parse", "--git-common-dir"])).trim());
+  const operation = await gitOperationInProgress(commonDir, gitDir);
+  if (operation) throw new GitWorkspaceError("git_operation_in_progress", `Integration workspace has an active Git operation: ${operation}`, { operation });
+  if (await worktreeDirty(gitState.integration.path)) {
+    throw new GitWorkspaceError("integration_workspace_dirty", "Integration workspace has uncommitted changes and needs review.");
+  }
+}
+async function addWorktree(repositoryRoot, worktreePath, branch, startPoint, createBranch) {
+  const args = createBranch ? ["worktree", "add", "-b", branch, worktreePath, startPoint] : ["worktree", "add", worktreePath, startPoint];
+  await git(repositoryRoot, args, { maxBuffer: MAX_GIT_OUTPUT });
+}
+async function ensureBranchAvailable(repositoryRoot, branch, alreadyOwned) {
+  const exists = await git(repositoryRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).then(() => true).catch(() => false);
+  if (exists && !alreadyOwned) throw new GitWorkspaceError("branch_collision", `Branch already exists and is not recorded as LeanRigor-owned: ${branch}`, { branch });
+  return exists;
+}
+async function ensurePathAvailable(targetPath, workflowId2, workspaceType, phaseId) {
+  if (!await pathExists(targetPath)) return;
+  if (await ownedWorktreeExists(targetPath, workflowId2, workspaceType, phaseId)) return;
+  throw new GitWorkspaceError("workspace_path_collision", `Workspace path already exists and is not verified as LeanRigor-owned: ${targetPath}`, { path: targetPath });
+}
+function ensurePathLength(targetPath, config2) {
+  if (targetPath.length > config2.execution.maxWorkspacePathLength) {
+    throw new GitWorkspaceError("workspace_path_too_long", `Workspace path exceeds maxWorkspacePathLength: ${targetPath}`, { path: targetPath });
+  }
+}
+function workspaceNames(workflowId2, phaseId, config2) {
+  const prefix = sanitizeRefSegment(config2.execution.workspaceBranchPrefix).slice(0, 48) || "leanrigor";
+  const workflow = sanitizeRefSegment(workflowId2).slice(0, 32);
+  const integrationBranch = `${prefix}/${workflow}/integration`;
+  if (!phaseId) return { integrationBranch };
+  const phase2 = sanitizeRefSegment(phaseId).slice(0, 64);
+  return { integrationBranch, phaseBranch: `${prefix}/${workflow}/${phase2}`, phasePathSegment: phase2 };
+}
+function sanitizeRefSegment(value) {
+  return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
+}
+function resolveWorkspaceRoot(repositoryRoot, config2) {
+  if (config2.execution.workspaceRoot) return path6.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  return path6.join(path6.dirname(repositoryRoot), ".leanrigor-worktrees", path6.basename(repositoryRoot));
+}
+async function writeOwnershipMetadata(workflowRoot, metadata) {
+  const dir = path6.join(workflowRoot, ".leanrigor-owned-worktrees");
+  await mkdir3(dir, { recursive: true });
+  const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
+  await writeFile3(path6.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+}
+async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
+  const workflowRoot = workspaceType === "integration" ? path6.dirname(worktreePath) : path6.dirname(path6.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path6.basename(worktreePath))}.json`;
+  const file2 = path6.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  try {
+    const parsed = JSON.parse(await readFile5(file2, "utf8"));
+    if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
+    if (phaseId && parsed.phaseId !== phaseId) return void 0;
+    if (path6.resolve(parsed.path) !== path6.resolve(worktreePath)) return void 0;
+    return parsed;
+  } catch {
+    return void 0;
+  }
+}
+async function ownedWorktreeExists(worktreePath, workflowId2, workspaceType, phaseId) {
+  if (!await pathExists(worktreePath)) return false;
+  return Boolean(await readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId));
+}
+async function worktreeDirty(worktreePath) {
+  const statusText = await git(worktreePath, ["status", "--porcelain=v1", "--untracked-files=all"]).catch(() => "dirty");
+  return statusText.trim().length > 0;
+}
+async function git(cwd, args, options = {}) {
+  const { stdout } = await execFileAsync("git", args, { cwd, encoding: "utf8", maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024 });
+  return stdout;
+}
+async function runShellCommand(command, cwd) {
+  try {
+    const { stdout, stderr } = await execFileAsync("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
+    return { exitStatus: 0, output: `${stdout}${stderr}`.trim() || "Command completed successfully." };
+  } catch (error51) {
+    const failed = error51;
+    return { exitStatus: typeof failed.code === "number" ? failed.code : 1, output: `${failed.stdout ?? ""}${failed.stderr ?? failed.message ?? ""}`.trim() };
+  }
+}
+async function gitOperationInProgress(commonDir, gitDir) {
+  const checks = [
+    [path6.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path6.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path6.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path6.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path6.join(gitDir, "rebase-merge"), "rebase"],
+    [path6.join(gitDir, "rebase-apply"), "rebase"],
+    [path6.join(commonDir, "rebase-merge"), "rebase"],
+    [path6.join(commonDir, "rebase-apply"), "rebase"]
+  ];
+  for (const [file2, operation] of checks) {
+    if (await pathExists(file2)) return operation;
+  }
+  return void 0;
+}
+async function resolveGitPath(cwd, gitPath) {
+  return path6.isAbsolute(gitPath) ? gitPath : path6.resolve(cwd, gitPath);
+}
+async function canonical(value) {
+  return realpath(path6.resolve(value));
+}
+function gitVersionSupportsWorktree(versionText) {
+  const match = versionText.match(/git version (\d+)\.(\d+)/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  return major > 2 || major === 2 && minor >= 20;
+}
+async function findNestedRepositories(repositoryRoot) {
+  const nested = [];
+  async function walk(dir, depth) {
+    if (depth > 5 || nested.length > 10) return;
+    let entries;
+    try {
+      entries = await readdir2(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
+      const child = path6.join(dir, entry.name);
+      if (await pathExists(path6.join(child, ".git"))) {
+        nested.push(path6.relative(repositoryRoot, child));
+        continue;
+      }
+      await walk(child, depth + 1);
+    }
+  }
+  await walk(repositoryRoot, 0);
+  return nested;
+}
+function parsePorcelain(raw) {
+  const parts = splitNul(raw);
+  const entries = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const item = parts[index];
+    if (item.length < 4) continue;
+    const entry = { index: item[0], workingTree: item[1], path: item.slice(3) };
+    if (entry.index === "R" || entry.index === "C") {
+      entry.originalPath = parts[index + 1];
+      index += 1;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+function parseBinaryFiles(raw) {
+  const parts = splitNul(raw);
+  const files = [];
+  for (let index = 0; index + 2 < parts.length; index += 3) {
+    if (parts[index] === "-" && parts[index + 1] === "-") files.push(parts[index + 2]);
+  }
+  return files.sort();
+}
+function parseModeChanges(raw) {
+  return splitLines(raw).filter((line) => /mode change|create mode|delete mode/.test(line)).map((line) => line.trim()).sort();
+}
+async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
+  for (const file2 of changedFiles) {
+    const full = path6.join(worktreePath, file2);
+    let info;
+    try {
+      info = await lstat(full);
+    } catch {
+      continue;
+    }
+    if (!info.isSymbolicLink()) continue;
+    const target = await readlink(full);
+    if (path6.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+      throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
+    }
+  }
+}
+function splitNul(raw) {
+  return raw.split("\0").filter(Boolean);
+}
+function splitLines(raw) {
+  return raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+function stableUnique(values) {
+  return [...new Set(values)].sort();
+}
+function timestamp() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function isPathInside(child, parent) {
+  const relative = path6.relative(path6.resolve(parent), path6.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path6.isAbsolute(relative);
+}
+async function pathExists(target) {
+  return stat(target).then(() => true).catch(() => false);
+}
+
+// src/core/workflow-lock.ts
+import { open as open2, readFile as readFile7, mkdir as mkdir4, rm as rm2, writeFile as writeFile4 } from "node:fs/promises";
+import os from "node:os";
+import path8 from "node:path";
+
+// src/core/workflow-store.ts
+import { open, readFile as readFile6, rename, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import path7 from "node:path";
+var RevisionConflictError = class extends Error {
+  constructor(expectedRevision, actualRevision) {
+    super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
+    this.expectedRevision = expectedRevision;
+    this.actualRevision = actualRevision;
+  }
+  expectedRevision;
+  actualRevision;
+  code = "revision_conflict";
+};
+async function atomicWriteJson(file2, value) {
+  const dir = path7.dirname(file2);
+  const temp = path7.join(dir, `.${path7.basename(file2)}.${process.pid}.${randomUUID()}.tmp`);
+  const handle = await open(temp, "wx");
+  try {
+    await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename(temp, file2);
+    await fsyncDirectory(dir);
+  } catch (error51) {
+    await rm(temp, { force: true }).catch(() => void 0);
+    throw error51;
+  }
+}
+async function fsyncDirectory(dir) {
+  try {
+    const handle = await open(dir, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+  }
+}
+
+// src/core/workflow-lock.ts
+var WorkflowLockBusyError = class extends Error {
+  constructor(lock) {
+    super(`Workflow ${lock.workflowId} is locked by ${lock.ownerId} for ${lock.operation} until ${lock.expiresAt}.`);
+    this.lock = lock;
+  }
+  lock;
+  code = "workflow_lock_busy";
+};
+var WorkflowLockOwnershipError = class extends Error {
+  code = "workflow_lock_owner_mismatch";
+};
+function lockPath(root, workflowId2) {
+  return path8.join(path8.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+}
+async function acquireWorkflowLock(options) {
+  const now = options.now ?? /* @__PURE__ */ new Date();
+  const lock = buildLock(options, now);
+  const file2 = lockPath(options.root, options.workflowId);
+  await mkdir4(path8.dirname(file2), { recursive: true });
+  try {
+    const handle = await open2(file2, "wx");
+    try {
+      await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return lock;
+  } catch (error51) {
+    if (error51.code !== "EEXIST") throw error51;
+  }
+  const existing = await readWorkflowLock(options.root, options.workflowId);
+  if (!existing) return acquireWorkflowLock(options);
+  if (Date.parse(existing.expiresAt) > now.getTime()) throw new WorkflowLockBusyError(existing);
+  await rm2(file2, { force: true });
+  try {
+    const handle = await open2(file2, "wx");
+    try {
+      await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return lock;
+  } catch (error51) {
+    if (error51.code === "EEXIST") {
+      const current = await readWorkflowLock(options.root, options.workflowId);
+      if (current) throw new WorkflowLockBusyError(current);
+    }
+    throw error51;
+  }
+}
+async function releaseWorkflowLock(root, workflowId2, ownerId) {
+  const existing = await readWorkflowLock(root, workflowId2);
+  if (!existing) return;
+  if (existing.ownerId !== ownerId) throw new WorkflowLockOwnershipError(`Workflow lock is owned by ${existing.ownerId}, not ${ownerId}.`);
+  await rm2(lockPath(root, workflowId2), { force: true });
+}
+async function readWorkflowLock(root, workflowId2) {
+  try {
+    return JSON.parse(await readFile7(lockPath(root, workflowId2), "utf8"));
+  } catch (error51) {
+    if (error51.code === "ENOENT") return void 0;
+    throw error51;
+  }
+}
+function buildLock(options, now) {
+  return {
+    workflowId: options.workflowId,
+    ownerId: options.ownerId,
+    ownerType: options.ownerType ?? "cli",
+    operation: options.operation,
+    acquiredAt: now.toISOString(),
+    heartbeatAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + options.timeoutSeconds * 1e3).toISOString(),
+    processId: process.pid,
+    host: os.hostname()
+  };
+}
+
 // src/core/flow.ts
-var WORKFLOW_DIR = path8.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path9.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -19930,6 +20627,18 @@ var phaseRepairAttemptSchema = external_exports.object({
   outcome: completionDecisionSchema.optional(),
   timestamp: external_exports.string()
 });
+var phaseGitEvidenceSchema = external_exports.object({
+  workspacePath: external_exports.string().min(1),
+  baseCommit: external_exports.string().min(1),
+  workspaceHead: external_exports.string().min(1),
+  changedFiles: external_exports.array(external_exports.string()),
+  diffHash: external_exports.string().min(1),
+  untrackedFiles: external_exports.array(external_exports.string()),
+  validationCommitOrPatch: external_exports.string().optional(),
+  transferStrategy: external_exports.literal("internal-commit"),
+  binaryFiles: external_exports.array(external_exports.string()).default([]),
+  fileModeChanges: external_exports.array(external_exports.string()).default([])
+});
 var phaseCompletionRecordSchema = external_exports.object({
   phaseId: external_exports.string().min(1),
   objective: external_exports.string().min(1),
@@ -19949,7 +20658,18 @@ var phaseCompletionRecordSchema = external_exports.object({
   repairAttempt: external_exports.number().int().min(0),
   timestamp: external_exports.string(),
   workflowRevision: external_exports.number().int().min(0),
-  leaseOwnerId: external_exports.string().optional()
+  leaseOwnerId: external_exports.string().optional(),
+  gitEvidence: phaseGitEvidenceSchema.optional()
+});
+var phaseWorkspaceSchema = external_exports.object({
+  phaseId: external_exports.string().min(1),
+  leaseOwnerId: external_exports.string().min(1),
+  path: external_exports.string().min(1),
+  branch: external_exports.string().min(1),
+  baseCommit: external_exports.string().min(1),
+  createdAt: external_exports.string(),
+  updatedAt: external_exports.string(),
+  status: external_exports.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"])
 });
 var phaseSchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -19973,7 +20693,8 @@ var phaseSchema = external_exports.object({
   validationResults: external_exports.array(validationEvidenceSchema),
   scopeDeviations: external_exports.array(external_exports.string()),
   completion: phaseCompletionRecordSchema.optional(),
-  repairAttempts: external_exports.array(phaseRepairAttemptSchema).default([])
+  repairAttempts: external_exports.array(phaseRepairAttemptSchema).default([]),
+  workspace: phaseWorkspaceSchema.optional()
 });
 var planSchema = external_exports.object({
   version: external_exports.literal(1),
@@ -20021,6 +20742,40 @@ var workflowEventSchema = external_exports.object({
   workflowRevisionAfter: external_exports.number().int().min(0),
   phaseId: external_exports.string().optional(),
   summary: external_exports.string().min(1)
+});
+var integrationValidationSchema = external_exports.object({
+  integrationCommit: external_exports.string().min(1),
+  commands: external_exports.array(validationEvidenceSchema),
+  startedAt: external_exports.string(),
+  completedAt: external_exports.string().optional(),
+  status: external_exports.enum(["pending", "running", "passed", "failed", "skipped"])
+});
+var workflowGitStateSchema = external_exports.object({
+  context: external_exports.object({
+    repositoryRoot: external_exports.string().min(1),
+    gitCommonDir: external_exports.string().min(1),
+    baseCommit: external_exports.string().min(1),
+    originalHead: external_exports.string().min(1),
+    originalBranch: external_exports.string().optional(),
+    createdAt: external_exports.string(),
+    integrationBranch: external_exports.string().min(1),
+    integrationWorktreePath: external_exports.string().min(1),
+    workspaceRoot: external_exports.string().min(1),
+    branchPrefix: external_exports.string().min(1),
+    transferStrategy: external_exports.literal("internal-commit")
+  }),
+  integration: external_exports.object({
+    path: external_exports.string().min(1),
+    branch: external_exports.string().min(1),
+    baseCommit: external_exports.string().min(1),
+    headCommit: external_exports.string().min(1),
+    status: external_exports.enum(["not_created", "ready", "integration_pending", "validating", "needs_repair", "needs_review", "ready_for_final_review", "blocked"]),
+    integratedPhaseIds: external_exports.array(external_exports.string()).default([]),
+    conflictingPhaseIds: external_exports.array(external_exports.string()).default([]),
+    conflictedFiles: external_exports.array(external_exports.string()).default([])
+  }),
+  phaseWorkspaces: external_exports.record(external_exports.string(), phaseWorkspaceSchema).default({}),
+  integrationValidation: integrationValidationSchema.optional()
 });
 var workflowStateSchema = external_exports.object({
   version: external_exports.literal(STATE_VERSION),
@@ -20076,6 +20831,7 @@ var workflowStateSchema = external_exports.object({
     note: external_exports.string()
   }).optional(),
   phaseLeases: external_exports.record(external_exports.string(), phaseLeaseSchema).default({}),
+  git: workflowGitStateSchema.optional(),
   repairAttempts: external_exports.number().int().min(0),
   blockers: external_exports.array(external_exports.string()),
   events: external_exports.array(workflowEventSchema).default([])
@@ -20095,8 +20851,8 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path8.resolve(options.root);
-  const now = timestamp();
+  const root = path9.resolve(options.root);
+  const now = timestamp2();
   let state = {
     version: STATE_VERSION,
     id: workflowId(),
@@ -20132,7 +20888,7 @@ async function answerClarification(args) {
       question: state.clarification.question,
       reason: state.clarification.reason,
       answer: args.answer,
-      answeredAt: timestamp()
+      answeredAt: timestamp2()
     };
     appendEvent(answered, "clarification_answered", "Blocking clarification answered.");
     const triageRun = await runTriage({
@@ -20174,7 +20930,7 @@ async function revisePlan(root, workflowId2, feedback, config2, mutation) {
     const triage = state.triage;
     const previousRequests = next.plan?.revisionRequests ?? [];
     next.plan = buildPlan(next.request, triage, next.root, config2, {
-      revisionRequests: [...previousRequests, { feedback, timestamp: timestamp() }]
+      revisionRequests: [...previousRequests, { feedback, timestamp: timestamp2() }]
     });
     next.review = void 0;
     next.commitPlan = void 0;
@@ -20188,7 +20944,7 @@ async function approvePlan(root, workflowId2, mutation) {
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
     const plan = state.plan;
-    next.plan = { ...plan, approvedAt: timestamp() };
+    next.plan = { ...plan, approvedAt: timestamp2() };
     next.plan.phases = plan.phases.map((phase2) => ({ ...phase2, status: "planned" }));
     const executing = transition(next, "executing", "Plan approved. Ready phases will be derived from DAG dependencies and ownership.");
     refreshPhaseReadiness(executing);
@@ -20202,14 +20958,14 @@ async function startPhase(root, workflowId2, phaseId, mutation) {
     const phase2 = selectStartablePhase(next, phaseId);
     const ownerId = mutation?.ownerId ?? DEFAULT_OWNER_ID;
     phase2.status = "running";
-    phase2.startedAt = phase2.startedAt ?? timestamp();
+    phase2.startedAt = phase2.startedAt ?? timestamp2();
     next.phaseLeases[phase2.id] = phaseLease(phase2, ownerId, mutation?.ownerType ?? "cli", next.revision, mutation?.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS);
     appendEvent(next, "phase_started", `Phase ${phase2.id} leased and started by ${ownerId}.`, phase2.id);
     return next;
   }, { ...mutation, operation: "phase_start" });
 }
 async function completePhase(args) {
-  return updateFlowState(args.root, args.workflowId, (state) => {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
     assertState(state, ["executing"]);
     if (!state.plan) throw new WorkflowStateError("Cannot complete a phase without a plan.");
     const next = structuredClone(state);
@@ -20223,8 +20979,9 @@ async function completePhase(args) {
     if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
       throw new InvalidTransitionError(`Phase ${phase2.id} completion requires an active lease held by ${ownerId}.`);
     }
+    const inspected = await inspectPhaseWorkspaceChanges(next, phase2, ownerId);
     phase2.status = "completion_pending";
-    phase2.filesChanged = unique3([...phase2.filesChanged, ...args.filesChanged ?? []]);
+    phase2.filesChanged = unique3([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
     phase2.commandsRun = [...phase2.commandsRun, ...args.commandsRun ?? []];
     for (const evidence of args.validation ?? []) {
       validateWorkflowEvidence(evidence);
@@ -20246,8 +21003,20 @@ async function completePhase(args) {
     });
     phase2.completion = completion;
     phase2.status = completion.decision;
-    if (completion.decision === "completed") phase2.completedAt = timestamp();
-    if (completion.decision === "completed") next.phaseLeases[phase2.id] = { ...lease, releasedAt: timestamp() };
+    if (completion.decision === "completed") {
+      const gitEvidence = await captureApprovedPhaseChange(next, phase2, ownerId, args.config ?? defaultConfig());
+      if (gitEvidence) {
+        completion.gitEvidence = gitEvidence;
+        phase2.filesChanged = unique3([...phase2.filesChanged, ...gitEvidence.changedFiles]);
+        completion.filesChanged = phase2.filesChanged;
+        if (next.git?.phaseWorkspaces[phase2.id]) {
+          next.git.phaseWorkspaces[phase2.id] = { ...next.git.phaseWorkspaces[phase2.id], status: "approved", updatedAt: timestamp2() };
+        }
+      }
+      phase2.completedAt = timestamp2();
+      next.phaseLeases[phase2.id] = { ...lease, releasedAt: timestamp2() };
+      if (next.git?.integration) next.git.integration.status = "integration_pending";
+    }
     const repair = phase2.repairAttempts.at(-1);
     if (repair && !repair.outcome) {
       repair.validation = phase2.validationResults;
@@ -20295,12 +21064,12 @@ async function repairPhase(args) {
       reason: args.reason,
       requestedScope: args.requestedScope ?? phase2.completion?.reason ?? "Repair the bounded completion-gate issue.",
       validation: [],
-      timestamp: timestamp()
+      timestamp: timestamp2()
     };
     phase2.repairAttempts.push(attempt);
     const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
     phase2.status = "running";
-    phase2.startedAt = timestamp();
+    phase2.startedAt = timestamp2();
     phase2.completedAt = void 0;
     next.phaseLeases[phase2.id] = phaseLease(phase2, ownerId, args.mutation?.ownerType ?? "cli", next.revision, args.config.execution.phaseLeaseTimeoutSeconds);
     appendEvent(next, "phase_repair_started", `Phase ${phase2.id} repair attempt ${attempt.attempt}/${budget} started.`, phase2.id);
@@ -20318,7 +21087,7 @@ async function recordValidation(args) {
       status: args.skipped ? "skipped" : (args.exitStatus ?? 0) === 0 ? "passed" : "failed",
       skipped: args.skipped ?? false,
       skippedReason: args.skippedReason,
-      timestamp: timestamp()
+      timestamp: timestamp2()
     };
     validateWorkflowEvidence(evidence);
     const next = structuredClone(state);
@@ -20335,6 +21104,12 @@ async function recordReview(args) {
     if (!state.plan || state.plan.phases.some((phase2) => phase2.status !== "completed")) {
       throw new InvalidTransitionError("Final review requires all phases to be completed.");
     }
+    if (state.git) {
+      const status = integrationStatus(state);
+      if (!status.finalReviewEligible) {
+        throw new InvalidTransitionError("Final review requires every completed phase to be integrated and combined validation to pass on the current integration head.");
+      }
+    }
     if (!hasValidationEvidence(state)) {
       throw new InvalidTransitionError("Final review requires persisted validation evidence or an explicit skipped-validation reason.");
     }
@@ -20344,7 +21119,7 @@ async function recordReview(args) {
       summary: args.summary,
       findings: args.findings ?? [],
       repairScope: args.repairScope,
-      reviewedAt: timestamp()
+      reviewedAt: timestamp2()
     };
     if (args.status === "passed") {
       next.commitPlan = buildCommitPlan(next);
@@ -20393,6 +21168,92 @@ async function resumeFlow(root, workflowId2) {
 function readyPhases(state, config2) {
   return calculateReadyPhases(state, config2);
 }
+async function gitPreflight(root, config2) {
+  return preflightGitRepository(root, config2);
+}
+async function workspaceInit(args) {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
+    const next = structuredClone(state);
+    next.git = await ensureIntegrationWorkspace(next, args.config);
+    appendEvent(next, "workspace_initialized", "LeanRigor integration worktree initialized.");
+    return next;
+  }, { ...args.mutation, operation: "workspace_init" });
+}
+async function workspaceCreatePhase(args) {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
+    const next = structuredClone(state);
+    next.git = next.git ?? await ensureIntegrationWorkspace(next, args.config);
+    next.git = await createPhaseWorkspace(next, args.phaseId, args.ownerId, args.config);
+    const phase2 = next.plan?.phases.find((candidate) => candidate.id === args.phaseId);
+    if (phase2) {
+      phase2.workspace = next.git.phaseWorkspaces[args.phaseId];
+      if (phase2.status === "leased") phase2.status = "running";
+    }
+    appendEvent(next, "phase_workspace_created", `Phase ${args.phaseId} workspace is ready for ${args.ownerId}.`, args.phaseId, args.ownerId);
+    return next;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "workspace_create_phase" });
+}
+async function workspaceStatus2(root, workflowId2, config2) {
+  return workspaceStatus(await loadFlowState(root, workflowId2), config2);
+}
+async function integratePhase(args) {
+  let operation;
+  const state = await updateFlowState(args.root, args.workflowId, async (current) => {
+    const applied = await applyApprovedPhaseToIntegration(current, args.phaseId);
+    operation = applied.result;
+    if (applied.result.code === "already_integrated") return current;
+    const next = applied.state;
+    appendEvent(
+      next,
+      applied.result.ok ? "phase_integrated" : "phase_integration_conflict",
+      applied.result.ok ? `Phase ${args.phaseId} integrated into the LeanRigor integration worktree.` : `Phase ${args.phaseId} integration conflict detected.`,
+      args.phaseId,
+      args.ownerId
+    );
+    return next;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "integrate_phase" });
+  return { ...operation ?? { ok: false, code: "integration_rejected", phaseId: args.phaseId }, state };
+}
+function integrationStatus2(state) {
+  return integrationStatus(state);
+}
+async function validateIntegration(args) {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
+    const next = await runIntegrationValidation(state);
+    next.validation.push(...next.git?.integrationValidation?.commands ?? []);
+    appendEvent(next, "integration_validation_recorded", `Combined integration validation ${next.git?.integrationValidation?.status ?? "recorded"}.`);
+    if (next.git?.integrationValidation?.status === "passed" && next.state === "validating") return transition(next, "reviewing", "Combined integration validation passed; final integrated review is ready.");
+    return next;
+  }, { ...args.mutation, operation: "validate_integration" });
+}
+async function workspaceCleanup(args) {
+  let report;
+  await updateFlowState(args.root, args.workflowId, async (current) => {
+    report = await cleanupOwnedWorkspaces(current, args.mode ?? "safe");
+    const next = structuredClone(current);
+    if (next.git) {
+      const removed = new Set(report.removedWorktrees);
+      for (const [phaseId, workspace] of Object.entries(next.git.phaseWorkspaces)) {
+        if (!removed.has(workspace.path)) continue;
+        delete next.git.phaseWorkspaces[phaseId];
+        const phase2 = next.plan?.phases.find((candidate) => candidate.id === phaseId);
+        if (phase2) phase2.workspace = void 0;
+      }
+    }
+    appendEvent(next, "workspace_cleanup", `Workspace cleanup removed ${report.removedWorktrees.length} worktree(s).`);
+    return next;
+  }, { ...args.mutation, operation: "workspace_cleanup" });
+  return report ?? { workflowId: args.workflowId, mode: args.mode ?? "safe", removedWorktrees: [], retainedWorktrees: [], removedBranches: [], needsReview: [] };
+}
+async function workspaceRecover(args) {
+  let report;
+  const state = await updateFlowState(args.root, args.workflowId, async (current) => {
+    report = await recoverWorkspaceState(current);
+    for (const fact of report.facts) appendEvent(report.state, "workspace_recovery_fact", fact);
+    return report.state;
+  }, { ...args.mutation, operation: "workspace_recover" });
+  return { ...report ?? { workflowId: args.workflowId, facts: [], needsReview: [], state }, state };
+}
 async function leasePhase(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
@@ -20416,7 +21277,7 @@ async function heartbeatPhase(args) {
     const lease = state.phaseLeases[args.phaseId];
     if (!lease || lease.releasedAt) throw new InvalidTransitionError(`Phase ${args.phaseId} has no active lease.`);
     if (lease.ownerId !== args.ownerId) throw new InvalidTransitionError(`Phase ${args.phaseId} lease is owned by ${lease.ownerId}, not ${args.ownerId}.`);
-    const now = timestamp();
+    const now = timestamp2();
     lease.heartbeatAt = now;
     lease.expiresAt = new Date(Date.parse(now) + (args.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS) * 1e3).toISOString();
     appendEvent(state, "phase_lease_refreshed", `Phase ${args.phaseId} lease refreshed by ${args.ownerId}.`, args.phaseId, args.ownerId);
@@ -20431,7 +21292,7 @@ async function releasePhase(args) {
     const lease = state.phaseLeases[args.phaseId];
     if (!lease || lease.releasedAt) throw new InvalidTransitionError(`Phase ${args.phaseId} has no active lease.`);
     if (lease.ownerId !== args.ownerId) throw new InvalidTransitionError(`Phase ${args.phaseId} lease is owned by ${lease.ownerId}, not ${args.ownerId}.`);
-    state.phaseLeases[args.phaseId] = { ...lease, releasedAt: timestamp() };
+    state.phaseLeases[args.phaseId] = { ...lease, releasedAt: timestamp2() };
     if (phase2.status === "leased" || phase2.status === "running") phase2.status = "ready";
     appendEvent(state, "phase_lease_released", `Phase ${args.phaseId} lease released by ${args.ownerId}.`, args.phaseId, args.ownerId);
     return state;
@@ -20462,7 +21323,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path8.join(path8.resolve(root), WORKFLOW_DIR);
+  const dir = path9.join(path9.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -20486,7 +21347,7 @@ async function loadFlowState(root, workflowId2) {
   const file2 = workflowPath(root, workflowId2);
   let raw;
   try {
-    raw = await readFile7(file2, "utf8");
+    raw = await readFile8(file2, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") throw new WorkflowNotFoundError(`Workflow not found: ${workflowId2}`);
     throw error51;
@@ -20499,12 +21360,12 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path8.join(path8.resolve(root), WORKFLOW_DIR);
-  await mkdir4(dir, { recursive: true });
+  const dir = path9.join(path9.resolve(root), WORKFLOW_DIR);
+  await mkdir5(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
     try {
-      await readFile7(target, "utf8");
+      await readFile8(target, "utf8");
       throw new StaleWorkflowError(`Workflow already exists: ${parsed.id}`);
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -20538,7 +21399,7 @@ async function updateFlowState(root, workflowId2, mutate, options = {}) {
     const next = workflowStateSchema.parse({
       ...mutated,
       revision: current.revision + 1,
-      updatedAt: timestamp(),
+      updatedAt: timestamp2(),
       events: boundEvents(mutated.events)
     });
     await saveFlowState(root, next, { expectedRevision: current.revision });
@@ -20571,13 +21432,18 @@ function nextActions(state) {
       if (review) return [`leanrigor flow phase-status ${id} ${review.id} --root "${state.root}"`, `leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       if (replan) return [`leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       return active ? [
+        ...state.git?.phaseWorkspaces[active.id] ? [] : [`leanrigor flow workspace-create-phase ${id} ${active.id} --owner "${state.phaseLeases[active.id]?.ownerId ?? DEFAULT_OWNER_ID}" --root "${state.root}"`],
         `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
         `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
-      ] : [`leanrigor flow ready ${id} --root "${state.root}"`, `leanrigor flow phase-start ${id} --root "${state.root}"`];
+      ] : [
+        ...state.git ? [] : [`leanrigor flow workspace-init ${id} --root "${state.root}"`],
+        `leanrigor flow ready ${id} --root "${state.root}"`,
+        `leanrigor flow phase-start ${id} --root "${state.root}"`
+      ];
     }
     case "validating":
       return [
-        `leanrigor flow record-validation ${id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
+        ...state.git ? [`leanrigor flow integration-status ${id} --root "${state.root}"`, `leanrigor flow validate-integration ${id} --root "${state.root}"`] : [`leanrigor flow record-validation ${id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`],
         `leanrigor flow record-review ${id} --status passed --summary "<summary>" --root "${state.root}"`
       ];
     case "reviewing":
@@ -20939,7 +21805,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path8.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path9.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -20994,7 +21860,7 @@ function buildCommitPlan(state) {
     commands: ["git diff HEAD", "git status --short"]
   }];
   return {
-    generatedAt: timestamp(),
+    generatedAt: timestamp2(),
     groups,
     note: "Proposal only. LeanRigor never runs git commit or git push automatically."
   };
@@ -21025,7 +21891,7 @@ function buildCompletionRecord(args) {
     decision,
     reason: args.blockedReason ?? policy.reason ?? args.requestedRepairScope ?? "Completion gate evaluated.",
     repairAttempt: args.phase.repairAttempts.length,
-    timestamp: timestamp(),
+    timestamp: timestamp2(),
     workflowRevision: args.state.revision,
     leaseOwnerId: args.leaseOwnerId
   };
@@ -21145,7 +22011,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path8.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path9.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -21210,7 +22076,7 @@ function validationStrategy(mode2, triage) {
   ];
 }
 function phaseLease(phase2, ownerId, ownerType, workflowRevisionAtAcquire, timeoutSeconds) {
-  const now = timestamp();
+  const now = timestamp2();
   return {
     phaseId: phase2.id,
     ownerId,
@@ -21236,7 +22102,7 @@ function appendEvent(state, type, summary, phaseId, actorId = DEFAULT_OWNER_ID) 
 function workflowEvent(args) {
   return {
     eventId: `evt-${randomUUID2().slice(0, 12)}`,
-    timestamp: args.at ?? timestamp(),
+    timestamp: args.at ?? timestamp2(),
     actorId: args.actorId,
     type: args.type,
     workflowRevisionBefore: args.before,
@@ -21251,14 +22117,14 @@ function boundEvents(events) {
 function migrateWorkflowState(raw, root, workflowId2) {
   const value = raw;
   if (value.version === 1 && "currentPhase" in value) {
-    const now = typeof value.updatedAt === "string" ? value.updatedAt : timestamp();
+    const now = typeof value.updatedAt === "string" ? value.updatedAt : timestamp2();
     return {
       version: STATE_VERSION,
       id: workflowId2,
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path8.resolve(root),
+      root: path9.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -21273,8 +22139,8 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path8.resolve(root);
-  migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp();
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path9.resolve(root);
+  migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
   migrated.phaseLeases = migrated.phaseLeases && typeof migrated.phaseLeases === "object" ? migrated.phaseLeases : {};
@@ -21312,7 +22178,7 @@ function migrateEvents(raw, revision) {
     if (typeof item.eventId === "string") return item;
     return {
       eventId: `evt-migrated-${index}`,
-      timestamp: typeof item.timestamp === "string" ? item.timestamp : timestamp(),
+      timestamp: typeof item.timestamp === "string" ? item.timestamp : timestamp2(),
       actorId: "system",
       type: "legacy_event",
       workflowRevisionBefore: revision,
@@ -21324,7 +22190,7 @@ function migrateEvents(raw, revision) {
 function transition(state, nextState, message) {
   const next = structuredClone(state);
   next.state = nextState;
-  next.updatedAt = timestamp();
+  next.updatedAt = timestamp2();
   appendEvent(next, "workflow_state_changed", message);
   return next;
 }
@@ -21335,7 +22201,7 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path8.join(path8.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path9.join(path9.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
   return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID2().slice(0, 8)}`;
@@ -21343,7 +22209,7 @@ function workflowId() {
 function label(mode2) {
   return mode2[0].toUpperCase() + mode2.slice(1);
 }
-function timestamp() {
+function timestamp2() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function unique3(values) {
@@ -21563,8 +22429,8 @@ var program2 = new Command();
 program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-  const configDir = path9.join(root, ".leanrigor");
-  await mkdir5(configDir, { recursive: true });
+  const configDir = path10.join(root, ".leanrigor");
+  await mkdir6(configDir, { recursive: true });
   const config2 = await initConfig(root);
   const report = await new ClaudeAdapter().install(root, config2, forceOwnedFiles);
   console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
@@ -21575,11 +22441,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path9.join(root, ".leanrigor", "config.json");
+    const configPath = path10.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path9.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path10.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -21716,6 +22582,59 @@ flow.command("recover-leases").argument("<workflow-id>").option("--root <path>",
   const state = await recoverLeases({ root: options.root, workflowId: workflowId2, mutation: mutationOptions(options) });
   if (options.json) printFlowState(state);
   else console.log(`Recovered expired leases for ${workflowId2}.`);
+});
+flow.command("git-preflight").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured preflight result").action(async (options) => {
+  const result = await gitPreflight(options.root, await ensureRepositoryConfig(options.root));
+  if (options.json) console.log(JSON.stringify(result, null, 2));
+  else console.log(result.ok ? "Git workspace preflight passed." : `Git workspace preflight failed: ${result.code}`);
+});
+flow.command("workspace-init").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").option("--json", "print workflow JSON summary").action(async (workflowId2, options) => {
+  const state = await workspaceInit({ root: options.root, workflowId: workflowId2, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+  if (options.json) printFlowState(state);
+  else console.log(`Integration workspace ready: ${state.git?.integration.path}`);
+});
+flow.command("workspace-create-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
+  const state = await workspaceCreatePhase({
+    root: options.root,
+    workflowId: workflowId2,
+    phaseId,
+    ownerId: options.owner,
+    config: await ensureRepositoryConfig(options.root),
+    mutation: mutationOptions(options)
+  });
+  if (options.json) printFlowState(state);
+  else console.log(`Phase ${phaseId} workspace ready: ${state.git?.phaseWorkspaces[phaseId]?.path}`);
+});
+flow.command("workspace-status").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured workspace status").action(async (workflowId2, options) => {
+  const status = await workspaceStatus2(options.root, workflowId2, await ensureRepositoryConfig(options.root));
+  if (options.json) console.log(JSON.stringify(status, null, 2));
+  else console.log(status.git ? `Integration workspace: ${status.git.integration.status}` : "No Git workspace initialized.");
+});
+flow.command("integrate-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "integration owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print structured integration result").action(async (workflowId2, phaseId, options) => {
+  const result = await integratePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, mutation: mutationOptions(options) });
+  if (options.json) console.log(JSON.stringify(result, null, 2));
+  else if (result.ok) console.log(result.code === "already_integrated" ? `Phase ${phaseId} was already integrated.` : `Phase ${phaseId} integrated.`);
+  else console.log(`Phase ${phaseId} integration failed: ${result.code}`);
+});
+flow.command("integration-status").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured integration status").action(async (workflowId2, options) => {
+  const status = integrationStatus2(await resumeFlow(options.root, workflowId2));
+  if (options.json) console.log(JSON.stringify(status, null, 2));
+  else console.log(status.finalReviewEligible ? "Integration is ready for final review." : `${status.pendingPhaseIds.length} pending, ${status.conflictedPhaseIds.length} conflicted.`);
+});
+flow.command("validate-integration").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").option("--json", "print workflow JSON summary").action(async (workflowId2, options) => {
+  const state = await validateIntegration({ root: options.root, workflowId: workflowId2, mutation: mutationOptions(options) });
+  if (options.json) printFlowState(state);
+  else console.log(`Combined integration validation: ${state.git?.integrationValidation?.status}`);
+});
+flow.command("workspace-cleanup").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--mode <mode>", "safe, force-owned, or archive", "safe").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").option("--json", "print structured cleanup report").action(async (workflowId2, options) => {
+  const report = await workspaceCleanup({ root: options.root, workflowId: workflowId2, mode: options.mode, mutation: mutationOptions(options) });
+  if (options.json) console.log(JSON.stringify(report, null, 2));
+  else console.log(`Workspace cleanup removed ${report.removedWorktrees.length} worktree(s); retained ${report.retainedWorktrees.length}.`);
+});
+flow.command("workspace-recover").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").option("--json", "print structured recovery report").action(async (workflowId2, options) => {
+  const report = await workspaceRecover({ root: options.root, workflowId: workflowId2, mutation: mutationOptions(options) });
+  if (options.json) console.log(JSON.stringify(report, null, 2));
+  else console.log(report.needsReview.length ? `Workspace recovery needs review: ${report.needsReview.join(", ")}` : "Workspace recovery completed.");
 });
 flow.command("events").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured event history").action(async (workflowId2, options) => {
   const events = workflowEvents(await resumeFlow(options.root, workflowId2));
@@ -21979,7 +22898,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile8(path9.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile9(path10.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {
@@ -22012,8 +22931,8 @@ async function initConfig(root) {
   return ensureRepositoryConfig(root);
 }
 async function ensureRepositoryConfig(root) {
-  const configPath = path9.join(root, ".leanrigor", "config.json");
-  const existing = await readFile8(configPath, "utf8").catch(() => void 0);
+  const configPath = path10.join(root, ".leanrigor", "config.json");
+  const existing = await readFile9(configPath, "utf8").catch(() => void 0);
   if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));
   const config2 = defaultConfig();
   config2.instructions = await detectInstructions(root);
@@ -22021,13 +22940,13 @@ async function ensureRepositoryConfig(root) {
   return config2;
 }
 async function writeConfig(root, config2) {
-  const dir = path9.join(root, ".leanrigor");
-  await mkdir5(dir, { recursive: true });
-  await writeFile4(path9.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
+  const dir = path10.join(root, ".leanrigor");
+  await mkdir6(dir, { recursive: true });
+  await writeFile5(path10.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
 }
 async function detectInstructions(root) {
   const candidates = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
-  const topLevel = new Set(await readdir2(root).catch(() => []));
+  const topLevel = new Set(await readdir3(root).catch(() => []));
   return candidates.filter((candidate) => topLevel.has(candidate));
 }
 function capitalise(value) {

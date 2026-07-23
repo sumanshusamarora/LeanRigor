@@ -9,6 +9,10 @@ approval-gated, and repository-local: LeanRigor records state under
 `.leanrigor/`, asks at most one blocking clarification, guides phased execution,
 requires validation evidence and final review, and proposes commits without
 committing or pushing.
+Standard and Rigorous workflows can use LeanRigor-owned Git worktrees: each
+leased phase works in an isolated worktree, approved phase changes transfer
+through internal LeanRigor commits, and combined validation runs in a dedicated
+integration worktree before final review.
 Each workflow phase is a small functional outcome with acceptance criteria,
 expected write areas, and validation expectations. A phase only unlocks
 dependents after an evidence-based completion gate passes.
@@ -19,9 +23,9 @@ proportionally by Fast, Standard, and Rigorous mode overlays.
 
 This repository is an architectural and functional draft. The TypeScript CLI
 installs, type checks, builds, packs, and passes the Vitest suite. Native Claude
-Code marketplace packaging is implemented and locally validated. Parallel
-agents, worktrees, OpenCode, Codex, Cursor, Copilot, and Antigravity adapters
-remain future work.
+Code marketplace packaging is implemented and locally validated. Git worktree
+isolation is implemented for phase and integration workspaces. Parallel agents,
+OpenCode, Codex, Cursor, Copilot, and Antigravity adapters remain future work.
 
 ## Install
 
@@ -166,10 +170,43 @@ are bounded by mode. The final integrated review still runs after all per-phase
 gates pass.
 
 Workflow mutations use atomic revisioned persistence and persistent workflow
-locks. Phase leases, ownership metadata, stale-lease recovery, and
-conflict-aware ready scheduling make the engine parallel-ready, but higher
-parallelism currently only changes scheduling recommendations; it does not
-launch agents or create worktrees.
+locks. Phase leases, ownership metadata, stale-lease recovery, Git worktree
+isolation, and conflict-aware ready scheduling make the engine parallel-ready,
+but higher parallelism currently only changes scheduling recommendations; it
+does not launch agents.
+
+## Git Workspaces
+
+`leanrigor flow workspace-init <workflow-id>` creates one integration worktree
+outside the source tree, by default under:
+
+```text
+<repository-parent>/.leanrigor-worktrees/<repository-name>/<workflow-id>/
+```
+
+`leanrigor flow workspace-create-phase <workflow-id> <phase-id> --owner <id>`
+creates one phase worktree for the active lease owner. Claude must edit only
+inside the returned phase workspace. Before editing, Claude verifies that `pwd`
+and the Git root match the active workspace returned by LeanRigor.
+
+Branch names are deterministic and sanitized:
+
+```text
+leanrigor/<workflow-short-id>/integration
+leanrigor/<workflow-short-id>/<phase-id>
+```
+
+LeanRigor rejects branch/path collisions unless persisted ownership metadata
+proves the branch or worktree is LeanRigor-owned. The user branch, user index,
+unstaged files, untracked files, stash, and current checkout are not modified by
+phase or integration worktree operations.
+
+Approved phase changes are transferred by internal LeanRigor commits created on
+LeanRigor-owned phase branches after the phase completion gate passes. These
+commits are not pushed and are not the final user commit. The final commit
+proposal remains separate and human-approved. Integration cherry-picks internal
+phase commits into the LeanRigor integration worktree; textual conflicts are
+persisted and left for explicit repair rather than resolved with ours/theirs.
 
 Active workflow selection is conservative: one active workflow is resumed, no
 workflow starts only when a request is supplied, and multiple active workflows

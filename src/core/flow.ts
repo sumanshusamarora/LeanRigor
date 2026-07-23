@@ -3,9 +3,28 @@ import { mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { z } from "zod";
+import { defaultConfig } from "../config/defaults.js";
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
 import { resolveModelTier } from "../config/models.js";
 import { commitCommands, proposeCommits } from "./commit-planner.js";
+import {
+  applyApprovedPhaseToIntegration,
+  captureApprovedPhaseChange,
+  cleanupOwnedWorkspaces,
+  createPhaseWorkspace,
+  ensureIntegrationWorkspace,
+  inspectPhaseWorkspaceChanges,
+  integrationStatus as buildIntegrationStatus,
+  preflightGitRepository,
+  recoverWorkspaceState,
+  runIntegrationValidation,
+  workspaceStatus as buildWorkspaceStatus,
+  type GitPreflightResult,
+  type IntegrationOperationResult,
+  type WorkspaceCleanupReport,
+  type WorkspaceRecoveryReport,
+  type WorkspaceStatus
+} from "./git-workspace.js";
 import type { TriageProvider, TriageRunResult } from "./triage-runner.js";
 import { runTriage } from "./triage-runner.js";
 import type {
@@ -131,6 +150,19 @@ const phaseRepairAttemptSchema = z.object({
   timestamp: z.string()
 });
 
+const phaseGitEvidenceSchema = z.object({
+  workspacePath: z.string().min(1),
+  baseCommit: z.string().min(1),
+  workspaceHead: z.string().min(1),
+  changedFiles: z.array(z.string()),
+  diffHash: z.string().min(1),
+  untrackedFiles: z.array(z.string()),
+  validationCommitOrPatch: z.string().optional(),
+  transferStrategy: z.literal("internal-commit"),
+  binaryFiles: z.array(z.string()).default([]),
+  fileModeChanges: z.array(z.string()).default([])
+});
+
 const phaseCompletionRecordSchema = z.object({
   phaseId: z.string().min(1),
   objective: z.string().min(1),
@@ -150,7 +182,19 @@ const phaseCompletionRecordSchema = z.object({
   repairAttempt: z.number().int().min(0),
   timestamp: z.string(),
   workflowRevision: z.number().int().min(0),
-  leaseOwnerId: z.string().optional()
+  leaseOwnerId: z.string().optional(),
+  gitEvidence: phaseGitEvidenceSchema.optional()
+});
+
+const phaseWorkspaceSchema = z.object({
+  phaseId: z.string().min(1),
+  leaseOwnerId: z.string().min(1),
+  path: z.string().min(1),
+  branch: z.string().min(1),
+  baseCommit: z.string().min(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  status: z.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"])
 });
 
 const phaseSchema = z.object({
@@ -175,7 +219,8 @@ const phaseSchema = z.object({
   validationResults: z.array(validationEvidenceSchema),
   scopeDeviations: z.array(z.string()),
   completion: phaseCompletionRecordSchema.optional(),
-  repairAttempts: z.array(phaseRepairAttemptSchema).default([])
+  repairAttempts: z.array(phaseRepairAttemptSchema).default([]),
+  workspace: phaseWorkspaceSchema.optional()
 });
 
 const planSchema = z.object({
@@ -226,6 +271,42 @@ const workflowEventSchema = z.object({
   workflowRevisionAfter: z.number().int().min(0),
   phaseId: z.string().optional(),
   summary: z.string().min(1)
+});
+
+const integrationValidationSchema = z.object({
+  integrationCommit: z.string().min(1),
+  commands: z.array(validationEvidenceSchema),
+  startedAt: z.string(),
+  completedAt: z.string().optional(),
+  status: z.enum(["pending", "running", "passed", "failed", "skipped"])
+});
+
+const workflowGitStateSchema = z.object({
+  context: z.object({
+    repositoryRoot: z.string().min(1),
+    gitCommonDir: z.string().min(1),
+    baseCommit: z.string().min(1),
+    originalHead: z.string().min(1),
+    originalBranch: z.string().optional(),
+    createdAt: z.string(),
+    integrationBranch: z.string().min(1),
+    integrationWorktreePath: z.string().min(1),
+    workspaceRoot: z.string().min(1),
+    branchPrefix: z.string().min(1),
+    transferStrategy: z.literal("internal-commit")
+  }),
+  integration: z.object({
+    path: z.string().min(1),
+    branch: z.string().min(1),
+    baseCommit: z.string().min(1),
+    headCommit: z.string().min(1),
+    status: z.enum(["not_created", "ready", "integration_pending", "validating", "needs_repair", "needs_review", "ready_for_final_review", "blocked"]),
+    integratedPhaseIds: z.array(z.string()).default([]),
+    conflictingPhaseIds: z.array(z.string()).default([]),
+    conflictedFiles: z.array(z.string()).default([])
+  }),
+  phaseWorkspaces: z.record(z.string(), phaseWorkspaceSchema).default({}),
+  integrationValidation: integrationValidationSchema.optional()
 });
 
 const workflowStateSchema = z.object({
@@ -282,6 +363,7 @@ const workflowStateSchema = z.object({
     note: z.string()
   }).optional(),
   phaseLeases: z.record(z.string(), phaseLeaseSchema).default({}),
+  git: workflowGitStateSchema.optional(),
   repairAttempts: z.number().int().min(0),
   blockers: z.array(z.string()),
   events: z.array(workflowEventSchema).default([])
@@ -460,7 +542,7 @@ export async function completePhase(args: {
   modelDecision?: CompletionGateDecision;
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
-  return updateFlowState(args.root, args.workflowId, (state) => {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
     assertState(state, ["executing"]);
     if (!state.plan) throw new WorkflowStateError("Cannot complete a phase without a plan.");
     const next = structuredClone(state);
@@ -474,8 +556,9 @@ export async function completePhase(args: {
     if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
       throw new InvalidTransitionError(`Phase ${phase.id} completion requires an active lease held by ${ownerId}.`);
     }
+    const inspected = await inspectPhaseWorkspaceChanges(next, phase, ownerId);
     phase.status = "completion_pending";
-    phase.filesChanged = unique([...phase.filesChanged, ...(args.filesChanged ?? [])]);
+    phase.filesChanged = unique([...phase.filesChanged, ...(args.filesChanged ?? []), ...(inspected?.changedFiles ?? [])]);
     phase.commandsRun = [...phase.commandsRun, ...(args.commandsRun ?? [])];
     for (const evidence of args.validation ?? []) {
       validateWorkflowEvidence(evidence);
@@ -498,8 +581,20 @@ export async function completePhase(args: {
     });
     phase.completion = completion;
     phase.status = completion.decision;
-    if (completion.decision === "completed") phase.completedAt = timestamp();
-    if (completion.decision === "completed") next.phaseLeases[phase.id] = { ...lease, releasedAt: timestamp() };
+    if (completion.decision === "completed") {
+      const gitEvidence = await captureApprovedPhaseChange(next, phase, ownerId, args.config ?? defaultConfig());
+      if (gitEvidence) {
+        completion.gitEvidence = gitEvidence;
+        phase.filesChanged = unique([...phase.filesChanged, ...gitEvidence.changedFiles]);
+        completion.filesChanged = phase.filesChanged;
+        if (next.git?.phaseWorkspaces[phase.id]) {
+          next.git.phaseWorkspaces[phase.id] = { ...next.git.phaseWorkspaces[phase.id], status: "approved", updatedAt: timestamp() };
+        }
+      }
+      phase.completedAt = timestamp();
+      next.phaseLeases[phase.id] = { ...lease, releasedAt: timestamp() };
+      if (next.git?.integration) next.git.integration.status = "integration_pending";
+    }
     const repair = phase.repairAttempts.at(-1);
     if (repair && !repair.outcome) {
       repair.validation = phase.validationResults;
@@ -620,6 +715,12 @@ export async function recordReview(args: {
     if (!state.plan || state.plan.phases.some((phase) => phase.status !== "completed")) {
       throw new InvalidTransitionError("Final review requires all phases to be completed.");
     }
+    if (state.git) {
+      const status = buildIntegrationStatus(state);
+      if (!status.finalReviewEligible) {
+        throw new InvalidTransitionError("Final review requires every completed phase to be integrated and combined validation to pass on the current integration head.");
+      }
+    }
     if (!hasValidationEvidence(state)) {
       throw new InvalidTransitionError("Final review requires persisted validation evidence or an explicit skipped-validation reason.");
     }
@@ -683,6 +784,134 @@ export async function resumeFlow(root: string, workflowId: string): Promise<Sequ
 
 export function readyPhases(state: SequentialWorkflowState, config?: LeanRigorConfig) {
   return calculateReadyPhases(state, config);
+}
+
+export async function gitPreflight(root: string, config: LeanRigorConfig): Promise<GitPreflightResult> {
+  return preflightGitRepository(root, config);
+}
+
+export async function workspaceInit(args: {
+  root: string;
+  workflowId: string;
+  config: LeanRigorConfig;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
+    const next = structuredClone(state);
+    next.git = await ensureIntegrationWorkspace(next, args.config);
+    appendEvent(next, "workspace_initialized", "LeanRigor integration worktree initialized.");
+    return next;
+  }, { ...args.mutation, operation: "workspace_init" });
+}
+
+export async function workspaceCreatePhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  ownerId: string;
+  config: LeanRigorConfig;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
+    const next = structuredClone(state);
+    next.git = next.git ?? await ensureIntegrationWorkspace(next, args.config);
+    next.git = await createPhaseWorkspace(next, args.phaseId, args.ownerId, args.config);
+    const phase = next.plan?.phases.find((candidate) => candidate.id === args.phaseId);
+    if (phase) {
+      phase.workspace = next.git.phaseWorkspaces[args.phaseId];
+      if (phase.status === "leased") phase.status = "running";
+    }
+    appendEvent(next, "phase_workspace_created", `Phase ${args.phaseId} workspace is ready for ${args.ownerId}.`, args.phaseId, args.ownerId);
+    return next;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "workspace_create_phase" });
+}
+
+export async function workspaceStatus(root: string, workflowId: string, config: LeanRigorConfig): Promise<WorkspaceStatus> {
+  return buildWorkspaceStatus(await loadFlowState(root, workflowId), config);
+}
+
+export async function integratePhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  ownerId: string;
+  mutation?: MutationOptions;
+}): Promise<IntegrationOperationResult> {
+  let operation: Omit<IntegrationOperationResult, "state"> | undefined;
+  const state = await updateFlowState(args.root, args.workflowId, async (current) => {
+    const applied = await applyApprovedPhaseToIntegration(current, args.phaseId);
+    operation = applied.result;
+    if (applied.result.code === "already_integrated") return current;
+    const next = applied.state;
+    appendEvent(
+      next,
+      applied.result.ok ? "phase_integrated" : "phase_integration_conflict",
+      applied.result.ok
+        ? `Phase ${args.phaseId} integrated into the LeanRigor integration worktree.`
+        : `Phase ${args.phaseId} integration conflict detected.`,
+      args.phaseId,
+      args.ownerId
+    );
+    return next;
+  }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "integrate_phase" });
+  return { ...(operation ?? { ok: false, code: "integration_rejected", phaseId: args.phaseId }), state } as IntegrationOperationResult;
+}
+
+export function integrationStatus(state: SequentialWorkflowState) {
+  return buildIntegrationStatus(state);
+}
+
+export async function validateIntegration(args: {
+  root: string;
+  workflowId: string;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, async (state) => {
+    const next = await runIntegrationValidation(state);
+    next.validation.push(...(next.git?.integrationValidation?.commands ?? []));
+    appendEvent(next, "integration_validation_recorded", `Combined integration validation ${next.git?.integrationValidation?.status ?? "recorded"}.`);
+    if (next.git?.integrationValidation?.status === "passed" && next.state === "validating") return transition(next, "reviewing", "Combined integration validation passed; final integrated review is ready.");
+    return next;
+  }, { ...args.mutation, operation: "validate_integration" });
+}
+
+export async function workspaceCleanup(args: {
+  root: string;
+  workflowId: string;
+  mode?: "safe" | "force-owned" | "archive";
+  mutation?: MutationOptions;
+}): Promise<WorkspaceCleanupReport> {
+  let report: WorkspaceCleanupReport | undefined;
+  await updateFlowState(args.root, args.workflowId, async (current) => {
+    report = await cleanupOwnedWorkspaces(current, args.mode ?? "safe");
+    const next = structuredClone(current);
+    if (next.git) {
+      const removed = new Set(report.removedWorktrees);
+      for (const [phaseId, workspace] of Object.entries(next.git.phaseWorkspaces)) {
+        if (!removed.has(workspace.path)) continue;
+        delete next.git.phaseWorkspaces[phaseId];
+        const phase = next.plan?.phases.find((candidate) => candidate.id === phaseId);
+        if (phase) phase.workspace = undefined;
+      }
+    }
+    appendEvent(next, "workspace_cleanup", `Workspace cleanup removed ${report.removedWorktrees.length} worktree(s).`);
+    return next;
+  }, { ...args.mutation, operation: "workspace_cleanup" });
+  return report ?? { workflowId: args.workflowId, mode: args.mode ?? "safe", removedWorktrees: [], retainedWorktrees: [], removedBranches: [], needsReview: [] };
+}
+
+export async function workspaceRecover(args: {
+  root: string;
+  workflowId: string;
+  mutation?: MutationOptions;
+}): Promise<WorkspaceRecoveryReport> {
+  let report: WorkspaceRecoveryReport | undefined;
+  const state = await updateFlowState(args.root, args.workflowId, async (current) => {
+    report = await recoverWorkspaceState(current);
+    for (const fact of report.facts) appendEvent(report.state, "workspace_recovery_fact", fact);
+    return report.state;
+  }, { ...args.mutation, operation: "workspace_recover" });
+  return { ...(report ?? { workflowId: args.workflowId, facts: [], needsReview: [], state }), state };
 }
 
 export async function leasePhase(args: {
@@ -912,14 +1141,19 @@ export function nextActions(state: SequentialWorkflowState): string[] {
       if (replan) return [`leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       return active
         ? [
+          ...(state.git?.phaseWorkspaces[active.id] ? [] : [`leanrigor flow workspace-create-phase ${id} ${active.id} --owner "${state.phaseLeases[active.id]?.ownerId ?? DEFAULT_OWNER_ID}" --root "${state.root}"`]),
           `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
           `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
         ]
-        : [`leanrigor flow ready ${id} --root "${state.root}"`, `leanrigor flow phase-start ${id} --root "${state.root}"`];
+        : [
+          ...(state.git ? [] : [`leanrigor flow workspace-init ${id} --root "${state.root}"`]),
+          `leanrigor flow ready ${id} --root "${state.root}"`,
+          `leanrigor flow phase-start ${id} --root "${state.root}"`
+        ];
     }
     case "validating":
       return [
-        `leanrigor flow record-validation ${id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
+        ...(state.git ? [`leanrigor flow integration-status ${id} --root "${state.root}"`, `leanrigor flow validate-integration ${id} --root "${state.root}"`] : [`leanrigor flow record-validation ${id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`]),
         `leanrigor flow record-review ${id} --status passed --summary "<summary>" --root "${state.root}"`
       ];
     case "reviewing":

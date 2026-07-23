@@ -28,6 +28,9 @@ import {
   completePhase,
   getCommitPlan,
   heartbeatPhase,
+  gitPreflight,
+  integratePhase,
+  integrationStatus,
   leasePhase,
   listFlows,
   loadLatestFlow,
@@ -43,6 +46,12 @@ import {
   readyPhases,
   startFlow,
   startPhase,
+  validateIntegration,
+  workspaceCleanup,
+  workspaceCreatePhase,
+  workspaceInit,
+  workspaceRecover,
+  workspaceStatus,
   workflowEvents
 } from "../core/flow.js";
 import { RevisionConflictError } from "../core/workflow-store.js";
@@ -327,6 +336,118 @@ flow.command("recover-leases")
     const state = await recoverLeases({ root: options.root, workflowId, mutation: mutationOptions(options) });
     if (options.json) printFlowState(state);
     else console.log(`Recovered expired leases for ${workflowId}.`);
+  });
+
+flow.command("git-preflight")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured preflight result")
+  .action(async (options) => {
+    const result = await gitPreflight(options.root, await ensureRepositoryConfig(options.root));
+    if (options.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(result.ok ? "Git workspace preflight passed." : `Git workspace preflight failed: ${result.code}`);
+  });
+
+flow.command("workspace-init")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, options) => {
+    const state = await workspaceInit({ root: options.root, workflowId, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    if (options.json) printFlowState(state);
+    else console.log(`Integration workspace ready: ${state.git?.integration.path}`);
+  });
+
+flow.command("workspace-create-phase")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--owner <id>", "phase lease owner ID")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, phaseId, options) => {
+    const state = await workspaceCreatePhase({
+      root: options.root,
+      workflowId,
+      phaseId,
+      ownerId: options.owner,
+      config: await ensureRepositoryConfig(options.root),
+      mutation: mutationOptions(options)
+    });
+    if (options.json) printFlowState(state);
+    else console.log(`Phase ${phaseId} workspace ready: ${state.git?.phaseWorkspaces[phaseId]?.path}`);
+  });
+
+flow.command("workspace-status")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured workspace status")
+  .action(async (workflowId, options) => {
+    const status = await workspaceStatus(options.root, workflowId, await ensureRepositoryConfig(options.root));
+    if (options.json) console.log(JSON.stringify(status, null, 2));
+    else console.log(status.git ? `Integration workspace: ${status.git.integration.status}` : "No Git workspace initialized.");
+  });
+
+flow.command("integrate-phase")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--owner <id>", "integration owner ID")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--json", "print structured integration result")
+  .action(async (workflowId, phaseId, options) => {
+    const result = await integratePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, mutation: mutationOptions(options) });
+    if (options.json) console.log(JSON.stringify(result, null, 2));
+    else if (result.ok) console.log(result.code === "already_integrated" ? `Phase ${phaseId} was already integrated.` : `Phase ${phaseId} integrated.`);
+    else console.log(`Phase ${phaseId} integration failed: ${result.code}`);
+  });
+
+flow.command("integration-status")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured integration status")
+  .action(async (workflowId, options) => {
+    const status = integrationStatus(await resumeFlow(options.root, workflowId));
+    if (options.json) console.log(JSON.stringify(status, null, 2));
+    else console.log(status.finalReviewEligible ? "Integration is ready for final review." : `${status.pendingPhaseIds.length} pending, ${status.conflictedPhaseIds.length} conflicted.`);
+  });
+
+flow.command("validate-integration")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .option("--json", "print workflow JSON summary")
+  .action(async (workflowId, options) => {
+    const state = await validateIntegration({ root: options.root, workflowId, mutation: mutationOptions(options) });
+    if (options.json) printFlowState(state);
+    else console.log(`Combined integration validation: ${state.git?.integrationValidation?.status}`);
+  });
+
+flow.command("workspace-cleanup")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--mode <mode>", "safe, force-owned, or archive", "safe")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .option("--json", "print structured cleanup report")
+  .action(async (workflowId, options) => {
+    const report = await workspaceCleanup({ root: options.root, workflowId, mode: options.mode, mutation: mutationOptions(options) });
+    if (options.json) console.log(JSON.stringify(report, null, 2));
+    else console.log(`Workspace cleanup removed ${report.removedWorktrees.length} worktree(s); retained ${report.retainedWorktrees.length}.`);
+  });
+
+flow.command("workspace-recover")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .option("--json", "print structured recovery report")
+  .action(async (workflowId, options) => {
+    const report = await workspaceRecover({ root: options.root, workflowId, mutation: mutationOptions(options) });
+    if (options.json) console.log(JSON.stringify(report, null, 2));
+    else console.log(report.needsReview.length ? `Workspace recovery needs review: ${report.needsReview.join(", ")}` : "Workspace recovery completed.");
   });
 
 flow.command("events")

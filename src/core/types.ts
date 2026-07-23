@@ -9,6 +9,26 @@ export type TestLevel = "none" | "sanity" | "targeted" | "package" | "full";
 export type ParallelismRecommendation = "sequential" | "candidate";
 export type CriterionStatus = "met" | "not_met" | "uncertain" | "not_applicable";
 export type CompletionGateDecision = "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
+export type IntegrationWorkspaceStatus =
+  | "not_created"
+  | "ready"
+  | "integration_pending"
+  | "validating"
+  | "needs_repair"
+  | "needs_review"
+  | "ready_for_final_review"
+  | "blocked";
+export type PhaseWorkspaceStatus =
+  | "not_created"
+  | "ready"
+  | "active"
+  | "completion_pending"
+  | "approved"
+  | "integrated"
+  | "needs_repair"
+  | "conflicted"
+  | "abandoned";
+export type IntegrationValidationStatus = "pending" | "running" | "passed" | "failed" | "skipped";
 export type PhaseStatus =
   | "planned"
   | "ready"
@@ -179,6 +199,7 @@ export interface WorkflowPhase {
   scopeDeviations: string[];
   completion?: PhaseCompletionRecord;
   repairAttempts: PhaseRepairAttempt[];
+  workspace?: PhaseWorkspace;
 }
 
 export interface ExecutionPlan {
@@ -236,6 +257,71 @@ export interface PhaseCompletionRecord {
   timestamp: string;
   workflowRevision: number;
   leaseOwnerId?: string;
+  gitEvidence?: PhaseGitEvidence;
+}
+
+export interface WorkflowGitContext {
+  repositoryRoot: string;
+  gitCommonDir: string;
+  baseCommit: string;
+  originalHead: string;
+  originalBranch?: string;
+  createdAt: string;
+  integrationBranch: string;
+  integrationWorktreePath: string;
+  workspaceRoot: string;
+  branchPrefix: string;
+  transferStrategy: "internal-commit";
+}
+
+export interface IntegrationWorkspace {
+  path: string;
+  branch: string;
+  baseCommit: string;
+  headCommit: string;
+  status: IntegrationWorkspaceStatus;
+  integratedPhaseIds: string[];
+  conflictingPhaseIds: string[];
+  conflictedFiles: string[];
+}
+
+export interface PhaseWorkspace {
+  phaseId: string;
+  leaseOwnerId: string;
+  path: string;
+  branch: string;
+  baseCommit: string;
+  createdAt: string;
+  updatedAt: string;
+  status: PhaseWorkspaceStatus;
+}
+
+export interface PhaseGitEvidence {
+  workspacePath: string;
+  baseCommit: string;
+  workspaceHead: string;
+  changedFiles: string[];
+  diffHash: string;
+  untrackedFiles: string[];
+  validationCommitOrPatch?: string;
+  transferStrategy: "internal-commit";
+  binaryFiles: string[];
+  fileModeChanges: string[];
+}
+
+export interface IntegrationValidation {
+  integrationCommit: string;
+  commands: ValidationEvidence[];
+  startedAt: string;
+  completedAt?: string;
+  status: IntegrationValidationStatus;
+}
+
+export interface WorkflowGitState {
+  context: WorkflowGitContext;
+  integration: IntegrationWorkspace;
+  phaseWorkspaces: Record<string, PhaseWorkspace>;
+  integrationValidation?: IntegrationValidation;
 }
 
 export interface IntegratedReviewResult {
@@ -324,6 +410,7 @@ export interface SequentialWorkflowState {
   review?: IntegratedReviewResult;
   commitPlan?: CommitPlan;
   phaseLeases: Record<string, PhaseLease>;
+  git?: WorkflowGitState;
   repairAttempts: number;
   blockers: string[];
   events: WorkflowEvent[];

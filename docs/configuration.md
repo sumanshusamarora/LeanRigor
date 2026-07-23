@@ -48,6 +48,21 @@ settings most relevant to methodology and safety. The schema source of truth is
   overlap as a blocking scheduling conflict.
 - `execution.sensitivePaths`: additional repository-relative path patterns that
   should conflict broadly during scheduling.
+- `execution.workspaceStrategy`: default `git-worktree`. Use `none` only for
+  explicitly sequential legacy operation.
+- `execution.workspaceRoot`: default `null`, which resolves to
+  `<repository-parent>/.leanrigor-worktrees/<repository-name>/`.
+- `execution.retainCompletedPhaseWorktrees`: default `true`; safe cleanup is
+  conservative and keeps recoverability by default.
+- `execution.retainIntegrationWorktree`: default `true`; the integration
+  workspace is preserved until explicit cleanup.
+- `execution.integrationTransferStrategy`: default and currently only
+  supported value `internal-commit`.
+- `execution.workspaceBranchPrefix`: default `leanrigor`; branch names are
+  sanitized and persisted.
+- `execution.maxWorkspacePathLength`: default `220`.
+- `execution.internalCommitSigning`: default `disabled`; set `git-config` in
+  repositories that require signed internal workflow commits.
 
 Built-in sensitive paths include package manifests and lockfiles,
 `tsconfig*.json`, `.git/**`, `.github/**`, `migrations/**`, `schema/**`, and

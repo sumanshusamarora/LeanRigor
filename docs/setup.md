@@ -205,6 +205,8 @@ For manual diagnosis:
 leanrigor flow active --json --root /path/to/repository
 leanrigor flow next <workflow-id> --json --root /path/to/repository
 leanrigor flow ready <workflow-id> --json --root /path/to/repository
+leanrigor flow workspace-status <workflow-id> --json --root /path/to/repository
+leanrigor flow integration-status <workflow-id> --json --root /path/to/repository
 leanrigor flow events <workflow-id> --json --root /path/to/repository
 leanrigor flow status <workflow-id> --json --root /path/to/repository
 ```
@@ -217,3 +219,30 @@ Revision conflicts mean another process updated the workflow between read and
 write. Reread status/next, then decide the next transition from the latest
 state. Lease commands are intended for troubleshooting or adapter internals;
 normal Claude usage should not display them unless a transition fails.
+
+## Workspace troubleshooting
+
+Git workspace setup writes worktrees outside the repository by default:
+
+```text
+<repository-parent>/.leanrigor-worktrees/<repository-name>/<workflow-id>/
+```
+
+Use:
+
+```bash
+leanrigor flow git-preflight --json --root /path/to/repository
+leanrigor flow workspace-status <workflow-id> --json --root /path/to/repository
+leanrigor flow workspace-recover <workflow-id> --json --root /path/to/repository
+leanrigor flow workspace-cleanup <workflow-id> --mode safe --json --root /path/to/repository
+```
+
+Dirty original worktrees are allowed, but uncommitted user changes are outside
+the frozen LeanRigor base commit. LeanRigor does not stash or copy them. If a
+task depends on those uncommitted changes, stop and ask for an explicit decision
+before continuing.
+
+Cleanup verifies LeanRigor ownership metadata before deleting anything. Safe
+cleanup refuses dirty, conflicted, unintegrated, or ownership-uncertain
+worktrees and preserves the integration workspace by default. No remote branch
+is deleted.

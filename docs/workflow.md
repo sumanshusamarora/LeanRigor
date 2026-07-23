@@ -32,9 +32,14 @@ leanrigor flow answer <workflow-id> "<answer>"
 leanrigor flow approve-approach <workflow-id>
 leanrigor flow approve-plan <workflow-id>
 leanrigor flow ready <workflow-id> --json
+leanrigor flow workspace-init <workflow-id> --json
 leanrigor flow phase-start <workflow-id> phase-1 --owner <session-id>
+leanrigor flow workspace-create-phase <workflow-id> phase-1 --owner <session-id> --json
 leanrigor flow record-validation <workflow-id> --phase phase-1 --command "npm test" --exit 0 --result "targeted tests passed"
 leanrigor flow phase-complete <workflow-id> phase-1 --owner <session-id> --evidence-file phase-1-completion.json
+leanrigor flow integrate-phase <workflow-id> phase-1 --owner <session-id> --json
+leanrigor flow integration-status <workflow-id> --json
+leanrigor flow validate-integration <workflow-id> --json
 leanrigor flow phase-status <workflow-id> phase-1
 leanrigor flow repair <workflow-id> phase-1 --reason "Targeted validation failed"
 leanrigor flow record-review <workflow-id> --status passed --summary "Integrated review passed"
@@ -118,9 +123,9 @@ Mode differences:
 | Standard | Prefer a few cohesive phases; split materially distinct implementation, consumer, coverage, or documentation outcomes. |
 | Rigorous | Isolate migrations, security-sensitive work, public contracts, production infrastructure, destructive operations, and other high-risk boundaries. |
 
-The implementation intentionally avoids parallel agents, worktrees, OpenCode,
-Codex, and CodeGraph. Higher `execution.maxParallelPhases` values change
-scheduler recommendations only.
+The implementation intentionally avoids parallel agents, OpenCode, Codex, and
+CodeGraph. Higher `execution.maxParallelPhases` values change scheduler
+recommendations only.
 
 Planning methodology is loaded from `methodology/planning.md` plus the current
 mode overlay. Plans should include the desired outcome, inspected current
@@ -147,6 +152,55 @@ A phase does not transition directly from ready execution to completed. A ready
 phase must be leased to an explicit owner, and completion must be submitted by
 that same owner while the lease is active. The next dependent phase unlocks only
 when the completion gate returns `completed`.
+
+When Git workspaces are enabled, the implementation step happens in the
+assigned phase worktree returned by `workspace-create-phase`, not in the
+user's original checkout. Before editing, Claude must verify that the current
+directory equals the active phase workspace path and that Git root matches that
+workspace. If it does not, Claude stops rather than editing the wrong tree.
+
+The phase completion gate records Git evidence from the workspace:
+
+- workspace path and base commit;
+- phase workspace HEAD;
+- changed files, including relevant untracked files;
+- ignored files excluded by default;
+- diff hash;
+- binary and file-mode indicators;
+- the internal LeanRigor transfer commit when the gate passes.
+
+LeanRigor uses internal transfer commits on LeanRigor-owned branches. These are
+mechanical workflow commits, are not pushed, and are not the final user commit.
+The final commit proposal remains a separate human-reviewed step.
+
+## Integration Workspace
+
+`workspace-init` creates one dedicated integration worktree for the workflow,
+starting from the frozen workflow base commit. Later phase worktrees branch
+from the current integration head that contains their dependencies. If the
+integration head advances before another phase is integrated, LeanRigor checks
+the recorded phase base and applies the approved internal commit through the
+controlled integration path rather than silently rebasing.
+
+`integrate-phase`:
+
+1. acquires the workflow lock;
+2. verifies the phase completion gate passed;
+3. verifies approved Git evidence and workspace identity;
+4. enforces dependency integration order;
+5. skips already integrated phases idempotently;
+6. cherry-picks the internal transfer commit into the integration worktree;
+7. persists success or textual conflict metadata;
+8. never touches, rebases, merges, commits, or pushes the user's branch.
+
+On conflict, LeanRigor records `integration_conflict`, conflicting files, and
+the next action `create_conflict_repair`. It does not choose ours/theirs and it
+does not modify the original user worktree.
+
+`validate-integration` runs combined validation commands with the integration
+worktree as `cwd`. Validation is stale when the integration head changes.
+Final integrated review requires every completed phase to be integrated and
+the current integration head to have passing combined validation.
 
 ## Concurrency Controls
 
@@ -182,6 +236,13 @@ when dependencies remain valid. Expired leases with partial evidence move to
 `flow ready --json` reports all theoretically ready phases plus
 `dispatchableCount` after `execution.maxParallelPhases` and conflicts are
 applied. Default `maxParallelPhases` is `1`.
+
+Workspace cleanup is conservative. `workspace-cleanup` verifies LeanRigor
+ownership metadata before removal, refuses dirty or unintegrated phase
+worktrees in safe mode, preserves the integration worktree by default, and
+does not delete remote branches. `workspace-recover` inspects missing,
+orphaned, expired, dirty, or uncertain workspaces and returns `needs_review`
+when ownership or data safety is unclear.
 
 ## Ownership Conflicts
 

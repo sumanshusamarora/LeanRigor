@@ -39,9 +39,11 @@ Repository-local state:
 - `.leanrigor/workflows/`
 
 Do not create or modify repository `.claude/` files in marketplace mode. Do not
-commit, push, create worktrees, or spawn parallel agents automatically.
+commit, push, or spawn parallel agents automatically.
 LeanRigor is parallel-ready internally, but default execution remains
-sequential. Do not launch live parallel Claude agents.
+sequential. Do not launch live parallel Claude agents. Use only
+LeanRigor-managed worktrees returned by the CLI; do not create ad hoc
+worktrees.
 
 ## Conversational Flow
 
@@ -78,7 +80,7 @@ persisted phases exist.
 Interpret common responses using the current persisted state:
 
 - `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach, then immediately render the generated plan for plan approval.
-- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, read the new revision, inspect ready phases, and begin one ready phase through the internal lease/start path.
+- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, initialize the integration workspace, read the new revision, inspect ready phases, and begin one ready phase through the internal lease/start/workspace path.
 - `revise ...`: revise the current approach/plan when that gate is active.
 - `reject because ...`: reject the approach with the supplied reason.
 - `cancel`: cancel the workflow after confirming intent when destructive to progress.
@@ -95,18 +97,28 @@ During execution, each phase must pass:
 `planned -> ready -> leased/running -> targeted validation -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
 
 Before implementation, read the current workflow revision and use a stable owner
-ID for this Claude session. Acquire/start a phase lease for one ready phase,
-refresh the lease during long phases where practical, run declared validation or
-explicitly record skipped validation with a reason, then submit criterion
-evidence, changed files, validation, assumptions, risks, and scope deviations
-with `flow phase-complete` as the same owner. Follow the returned gate decision;
-Claude must not unlock the next phase itself.
+ID for this Claude session. Acquire/start a phase lease for one ready phase and
+create its phase workspace. Before editing, verify that the current directory
+equals the active phase workspace returned by LeanRigor and that Git root is
+that workspace. If not, stop rather than editing the wrong tree. Refresh the
+lease during long phases where practical, run declared validation in the phase
+workspace or explicitly record skipped validation with a reason, then submit
+criterion evidence, Git workspace evidence, validation, assumptions, risks, and
+scope deviations with `flow phase-complete` as the same owner. Follow the
+returned gate decision; Claude must not unlock the next phase itself.
+
+After a phase gate passes, integrate the approved phase into the LeanRigor
+integration worktree. After all required phases are integrated, run combined
+validation in the integration worktree before final integrated review. On
+`integration_conflict`, present the conflict-repair gate and do not resolve with
+ours/theirs.
 
 If a transition returns `revision_conflict`, reread workflow state and present
 the changed situation. Never retry a rejected transition blindly. Raw lease and
 lock commands are troubleshooting details, not normal user-facing output.
 
-Final integrated review remains required after all phase gates pass.
+Final integrated review remains required after all phase gates pass and the
+current integration head has passing combined validation.
 
 ## Presentation
 

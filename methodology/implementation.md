@@ -6,6 +6,9 @@ existing style.
 
 ## Rules
 
+- When LeanRigor assigns a phase workspace, verify `pwd` and Git root match
+  that workspace before editing. Stop rather than editing the original user
+  worktree or another phase worktree.
 - Follow repository conventions, naming, formatting, and helper APIs.
 - Make the smallest cohesive change that satisfies the approved phase.
 - Preserve types, public contracts, and error behavior unless the plan says
@@ -32,3 +35,5 @@ constraints. Do not add comments that merely restate the code.
 - Do not introduce migrations in a non-migration phase.
 - Do not modify security or infrastructure boundaries incidentally.
 - Record unexpected scope expansion immediately.
+- Scope control applies to the actual Git diff in the active phase workspace,
+  including relevant untracked files.
