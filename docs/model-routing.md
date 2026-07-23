@@ -1,0 +1,49 @@
+# Portable model routing
+
+LeanRigor owns four portable model tiers: `small`, `medium`, `large`, and `inherit`.
+Workflow stages select a tier; adapters resolve that tier to a harness-specific model identifier.
+Workflow modes (`fast`, `standard`, `rigorous`) and model tiers are intentionally separate.
+
+## Claude Code defaults
+
+Claude mappings default to the official aliases:
+
+- `small` → `haiku`
+- `medium` → `sonnet`
+- `large` → `opus`
+- `inherit` → no `--model` argument
+
+These are aliases, not pinned version IDs. Claude Code remains responsible for resolving aliases through the user's provider, organisation policy, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_OPUS_MODEL` settings.
+
+## OpenCode
+
+LeanRigor does not guess OpenCode model identifiers. Users assign provider-qualified identifiers during setup, for example `anthropic/claude-sonnet-4-5`. Missing mappings produce a clear error rather than silently selecting an unknown model.
+
+## Environment overrides
+
+Platform-specific variables take precedence over generic variables, which take precedence over configuration:
+
+```bash
+LEANRIGOR_CLAUDE_MODEL_SMALL=haiku
+LEANRIGOR_CLAUDE_MODEL_MEDIUM=sonnet
+LEANRIGOR_CLAUDE_MODEL_LARGE=opus
+
+LEANRIGOR_OPENCODE_MODEL_SMALL=provider/model-small
+LEANRIGOR_OPENCODE_MODEL_MEDIUM=provider/model-medium
+LEANRIGOR_OPENCODE_MODEL_LARGE=provider/model-large
+```
+
+Generic alternatives are `LEANRIGOR_MODEL_SMALL`, `LEANRIGOR_MODEL_MEDIUM`, and `LEANRIGOR_MODEL_LARGE`.
+
+## Resolution precedence
+
+1. Platform-specific environment variable
+2. Generic environment variable
+3. User/repository merged configuration
+4. Adapter default
+
+A stage routed to `inherit` omits an explicit model argument and lets the harness use its active/default model.
+
+## Availability failures
+
+Configuration presence can be validated before execution. Actual provider availability may only be known when the harness invokes the model. LeanRigor reports the tier, resolved identifier, and corrective command when invocation fails. It does not silently downgrade high-risk work unless fallback is explicitly approved.

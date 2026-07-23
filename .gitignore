@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+.leanrigor/runtime/
+.leanrigor/ownership.json
+.leanrigor/validations.json
+*.log
+.DS_Store

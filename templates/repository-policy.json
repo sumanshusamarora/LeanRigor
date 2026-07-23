@@ -1,0 +1,91 @@
+{
+  "$schema": "../config.schema.json",
+  "version": 1,
+  "workflow": {
+    "defaultMode": "adaptive",
+    "allowUserOverride": true,
+    "automaticTriage": true
+  },
+  "routing": {
+    "triage": "small",
+    "repositoryInspection": "small",
+    "clarification": "small",
+    "fastImplementation": "inherit",
+    "standardPlanning": "medium",
+    "standardImplementation": "medium",
+    "rigorousPlanning": "large",
+    "rigorousImplementation": "large",
+    "integratedReview": "medium",
+    "highRiskReview": "large",
+    "commitPlanning": "small"
+  },
+  "instructions": [
+    "AGENTS.md",
+    "CLAUDE.md"
+  ],
+  "parallelism": {
+    "enabled": true,
+    "maxAgents": 3,
+    "isolation": "shared-worktree",
+    "forbidSharedWrites": true
+  },
+  "git": {
+    "autoCommit": false,
+    "requireConfirmation": true,
+    "commitStyle": "conventional"
+  },
+  "introspection": {
+    "preflight": "always",
+    "deepReflection": "triggered",
+    "triggerAfterFailedRepairs": 2,
+    "triggerOnScopeExpansion": true,
+    "triggerOnArchitectureChange": true
+  },
+  "review": {
+    "fast": "sanity",
+    "standard": "integrated",
+    "rigorous": "deep",
+    "multiAgent": "integrated",
+    "highRiskPaths": "deep",
+    "allowUserOverride": true
+  },
+  "triage": {
+    "chooseLowestSafeMode": true,
+    "requireExplicitRigorousTrigger": true,
+    "fastRequiresPositiveEvidence": true,
+    "highConfidenceThreshold": 0.8,
+    "mediumConfidenceThreshold": 0.55,
+    "maxEscalationReasons": 3,
+    "maxAssumptions": 3,
+    "maxInspectionTargets": 5,
+    "fallbackMode": "standard"
+  },
+  "models": {
+    "tiers": {
+      "small": {
+        "claude": "haiku"
+      },
+      "medium": {
+        "claude": "sonnet"
+      },
+      "large": {
+        "claude": "opus"
+      },
+      "inherit": {}
+    },
+    "failIfUnavailable": true,
+    "fallback": {
+      "small": [
+        "medium",
+        "inherit"
+      ],
+      "medium": [
+        "large",
+        "inherit"
+      ],
+      "large": [
+        "inherit"
+      ]
+    }
+  }
+}

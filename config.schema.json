@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/leanrigor/config.schema.json",
+  "title": "LeanRigor Configuration",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "workflow": {
+      "type": "object",
+      "properties": {
+        "defaultMode": {
+          "enum": [
+            "adaptive",
+            "fast",
+            "standard",
+            "rigorous"
+          ],
+          "default": "adaptive"
+        },
+        "allowUserOverride": {
+          "type": "boolean",
+          "default": true
+        },
+        "automaticTriage": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "models": {
+      "type": "object",
+      "properties": {
+        "tiers": {
+          "type": "object",
+          "properties": {
+            "small": {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "opencode": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "medium": {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "opencode": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "large": {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "opencode": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "inherit": {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "opencode": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "failIfUnavailable": {
+          "type": "boolean",
+          "default": true
+        },
+        "fallback": {
+          "type": "object",
+          "properties": {
+            "small": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "small",
+                  "medium",
+                  "large",
+                  "inherit"
+                ]
+              }
+            },
+            "medium": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "small",
+                  "medium",
+                  "large",
+                  "inherit"
+                ]
+              }
+            },
+            "large": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "small",
+                  "medium",
+                  "large",
+                  "inherit"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "small",
+          "medium",
+          "large",
+          "inherit"
+        ]
+      }
+    },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "introspection": {
+      "type": "object",
+      "properties": {
+        "preflight": {
+          "enum": [
+            "always",
+            "mode-based",
+            "manual"
+          ],
+          "default": "always"
+        },
+        "deepReflection": {
+          "enum": [
+            "triggered",
+            "always",
+            "manual"
+          ],
+          "default": "triggered"
+        },
+        "triggerAfterFailedRepairs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 2
+        },
+        "triggerOnScopeExpansion": {
+          "type": "boolean",
+          "default": true
+        },
+        "triggerOnArchitectureChange": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "review": {
+      "type": "object",
+      "properties": {
+        "fast": {
+          "enum": [
+            "sanity",
+            "integrated",
+            "deep"
+          ],
+          "default": "sanity"
+        },
+        "standard": {
+          "enum": [
+            "sanity",
+            "integrated",
+            "deep"
+          ],
+          "default": "integrated"
+        },
+        "rigorous": {
+          "enum": [
+            "integrated",
+            "deep",
+            "specialist"
+          ],
+          "default": "deep"
+        },
+        "multiAgent": {
+          "enum": [
+            "integrated",
+            "deep",
+            "specialist"
+          ],
+          "default": "integrated"
+        },
+        "highRiskPaths": {
+          "enum": [
+            "deep",
+            "specialist"
+          ],
+          "default": "deep"
+        },
+        "allowUserOverride": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "triage": {
+      "type": "object",
+      "properties": {
+        "chooseLowestSafeMode": {
+          "type": "boolean",
+          "default": true
+        },
+        "requireExplicitRigorousTrigger": {
+          "type": "boolean",
+          "default": true
+        },
+        "fastRequiresPositiveEvidence": {
+          "type": "boolean",
+          "default": true
+        },
+        "highConfidenceThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.8
+        },
+        "mediumConfidenceThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.55
+        },
+        "maxEscalationReasons": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 3
+        },
+        "maxAssumptions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 3
+        },
+        "maxInspectionTargets": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 5
+        },
+        "fallbackMode": {
+          "enum": [
+            "standard",
+            "rigorous"
+          ],
+          "default": "standard"
+        }
+      },
+      "additionalProperties": false
+    },
+    "parallelism": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxAgents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "isolation": {
+          "enum": [
+            "shared-worktree",
+            "isolated-worktrees"
+          ]
+        },
+        "forbidSharedWrites": {
+          "type": "boolean"
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "autoCommit": {
+          "const": false
+        },
+        "requireConfirmation": {
+          "type": "boolean"
+        },
+        "commitStyle": {
+          "enum": [
+            "conventional",
+            "plain"
+          ]
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
