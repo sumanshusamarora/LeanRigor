@@ -26,7 +26,7 @@ export function assessTask(request: string, config: LeanRigorConfig): TriageOutp
   const text = request.toLowerCase();
   const rigorousTrigger = RIGOROUS_TRIGGERS.find((term) => text.includes(term));
   const fastCandidate = includesAny(text, FAST_TERMS);
-  const bug = includesAny(text, BUG_TERMS);
+  const bug = includesAny(text, BUG_TERMS) && !(fastCandidate && includesAny(text, ["typo", "copy", "documentation", "readme"]));
   const investigation = includesAny(text, INVESTIGATION_TERMS);
   const publicApi = text.includes("public api") || text.includes("api contract") || text.includes("breaking api");
   const migration = text.includes("migration") || text.includes("schema change");
@@ -111,11 +111,11 @@ export function applyPolicyOverrides(input: TriageOutput, config: LeanRigorConfi
     || output.assessment.dataIntegrityRisk === "high"
     || output.assessment.operationalRisk === "high";
 
-  let finalMode = output.workflow.modelRecommendation;
+  let finalMode: WorkflowMode = output.workflow.modelRecommendation;
   let overrideReason: string | null = null;
 
   if (config.workflow.defaultMode !== "adaptive") {
-    finalMode = config.workflow.defaultMode;
+    finalMode = config.workflow.defaultMode as WorkflowMode;
     overrideReason = `Repository configuration forces ${finalMode} mode.`;
   } else if (highRisk && finalMode !== "rigorous") {
     finalMode = "rigorous";

@@ -4,16 +4,48 @@
   "private": true,
   "description": "Adaptive rigor and portable model routing for AI coding agents.",
   "type": "module",
-  "bin": { "leanrigor": "dist/cli/index.js" },
+  "bin": {
+    "leanrigor": "dist/cli/index.js"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "prepack": "npm run build"
   },
-  "engines": { "node": ">=20" },
-  "dependencies": { "commander": "^14.0.0", "fast-glob": "^3.3.3", "picocolors": "^1.1.1", "zod": "^4.0.0" },
-  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0", "vitest": "^3.2.0" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "fast-glob": "^3.3.3",
+    "picocolors": "^1.1.1",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.7.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^3.2.0"
+  },
+  "main": "./dist/cli/index.js",
+  "exports": {
+    ".": "./dist/cli/index.js",
+    "./config.schema.json": "./config.schema.json"
+  },
+  "files": [
+    "dist/",
+    "config.schema.json",
+    "README.md",
+    "LICENSE",
+    "docs/",
+    "skills/",
+    "templates/"
+  ],
+  "license": "MIT"
 }

@@ -18,11 +18,11 @@ export class ClaudeAdapter implements HarnessAdapter {
     await mkdir(commandDir, { recursive: true });
     await mkdir(agentDir, { recursive: true });
     const triageModel = this.modelResolver.resolve(config.routing.triage, config) ?? "inherit";
-    await writeFile(path.join(agentDir, "leanrigor-triage.md"), `---\nname: leanrigor-triage\ndescription: Classify a coding request and recommend fast, standard, or rigorous workflow.\nmodel: ${triageModel}\ntools: Read, Glob, Grep\n---\n\nReturn only valid JSON matching the TriageOutput contract described in skills/triage-task/SKILL.md. Separate complexity from risk, choose the lowest safe mode, request at most one blocking clarification, keep repository inspection narrow, and never modify files.\n`);
-    await writeFile(path.join(commandDir, "leanrigor.md"), `Use LeanRigor in this repository. Read PRODUCT.md, ARCHITECTURE.md, .leanrigor/config.json, and relevant skill documents. Triage with the configured small model tier, validate and policy-check its output, run preflight, ask only blocking questions, create a proportional plan, apply review rules by mode, and never commit without confirmation.\n\nRequest: $ARGUMENTS\n`);
-    await writeFile(path.join(commandDir, "leanrigor-plan.md"), `Plan only with LeanRigor. Perform bounded triage and repository inspection, then produce an execution graph. Do not modify implementation files.\n\nRequest: $ARGUMENTS\n`);
-    await writeFile(path.join(commandDir, "leanrigor-status.md"), `Read .leanrigor/workflow.json and report current mode, phase, decisions, tasks, ownership, validation, and blockers.\n`);
-    await writeFile(path.join(commandDir, "leanrigor-commit.md"), `Inspect the completed LeanRigor workflow and git diff. Propose cohesive commit groups and exact commands. Do not commit unless explicitly confirmed.\n`);
+    await writeFileIfMissing(path.join(agentDir, "leanrigor-triage.md"), `---\nname: leanrigor-triage\ndescription: Classify a coding request and recommend fast, standard, or rigorous workflow.\nmodel: ${triageModel}\ntools: Read, Glob, Grep\n---\n\nReturn only valid JSON matching the TriageOutput contract described in skills/triage-task/SKILL.md. Separate complexity from risk, choose the lowest safe mode, request at most one blocking clarification, keep repository inspection narrow, and never modify files.\n`);
+    await writeFileIfMissing(path.join(commandDir, "leanrigor.md"), `Use LeanRigor in this repository. Read PRODUCT.md, ARCHITECTURE.md, .leanrigor/config.json, and relevant skill documents. Triage with the configured small model tier, validate and policy-check its output, run preflight, ask only blocking questions, create a proportional plan, apply review rules by mode, and never commit without confirmation.\n\nRequest: $ARGUMENTS\n`);
+    await writeFileIfMissing(path.join(commandDir, "leanrigor-plan.md"), `Plan only with LeanRigor. Perform bounded triage and repository inspection, then produce an execution graph. Do not modify implementation files.\n\nRequest: $ARGUMENTS\n`);
+    await writeFileIfMissing(path.join(commandDir, "leanrigor-status.md"), `Read .leanrigor/workflow.json and report current mode, phase, decisions, tasks, ownership, validation, and blockers.\n`);
+    await writeFileIfMissing(path.join(commandDir, "leanrigor-commit.md"), `Inspect the completed LeanRigor workflow and git diff. Propose cohesive commit groups and exact commands. Do not commit unless explicitly confirmed.\n`);
   }
 
   async doctor(root: string, config: LeanRigorConfig): Promise<string[]> {
@@ -37,5 +37,13 @@ export class ClaudeAdapter implements HarnessAdapter {
     try { await access(path.join(root, ".claude", "commands", "leanrigor.md")); output.push("Claude command installation: present"); }
     catch { output.push("Claude command installation: missing"); }
     return output;
+  }
+}
+
+async function writeFileIfMissing(filePath: string, content: string): Promise<void> {
+  try {
+    await writeFile(filePath, content, { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
 }

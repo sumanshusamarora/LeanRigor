@@ -20,9 +20,7 @@ program.command("setup")
   .action(async ({ root }) => {
     const configDir = path.join(root, ".leanrigor");
     await mkdir(configDir, { recursive: true });
-    const config = defaultConfig();
-    config.instructions = await detectInstructions(root);
-    await writeConfig(root, config);
+    const config = await initConfig(root);
     await new ClaudeAdapter().install(root, config);
     console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
     console.log(`For OpenCode, set provider/model identifiers with 'leanrigor models'.`);
@@ -75,6 +73,16 @@ program.command("status").option("--root <path>", "repository root", process.cwd
 program.command("doctor").option("--root <path>", "repository root", process.cwd()).action(async ({ root }) => {
   const config = await loadConfig(root); console.log((await new ClaudeAdapter().doctor(root, config)).join("\n"));
 });
+
+async function initConfig(root: string) {
+  const configPath = path.join(root, ".leanrigor", "config.json");
+  const existing = await readFile(configPath, "utf8").catch(() => undefined);
+  if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));
+  const config = defaultConfig();
+  config.instructions = await detectInstructions(root);
+  await writeConfig(root, config);
+  return config;
+}
 
 async function writeConfig(root: string, config: unknown): Promise<void> {
   const dir = path.join(root, ".leanrigor"); await mkdir(dir, { recursive: true });
