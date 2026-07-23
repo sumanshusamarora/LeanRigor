@@ -89,6 +89,7 @@ fallback or when you want repository-local unqualified commands such as
 .claude/commands/leanrigor-commit.md
 .claude/agents/leanrigor-triage.md
 .claude/leanrigor/sequential-workflow.md
+.claude/leanrigor/methodology/
 .claude/leanrigor/protect-git.sh
 .claude/settings.json
 ```
@@ -154,6 +155,10 @@ backward-compatible behavior:
 
 These are heuristics, not mechanical file-count limits.
 
+Methodology files are not configured individually. They are packaged under
+`methodology/` and copied into `.claude/leanrigor/methodology/` for
+project-local installs. Mode and risk policy select which guidance applies.
+
 ## Diagnostics
 
 `leanrigor doctor --adapter claude` reports:
@@ -176,7 +181,7 @@ Model tier resolution:
   medium: sonnet (source: config, Claude alias)
   large: opus (source: config, Claude alias)
 
-Claude assets installed: 9/9
+Claude assets installed: 21/21
 Status: current
 ```
 

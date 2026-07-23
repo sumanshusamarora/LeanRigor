@@ -4,7 +4,7 @@
 
 The project is split into three layers:
 
-1. **Workflow specification** — skills, policies, prompts, and schemas.
+1. **Workflow specification** — methodology, skills, policies, prompts, and schemas.
 2. **Orchestration core** — workflow state, assessment, DAG scheduling, file ownership, validation, Git and commit planning.
 3. **Harness adapters** — Claude Code first; OpenCode later.
 
@@ -29,6 +29,7 @@ Repository root
   ├── commands/           ← global /leanrigor:start-style commands
   ├── agents/             ← triage agent
   ├── plugin-skills/      ← shared workflow skill
+  ├── methodology/        ← shared engineering methodology and mode overlays
   ├── internal-skills/    ← non-discovered workflow reference skills
   ├── hooks/              ← hooks.json and protect-git.sh
   ├── bin/                ← launcher added to Bash PATH
@@ -42,18 +43,20 @@ npm package (dist/adapters/claude/plugin/)
   ├── commands/          ← installed to .claude/commands/
   ├── agents/            ← installed to .claude/agents/
   ├── hooks/             ← installed to .claude/leanrigor/
-  └── leanrigor/          ← shared command reference
+  └── leanrigor/          ← shared command reference and methodology copy
 
 Target repository (.claude/)
   ├── commands/          ← five /leanrigor-* commands
   ├── agents/            ← leanrigor-triage subagent
-  ├── leanrigor/         ← protect-git.sh and sequential-workflow.md
+  ├── leanrigor/         ← protect-git.sh, sequential-workflow.md, methodology/
   └── settings.json      ← hooks configuration
 ```
 
-Asset source of truth: `src/adapters/claude/plugin/`. The build step copies
-non-TypeScript assets alongside compiled output so they are accessible at
-runtime via `import.meta.url`.
+Plugin command, agent, hook, and workflow-reference assets live under
+`src/adapters/claude/plugin/`. Shared engineering methodology lives at the
+repository/package root under `methodology/`. The build step copies
+non-TypeScript plugin assets alongside compiled output; packaged installs also
+include the root methodology directory.
 
 Every installed file is tagged with `generated_by: leanrigor | asset_version: N`
 so the installer can safely detect ownership, report conflicts, and determine
@@ -62,6 +65,24 @@ whether a file has been user-modified before removing it during uninstall.
 Marketplace mode does not copy `.claude/` into target repositories. It keeps
 state in `.leanrigor/` and executes the bundled runtime through
 `${CLAUDE_PLUGIN_ROOT}`.
+
+## Engineering methodology layer
+
+Shared methodology assets live at `methodology/`:
+
+- `core.md` defines universal engineering principles and the deterministic
+  versus prompt-enforcement boundary.
+- `planning.md`, `design.md`, `implementation.md`, `debugging.md`,
+  `testing.md`, `review.md`, `evidence.md`, and `safeguards.md` provide
+  composable step guidance.
+- `modes/fast.md`, `modes/standard.md`, and `modes/rigorous.md` overlay depth
+  expectations without duplicating the full methodology.
+
+Marketplace commands reference the root methodology through
+`plugin-skills/sequential-workflow`. Project-local installs copy the same files
+from the package root into `.claude/leanrigor/methodology/` and reference that
+installed copy. The methodology directory is deliberately not named `skills/`
+so Claude marketplace installs do not expose it as user-facing slash commands.
 
 ## Model routing
 
@@ -137,7 +158,7 @@ Users may request additional review manually, but configured mandatory safety ch
 
 ## Execution graph and ownership
 
-Each task declares read sets, write sets, dependencies, validation commands, and status. Parallel tasks must have disjoint write sets. The first draft provides shared-worktree file leases; isolated worktrees are the intended next isolation strategy.
+Each task declares read sets, write sets, dependencies, validation commands, and status. Parallel execution is not implemented in the current sequential workflow.
 
 ## Persisted sequential flow
 
@@ -187,14 +208,11 @@ The framework prepares but does not automatically execute commits. Pushes, deplo
 
 ## Backlog
 
-1. Strengthen LeanRigor engineering skills and mode-specific methodology:
-   design, coding, debugging, testing, review, evidence, scope control,
-   security, migration, API and production safeguards.
-2. Optional CodeGraph inspection provider
-3. Persistent file leases
-4. Parallel agents and worktrees
-5. OpenCode adapter
-6. Codex adapter
+1. Optional CodeGraph inspection provider
+2. Persistent file leases and stronger concurrency protection
+3. Parallel agents and worktree isolation
+4. OpenCode adapter
+5. Codex adapter
 
 ## Model-backed triage runtime
 

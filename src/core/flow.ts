@@ -1024,7 +1024,7 @@ function inferBoundaries(request: string, triage: TriageOutput, targets: string[
   const text = `${request} ${targets.join(" ")} ${triage.escalationReasons.join(" ")}`.toLowerCase();
   return {
     backend: /\b(api|backend|server|service|database|db|persistence|schema)\b/.test(text),
-    frontend: /\b(frontend|front-end|ui|client|component|editor|page|view)\b/.test(text),
+    frontend: /\b(frontend|front-end|ui|client|consumer|component|editor|page|view)\b/.test(text),
     migration: /\b(migration|migrations|rollback|schema change|database)\b/.test(text),
     security: /\b(auth|authentication|authorization|permission|credential|secret|security)\b/.test(text),
     publicContract: /\b(api|contract|schema|openapi|graphql|proto|public)\b/.test(text),

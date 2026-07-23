@@ -49,6 +49,7 @@
     "hooks/",
     "bin/",
     "plugin-skills/",
+    "methodology/",
     "runtime/",
     "config.schema.json",
     "README.md",

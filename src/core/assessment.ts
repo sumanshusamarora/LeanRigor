@@ -4,9 +4,10 @@ import { defaultReviewLevel, defaultTestLevel } from "./review-policy.js";
 import { triageOutputSchema } from "./triage-schema.js";
 
 const RIGOROUS_TRIGGERS = [
-  "authentication", "authorization", "authorisation", "permission", "payment", "billing",
-  "migration", "production infrastructure", "secret", "credential", "encryption", "public api",
-  "breaking api", "data deletion", "delete data", "concurrency", "distributed consistency", "privacy", "compliance"
+  "authenticated", "authentication", "authorization", "authorisation", "permission", "payment", "billing",
+  "migration", "production", "production infrastructure", "secret", "credential", "encryption", "public api",
+  "public contract", "breaking api", "data deletion", "delete data", "concurrency", "duplicate-processing",
+  "distributed consistency", "privacy", "compliance"
 ];
 const FAST_TERMS = ["copy", "typo", "spacing", "css", "documentation", "readme", "label", "text change"];
 const BUG_TERMS = ["bug", "fix", "error", "regression", "broken", "fails", "failure"];
@@ -24,13 +25,14 @@ function conciseSummary(request: string): string {
 
 export function assessTask(request: string, config: LeanRigorConfig): TriageOutput {
   const text = request.toLowerCase();
-  const rigorousTrigger = RIGOROUS_TRIGGERS.find((term) => text.includes(term));
+  const authTrigger = /\bauth\b/.test(text) ? "auth" : undefined;
+  const rigorousTrigger = authTrigger ?? RIGOROUS_TRIGGERS.find((term) => text.includes(term));
   const fastCandidate = includesAny(text, FAST_TERMS);
   const bug = includesAny(text, BUG_TERMS) && !(fastCandidate && includesAny(text, ["typo", "copy", "documentation", "readme"]));
   const investigation = includesAny(text, INVESTIGATION_TERMS);
-  const publicApi = text.includes("public api") || text.includes("api contract") || text.includes("breaking api");
+  const publicApi = text.includes("public api") || text.includes("public contract") || text.includes("api contract") || text.includes("breaking api");
   const migration = text.includes("migration") || text.includes("schema change");
-  const security = includesAny(text, ["authentication", "authorization", "authorisation", "permission", "secret", "credential", "encryption"]);
+  const security = Boolean(authTrigger) || includesAny(text, ["authenticated", "authentication", "authorization", "authorisation", "permission", "secret", "credential", "encryption"]);
   const dataIntegrity = migration || includesAny(text, ["delete data", "data deletion", "financial calculation", "payment", "billing"]);
   const operational = includesAny(text, ["production", "deployment", "infrastructure"]);
 
@@ -63,7 +65,7 @@ export function assessTask(request: string, config: LeanRigorConfig): TriageOutp
     task: { type: taskType, summary: conciseSummary(request) },
     assessment: {
       complexity: rigorousTrigger ? "high" : fastCandidate ? "low" : "medium",
-      ambiguity: clarificationRequired ? "high" : request.trim().length < 30 ? "medium" : "low",
+      ambiguity: clarificationRequired ? "high" : fastCandidate ? "low" : request.trim().length < 30 ? "medium" : "low",
       blastRadius: rigorousTrigger ? "high" : fastCandidate ? "low" : "medium",
       architecturalImpact: rigorousTrigger ? "high" : "low",
       securityRisk: security ? "high" : "none",

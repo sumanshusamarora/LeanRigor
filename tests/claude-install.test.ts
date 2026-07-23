@@ -21,6 +21,18 @@ const EXPECTED_DEST_PATHS = [
   path.join(".claude", "leanrigor", "sequential-workflow.md"),
   path.join(".claude", "leanrigor", "protect-git.sh"),
   path.join(".claude", "settings.json"),
+  path.join(".claude", "leanrigor", "methodology", "core.md"),
+  path.join(".claude", "leanrigor", "methodology", "planning.md"),
+  path.join(".claude", "leanrigor", "methodology", "design.md"),
+  path.join(".claude", "leanrigor", "methodology", "implementation.md"),
+  path.join(".claude", "leanrigor", "methodology", "debugging.md"),
+  path.join(".claude", "leanrigor", "methodology", "testing.md"),
+  path.join(".claude", "leanrigor", "methodology", "review.md"),
+  path.join(".claude", "leanrigor", "methodology", "evidence.md"),
+  path.join(".claude", "leanrigor", "methodology", "safeguards.md"),
+  path.join(".claude", "leanrigor", "methodology", "modes", "fast.md"),
+  path.join(".claude", "leanrigor", "methodology", "modes", "standard.md"),
+  path.join(".claude", "leanrigor", "methodology", "modes", "rigorous.md"),
 ];
 
 describe("Claude plugin clean installation", () => {
@@ -69,6 +81,8 @@ describe("Claude plugin clean installation", () => {
       path.join(root, ".claude", "commands"),
       path.join(root, ".claude", "agents"),
       path.join(root, ".claude", "leanrigor"),
+      path.join(root, ".claude", "leanrigor", "methodology"),
+      path.join(root, ".claude", "leanrigor", "methodology", "modes"),
     ];
     for (const dir of dirs) {
       const s = await stat(dir);

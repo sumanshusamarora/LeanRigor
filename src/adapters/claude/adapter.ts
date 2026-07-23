@@ -7,7 +7,7 @@ import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
 import { isClaudeAlias, resolveModelTier } from "../../config/models.js";
 
 /** Version stamp embedded in every generated asset. Increment when assets change in a breaking way. */
-export const ASSET_VERSION = 2;
+export const ASSET_VERSION = 3;
 
 /** String embedded in every LeanRigor-generated file for ownership detection. */
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";
@@ -16,6 +16,26 @@ const OWNERSHIP_TOKEN = "generated_by: leanrigor";
 function pluginDir(): string {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
 }
+
+/** Repository/package root containing shared methodology assets. */
+function packageRoot(): string {
+  return path.resolve(pluginDir(), "..", "..", "..", "..");
+}
+
+const METHODOLOGY_FILES = [
+  "core.md",
+  "planning.md",
+  "design.md",
+  "implementation.md",
+  "debugging.md",
+  "testing.md",
+  "review.md",
+  "evidence.md",
+  "safeguards.md",
+  path.join("modes", "fast.md"),
+  path.join("modes", "standard.md"),
+  path.join("modes", "rigorous.md")
+];
 
 /** Deterministic SHA-256 of a string. */
 function sha256(content: string): string {
@@ -44,6 +64,10 @@ async function readPackagedAsset(assetPath: string, vars?: Record<string, string
 /** Describe all plugin assets to install relative to the plugin directory. */
 function assetManifest(triageModel: string): Array<{ src: string; dest: string; vars?: Record<string, string> }> {
   const plugin = pluginDir();
+  const methodology = METHODOLOGY_FILES.map((file) => ({
+    src: path.join(packageRoot(), "methodology", file),
+    dest: path.join(".claude", "leanrigor", "methodology", file)
+  }));
   return [
     { src: path.join(plugin, "commands", "leanrigor.md"),        dest: path.join(".claude", "commands", "leanrigor.md") },
     { src: path.join(plugin, "commands", "leanrigor-plan.md"),   dest: path.join(".claude", "commands", "leanrigor-plan.md") },
@@ -58,6 +82,7 @@ function assetManifest(triageModel: string): Array<{ src: string; dest: string; 
     },
     { src: path.join(plugin, "hooks", "protect-git.sh"),         dest: path.join(".claude", "leanrigor", "protect-git.sh") },
     { src: path.join(plugin, "settings.json"),                   dest: path.join(".claude", "settings.json") },
+    ...methodology
   ];
 }
 

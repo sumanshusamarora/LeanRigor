@@ -117,6 +117,12 @@ Mode differences:
 The implementation intentionally avoids parallel agents, worktrees, OpenCode,
 Codex, and CodeGraph.
 
+Planning methodology is loaded from `methodology/planning.md` plus the current
+mode overlay. Plans should include the desired outcome, inspected current
+behavior, approach, affected boundaries, acceptance criteria, validation
+strategy, and relevant risks. Rigorous plans must isolate migration, security,
+public contract, data, and production-impacting boundaries when present.
+
 ## Execution Contract
 
 LeanRigor CLI owns durable state and approval gates. Claude Code owns the actual
@@ -241,6 +247,26 @@ consistency, the original request, integration regressions, and overall scope.
 Integrated review repair still appends a bounded repair phase and returns to
 execution until the configured review repair budget is exhausted. Replan returns
 to plan approval. Blocked requires external action.
+
+Testing and review methodology are prompt guidance layered on top of these
+deterministic gates. Testing guidance requires behavior-focused validation and
+clear skipped-check reasons. Review guidance maps to sanity, integrated, deep,
+and specialist review levels. Evidence guidance requires each completion claim
+to identify the claim, evidence, verification status, and remaining uncertainty
+concisely.
+
+## Debugging And Safeguards
+
+Bug and failure work loads `methodology/debugging.md`: reproduce, observe,
+narrow, form hypotheses, test the cheapest discriminating hypothesis, identify
+root cause, implement the minimal fix, add regression coverage, and verify no
+adjacent regression.
+
+Security, migration, API/contract, data, privacy, production, infrastructure,
+concurrency, and destructive-operation triggers load `methodology/safeguards.md`.
+Those safeguards guide least privilege, server-side enforcement, idempotent
+migrations, expand/migrate/contract rollout, contract tests, rollback,
+observability, and no unverified production writes.
 
 ## Commit Proposal
 

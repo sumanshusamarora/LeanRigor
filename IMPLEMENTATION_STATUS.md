@@ -29,6 +29,8 @@
   - Marketplace and project-local command assets now treat `/leanrigor:start`
     as the primary conversational workflow and reserve raw commands for
     troubleshooting/manual use.
+  - Shared engineering methodology assets under `methodology/`, referenced by
+    marketplace workflow skills and copied into project-local fallback installs.
   - `npm run build:claude-plugin` bundles the CLI and dependencies to `runtime/leanrigor-cli.js`.
   - `npm run validate:claude-plugin` validates manifests, assets, executable bits, path containment, versions, and runs `claude plugin validate . --strict` when available.
 - Production TypeScript compilation is separated from test type checking: `npm run build` emits only `src/**/*.ts` to `dist/`, while `npm run typecheck` also checks `tests/**/*.ts` without emitting them.
@@ -37,16 +39,17 @@
   project-local Claude Code assets:
   - Five `/leanrigor-*` commands covering the full workflow, plan, status, review, and commit phases.
   - Shared `.claude/leanrigor/sequential-workflow.md` command reference.
+  - Shared methodology copied into `.claude/leanrigor/methodology/`.
   - `leanrigor-triage` subagent with read-only tools, configurable model, and self-contained `TriageOutput` contract.
   - `protect-git.sh` hook script blocking automatic `git commit`, `git push`, and `git reset --hard`.
   - `settings.json` configuring the `PreToolUse` hook.
-  - All assets tagged with `generated_by: leanrigor | asset_version: 2` for ownership detection.
+  - Command/workflow assets tagged with `generated_by: leanrigor | asset_version: 3`; methodology assets carry the same ownership marker.
 - Install is repeat-safe: files already matching the packaged version are reported as "already current" without writes.
 - Conflict detection: user-created files and user-modified LeanRigor-owned files are skipped and reported.
 - `--force-owned-files` flag restores LeanRigor-owned files without touching user files.
 - `leanrigor uninstall --adapter claude` removes only LeanRigor-owned unmodified files; user-modified and unrelated files are preserved.
 - Enhanced `leanrigor doctor --adapter claude` reports CLI version, Claude CLI availability, model tier resolution, per-asset status, and overall health.
-- Plugin source of truth lives in `src/adapters/claude/plugin/`; build step copies assets alongside compiled TypeScript.
+- Plugin command/agent/hook source lives in `src/adapters/claude/plugin/`; shared methodology source lives in `methodology/`.
 - Plugin assets are included in `npm pack` via `dist/` and verified present in the tarball.
 - Regression tests cover: clean install, repeat-safe install, conflict detection, force-replace, uninstall, doctor output, asset structure, model tier substitution, and JSON validity.
 
@@ -56,21 +59,35 @@ All commands below were run in this environment on July 23, 2026.
 
 - `npm install` — passed.
 - `npm run typecheck` — passed.
-- `npm test` — passed; 12 test files and 118 tests passed.
+- `npm test` — passed; 13 test files and 130 tests passed.
 - `npm run build` — passed; plugin assets copied to `dist/adapters/claude/plugin/`.
 - `npm run validate:claude-plugin` — passed.
 - `npm run lint` — passed.
-- `npm pack` — passed; tarball contains project-local Claude assets, native
-  marketplace plugin files, bundled runtime, and the `dist/core/flow.js`
+- `npm pack --pack-destination <temporary-directory> --json` — passed; tarball
+  contains project-local Claude assets, native marketplace plugin files,
+  methodology assets, bundled runtime, and the `dist/core/flow.js`
   orchestration module.
 - Clean temporary install of the generated tarball — passed.
 - Packed-install `leanrigor --help` — passed.
-- Packed-install `leanrigor init --adapter claude --root <temporary-repository>` — passed; 9 assets installed.
+- Packed-install `leanrigor init --adapter claude --root <temporary-repository>` — passed; 21 assets installed.
 - Packed-install `leanrigor doctor --adapter claude --root <temporary-repository>` — passed; "Status: current".
-- Repeated `leanrigor init --adapter claude` — passed; all 9 assets reported "already current".
+- Packed-install methodology parity check — passed; `.claude/leanrigor/methodology/core.md`
+  matched the packaged shared methodology source.
+- Repeated `leanrigor init --adapter claude` — passed; all 21 assets reported "already current".
 - Modified one generated asset; repeated init — passed; modified file correctly skipped.
 - Added unrelated `.claude` file; ran `leanrigor uninstall --adapter claude` — passed; unrelated file preserved, modified owned file preserved, unmodified owned files removed.
 - Packed-install `leanrigor triage "Fix a README typo" --provider deterministic --root <temporary-repository>` — passed.
+- Deterministic methodology smoke scenarios — passed:
+  - Fast `Fix a typo in README` stayed in Fast mode, produced one phase, and
+    used targeted validation.
+  - Standard `Add a new optional API field and update its frontend consumer`
+    produced public-contract, consumer, and regression-coverage phases.
+  - Rigorous `Add a database migration affecting authenticated production
+    requests` isolated the migration contract and used deep review/large model
+    tiers.
+  - Debugging `Fix an intermittent duplicate-processing bug` escalated to
+    Rigorous because duplicate-processing is treated as a concurrency or
+    idempotency risk trigger.
 - Packed-tarball smoke test in a clean temporary Git repository — passed:
   - installed LeanRigor,
   - ran `leanrigor init --adapter claude`,
@@ -100,9 +117,9 @@ All commands below were run in this environment on July 23, 2026.
   - verified approving approach internally advances to persisted plan approval,
   - verified human `flow status` output is concise and command-free,
   - confirmed no automatic commit was created.
-- Real Claude Code conversational smoke for this iteration was not run:
-  `claude` was installed at version 2.1.214, but `claude auth status` reported
-  `loggedIn: false`.
+- Real Claude Code conversational smoke for this methodology iteration was not
+  run: `claude --version` reported `2.1.214 (Claude Code)`, but
+  `claude auth status` reported `loggedIn: false`.
 - Native Claude Code marketplace smoke from this working tree — partially
   verified in a real Claude Code session:
   - `claude plugin marketplace add ./` — passed.
@@ -144,8 +161,11 @@ All commands below were run in this environment on July 23, 2026.
   Claude Code was not independently triggered during the marketplace smoke.
 - Internal workflow skills live under `internal-skills/` so Claude marketplace
   installs do not expose them as user-facing commands.
+- Shared methodology lives under `methodology/`, not root `skills/`, so it is
+  internal reference material rather than a user-facing slash command surface.
 
 ## Next implementation step
 
-Run a real authenticated Claude Code smoke for the phase-gate workflow, then
-publish/refresh the marketplace plugin from a clean tree after validation.
+Run a real authenticated Claude Code before/after behavior smoke for a Standard
+task, then publish/refresh the marketplace plugin from a clean tree after
+validation.

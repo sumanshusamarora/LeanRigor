@@ -29,6 +29,7 @@ describe("CLI packaging and init regressions", () => {
     await expect(readFile(commandPath, "utf8")).resolves.toBe("custom user command\n");
     await expect(readFile(path.join(root, ".claude", "agents", "leanrigor-triage.md"), "utf8")).resolves.toContain("name: leanrigor-triage");
     await expect(readFile(path.join(root, ".claude", "leanrigor", "sequential-workflow.md"), "utf8")).resolves.toContain("LeanRigor Conversational Workflow");
+    await expect(readFile(path.join(root, ".claude", "leanrigor", "methodology", "core.md"), "utf8")).resolves.toContain("Core Engineering Methodology");
     await expect(readFile(path.join(root, ".claude", "commands", "leanrigor-status.md"), "utf8")).resolves.toContain("leanrigor flow next --json");
   });
 

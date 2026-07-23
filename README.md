@@ -12,6 +12,8 @@ committing or pushing.
 Each workflow phase is a small functional outcome with acceptance criteria,
 expected write areas, and validation expectations. A phase only unlocks
 dependents after an evidence-based completion gate passes.
+Shared engineering methodology lives under `methodology/` and is applied
+proportionally by Fast, Standard, and Rigorous mode overlays.
 
 ## Status
 
@@ -146,6 +148,12 @@ Mode differences are observable:
 Mandatory safety triggers can escalate mode and cannot be bypassed by asking for
 less rigor.
 
+The methodology adds directive engineering standards for planning, design,
+implementation, debugging, testing, review, evidence, scope control, security,
+migrations, APIs/contracts, and production-impacting changes. Claude loads the
+core methodology plus the selected mode overlay, then only the specific
+methodology files relevant to the current step.
+
 During execution, the active phase must run or explicitly skip its declared
 validation and submit structured completion evidence. The deterministic gate
 then returns `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
@@ -170,40 +178,57 @@ selected by default.
 - Targeted validation with persisted evidence.
 - Final integrated review before commit planning.
 - Commit preparation without automatic commit or push.
+- Shared methodology source with mode overlays rather than duplicated long
+  command prompts.
 
 ## Documentation
 
 - [Product rationale](PRODUCT.md)
 - [Architecture](ARCHITECTURE.md)
 - [Workflow](docs/workflow.md)
+- [Engineering methodology](docs/methodology.md)
 - [Claude Code adapter](docs/claude-code.md)
 - [Claude marketplace plugin](docs/claude-marketplace.md)
 - [Setup](docs/setup.md)
+- [Configuration reference](docs/configuration.md)
 - [Model routing](docs/model-routing.md)
 - [OpenCode roadmap](docs/opencode-roadmap.md)
 
 ## LeanRigor And Superpowers
 
-Superpowers provides a comprehensive, strongly guided engineering methodology
-for coding agents. LeanRigor is inspired by its emphasis on planning, evidence,
-testing, and review, while exploring a different trade-off: selecting workflow
-depth and model capability in proportion to task risk and complexity.
+Superpowers offers a comprehensive, strongly guided engineering methodology for
+coding agents. LeanRigor shares its emphasis on planning, testing,
+verification, and review, while exploring a different trade-off: applying
+different levels of ceremony and model capability according to task risk and
+complexity.
 
-The comparison below is based on the current Superpowers README, which describes
-brainstorming, git worktrees, bite-sized plans, subagent-driven development,
-TDD, code review, and branch finishing.
+The comparison below is based only on verified primary-source documentation in
+the current Superpowers repository.
 
 | Area | Superpowers | LeanRigor |
 |---|---|---|
-| Installation | Claude official marketplace or Superpowers marketplace. | LeanRigor marketplace, with npm/project-local fallback. |
-| Workflow shape | Strong full methodology with brainstorming, worktree, plan, execution, TDD, review, finish. | Adaptive Fast, Standard, or Rigorous workflow selected by triage and policy. |
-| Execution model | Supports subagent-driven development and worktrees. | Sequential single-session execution in this iteration. |
-| Testing/review | Emphasizes RED-GREEN-REFACTOR, evidence, and code review. | Records proportional validation evidence and final integrated review. |
-| Trade-off | Comprehensive discipline by default. | Ceremony and model capability scaled to task risk and complexity. |
+| Workflow philosophy | Complete software development methodology with automatic skill use and a basic flow from brainstorming through branch finishing. | Proportional methodology with deterministic gates and Fast/Standard/Rigorous depth selected by triage and policy. |
+| Planning | Brainstorming/design approval, then detailed bite-sized implementation plans. | Inspected plans with acceptance criteria and validation, scaled by mode; Fast remains compact. |
+| Testing | RED-GREEN-REFACTOR TDD is documented for features, bugs, refactors, and behavior changes. | Proportional testing: sanity for Fast, targeted/unit/integration defaults for Standard, broader/risk-specific checks for Rigorous. |
+| Debugging | Systematic root-cause process before fixes. | Reproduce, observe, narrow, hypothesize, test, root-cause, minimal fix, regression coverage, with depth by mode. |
+| Review | Task and final code review are part of documented execution flows. | Sanity, integrated, deep, and specialist review levels feed LeanRigor completion gates. |
+| Worktrees | Documented worktree skill detects/creates isolated workspaces. | Not implemented in this iteration; worktrees remain backlog. |
+| Subagents | Documented subagent-driven development dispatches implementers and reviewers. | Not implemented in this iteration; execution is sequential in one active session. |
+| Adaptive mode selection | The README documents a strong default workflow; no claim is made here about risk-based mode selection. | Built-in adaptive mode selection with deterministic escalation for high-risk triggers. |
+| Model-tier routing | Subagent documentation advises choosing models by role and task complexity. | Portable small/medium/large routing is built into configuration and workflow stages. |
+| Completion evidence | Verification-before-completion requires fresh evidence before success claims. | Completion gates persist criterion evidence, validation records, scope deviations, risks, and final review. |
 
-Sources: [Superpowers README](https://github.com/obra/superpowers),
-[Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference),
-and [Claude plugin marketplace docs](https://code.claude.com/docs/en/plugin-marketplaces).
+Primary sources:
+[Superpowers README](https://github.com/obra/superpowers),
+[brainstorming](https://github.com/obra/superpowers/blob/main/skills/brainstorming/SKILL.md),
+[writing-plans](https://github.com/obra/superpowers/blob/main/skills/writing-plans/SKILL.md),
+[test-driven-development](https://github.com/obra/superpowers/blob/main/skills/test-driven-development/SKILL.md),
+[systematic-debugging](https://github.com/obra/superpowers/blob/main/skills/systematic-debugging/SKILL.md),
+[verification-before-completion](https://github.com/obra/superpowers/blob/main/skills/verification-before-completion/SKILL.md),
+[requesting-code-review](https://github.com/obra/superpowers/blob/main/skills/requesting-code-review/SKILL.md),
+[using-git-worktrees](https://github.com/obra/superpowers/blob/main/skills/using-git-worktrees/SKILL.md),
+and
+[subagent-driven-development](https://github.com/obra/superpowers/blob/main/skills/subagent-driven-development/SKILL.md).
 
 ## Deliberate Limitations
 
@@ -215,3 +240,11 @@ and [Claude plugin marketplace docs](https://code.claude.com/docs/en/plugin-mark
 - File leases are in-memory in the core draft.
 - Worktree isolation is documented but not implemented.
 - Commit planning is intentionally conservative and requires human review.
+
+## Backlog
+
+1. Optional CodeGraph inspection provider
+2. Persistent file leases and stronger concurrency protection
+3. Parallel agents and worktree isolation
+4. OpenCode adapter
+5. Codex adapter

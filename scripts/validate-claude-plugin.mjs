@@ -83,6 +83,20 @@ const expectedCommands = [
   "./commands/review.md",
   "./commands/commit.md"
 ];
+const methodologyFiles = [
+  "core.md",
+  "planning.md",
+  "design.md",
+  "implementation.md",
+  "debugging.md",
+  "testing.md",
+  "review.md",
+  "evidence.md",
+  "safeguards.md",
+  "modes/fast.md",
+  "modes/standard.md",
+  "modes/rigorous.md"
+];
 
 if (marketplace) {
   if (marketplace.name !== "leanrigor") fail("marketplace name must be leanrigor");
@@ -129,6 +143,7 @@ await assertExists("bin/leanrigor", "plugin launcher");
 await assertExecutable("bin/leanrigor");
 await assertExists("runtime/leanrigor-cli.js", "bundled runtime");
 await assertExists("plugin-skills/sequential-workflow/SKILL.md", "plugin skill");
+for (const file of methodologyFiles) await assertExists(`methodology/${file}`, "methodology file");
 try {
   await access(path.join(root, "skills"));
   fail("root skills/ directory must not exist because Claude exposes it as marketplace commands");
@@ -141,6 +156,17 @@ if (hooks) {
   const hookText = JSON.stringify(hooks);
   if (!hookText.includes("${CLAUDE_PLUGIN_ROOT}/hooks/protect-git.sh")) fail("hook must resolve protect-git.sh through CLAUDE_PLUGIN_ROOT");
 }
+
+const marketplaceWorkflowSkill = await readFile(path.join(root, "plugin-skills", "sequential-workflow", "SKILL.md"), "utf8");
+if (!marketplaceWorkflowSkill.includes("methodology/core.md")) fail("marketplace workflow skill must reference shared methodology/core.md");
+if (!marketplaceWorkflowSkill.includes("methodology/modes/<fast|standard|rigorous>.md")) fail("marketplace workflow skill must reference mode overlays");
+for (const file of methodologyFiles.filter((file) => !file.startsWith("modes/"))) {
+  if (!marketplaceWorkflowSkill.includes(`methodology/${file}`)) fail(`marketplace workflow skill must reference methodology/${file}`);
+}
+
+const localWorkflow = await readFile(path.join(root, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
+if (!localWorkflow.includes(".claude/leanrigor/methodology/core.md")) fail("project-local workflow reference must use installed methodology path");
+if (!localWorkflow.includes(".claude/leanrigor/methodology/modes/<fast|standard|rigorous>.md")) fail("project-local workflow reference must use installed mode overlays");
 
 try {
   const runtime = await stat(path.join(root, "runtime", "leanrigor-cli.js"));

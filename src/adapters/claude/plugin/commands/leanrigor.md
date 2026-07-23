@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 2 -->
+<!-- generated_by: leanrigor | asset_version: 3 -->
 # /leanrigor
 
 Primary conversational LeanRigor workflow command.

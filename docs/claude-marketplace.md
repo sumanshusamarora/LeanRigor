@@ -27,7 +27,8 @@ Current Claude Code documentation says:
 - Hook commands may reference `${CLAUDE_PLUGIN_ROOT}`.
 - User-scope plugin installation is global across projects by default.
 - Root `commands/` and `skills/` entries are user-facing. LeanRigor therefore
-  keeps internal workflow reference skills under `internal-skills/`.
+  keeps internal workflow reference skills under `internal-skills/` and shared
+  methodology under `methodology/`.
 
 ## Runtime Strategy
 
@@ -90,6 +91,7 @@ Global plugin:
   commands
   agents
   plugin skill
+  methodology
   hook
   bundled runtime
 
@@ -127,9 +129,9 @@ npm run validate:claude-plugin
 ```
 
 The validator checks manifests, referenced assets, command and agent
-frontmatter, hook paths, executable bits, bundled runtime presence, path
-containment, version consistency, and runs `claude plugin validate . --strict`
-when the Claude CLI is available.
+frontmatter, hook paths, methodology references, executable bits, bundled
+runtime presence, path containment, version consistency, and runs
+`claude plugin validate . --strict` when the Claude CLI is available.
 
 ## Release Procedure
 

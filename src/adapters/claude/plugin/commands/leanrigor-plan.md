@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 2 -->
+<!-- generated_by: leanrigor | asset_version: 3 -->
 # /leanrigor-plan
 
 Show, generate, approve, or revise the persisted LeanRigor plan.

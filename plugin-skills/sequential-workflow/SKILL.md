@@ -11,6 +11,28 @@ Use the plugin-owned runtime internally:
 
 `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor`
 
+## Engineering Methodology
+
+LeanRigor's shared methodology lives under `methodology/` in the plugin root.
+After reading the current workflow mode from `flow next --json`, load:
+
+- `methodology/core.md`
+- `methodology/modes/<fast|standard|rigorous>.md`
+
+Then load only the relevant methodology files for the current step:
+
+- planning or plan revision: `methodology/planning.md`
+- design-heavy changes: `methodology/design.md`
+- implementation edits: `methodology/implementation.md`
+- bugs, failures, failed repairs, or flaky behavior: `methodology/debugging.md`
+- validation selection or recording: `methodology/testing.md`
+- phase or final review: `methodology/review.md`
+- completion evidence or success claims: `methodology/evidence.md`
+- security, migration, API, data, privacy, production, infrastructure,
+  concurrency, or destructive-operation risks: `methodology/safeguards.md`
+
+Do not load every methodology file for every task. Fast mode must stay compact.
+
 Repository-local state:
 
 - `.leanrigor/config.json`

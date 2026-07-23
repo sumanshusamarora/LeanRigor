@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 2 -->
+<!-- generated_by: leanrigor | asset_version: 3 -->
 # LeanRigor Conversational Workflow
 
 Use `leanrigor flow` as the persisted source of truth. Users should respond in
@@ -12,6 +12,32 @@ Normal flow:
 Use `leanrigor flow active --json` to discover active workflows and
 `leanrigor flow next --json` to inspect the current gate. Do not show shell
 commands during normal use.
+
+## Engineering Methodology
+
+LeanRigor's shared methodology is installed under
+`.claude/leanrigor/methodology/`. After reading the current workflow mode from
+`flow next --json`, load:
+
+- `.claude/leanrigor/methodology/core.md`
+- `.claude/leanrigor/methodology/modes/<fast|standard|rigorous>.md`
+
+Then load only the relevant methodology files for the current step:
+
+- planning or plan revision: `.claude/leanrigor/methodology/planning.md`
+- design-heavy changes: `.claude/leanrigor/methodology/design.md`
+- implementation edits: `.claude/leanrigor/methodology/implementation.md`
+- bugs, failures, failed repairs, or flaky behavior:
+  `.claude/leanrigor/methodology/debugging.md`
+- validation selection or recording: `.claude/leanrigor/methodology/testing.md`
+- phase or final review: `.claude/leanrigor/methodology/review.md`
+- completion evidence or success claims:
+  `.claude/leanrigor/methodology/evidence.md`
+- security, migration, API, data, privacy, production, infrastructure,
+  concurrency, or destructive-operation risks:
+  `.claude/leanrigor/methodology/safeguards.md`
+
+Do not load every methodology file for every task. Fast mode must stay compact.
 
 Labels:
 

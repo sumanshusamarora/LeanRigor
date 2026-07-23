@@ -170,6 +170,7 @@ describe("Claude marketplace plugin package inclusion", () => {
       "hooks/",
       "bin/",
       "plugin-skills/",
+      "methodology/",
       "runtime/"
     ]));
     expect(packageJson.files).not.toContain("skills/");
@@ -191,5 +192,7 @@ describe("Claude marketplace plugin package inclusion", () => {
     ]);
     expect(files.some((file) => file.startsWith("skills/"))).toBe(false);
     expect(files).toContain("internal-skills/triage-task/SKILL.md");
+    expect(files).toContain("methodology/core.md");
+    expect(files).toContain("methodology/modes/rigorous.md");
   });
 });

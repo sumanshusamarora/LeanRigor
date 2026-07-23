@@ -18824,11 +18824,28 @@ function isClaudeAlias(model) {
 }
 
 // src/adapters/claude/adapter.ts
-var ASSET_VERSION = 2;
+var ASSET_VERSION = 3;
 var OWNERSHIP_TOKEN = "generated_by: leanrigor";
 function pluginDir() {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
 }
+function packageRoot() {
+  return path3.resolve(pluginDir(), "..", "..", "..", "..");
+}
+var METHODOLOGY_FILES = [
+  "core.md",
+  "planning.md",
+  "design.md",
+  "implementation.md",
+  "debugging.md",
+  "testing.md",
+  "review.md",
+  "evidence.md",
+  "safeguards.md",
+  path3.join("modes", "fast.md"),
+  path3.join("modes", "standard.md"),
+  path3.join("modes", "rigorous.md")
+];
 function sha256(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
@@ -18846,6 +18863,10 @@ async function readPackagedAsset(assetPath, vars) {
 }
 function assetManifest(triageModel) {
   const plugin = pluginDir();
+  const methodology = METHODOLOGY_FILES.map((file2) => ({
+    src: path3.join(packageRoot(), "methodology", file2),
+    dest: path3.join(".claude", "leanrigor", "methodology", file2)
+  }));
   return [
     { src: path3.join(plugin, "commands", "leanrigor.md"), dest: path3.join(".claude", "commands", "leanrigor.md") },
     { src: path3.join(plugin, "commands", "leanrigor-plan.md"), dest: path3.join(".claude", "commands", "leanrigor-plan.md") },
@@ -18859,7 +18880,8 @@ function assetManifest(triageModel) {
       vars: { TRIAGE_MODEL: triageModel }
     },
     { src: path3.join(plugin, "hooks", "protect-git.sh"), dest: path3.join(".claude", "leanrigor", "protect-git.sh") },
-    { src: path3.join(plugin, "settings.json"), dest: path3.join(".claude", "settings.json") }
+    { src: path3.join(plugin, "settings.json"), dest: path3.join(".claude", "settings.json") },
+    ...methodology
   ];
 }
 var ClaudeAdapter = class {
@@ -19208,6 +19230,7 @@ var triageOutputSchema = external_exports.object({
 
 // src/core/assessment.ts
 var RIGOROUS_TRIGGERS = [
+  "authenticated",
   "authentication",
   "authorization",
   "authorisation",
@@ -19215,15 +19238,18 @@ var RIGOROUS_TRIGGERS = [
   "payment",
   "billing",
   "migration",
+  "production",
   "production infrastructure",
   "secret",
   "credential",
   "encryption",
   "public api",
+  "public contract",
   "breaking api",
   "data deletion",
   "delete data",
   "concurrency",
+  "duplicate-processing",
   "distributed consistency",
   "privacy",
   "compliance"
@@ -19241,13 +19267,14 @@ function conciseSummary(request) {
 }
 function assessTask(request, config2) {
   const text = request.toLowerCase();
-  const rigorousTrigger = RIGOROUS_TRIGGERS.find((term) => text.includes(term));
+  const authTrigger = /\bauth\b/.test(text) ? "auth" : void 0;
+  const rigorousTrigger = authTrigger ?? RIGOROUS_TRIGGERS.find((term) => text.includes(term));
   const fastCandidate = includesAny(text, FAST_TERMS);
   const bug = includesAny(text, BUG_TERMS) && !(fastCandidate && includesAny(text, ["typo", "copy", "documentation", "readme"]));
   const investigation = includesAny(text, INVESTIGATION_TERMS);
-  const publicApi = text.includes("public api") || text.includes("api contract") || text.includes("breaking api");
+  const publicApi = text.includes("public api") || text.includes("public contract") || text.includes("api contract") || text.includes("breaking api");
   const migration = text.includes("migration") || text.includes("schema change");
-  const security = includesAny(text, ["authentication", "authorization", "authorisation", "permission", "secret", "credential", "encryption"]);
+  const security = Boolean(authTrigger) || includesAny(text, ["authenticated", "authentication", "authorization", "authorisation", "permission", "secret", "credential", "encryption"]);
   const dataIntegrity = migration || includesAny(text, ["delete data", "data deletion", "financial calculation", "payment", "billing"]);
   const operational = includesAny(text, ["production", "deployment", "infrastructure"]);
   let modelRecommendation = "standard";
@@ -19269,7 +19296,7 @@ function assessTask(request, config2) {
     task: { type: taskType, summary: conciseSummary(request) },
     assessment: {
       complexity: rigorousTrigger ? "high" : fastCandidate ? "low" : "medium",
-      ambiguity: clarificationRequired ? "high" : request.trim().length < 30 ? "medium" : "low",
+      ambiguity: clarificationRequired ? "high" : fastCandidate ? "low" : request.trim().length < 30 ? "medium" : "low",
       blastRadius: rigorousTrigger ? "high" : fastCandidate ? "low" : "medium",
       architecturalImpact: rigorousTrigger ? "high" : "low",
       securityRisk: security ? "high" : "none",
@@ -20275,7 +20302,7 @@ function inferBoundaries(request, triage, targets) {
   const text = `${request} ${targets.join(" ")} ${triage.escalationReasons.join(" ")}`.toLowerCase();
   return {
     backend: /\b(api|backend|server|service|database|db|persistence|schema)\b/.test(text),
-    frontend: /\b(frontend|front-end|ui|client|component|editor|page|view)\b/.test(text),
+    frontend: /\b(frontend|front-end|ui|client|consumer|component|editor|page|view)\b/.test(text),
     migration: /\b(migration|migrations|rollback|schema change|database)\b/.test(text),
     security: /\b(auth|authentication|authorization|permission|credential|secret|security)\b/.test(text),
     publicContract: /\b(api|contract|schema|openapi|graphql|proto|public)\b/.test(text),
