@@ -56,6 +56,11 @@ import {
 } from "../core/flow.js";
 import { RevisionConflictError } from "../core/workflow-store.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowMode } from "../core/types.js";
+import { ClaudeCliExecutionProvider } from "../core/execution/claude-provider.js";
+import { ExecutionCoordinator } from "../core/execution/coordinator.js";
+import type { ExecutionProvider } from "../core/execution/provider.js";
+import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution/scripted-provider.js";
+import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
 program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
@@ -285,6 +290,74 @@ flow.command("ready")
     const schedule = readyPhases(await resumeFlow(options.root, workflowId), await ensureRepositoryConfig(options.root));
     if (options.json) console.log(JSON.stringify(schedule, null, 2));
     else console.log(`${schedule.dispatchableCount}/${schedule.eligibleCount} phase(s) dispatchable; max parallel phases ${schedule.maxParallelPhases}.`);
+  });
+
+flow.command("execute-next")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, options) => {
+    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    printCoordinatorResult(await coordinator.runNext(), Boolean(options.json));
+  });
+
+flow.command("execute-ready")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, options) => {
+    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    printCoordinatorResult(await coordinator.dispatchReady(), Boolean(options.json));
+  });
+
+flow.command("execution-status")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, options) => {
+    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    printCoordinatorResult(coordinator.executionStatus(await resumeFlow(options.root, workflowId)), Boolean(options.json));
+  });
+
+flow.command("execution-poll")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, options) => {
+    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    printCoordinatorResult(await coordinator.poll(), Boolean(options.json));
+  });
+
+flow.command("execution-cancel")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--reason <reason>", "cancellation reason")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, phaseId, options) => {
+    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    printCoordinatorResult(await coordinator.cancelPhase(phaseId, options.reason), Boolean(options.json));
+  });
+
+flow.command("execution-recover")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, options) => {
+    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    printCoordinatorResult(await coordinator.recover(), Boolean(options.json));
   });
 
 flow.command("lease-phase")
@@ -704,6 +777,15 @@ function printFlowState(state: SequentialWorkflowState): void {
     review: state.review,
     commitPlan: state.commitPlan,
     blockers: state.blockers,
+    execution: Object.values(state.execution.records).map((record) => ({
+      phaseId: record.phaseId,
+      provider: record.providerId,
+      status: record.status,
+      workspacePath: record.workspacePath,
+      heartbeatAt: record.heartbeatAt,
+      completedAt: record.completedAt,
+      resultSummary: record.resultSummary
+    })),
     currentPhase: currentPhaseStatus(state),
     nextValidCommands: nextActions(state),
     updatedAt: state.updatedAt
@@ -727,6 +809,42 @@ function printHumanStatus(state: SequentialWorkflowState): void {
     next.pendingDecision ? `Pending decision: ${next.pendingDecision}` : undefined,
     `Next action: ${next.pendingAction}`
   ].filter((line): line is string => line !== undefined);
+  console.log(lines.join("\n"));
+}
+
+async function executionCoordinator(root: string, workflowId: string, providerName: string, scriptFile?: string): Promise<ExecutionCoordinator> {
+  const config = await ensureRepositoryConfig(root);
+  return new ExecutionCoordinator({
+    root,
+    workflowId,
+    config,
+    provider: await executionProvider(providerName, scriptFile)
+  });
+}
+
+async function executionProvider(providerName: string, scriptFile?: string): Promise<ExecutionProvider> {
+  if (providerName === "scripted") {
+    const scripts = scriptFile ? JSON.parse(await readFile(path.resolve(scriptFile), "utf8")) as Record<string, ScriptedPhase> : {};
+    return new ScriptedExecutionProvider(scripts);
+  }
+  if (providerName === "claude") return new ClaudeCliExecutionProvider();
+  throw new Error(`Unsupported execution provider: ${providerName}`);
+}
+
+function printCoordinatorResult(result: CoordinatorResult, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const lines = [
+    `Workflow ${result.workflowId} revision ${result.revision}: ${result.state}`,
+    result.message,
+    result.dispatched.length > 0 ? `Dispatched: ${result.dispatched.map((item) => `${item.phaseId} (${item.provider})`).join(", ")}` : undefined,
+    result.running.length > 0 ? `Running: ${result.running.map((item) => `${item.phaseId} (${item.status})`).join(", ")}` : undefined,
+    result.completed.length > 0 ? `Completed evidence: ${result.completed.map((item) => item.phaseId).join(", ")}` : undefined,
+    result.blocked.length > 0 ? `Blocked: ${result.blocked.map((item) => `${item.phaseId}: ${item.reason}`).join("; ")}` : undefined,
+    `Next action: ${result.nextAction}`
+  ].filter((line): line is string => Boolean(line));
   console.log(lines.join("\n"));
 }
 

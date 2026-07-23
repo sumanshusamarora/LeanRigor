@@ -113,6 +113,9 @@ export const leanRigorConfigSchema = z.object({
   }).prefault({}),
   execution: z.object({
     maxParallelPhases: z.number().int().min(1).max(16).default(1),
+    pollIntervalSeconds: z.number().int().min(1).max(3600).default(5),
+    workerTimeoutSeconds: z.number().int().min(5).max(86400).default(1800),
+    heartbeatGraceSeconds: z.number().int().min(1).max(3600).default(30),
     workflowLockTimeoutSeconds: z.number().int().min(1).max(3600).default(30),
     phaseLeaseTimeoutSeconds: z.number().int().min(5).max(86400).default(900),
     writeReadConflictsBlock: z.boolean().default(true),

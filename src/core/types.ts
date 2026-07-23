@@ -56,6 +56,16 @@ export type WorkflowLifecycleState =
   | "completed"
   | "blocked"
   | "cancelled";
+export type PhaseExecutionRecordStatus =
+  | "dispatching"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "blocked"
+  | "collecting"
+  | "result_recorded";
 
 export interface TriageOutput {
   version: 1;
@@ -369,6 +379,26 @@ export interface PhaseLease {
   releasedAt?: string;
 }
 
+export interface PhaseExecutionRecord {
+  phaseId: string;
+  providerId: string;
+  providerExecutionId: string;
+  leaseOwnerId: string;
+  workspacePath: string;
+  status: PhaseExecutionRecordStatus;
+  startedAt: string;
+  heartbeatAt?: string;
+  completedAt?: string;
+  resultSummary?: string;
+  diagnostics?: Record<string, unknown>;
+  providerMetadata?: Record<string, unknown>;
+}
+
+export interface WorkflowExecutionState {
+  coordinatorId?: string;
+  records: Record<string, PhaseExecutionRecord>;
+}
+
 export interface WorkflowEvent {
   eventId: string;
   timestamp: string;
@@ -410,6 +440,7 @@ export interface SequentialWorkflowState {
   review?: IntegratedReviewResult;
   commitPlan?: CommitPlan;
   phaseLeases: Record<string, PhaseLease>;
+  execution: WorkflowExecutionState;
   git?: WorkflowGitState;
   repairAttempts: number;
   blockers: string[];

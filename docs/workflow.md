@@ -32,6 +32,12 @@ leanrigor flow answer <workflow-id> "<answer>"
 leanrigor flow approve-approach <workflow-id>
 leanrigor flow approve-plan <workflow-id>
 leanrigor flow ready <workflow-id> --json
+leanrigor flow execute-next <workflow-id> --provider scripted --json
+leanrigor flow execute-ready <workflow-id> --provider scripted --json
+leanrigor flow execution-status <workflow-id> --json
+leanrigor flow execution-poll <workflow-id> --provider scripted --json
+leanrigor flow execution-cancel <workflow-id> <phase-id> --json
+leanrigor flow execution-recover <workflow-id> --json
 leanrigor flow workspace-init <workflow-id> --json
 leanrigor flow phase-start <workflow-id> phase-1 --owner <session-id>
 leanrigor flow workspace-create-phase <workflow-id> phase-1 --owner <session-id> --json
@@ -123,9 +129,10 @@ Mode differences:
 | Standard | Prefer a few cohesive phases; split materially distinct implementation, consumer, coverage, or documentation outcomes. |
 | Rigorous | Isolate migrations, security-sensitive work, public contracts, production infrastructure, destructive operations, and other high-risk boundaries. |
 
-The implementation intentionally avoids parallel agents, OpenCode, Codex, and
-CodeGraph. Higher `execution.maxParallelPhases` values change scheduler
-recommendations only.
+The implementation intentionally avoids OpenCode, Codex, CodeGraph, a desktop
+UI, and a large custom process manager. Higher `execution.maxParallelPhases`
+values are honored by the execution coordinator when a provider supports the
+contract safely.
 
 Planning methodology is loaded from `methodology/planning.md` plus the current
 mode overlay. Plans should include the desired outcome, inspected current
@@ -135,11 +142,22 @@ public contract, data, and production-impacting boundaries when present.
 
 ## Execution Contract
 
-LeanRigor CLI owns durable state, locks, leases, and approval gates. Claude Code owns the actual
-repository inspection, edits, command execution, and review work in the active
-session. After each significant step Claude records concise evidence back into
-LeanRigor with `flow record-validation`, `flow phase-complete`, and
-`flow record-review`.
+LeanRigor owns what may run, when it may run, what evidence is required, and
+whether a phase result is accepted. Execution providers own how a worker is
+launched and monitored.
+
+The execution coordinator is the single control layer for provider-driven
+phase work. It reads current state, asks the scheduler for eligible phases,
+honors `execution.maxParallelPhases`, acquires phase leases, creates phase
+worktrees, dispatches workers through a provider, persists execution handles,
+polls status, refreshes healthy leases, collects structured results, submits
+completion evidence, invokes completion gates, integrates accepted phases, and
+runs combined validation when the DAG reaches that deterministic point.
+
+Provider results are evidence, not authority. A provider can return
+`completed`, but the phase is accepted only if the LeanRigor completion gate
+passes. Provider diagnostics are bounded and persisted without full transcripts
+or hidden reasoning.
 
 Each phase lifecycle is:
 
@@ -172,6 +190,39 @@ The phase completion gate records Git evidence from the workspace:
 LeanRigor uses internal transfer commits on LeanRigor-owned branches. These are
 mechanical workflow commits, are not pushed, and are not the final user commit.
 The final commit proposal remains a separate human-reviewed step.
+
+### Providers
+
+The provider-neutral contract includes:
+
+- `capabilities()`;
+- `dispatch(input)`;
+- `getStatus(handle)`;
+- `collectResult(handle)`;
+- `cancel(handle, reason)`.
+
+`scripted` is the deterministic test provider. It can create, edit, delete,
+and leave untracked files in the assigned phase workspace; emit validation
+evidence; fail, block, time out, stop heartbeating, return malformed evidence,
+or modify unexpected files. It exists to exercise LeanRigor workflow machinery
+without a live model session.
+
+`claude` is a minimal real-Claude provider prototype using Claude Code CLI
+print mode in the assigned phase workspace. It uses non-interactive arguments,
+sets `cwd` to the phase worktree, applies timeout/cancellation, requests
+structured output, redacts persisted diagnostics, and never commits, pushes,
+merges, or deploys. The selected path is the smaller reliable implementation
+for this iteration; a future SDK provider can use the same contract.
+
+Native Claude plugin behavior has two intended runtime paths:
+
+- interactive plugin path: the active Claude session may dispatch plugin-defined
+  phase workers through Claude-native subagents when available;
+- headless or test path: the coordinator may use a programmatic provider such
+  as `scripted` or the real-Claude CLI prototype.
+
+The marketplace plugin should not require nested Claude CLI processes when
+native subagents are available.
 
 ## Integration Workspace
 

@@ -262,6 +262,28 @@ const phaseLeaseSchema = z.object({
   releasedAt: z.string().optional()
 });
 
+const boundedRecord = z.record(z.string(), z.unknown()).default({}).transform((value) => boundDiagnosticObject(value));
+
+const phaseExecutionRecordSchema = z.object({
+  phaseId: z.string().min(1),
+  providerId: z.string().min(1),
+  providerExecutionId: z.string().min(1),
+  leaseOwnerId: z.string().min(1),
+  workspacePath: z.string().min(1),
+  status: z.enum(["dispatching", "running", "completed", "failed", "cancelled", "timed_out", "blocked", "collecting", "result_recorded"]),
+  startedAt: z.string(),
+  heartbeatAt: z.string().optional(),
+  completedAt: z.string().optional(),
+  resultSummary: z.string().max(4000).optional(),
+  diagnostics: boundedRecord.optional(),
+  providerMetadata: boundedRecord.optional()
+});
+
+const workflowExecutionStateSchema = z.object({
+  coordinatorId: z.string().optional(),
+  records: z.record(z.string(), phaseExecutionRecordSchema).default({})
+}).default({ records: {} });
+
 const workflowEventSchema = z.object({
   eventId: z.string().min(1),
   timestamp: z.string(),
@@ -363,6 +385,7 @@ const workflowStateSchema = z.object({
     note: z.string()
   }).optional(),
   phaseLeases: z.record(z.string(), phaseLeaseSchema).default({}),
+  execution: workflowExecutionStateSchema,
   git: workflowGitStateSchema.optional(),
   repairAttempts: z.number().int().min(0),
   blockers: z.array(z.string()),
@@ -410,6 +433,7 @@ export async function startFlow(options: FlowStartOptions): Promise<SequentialWo
     updatedAt: now,
     validation: [],
     phaseLeases: {},
+    execution: { records: {} },
     repairAttempts: 0,
     blockers: [],
     events: [workflowEvent({ type: "workflow_created", actorId: "system", before: 0, after: 0, summary: "Workflow created.", at: now })]
@@ -1962,6 +1986,16 @@ function boundEvents(events: WorkflowEvent[]): WorkflowEvent[] {
   return events.slice(-MAX_EVENTS);
 }
 
+function boundDiagnosticObject(value: Record<string, unknown>): Record<string, unknown> {
+  const json = JSON.stringify(value);
+  if (json.length <= 8000) return value;
+  return {
+    truncated: true,
+    bytes: json.length,
+    summary: json.slice(0, 4000)
+  };
+}
+
 function migrateWorkflowState(raw: unknown, root: string, workflowId: string): unknown {
   const value = raw as Record<string, unknown>;
   if (value.version === 1 && "currentPhase" in value) {
@@ -1978,6 +2012,7 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
       updatedAt: now,
       validation: [],
       phaseLeases: {},
+      execution: { records: {} },
       repairAttempts: 0,
       blockers: [],
       events: [workflowEvent({ type: "legacy_workflow_loaded", actorId: "system", before: 0, after: 0, summary: "Legacy workflow loaded with safe defaults.", at: now })]
@@ -1992,6 +2027,7 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
   migrated.phaseLeases = migrated.phaseLeases && typeof migrated.phaseLeases === "object" ? migrated.phaseLeases : {};
+  migrated.execution = migrated.execution && typeof migrated.execution === "object" ? migrated.execution : { records: {} };
   migrated.repairAttempts = typeof migrated.repairAttempts === "number" ? migrated.repairAttempts : 0;
   migrated.blockers = Array.isArray(migrated.blockers) ? migrated.blockers : [];
   migrated.events = migrateEvents(migrated.events, migrated.revision as number);

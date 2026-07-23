@@ -38,8 +38,17 @@ settings most relevant to methodology and safety. The schema source of truth is
 
 ## Execution And Concurrency
 
-- `execution.maxParallelPhases`: default `1`. Values above `1` affect ready
-  phase scheduling recommendations only; LeanRigor does not spawn agents yet.
+- `execution.maxParallelPhases`: default `1`. Values above `1` allow the
+  execution coordinator to dispatch multiple scheduler-approved phases when
+  there are no blocking ownership conflicts.
+- `execution.pollIntervalSeconds`: default `5`. Recommended provider polling
+  interval for headless execution loops.
+- `execution.workerTimeoutSeconds`: default `1800`. Maximum worker duration
+  before the coordinator requests cancellation and preserves the workspace for
+  review.
+- `execution.heartbeatGraceSeconds`: default `30`. Grace window for missing
+  provider heartbeats before the coordinator stops refreshing the lease and
+  escalates safely.
 - `execution.workflowLockTimeoutSeconds`: default `30`. Short-lived persistent
   lock timeout for state mutations.
 - `execution.phaseLeaseTimeoutSeconds`: default `900`. Durable phase lease
