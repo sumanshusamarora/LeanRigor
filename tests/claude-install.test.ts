@@ -179,8 +179,8 @@ describe("Claude plugin triage agent model tier", () => {
 
     const agent = await readFile(path.join(root, ".claude", "agents", "leanrigor-triage.md"), "utf8");
     // 'inherit' tier has no explicit model — adapter should use "haiku" as safe fallback
-    // The model line should contain a defined value, not the literal "{{TRIAGE_MODEL}}"
     expect(agent).not.toContain("{{TRIAGE_MODEL}}");
+    expect(agent).toContain("model: haiku");
   });
 
   it("uses a custom configured Small tier model", async () => {

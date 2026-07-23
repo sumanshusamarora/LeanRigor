@@ -121,9 +121,15 @@ export class ClaudeAdapter implements HarnessAdapter {
         continue;
       }
 
+      // Hash comparison detects user modifications. Note: for template-based assets
+      // (e.g. leanrigor-triage.md) the expected content depends on the current config.
+      // If the triage model was changed after installation, the hashes will differ even
+      // without user edits. In that case the file is skipped (preserved), which is the
+      // safe default. Run `leanrigor uninstall --adapter claude --force-owned-files` to
+      // remove all LeanRigor-owned files regardless of content.
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
       if (expected !== undefined && sha256(existing) !== sha256(expected)) {
-        // User has modified this owned file — preserve it
+        // User has modified this owned file (or config changed) — preserve it
         report.skipped.push(entry.dest);
         continue;
       }
@@ -131,8 +137,15 @@ export class ClaudeAdapter implements HarnessAdapter {
       await unlink(targetPath);
       report.removed.push(entry.dest);
 
-      // Remove the parent directory if it is now empty and is a LeanRigor-created directory
-      await removeIfEmpty(path.dirname(targetPath));
+      // Remove the parent directory and ancestor directories up to .claude/ if now empty
+      const claudeDir = path.join(root, ".claude");
+      let dir = path.dirname(targetPath);
+      while (dir.length > claudeDir.length && dir.startsWith(claudeDir)) {
+        const removed = await removeIfEmpty(dir);
+        if (!removed) break; // Directory still has contents — stop climbing
+        dir = path.dirname(dir);
+      }
+      await removeIfEmpty(claudeDir);
     }
 
     return report;
@@ -242,13 +255,16 @@ export class ClaudeAdapter implements HarnessAdapter {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function removeIfEmpty(dir: string): Promise<void> {
+async function removeIfEmpty(dir: string): Promise<boolean> {
   try {
     const entries = await readdir(dir);
     if (entries.length === 0) {
       await rmdir(dir).catch(() => { /* ignore: may not be removable (race condition or permissions) */ });
+      return true;
     }
+    return false;
   } catch { /* ignore: directory may not exist */ }
+  return false;
 }
 
 async function which(command: string): Promise<string | undefined> {
