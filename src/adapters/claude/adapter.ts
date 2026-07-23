@@ -246,9 +246,9 @@ async function removeIfEmpty(dir: string): Promise<void> {
   try {
     const entries = await readdir(dir);
     if (entries.length === 0) {
-      await rmdir(dir).catch(() => { /* ignore */ });
+      await rmdir(dir).catch(() => { /* ignore: may not be removable (race condition or permissions) */ });
     }
-  } catch { /* ignore */ }
+  } catch { /* ignore: directory may not exist */ }
 }
 
 async function which(command: string): Promise<string | undefined> {

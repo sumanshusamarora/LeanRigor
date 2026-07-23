@@ -215,7 +215,7 @@ describe("Claude plugin uninstall", () => {
     expect(report.skipped).toHaveLength(0);
 
     for (const dest of EXPECTED_DEST_PATHS) {
-      await expect(stat(path.join(root, dest))).rejects.toThrow();
+      await expect(stat(path.join(root, dest))).rejects.toMatchObject({ code: "ENOENT" });
     }
   });
 

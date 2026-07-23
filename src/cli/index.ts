@@ -44,7 +44,7 @@ program.command("uninstall")
       try {
         const { unlink, rmdir } = await import("node:fs/promises");
         await unlink(configPath);
-        await rmdir(path.join(root, ".leanrigor")).catch(() => { /* not empty */ });
+        await rmdir(path.join(root, ".leanrigor")).catch(() => { /* ignore: directory may contain other files */ });
         console.log("Removed .leanrigor/config.json");
       } catch {
         console.log(".leanrigor/config.json not found.");
