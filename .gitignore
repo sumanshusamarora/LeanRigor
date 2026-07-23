@@ -4,5 +4,7 @@ coverage/
 .leanrigor/runtime/
 .leanrigor/ownership.json
 .leanrigor/validations.json
+.claude/
 *.log
 .DS_Store
+*.tgz

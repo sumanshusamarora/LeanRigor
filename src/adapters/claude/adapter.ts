@@ -159,6 +159,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push(`LeanRigor CLI: ${packageVersion}`);
     output.push(`Platform: Claude Code`);
     output.push(`Claude assets available: ${ASSET_VERSION}`);
+    output.push(`Runtime source: ${runtimeSource()}`);
 
     // Check Claude CLI availability — check PATH first, then common fallback location
     const claudeInPath = await which("claude");
@@ -291,6 +292,14 @@ async function readPackageVersion(): Promise<string> {
   } catch {
     return "unknown";
   }
+}
+
+function runtimeSource(): string {
+  if (process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
+    return "marketplace plugin runtime";
+  }
+  if (process.argv[1]?.includes(`${path.sep}node_modules${path.sep}`)) return "npm package CLI";
+  return "local development or global CLI";
 }
 
 /** Load config for uninstall without crashing if config is missing. */

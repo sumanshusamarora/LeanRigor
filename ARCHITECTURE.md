@@ -19,7 +19,22 @@ Adapters resolve these profiles to actual models.
 
 ## Claude Code plugin installation boundary
 
-The Claude adapter ships a complete plugin integration. The installation model is:
+The Claude adapter ships two integrations.
+
+Marketplace plugin:
+
+```
+Repository root
+  ├── .claude-plugin/     ← marketplace.json and plugin.json
+  ├── commands/           ← global /leanrigor commands
+  ├── agents/             ← triage agent
+  ├── plugin-skills/      ← shared workflow skill
+  ├── hooks/              ← hooks.json and protect-git.sh
+  ├── bin/                ← launcher added to Bash PATH
+  └── runtime/            ← bundled CLI runtime
+```
+
+Project-local fallback:
 
 ```
 npm package (dist/adapters/claude/plugin/)
@@ -42,6 +57,10 @@ runtime via `import.meta.url`.
 Every installed file is tagged with `generated_by: leanrigor | asset_version: N`
 so the installer can safely detect ownership, report conflicts, and determine
 whether a file has been user-modified before removing it during uninstall.
+
+Marketplace mode does not copy `.claude/` into target repositories. It keeps
+state in `.leanrigor/` and executes the bundled runtime through
+`${CLAUDE_PLUGIN_ROOT}`.
 
 ## Model routing
 
@@ -139,12 +158,21 @@ Claude Code performs the actual edits and command execution in the active
 session, then records concise evidence back into state.
 
 This implementation is sequential only. It does not add parallel agents,
-worktrees, OpenCode, Codex, CodeGraph, marketplace files, or per-phase
-completion hooks.
+worktrees, OpenCode, Codex, CodeGraph, or per-phase completion hooks.
 
 ## Safety boundaries
 
 The framework prepares but does not automatically execute commits. Pushes, deployments, production writes, destructive commands, secret handling, and history rewriting require explicit external approval and adapter enforcement.
+
+## Backlog
+
+1. Small, cohesive task-phase sizing
+2. Evidence-based per-phase completion gate
+3. Optional CodeGraph inspection provider
+4. Persistent file leases
+5. Parallel agents and worktrees
+6. OpenCode adapter
+7. Codex adapter
 
 ## Model-backed triage runtime
 

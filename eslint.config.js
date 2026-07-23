@@ -5,7 +5,16 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["dist/**", "node_modules/**", "*.tgz"],
+    ignores: ["dist/**", "runtime/**", "node_modules/**", "*.tgz"],
+  },
+  {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly"
+      }
+    }
   },
   {
     files: ["**/*.ts"],

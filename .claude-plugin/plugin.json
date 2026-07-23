@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "leanrigor",
+  "displayName": "LeanRigor",
+  "version": "0.1.0-draft",
+  "description": "Adaptive rigor and model routing for persisted Claude Code engineering workflows.",
+  "author": {
+    "name": "Sumanshu Samarora"
+  },
+  "homepage": "https://github.com/sumanshusamarora/LeanRigor",
+  "repository": "https://github.com/sumanshusamarora/LeanRigor",
+  "license": "MIT",
+  "keywords": ["claude-code", "workflow", "triage", "validation", "review"],
+  "commands": [
+    "./commands/leanrigor.md",
+    "./commands/leanrigor-plan.md",
+    "./commands/leanrigor-status.md",
+    "./commands/leanrigor-review.md",
+    "./commands/leanrigor-commit.md"
+  ],
+  "agents": [
+    "./agents/leanrigor-triage.md"
+  ],
+  "skills": [
+    "./plugin-skills/leanrigor",
+    "./plugin-skills/leanrigor-plan",
+    "./plugin-skills/leanrigor-status",
+    "./plugin-skills/leanrigor-review",
+    "./plugin-skills/leanrigor-commit",
+    "./plugin-skills/sequential-workflow"
+  ]
+}

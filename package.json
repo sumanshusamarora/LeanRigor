@@ -8,7 +8,9 @@
     "leanrigor": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -r src/adapters/claude/plugin dist/adapters/claude/plugin",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -r src/adapters/claude/plugin dist/adapters/claude/plugin && npm run build:claude-plugin",
+    "build:claude-plugin": "node scripts/build-claude-plugin.mjs",
+    "validate:claude-plugin": "node scripts/validate-claude-plugin.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.65.0",
@@ -40,6 +43,13 @@
   },
   "files": [
     "dist/",
+    ".claude-plugin/",
+    "commands/",
+    "agents/",
+    "hooks/",
+    "bin/",
+    "plugin-skills/",
+    "runtime/",
     "config.schema.json",
     "README.md",
     "LICENSE",

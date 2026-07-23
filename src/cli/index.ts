@@ -139,7 +139,7 @@ flow.command("start")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .action(async (request, options) => {
-    const config = await loadConfig(options.root);
+    const config = await ensureRepositoryConfig(options.root);
     const state = await startFlow({
       request,
       root: options.root,
@@ -155,7 +155,7 @@ flow.command("answer")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .action(async (workflowId, answer, options) => {
-    const config = await loadConfig(options.root);
+    const config = await ensureRepositoryConfig(options.root);
     printFlowState(await answerClarification({
       root: options.root,
       workflowId,
@@ -251,7 +251,7 @@ flow.command("record-review")
   .option("--finding <finding>", "review finding", collect, [])
   .option("--repair-scope <scope>", "smallest repair scope when repair is needed")
   .action(async (workflowId, options) => {
-    const config = await loadConfig(options.root);
+    const config = await ensureRepositoryConfig(options.root);
     printFlowState(await recordReview({
       root: options.root,
       workflowId,
@@ -417,6 +417,10 @@ function splitCsv(value: string | undefined): string[] {
 }
 
 async function initConfig(root: string) {
+  return ensureRepositoryConfig(root);
+}
+
+async function ensureRepositoryConfig(root: string) {
   const configPath = path.join(root, ".leanrigor", "config.json");
   const existing = await readFile(configPath, "utf8").catch(() => undefined);
   if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));

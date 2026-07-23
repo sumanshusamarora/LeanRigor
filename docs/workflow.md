@@ -66,8 +66,7 @@ risk level, model tier recommendation, status, timestamps, changed files,
 commands, validation results, and scope deviations.
 
 The first implementation intentionally avoids parallel agents, worktrees,
-OpenCode, Codex, CodeGraph, Claude marketplace files, and per-phase completion
-hooks.
+OpenCode, Codex, CodeGraph, and per-phase completion hooks.
 
 ## Execution Contract
 

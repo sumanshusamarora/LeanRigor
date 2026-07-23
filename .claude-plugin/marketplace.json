@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "leanrigor",
+  "description": "Adaptive LeanRigor workflows for Claude Code.",
+  "owner": {
+    "name": "Sam Arora"
+  },
+  "plugins": [
+    {
+      "name": "leanrigor",
+      "source": "./",
+      "description": "Persisted sequential Fast, Standard, and Rigorous coding workflows for Claude Code.",
+      "version": "0.1.0-draft",
+      "author": {
+        "name": "Sam Arora"
+      },
+      "repository": "https://github.com/sumanshusamarora/LeanRigor",
+      "license": "MIT",
+      "keywords": ["claude-code", "workflow", "validation", "review"],
+      "category": "development"
+    }
+  ]
+}

@@ -1,10 +1,129 @@
 # LeanRigor
 
-A first-draft, local workflow controller for applying proportional engineering discipline to AI coding tasks.
+LeanRigor is a workflow controller for AI coding sessions. It helps an agent
+choose the right amount of planning, validation, review, and model capability
+for a task instead of applying the same ceremony to every change.
+
+The first complete workflow targets Claude Code. It is sequential, persisted,
+approval-gated, and repository-local: LeanRigor records state under
+`.leanrigor/`, asks at most one blocking clarification, guides phased execution,
+requires validation evidence and final review, and proposes commits without
+committing or pushing.
 
 ## Status
 
-This repository is an architectural and functional draft. The TypeScript CLI now installs dependencies, type checks, builds to `dist/`, passes the Vitest suite, and has a first complete persisted sequential workflow for Claude Code. Parallel agents, isolated worktrees, OpenCode, and autonomous commit execution remain future work.
+This repository is an architectural and functional draft. The TypeScript CLI
+installs, type checks, builds, packs, and passes the Vitest suite. Native Claude
+Code marketplace packaging is implemented and locally validated. Parallel
+agents, worktrees, OpenCode, Codex, Cursor, Copilot, and Antigravity adapters
+remain future work.
+
+## Install
+
+### Claude Code Marketplace
+
+Recommended for Claude Code:
+
+```text
+/plugin marketplace add sumanshusamarora/LeanRigor
+/plugin install leanrigor@leanrigor
+```
+
+Marketplace installation is global to Claude Code. LeanRigor's commands, agent,
+hook, and bundled runtime are installed in Claude's plugin cache and invoked
+through `${CLAUDE_PLUGIN_ROOT}`. Repository-specific state stays local:
+
+```text
+.leanrigor/config.json
+.leanrigor/workflows/
+```
+
+Marketplace mode does not create a repository-local `.claude/` directory.
+
+Current Claude Code marketplace installs expose plugin commands with a plugin
+namespace. Use:
+
+```text
+/leanrigor:leanrigor
+/leanrigor:leanrigor-plan
+/leanrigor:leanrigor-status
+/leanrigor:leanrigor-review
+/leanrigor:leanrigor-commit
+```
+
+The exact GitHub marketplace command will work after these marketplace files are
+published to `sumanshusamarora/LeanRigor`.
+
+### Npm And Project-Local Claude Assets
+
+Use this fallback when Claude Code marketplace installation is unavailable or
+when you explicitly want repository-local `.claude/` assets:
+
+```bash
+npm install -g leanrigor
+leanrigor init --adapter claude --root /path/to/repository
+leanrigor doctor --adapter claude --root /path/to/repository
+```
+
+Project-local installation creates LeanRigor-owned files under `.claude/` and
+exposes unqualified Claude slash commands such as `/leanrigor`.
+
+### From Source
+
+For local development or a pre-publish install:
+
+```bash
+npm install
+npm run build
+npm pack
+npm install -g ./leanrigor-0.1.0-draft.tgz
+```
+
+You can also run the CLI directly from the repository:
+
+```bash
+npx leanrigor --help
+npx leanrigor flow start "Fix a README typo" --provider deterministic --root /path/to/repository
+```
+
+## Supported Platforms
+
+| Platform | Status | Notes |
+|---|---|---|
+| Claude Code | Supported | Native marketplace plugin plus npm/project-local fallback. |
+| LeanRigor CLI | Supported | Works anywhere Node.js 20+ can run; workflow state is repository-local. |
+| GitHub Copilot | Coming soon | No Copilot adapter is implemented yet. |
+| Cursor | Coming soon | Planned adapter surface; not implemented in this draft. |
+| Google Antigravity | Coming soon | Planned adapter surface; not implemented in this draft. |
+| OpenAI Codex | Coming soon | Listed in the backlog; no Codex adapter is present. |
+| OpenCode | Coming soon | Listed in the backlog; no OpenCode adapter is present. |
+
+## Workflow
+
+`leanrigor flow start "<request>"` creates a workflow under
+`.leanrigor/workflows/` and persists the original request, repository root,
+triage result, mode, risk, complexity, assumptions, and timestamps.
+
+The lifecycle is:
+
+```text
+created -> triaging -> awaiting_clarification? -> awaiting_approach_approval?
+-> planning -> awaiting_plan_approval -> executing -> validating -> reviewing
+-> awaiting_commit_approval -> completed
+```
+
+`blocked` and `cancelled` are explicit terminal or recovery states.
+
+Mode differences are observable:
+
+| Mode | Intended use | Approval and validation |
+|---|---|---|
+| Fast | Obvious low-risk changes | May skip a separate approach gate; compact plan, targeted validation, diff sanity review. |
+| Standard | Normal implementation work | Approach recommendation when meaningful, phased plan, explicit plan approval, targeted validation, integrated review. |
+| Rigorous | High-risk, broad, or policy-triggered work | Explicit approach gate, stronger validation expectations, deeper integrated review, stricter repair/replan handling. |
+
+Mandatory safety triggers can escalate mode and cannot be bypassed by asking for
+less rigor.
 
 ## Principles
 
@@ -12,70 +131,54 @@ This repository is an architectural and functional draft. The TypeScript CLI now
 - Fast, Standard, and Rigorous workflows.
 - Capability-based model routing instead of vendor coupling.
 - Blocking questions only, one at a time.
-- Explicit execution DAG and file ownership.
-- Targeted validation.
-- Commit preparation without automatic commit.
+- Sequential phase execution in this iteration.
+- Targeted validation with persisted evidence.
+- Final integrated review before commit planning.
+- Commit preparation without automatic commit or push.
 
-## Quick start
-
-```bash
-npm install
-npm run build
-npm pack
-npm install /path/to/leanrigor-0.1.0-draft.tgz
-
-# Initialise a repository with Claude Code plugin assets
-npx leanrigor init --adapter claude --root /path/to/repository
-
-# Check everything is current
-npx leanrigor doctor --adapter claude --root /path/to/repository
-
-# Triage a request
-npx leanrigor triage "Fix the assignment regression" --provider deterministic --root /path/to/repository
-
-# Start the persisted sequential workflow
-npx leanrigor flow start "Fix the assignment regression" --provider deterministic --root /path/to/repository
-npx leanrigor flow status <workflow-id> --root /path/to/repository
-```
-
-## Documents
+## Documentation
 
 - [Product rationale](PRODUCT.md)
 - [Architecture](ARCHITECTURE.md)
 - [Workflow](docs/workflow.md)
 - [Claude Code adapter](docs/claude-code.md)
+- [Claude marketplace plugin](docs/claude-marketplace.md)
 - [Setup](docs/setup.md)
 - [Model routing](docs/model-routing.md)
 - [OpenCode roadmap](docs/opencode-roadmap.md)
 
-## Deliberate limitations
+## LeanRigor And Superpowers
 
-- Triage has a deterministic fallback; model-backed triage is available through the Claude adapter when configured.
-- The first complete workflow is sequential. It does not autonomously spawn coding agents.
+Superpowers provides a comprehensive, strongly guided engineering methodology
+for coding agents. LeanRigor is inspired by its emphasis on planning, evidence,
+testing, and review, while exploring a different trade-off: selecting workflow
+depth and model capability in proportion to task risk and complexity.
+
+The comparison below is based on the current Superpowers README, which describes
+brainstorming, git worktrees, bite-sized plans, subagent-driven development,
+TDD, code review, and branch finishing.
+
+| Area | Superpowers | LeanRigor |
+|---|---|---|
+| Installation | Claude official marketplace or Superpowers marketplace. | LeanRigor marketplace, with npm/project-local fallback. |
+| Workflow shape | Strong full methodology with brainstorming, worktree, plan, execution, TDD, review, finish. | Adaptive Fast, Standard, or Rigorous workflow selected by triage and policy. |
+| Execution model | Supports subagent-driven development and worktrees. | Sequential single-session execution in this iteration. |
+| Testing/review | Emphasizes RED-GREEN-REFACTOR, evidence, and code review. | Records proportional validation evidence and final integrated review. |
+| Trade-off | Comprehensive discipline by default. | Ceremony and model capability scaled to task risk and complexity. |
+
+Sources: [Superpowers README](https://github.com/obra/superpowers),
+[Claude Code plugin reference](https://code.claude.com/docs/en/plugins-reference),
+and [Claude plugin marketplace docs](https://code.claude.com/docs/en/plugin-marketplaces).
+
+## Deliberate Limitations
+
+- The marketplace GitHub shorthand cannot be fully verified until the manifest
+  files are published to the remote repository.
+- Current Claude Code marketplace commands are namespaced by plugin name.
+- Triage has deterministic fallback; model-backed triage is available through
+  the Claude adapter when configured.
+- The current workflow is sequential and does not autonomously spawn coding
+  agents.
 - File leases are in-memory in the core draft.
 - Worktree isolation is documented but not implemented.
 - Commit planning is intentionally conservative and requires human review.
-
-## Triage and review defaults
-
-The Claude adapter uses the configured `small` tier—the provider-resolved `haiku` alias by default—for bounded task triage. Triage output is schema validated and then subjected to deterministic repository policy. Fast mode requires positive low-risk evidence; high-risk triggers escalate to Rigorous.
-
-A lightweight preflight runs for every task. Standard, Rigorous, and multi-agent implementations receive automatic integrated review; Fast mode receives a final diff sanity check.
-
-## Sequential flow
-
-`leanrigor flow start "<request>"` creates a repository-local workflow under
-`.leanrigor/workflows/`, persists triage, asks at most one blocking
-clarification, gates Standard/Rigorous approach approval, requires plan
-approval for every mode, unlocks one phase at a time, records validation
-evidence, requires a final integrated review, and generates a commit proposal
-without committing.
-
-## Model-backed triage
-
-`leanrigor triage` now uses the configured Claude small-model profile by default, validates the returned `TriageOutput`, applies deterministic safety policy, retries malformed output once, and falls back to local deterministic triage.
-
-```bash
-leanrigor triage "Fix the broken assignment API" --provider auto
-leanrigor triage "Fix a README typo" --provider deterministic
-```

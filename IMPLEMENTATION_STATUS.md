@@ -19,9 +19,16 @@
   - Explicit lifecycle states from `created` through `awaiting_commit_approval`, plus `completed`, `blocked`, and `cancelled`.
   - Atomic writes, schema validation on read/write, corrupted-state errors, and optimistic revision checks.
   - At most one blocking clarification, mode-specific approach gates, explicit plan approval, sequential phase unlocking, validation evidence, final integrated review, repair loop limits, replan/blocked handling, and commit proposals without commit execution.
+- Native Claude Code marketplace plugin packaging:
+  - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
+  - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
+  - Global commands, triage agent, workflow skill, hook config, plugin launcher, and bundled runtime.
+  - `npm run build:claude-plugin` bundles the CLI and dependencies to `runtime/leanrigor-cli.js`.
+  - `npm run validate:claude-plugin` validates manifests, assets, executable bits, path containment, versions, and runs `claude plugin validate . --strict` when available.
 - Production TypeScript compilation is separated from test type checking: `npm run build` emits only `src/**/*.ts` to `dist/`, while `npm run typecheck` also checks `tests/**/*.ts` without emitting them.
 - The npm binary path is internally consistent: `bin.leanrigor` points to `dist/cli/index.js`, the built CLI entry includes a Node shebang, and package metadata includes `main`, `exports`, `files`, `prepack`, `engines`, description, and MIT licence metadata.
-- `leanrigor init --adapter claude` installs a formally structured, versioned Claude Code plugin:
+- `leanrigor init --adapter claude` installs formally structured, versioned
+  project-local Claude Code assets:
   - Five `/leanrigor-*` commands covering the full workflow, plan, status, review, and commit phases.
   - Shared `.claude/leanrigor/sequential-workflow.md` command reference.
   - `leanrigor-triage` subagent with read-only tools, configurable model, and self-contained `TriageOutput` contract.
@@ -43,10 +50,13 @@ All commands below were run in this environment on July 23, 2026.
 
 - `npm install` — passed.
 - `npm run typecheck` — passed.
-- `npm test` — passed; 10 test files and 76 tests passed.
+- `npm test` — passed; 11 test files and 86 tests passed.
 - `npm run build` — passed; plugin assets copied to `dist/adapters/claude/plugin/`.
+- `npm run validate:claude-plugin` — passed.
 - `npm run lint` — passed.
-- `npm pack` — passed; tarball contains all 9 plugin assets and the `dist/core/flow.js` orchestration module.
+- `npm pack` — passed; tarball contains project-local Claude assets, native
+  marketplace plugin files, bundled runtime, and the `dist/core/flow.js`
+  orchestration module.
 - Clean temporary install of the generated tarball — passed.
 - Packed-install `leanrigor --help` — passed.
 - Packed-install `leanrigor init --adapter claude --root <temporary-repository>` — passed; 9 assets installed.
@@ -65,19 +75,44 @@ All commands below were run in this environment on July 23, 2026.
   - confirmed no Git commit existed,
   - ran `leanrigor doctor --adapter claude`,
   - confirmed unrelated `.claude` files remained untouched.
-- Real Claude Code `/leanrigor` smoke attempt — not verified: the local Claude CLI returned `Not logged in · Please run /login`.
+- Native Claude Code marketplace smoke from this working tree — partially
+  verified in a real Claude Code session:
+  - `claude plugin marketplace add ./` — passed.
+  - `claude plugin install leanrigor@leanrigor -s user` — passed.
+  - `/leanrigor:leanrigor` was discoverable and started a Fast workflow in a
+    disposable Git repository.
+  - The workflow created `.leanrigor/`, did not create `.claude/`, edited a
+    small README typo after approval, recorded validation and review evidence,
+    generated a commit proposal, and did not commit or push.
+  - `/leanrigor:leanrigor-status` was available in a second unrelated
+    repository without local asset installation.
+  - `claude plugin uninstall leanrigor@leanrigor -s user --keep-data` removed
+    the commands; reinstall restored them while repository workflow state
+    remained intact.
+  - Exact GitHub shorthand
+    `claude plugin marketplace add sumanshusamarora/LeanRigor` failed because
+    the remote repository does not yet contain `.claude-plugin/marketplace.json`.
+  - Unqualified `/leanrigor` was not exposed by the current marketplace plugin
+    runtime; current Claude Code exposes marketplace plugin commands with the
+    plugin namespace, for example `/leanrigor:leanrigor`.
 
 ## Known remaining limitations
 
+- Exact GitHub marketplace installation cannot be verified until these files
+  are published to `sumanshusamarora/LeanRigor`.
+- Current Claude Code marketplace commands are namespaced by plugin name. Use
+  `/leanrigor:leanrigor` for marketplace installs and the npm/project-local
+  fallback for unqualified `/leanrigor`.
 - OpenCode support remains a roadmap item; no OpenCode adapter was added.
 - Parallel execution interfaces and policy primitives exist, but this workflow does not autonomously spawn coding agents.
 - File leases remain in-memory in the core draft.
 - Worktree isolation is documented but not implemented.
 - Commit planning remains conservative and requires human review.
-- Hook execution behaviour was not tested against an authenticated Claude runtime.
-  Hook format follows Claude Code `settings.json` `PreToolUse` conventions.
+- Hook asset installation and path resolution are tested. Live hook firing in
+  Claude Code was not independently triggered during the marketplace smoke.
 - The `skills/` directory is included in the npm package for reference but is not currently installed to the target repository by `leanrigor init`.
 
 ## Next implementation step
 
-Harden live Claude runtime tests once an authenticated Claude Code session is available.
+Publish the marketplace files, then rerun the exact GitHub shorthand smoke test
+before announcing marketplace availability.

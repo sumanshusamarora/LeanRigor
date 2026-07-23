@@ -10,12 +10,27 @@ npm pack
 
 The generated tarball can be installed into a clean temporary project, after which the `leanrigor` binary is available from npm's `.bin` directory or through `npx leanrigor`.
 
+## Claude Code Marketplace Installation
+
+Recommended:
+
+```text
+/plugin marketplace add sumanshusamarora/LeanRigor
+/plugin install leanrigor@leanrigor
+```
+
+This installs LeanRigor globally in Claude Code. Current marketplace installs
+expose namespaced commands such as `/leanrigor:leanrigor` and
+`/leanrigor:leanrigor-status`. On first use in a repository, LeanRigor creates
+`.leanrigor/config.json` and later `.leanrigor/workflows/`; it does not create
+`.claude/`.
+
 ## CLI commands
 
 ```bash
 leanrigor --help
 
-# Initialise a repository (creates config + installs Claude plugin assets)
+# Fallback: initialise a repository (creates config + installs local Claude assets)
 leanrigor init --adapter claude --root /path/to/repository
 
 # Re-run after updating leanrigor to upgrade assets
@@ -51,6 +66,10 @@ leanrigor flow resume <workflow-id> --root /path/to/repository
 the Claude Code plugin assets under `.claude/`. The setup flow detects top-level
 repository guidance files such as `AGENTS.md`, `CLAUDE.md`, and
 `CONTRIBUTING.md`, then records references to them in LeanRigor configuration.
+
+Marketplace users do not need this command. Use it only for the npm/manual
+fallback or when you want repository-local unqualified commands such as
+`/leanrigor`.
 
 ### Installed assets
 

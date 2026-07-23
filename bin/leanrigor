@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+# LeanRigor Claude plugin launcher.
+set -eu
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "LeanRigor plugin error: Node.js 20 or newer is required, but 'node' was not found on PATH." >&2
+  exit 127
+fi
+
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [ -z "$PLUGIN_ROOT" ]; then
+  SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+  PLUGIN_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+fi
+
+RUNTIME="$PLUGIN_ROOT/runtime/leanrigor-cli.js"
+if [ ! -f "$RUNTIME" ]; then
+  echo "LeanRigor plugin error: bundled runtime not found at $RUNTIME" >&2
+  exit 1
+fi
+
+LEANRIGOR_RUNTIME_SOURCE="claude-marketplace-plugin" \
+LEANRIGOR_CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+exec node "$RUNTIME" "$@"

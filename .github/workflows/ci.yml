@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run validate:claude-plugin
+      - run: git diff --check
+      - run: |
+          tmp="$(mktemp -d)"
+          repo="$tmp/repo with spaces"
+          mkdir -p "$repo"
+          CLAUDE_PLUGIN_ROOT="$PWD" ./bin/leanrigor flow start "Fix a typo in README documentation" --provider deterministic --root "$repo" >/tmp/leanrigor-runtime-smoke.json
+          test -f "$repo/.leanrigor/config.json"
+          test -d "$repo/.leanrigor/workflows"
+          test ! -e "$repo/.claude"
+      - run: npm pack
+      - run: |
+          tar -tf leanrigor-0.1.0-draft.tgz | grep -E 'package/(\\.claude-plugin|commands|agents|hooks|bin|plugin-skills|runtime)/' >/dev/null
