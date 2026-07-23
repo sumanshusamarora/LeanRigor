@@ -19,14 +19,18 @@ Read `.claude/leanrigor/sequential-workflow.md` first.
    rejection before running `approve-approach` or `reject-approach`.
 5. For `awaiting_plan_approval`, present the persisted phased plan. Stop for
    explicit approval or revision before running `approve-plan` or `revise-plan`.
-6. For `executing`, work only on the single active phase. After edits, record
-   changed files and commands with `leanrigor flow phase-complete`.
-7. For `validating`, run proportional validation, then record every result with
+6. For `executing`, work only on the single active phase. Run or explicitly
+   skip declared validation, record results, then submit criterion evidence,
+   changed files, assumptions, risks, and scope deviations with
+   `leanrigor flow phase-complete --evidence-file <path>`.
+7. Follow the returned completion-gate decision. Do not mark a phase done
+   because Claude says it is done, and do not unlock the next phase yourself.
+8. For `validating`, run proportional validation, then record every result with
    `leanrigor flow record-validation`. Do not mark validation successful without
    evidence or a skipped-validation reason.
-8. For `reviewing` or after validation, inspect the full diff and record the
+9. For `reviewing` or after validation, inspect the full diff and record the
    integrated review with `leanrigor flow record-review`.
-9. For `awaiting_commit_approval`, show `leanrigor flow commit-plan`. Do not run
+10. For `awaiting_commit_approval`, show `leanrigor flow commit-plan`. Do not run
    git commit or push.
 
 ## Constraints
@@ -35,5 +39,6 @@ Read `.claude/leanrigor/sequential-workflow.md` first.
 - Do not spawn sub-agents, create worktrees, or use parallel execution.
 - Do not run git commit or git push.
 - Do not modify files outside the active phase without recording scope deviation.
+- Do not hide incomplete, uncertain, or out-of-scope work under a successful summary.
 
 $ARGUMENTS

@@ -7,6 +7,9 @@ export type ModelProfile = "small" | "medium" | "large" | "inherit";
 export type ReviewLevel = "sanity" | "integrated" | "deep" | "specialist";
 export type TestLevel = "none" | "sanity" | "targeted" | "package" | "full";
 export type ParallelismRecommendation = "sequential" | "candidate";
+export type CriterionStatus = "met" | "not_met" | "uncertain" | "not_applicable";
+export type CompletionGateDecision = "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
+export type PhaseStatus = "pending" | "active" | CompletionGateDecision;
 export type WorkflowLifecycleState =
   | "created"
   | "triaging"
@@ -151,13 +154,15 @@ export interface WorkflowPhase {
   validationCommands: string[];
   riskLevel: RiskLevel;
   modelTier: ModelProfile;
-  status: "pending" | "active" | "completed" | "blocked";
+  status: PhaseStatus;
   startedAt?: string;
   completedAt?: string;
   filesChanged: string[];
   commandsRun: string[];
   validationResults: ValidationEvidence[];
   scopeDeviations: string[];
+  completion?: PhaseCompletionRecord;
+  repairAttempts: PhaseRepairAttempt[];
 }
 
 export interface ExecutionPlan {
@@ -178,6 +183,42 @@ export interface ValidationEvidence {
   skipped: boolean;
   skippedReason?: string;
   timestamp: string;
+}
+
+export interface CriterionCompletionEvidence {
+  criterion: string;
+  status: CriterionStatus;
+  evidence: string[];
+}
+
+export interface PhaseRepairAttempt {
+  attempt: number;
+  reason: string;
+  requestedScope: string;
+  validation: ValidationEvidence[];
+  outcome?: CompletionGateDecision;
+  timestamp: string;
+}
+
+export interface PhaseCompletionRecord {
+  phaseId: string;
+  objective: string;
+  criteria: CriterionCompletionEvidence[];
+  filesChanged: string[];
+  validation: {
+    status: "passed" | "failed" | "skipped" | "missing";
+    commands: ValidationEvidence[];
+    skipped: Array<{ command: string; reason: string }>;
+  };
+  scopeDeviations: string[];
+  assumptions: string[];
+  remainingRisks: string[];
+  dependentPhasesMayProceed: boolean;
+  decision: CompletionGateDecision;
+  reason: string;
+  repairAttempt: number;
+  timestamp: string;
+  workflowRevision: number;
 }
 
 export interface IntegratedReviewResult {

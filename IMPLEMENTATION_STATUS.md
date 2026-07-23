@@ -14,11 +14,11 @@
 - Automatic model-backed triage with schema validation, deterministic policy overrides, one retry, and deterministic fallback.
 - Fast/Standard/Rigorous workflow assessment, introspection rules, review levels, execution graph, file ownership, and commit planning primitives.
 - Persisted sequential workflow orchestration for Claude Code:
-  - `leanrigor flow start`, `answer`, `approve-approach`, `reject-approach`, `approve-plan`, `revise-plan`, `phase-start`, `phase-complete`, `record-validation`, `record-review`, `commit-plan`, `complete`, `status`, `list`, `resume`, and `cancel`.
+  - `leanrigor flow start`, `answer`, `approve-approach`, `reject-approach`, `approve-plan`, `revise-plan`, `phase-start`, `phase-complete`, `phase-status`, `repair`, `record-validation`, `record-review`, `commit-plan`, `complete`, `status`, `list`, `resume`, and `cancel`.
   - Versioned workflow files under `.leanrigor/workflows/<workflow-id>.json`.
   - Explicit lifecycle states from `created` through `awaiting_commit_approval`, plus `completed`, `blocked`, and `cancelled`.
   - Atomic writes, schema validation on read/write, corrupted-state errors, and optimistic revision checks.
-  - At most one blocking clarification, mode-specific approach gates, explicit plan approval, sequential phase unlocking, validation evidence, final integrated review, repair loop limits, replan/blocked handling, and commit proposals without commit execution.
+  - At most one blocking clarification, mode-specific approach gates, explicit plan approval, small cohesive phase sizing, per-phase completion gates, criterion evidence, sequential unlocking only after gate pass, validation evidence, scope deviation escalation, bounded per-phase and integrated repair loops, final integrated review, replan/blocked handling, and commit proposals without commit execution.
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
   - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
@@ -52,7 +52,7 @@ All commands below were run in this environment on July 23, 2026.
 
 - `npm install` — passed.
 - `npm run typecheck` — passed.
-- `npm test` — passed; 11 test files and 86 tests passed.
+- `npm test` — passed; 11 test files and 104 tests passed.
 - `npm run build` — passed; plugin assets copied to `dist/adapters/claude/plugin/`.
 - `npm run validate:claude-plugin` — passed.
 - `npm run lint` — passed.
@@ -77,6 +77,20 @@ All commands below were run in this environment on July 23, 2026.
   - confirmed no Git commit existed,
   - ran `leanrigor doctor --adapter claude`,
   - confirmed unrelated `.claude` files remained untouched.
+- Packed-tarball phase-gate smoke test in disposable Git repositories — passed:
+  - started a Fast task and verified one concise phase,
+  - completed it with structured criterion and validation evidence,
+  - confirmed the completion gate passed before commit proposal,
+  - started a Standard backend/frontend task and confirmed three cohesive phases,
+  - deliberately failed validation in phase 1,
+  - confirmed phase 2 stayed locked and phase 1 moved to `needs_repair`,
+  - repaired phase 1 and resubmitted passing evidence,
+  - confirmed phase 2 unlocked after the gate passed,
+  - introduced an unexpected documentation-phase runtime change,
+  - confirmed `needs_replan` or `needs_review`,
+  - confirmed no automatic commit was created.
+- Real Claude Code smoke for this iteration was not run: `claude` was installed
+  at version 2.1.214, but `claude auth status` reported `loggedIn: false`.
 - Native Claude Code marketplace smoke from this working tree — partially
   verified in a real Claude Code session:
   - `claude plugin marketplace add ./` — passed.
@@ -121,5 +135,5 @@ All commands below were run in this environment on July 23, 2026.
 
 ## Next implementation step
 
-Refresh the published marketplace plugin after each command asset change and
-rerun the autocomplete smoke test before announcing the new command surface.
+Run a real authenticated Claude Code smoke for the phase-gate workflow, then
+publish/refresh the marketplace plugin from a clean tree after validation.

@@ -110,6 +110,43 @@ Use `leanrigor models` to configure portable model tiers:
 leanrigor models --claude-small claude-haiku-4-5 --root /path/to/repository
 ```
 
+Phase sizing and completion-gate defaults are configurable while preserving
+backward-compatible behavior:
+
+```json
+{
+  "completionGate": {
+    "enabled": true,
+    "requireEvidence": true,
+    "requireValidation": true,
+    "allowSkippedValidation": {
+      "fast": true,
+      "standard": false,
+      "rigorous": false
+    },
+    "maxRepairAttempts": {
+      "fast": 1,
+      "standard": 2,
+      "rigorous": 2
+    }
+  },
+  "taskSizing": {
+    "maxPrimaryObjectives": 1,
+    "preferredWriteFiles": 5,
+    "reviewSplitThresholdFiles": 8,
+    "requireSplitWhen": [
+      "multiple architectural boundaries",
+      "independent backend and frontend outcomes",
+      "database migration plus application behaviour",
+      "public contract plus consumer updates",
+      "implementation mixed with unrelated refactoring"
+    ]
+  }
+}
+```
+
+These are heuristics, not mechanical file-count limits.
+
 ## Diagnostics
 
 `leanrigor doctor --adapter claude` reports:

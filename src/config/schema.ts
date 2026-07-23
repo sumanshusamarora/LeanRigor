@@ -52,6 +52,33 @@ export const leanRigorConfigSchema = z.object({
     publicApi: z.enum(["optional", "recommended", "contract-required"]).default("contract-required"),
     uiCopy: z.enum(["optional", "recommended"]).default("optional")
   }).prefault({}),
+  completionGate: z.object({
+    enabled: z.boolean().default(true),
+    requireEvidence: z.boolean().default(true),
+    requireValidation: z.boolean().default(true),
+    allowSkippedValidation: z.object({
+      fast: z.boolean().default(true),
+      standard: z.boolean().default(false),
+      rigorous: z.boolean().default(false)
+    }).prefault({}),
+    maxRepairAttempts: z.object({
+      fast: z.number().int().min(0).default(1),
+      standard: z.number().int().min(0).default(2),
+      rigorous: z.number().int().min(0).default(2)
+    }).prefault({})
+  }).prefault({}),
+  taskSizing: z.object({
+    maxPrimaryObjectives: z.number().int().min(1).default(1),
+    preferredWriteFiles: z.number().int().min(1).default(5),
+    reviewSplitThresholdFiles: z.number().int().min(1).default(8),
+    requireSplitWhen: z.array(z.string()).default([
+      "multiple architectural boundaries",
+      "independent backend and frontend outcomes",
+      "database migration plus application behaviour",
+      "public contract plus consumer updates",
+      "implementation mixed with unrelated refactoring"
+    ])
+  }).prefault({}),
   introspection: z.object({
     preflight: z.enum(["always", "mode-based", "manual"]).default("always"),
     deepReflection: z.enum(["triggered", "always", "manual"]).default("triggered"),

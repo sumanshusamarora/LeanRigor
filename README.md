@@ -9,6 +9,9 @@ approval-gated, and repository-local: LeanRigor records state under
 `.leanrigor/`, asks at most one blocking clarification, guides phased execution,
 requires validation evidence and final review, and proposes commits without
 committing or pushing.
+Each workflow phase is a small functional outcome with acceptance criteria,
+expected write areas, and validation expectations. A phase only unlocks
+dependents after an evidence-based completion gate passes.
 
 ## Status
 
@@ -129,6 +132,13 @@ Mode differences are observable:
 Mandatory safety triggers can escalate mode and cannot be bypassed by asking for
 less rigor.
 
+During execution, the active phase must run or explicitly skip its declared
+validation and submit structured completion evidence. The deterministic gate
+then returns `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
+`blocked`. Failed validation blocks progression, unexpected scope deviations are
+recorded and escalated when material, and repair attempts are bounded by mode.
+The final integrated review still runs after all per-phase gates pass.
+
 ## Principles
 
 - Cheap automatic triage by default.
@@ -136,6 +146,8 @@ less rigor.
 - Capability-based model routing instead of vendor coupling.
 - Blocking questions only, one at a time.
 - Sequential phase execution in this iteration.
+- Small cohesive phase sizing by functional outcome and dependency boundary.
+- Per-phase completion gates with criterion evidence and deterministic policy.
 - Targeted validation with persisted evidence.
 - Final integrated review before commit planning.
 - Commit preparation without automatic commit or push.

@@ -21,6 +21,7 @@ import {
   listFlows,
   loadLatestFlow,
   nextActions,
+  repairPhase,
   recordReview,
   recordValidation,
   rejectApproach,
@@ -29,7 +30,7 @@ import {
   startFlow,
   startPhase
 } from "../core/flow.js";
-import type { SequentialWorkflowState } from "../core/types.js";
+import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence } from "../core/types.js";
 
 const program = new Command();
 program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.1.0-draft");
@@ -169,7 +170,7 @@ flow.command("approve-approach")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
   .action(async (workflowId, { root }) => {
-    printFlowState(await approveApproach(root, workflowId));
+    printFlowState(await approveApproach(root, workflowId, await ensureRepositoryConfig(root)));
   });
 
 flow.command("reject-approach")
@@ -192,7 +193,7 @@ flow.command("revise-plan")
   .argument("<feedback>")
   .option("--root <path>", "repository root", process.cwd())
   .action(async (workflowId, feedback, { root }) => {
-    printFlowState(await revisePlan(root, workflowId, feedback));
+    printFlowState(await revisePlan(root, workflowId, feedback, await ensureRepositoryConfig(root)));
   });
 
 flow.command("phase-start")
@@ -207,17 +208,59 @@ flow.command("phase-complete")
   .argument("<workflow-id>")
   .argument("<phase-id>")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--evidence-file <path>", "JSON completion evidence file")
   .option("--files <files>", "comma-separated files changed")
   .option("--command <command>", "command run during the phase", collect, [])
   .option("--deviation <deviation>", "scope deviation to record", collect, [])
+  .option("--assumption <assumption>", "assumption introduced during execution", collect, [])
+  .option("--risk <risk>", "remaining risk", collect, [])
+  .option("--blocked-reason <reason>", "external blocker preventing completion")
   .action(async (workflowId, phaseId, options) => {
+    const evidence = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
+    const config = await ensureRepositoryConfig(options.root);
     printFlowState(await completePhase({
       root: options.root,
       workflowId,
       phaseId,
-      filesChanged: splitCsv(options.files),
-      commandsRun: options.command,
-      scopeDeviations: options.deviation
+      config,
+      criteria: evidence.criteria,
+      filesChanged: uniqueCli([...(evidence.filesChanged ?? []), ...splitCsv(options.files)]),
+      commandsRun: uniqueCli([...(evidence.commandsRun ?? []), ...options.command]),
+      validation: evidence.validation,
+      scopeDeviations: uniqueCli([...(evidence.scopeDeviations ?? []), ...options.deviation]),
+      assumptions: uniqueCli([...(evidence.assumptions ?? []), ...options.assumption]),
+      remainingRisks: uniqueCli([...(evidence.remainingRisks ?? []), ...options.risk]),
+      blockedReason: options.blockedReason ?? evidence.blockedReason,
+      requestedRepairScope: evidence.requestedRepairScope,
+      modelDecision: evidence.modelDecision
+    }));
+  });
+
+flow.command("phase-status")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .action(async (workflowId, phaseId, { root }) => {
+    const state = await resumeFlow(root, workflowId);
+    const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+    if (!phase) throw new Error(`Unknown phase: ${phaseId}`);
+    console.log(JSON.stringify(formatPhaseStatus(state, phaseId), null, 2));
+  });
+
+flow.command("repair")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--reason <reason>", "reason the repair is needed")
+  .option("--scope <scope>", "requested bounded repair scope")
+  .option("--root <path>", "repository root", process.cwd())
+  .action(async (workflowId, phaseId, options) => {
+    printFlowState(await repairPhase({
+      root: options.root,
+      workflowId,
+      phaseId,
+      reason: options.reason,
+      requestedScope: options.scope,
+      config: await ensureRepositoryConfig(options.root)
     }));
   });
 
@@ -379,7 +422,16 @@ function printFlowState(state: SequentialWorkflowState): void {
       acceptanceCriteria: phase.acceptanceCriteria,
       validationCommands: phase.validationCommands,
       riskLevel: phase.riskLevel,
-      modelTier: phase.modelTier
+      modelTier: phase.modelTier,
+      completionGate: phase.completion ? {
+        decision: phase.completion.decision,
+        reason: phase.completion.reason,
+        criteria: summariseCriteria(phase.completion.criteria),
+        validation: phase.completion.validation.status,
+        dependentPhasesMayProceed: phase.completion.dependentPhasesMayProceed
+      } : undefined,
+      repairAttempts: phase.repairAttempts.length,
+      scopeDeviations: phase.scopeDeviations
     })),
     validation: state.validation.map((evidence) => ({
       phaseId: evidence.phaseId,
@@ -393,9 +445,49 @@ function printFlowState(state: SequentialWorkflowState): void {
     review: state.review,
     commitPlan: state.commitPlan,
     blockers: state.blockers,
+    currentPhase: currentPhaseStatus(state),
     nextValidCommands: nextActions(state),
     updatedAt: state.updatedAt
   }, null, 2));
+}
+
+function currentPhaseStatus(state: SequentialWorkflowState): unknown {
+  const active = state.plan?.phases.find((phase) => phase.status === "active")
+    ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
+  return active ? formatPhaseStatus(state, active.id) : undefined;
+}
+
+function formatPhaseStatus(state: SequentialWorkflowState, phaseId: string): unknown {
+  const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+  if (!phase) return undefined;
+  const completion = phase.completion;
+  return {
+    phase: phase.id,
+    objective: phase.objective,
+    status: phase.status,
+    completionGate: completion?.decision ?? (phase.status === "active" ? "pending" : "not_started"),
+    criteria: completion ? summariseCriteria(completion.criteria) : { met: 0, notMet: 0, uncertain: phase.acceptanceCriteria.length, notApplicable: 0 },
+    validation: completion?.validation.status ?? (phase.validationResults.length > 0 ? "recorded" : "pending"),
+    repairAttempts: `${phase.repairAttempts.length}/${phaseRepairBudget(state)}`,
+    scopeDeviations: phase.scopeDeviations,
+    reason: completion?.reason,
+    blockedOrPendingReviewReason: ["needs_review", "needs_replan", "blocked"].includes(phase.status) ? completion?.reason : undefined,
+    nextAction: nextActions(state)[0] ?? null
+  };
+}
+
+function summariseCriteria(criteria: CriterionCompletionEvidence[]): { met: number; notMet: number; uncertain: number; notApplicable: number } {
+  return {
+    met: criteria.filter((criterion) => criterion.status === "met").length,
+    notMet: criteria.filter((criterion) => criterion.status === "not_met").length,
+    uncertain: criteria.filter((criterion) => criterion.status === "uncertain").length,
+    notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
+  };
+}
+
+function phaseRepairBudget(state: SequentialWorkflowState): number {
+  if (state.mode === "fast") return 1;
+  return 2;
 }
 
 function pendingUserAction(state: SequentialWorkflowState): string | null {
@@ -407,6 +499,40 @@ function pendingUserAction(state: SequentialWorkflowState): string | null {
   return null;
 }
 
+interface CompletionEvidenceFile {
+  criteria?: CriterionCompletionEvidence[];
+  filesChanged?: string[];
+  commandsRun?: string[];
+  validation?: Array<Partial<ValidationEvidence> & { command: string; result?: string; exitStatus?: number | null; skipped?: boolean; skippedReason?: string }>;
+  scopeDeviations?: string[];
+  assumptions?: string[];
+  remainingRisks?: string[];
+  blockedReason?: string;
+  requestedRepairScope?: string;
+  modelDecision?: "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
+}
+
+async function readCompletionEvidence(file: string): Promise<Omit<CompletionEvidenceFile, "validation"> & { validation?: ValidationEvidence[] }> {
+  const raw = JSON.parse(await readFile(path.resolve(file), "utf8")) as CompletionEvidenceFile;
+  return {
+    ...raw,
+    validation: raw.validation?.map((entry) => {
+      const skipped = Boolean(entry.skipped);
+      const exitStatus = skipped ? null : entry.exitStatus ?? 0;
+      return {
+        phaseId: entry.phaseId,
+        command: entry.command,
+        exitStatus,
+        result: entry.result ?? (skipped ? "Validation skipped." : "Validation command recorded."),
+        status: skipped ? "skipped" : exitStatus === 0 ? "passed" : "failed",
+        skipped,
+        skippedReason: entry.skippedReason,
+        timestamp: entry.timestamp ?? new Date().toISOString()
+      };
+    })
+  };
+}
+
 function collect(value: string, previous: string[]): string[] {
   previous.push(value);
   return previous;
@@ -414,6 +540,10 @@ function collect(value: string, previous: string[]): string[] {
 
 function splitCsv(value: string | undefined): string[] {
   return value ? value.split(",").map((entry) => entry.trim()).filter(Boolean) : [];
+}
+
+function uniqueCli(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 async function initConfig(root: string) {

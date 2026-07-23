@@ -165,9 +165,13 @@ Orchestrates the full adaptive workflow:
 2. Asks the single persisted blocking clarification question if required
 3. Presents approach approval for Standard and Rigorous work
 4. Presents the persisted sequential plan and waits for approval
-5. Executes one active phase at a time in the Claude session
-6. Records validation evidence and final integrated review
-7. Shows a commit proposal without committing
+5. Executes one active small functional phase at a time in the Claude session
+6. Runs or explicitly skips phase validation, then submits structured
+   completion evidence to the per-phase gate
+7. Follows `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
+   `blocked`; Claude does not unlock the next phase itself
+8. Records final integrated review after all phase gates pass
+9. Shows a commit proposal without committing
 
 ### `/leanrigor-plan` or `/leanrigor:plan`
 
@@ -177,7 +181,8 @@ at plan approval.
 ### `/leanrigor-status` or `/leanrigor:status`
 
 Reports the current workflow state from `.leanrigor/workflows/`: lifecycle
-state, mode, phase progress, pending user action, validation, review, blockers,
+state, mode, current phase objective, completion-gate status, criteria progress,
+validation status, repair attempts, scope deviations, pending user action, review, blockers,
 and next valid commands.
 
 ### `/leanrigor-review` or `/leanrigor:review`

@@ -11,10 +11,14 @@ import { runTriage } from "./triage-runner.js";
 import type {
   ApproachRecommendation,
   CommitPlan,
+  CompletionGateDecision,
+  CriterionCompletionEvidence,
   ExecutionGraph,
   ExecutionPlan,
   IntegratedReviewResult,
   ModelProfile,
+  PhaseCompletionRecord,
+  PhaseRepairAttempt,
   RiskLevel,
   SequentialWorkflowState,
   TriageOutput,
@@ -46,6 +50,8 @@ const lifecycleStateSchema = z.enum([
 
 const riskSchema = z.enum(["none", "low", "medium", "high"]);
 const modelProfileSchema = z.enum(["small", "medium", "large", "inherit"]);
+const criterionStatusSchema = z.enum(["met", "not_met", "uncertain", "not_applicable"]);
+const completionDecisionSchema = z.enum(["completed", "needs_repair", "needs_review", "needs_replan", "blocked"]);
 
 const triageSchema = z.object({
   version: z.literal(1),
@@ -104,6 +110,42 @@ const validationEvidenceSchema = z.object({
   }
 });
 
+const criterionCompletionSchema = z.object({
+  criterion: z.string().min(1),
+  status: criterionStatusSchema,
+  evidence: z.array(z.string().min(1))
+});
+
+const phaseRepairAttemptSchema = z.object({
+  attempt: z.number().int().min(1),
+  reason: z.string().min(1),
+  requestedScope: z.string().min(1),
+  validation: z.array(validationEvidenceSchema),
+  outcome: completionDecisionSchema.optional(),
+  timestamp: z.string()
+});
+
+const phaseCompletionRecordSchema = z.object({
+  phaseId: z.string().min(1),
+  objective: z.string().min(1),
+  criteria: z.array(criterionCompletionSchema),
+  filesChanged: z.array(z.string()),
+  validation: z.object({
+    status: z.enum(["passed", "failed", "skipped", "missing"]),
+    commands: z.array(validationEvidenceSchema),
+    skipped: z.array(z.object({ command: z.string().min(1), reason: z.string().min(1) }))
+  }),
+  scopeDeviations: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  remainingRisks: z.array(z.string()),
+  dependentPhasesMayProceed: z.boolean(),
+  decision: completionDecisionSchema,
+  reason: z.string(),
+  repairAttempt: z.number().int().min(0),
+  timestamp: z.string(),
+  workflowRevision: z.number().int().min(0)
+});
+
 const phaseSchema = z.object({
   id: z.string().min(1),
   objective: z.string().min(1),
@@ -114,13 +156,15 @@ const phaseSchema = z.object({
   validationCommands: z.array(z.string()),
   riskLevel: riskSchema,
   modelTier: modelProfileSchema,
-  status: z.enum(["pending", "active", "completed", "blocked"]),
+  status: z.enum(["pending", "active", "completed", "needs_repair", "needs_review", "needs_replan", "blocked"]),
   startedAt: z.string().optional(),
   completedAt: z.string().optional(),
   filesChanged: z.array(z.string()),
   commandsRun: z.array(z.string()),
   validationResults: z.array(validationEvidenceSchema),
-  scopeDeviations: z.array(z.string())
+  scopeDeviations: z.array(z.string()),
+  completion: phaseCompletionRecordSchema.optional(),
+  repairAttempts: z.array(phaseRepairAttemptSchema).default([])
 });
 
 const planSchema = z.object({
@@ -141,6 +185,9 @@ const planSchema = z.object({
         ctx.addIssue({ code: "custom", path: ["phases", phase.id, "dependencies"], message: `Missing dependency ${dependency}.` });
       }
     }
+  }
+  for (const issue of validatePlanQuality(plan)) {
+    ctx.addIssue({ code: "custom", path: ["phases"], message: issue });
   }
 });
 
@@ -281,14 +328,14 @@ export async function answerClarification(args: {
   });
 }
 
-export async function approveApproach(root: string, workflowId: string): Promise<SequentialWorkflowState> {
+export async function approveApproach(root: string, workflowId: string, config?: LeanRigorConfig): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
     next.approach = { ...state.approach, approved: true };
     next.events.push({ state: "awaiting_approach_approval", message: "Approach approved.", timestamp: timestamp() });
-    return withPlan(next);
+    return withPlan(next, config);
   });
 }
 
@@ -302,14 +349,14 @@ export async function rejectApproach(root: string, workflowId: string, reason: s
   });
 }
 
-export async function revisePlan(root: string, workflowId: string, feedback: string): Promise<SequentialWorkflowState> {
+export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
     const next = structuredClone(state);
     const triage = state.triage;
     const previousRequests = next.plan?.revisionRequests ?? [];
-    next.plan = buildPlan(next.request, triage, next.root, {
+    next.plan = buildPlan(next.request, triage, next.root, config, {
       revisionRequests: [...previousRequests, { feedback, timestamp: timestamp() }]
     });
     next.review = undefined;
@@ -349,9 +396,17 @@ export async function completePhase(args: {
   root: string;
   workflowId: string;
   phaseId: string;
+  config?: LeanRigorConfig;
+  criteria?: CriterionCompletionEvidence[];
   filesChanged?: string[];
   commandsRun?: string[];
+  validation?: ValidationEvidence[];
   scopeDeviations?: string[];
+  assumptions?: string[];
+  remainingRisks?: string[];
+  blockedReason?: string;
+  requestedRepairScope?: string;
+  modelDecision?: CompletionGateDecision;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
@@ -361,25 +416,98 @@ export async function completePhase(args: {
     if (!plan) throw new WorkflowStateError("Cannot complete a phase without a plan.");
     const phase = plan.phases.find((candidate) => candidate.id === args.phaseId);
     if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
-    if (phase.status !== "active") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an active phase can be completed.`);
-    phase.status = "completed";
-    phase.completedAt = timestamp();
+    if (phase.status !== "active") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an active phase can enter the completion gate.`);
     phase.filesChanged = unique([...phase.filesChanged, ...(args.filesChanged ?? [])]);
     phase.commandsRun = [...phase.commandsRun, ...(args.commandsRun ?? [])];
-    phase.scopeDeviations = [...phase.scopeDeviations, ...(args.scopeDeviations ?? [])];
-    next.events.push({ state: "executing", message: `Phase ${phase.id} completed.`, timestamp: timestamp() });
+    for (const evidence of args.validation ?? []) {
+      validateWorkflowEvidence(evidence);
+      next.validation.push(evidence);
+      phase.validationResults.push(evidence);
+    }
+    const detectedDeviations = detectScopeDeviations(phase, args.config);
+    phase.scopeDeviations = unique([...phase.scopeDeviations, ...(args.scopeDeviations ?? []), ...detectedDeviations]);
+
+    const completion = buildCompletionRecord({
+      state: next,
+      phase,
+      criteria: args.criteria,
+      assumptions: args.assumptions,
+      remainingRisks: args.remainingRisks,
+      blockedReason: args.blockedReason,
+      requestedRepairScope: args.requestedRepairScope,
+      config: args.config
+    });
+    phase.completion = completion;
+    phase.status = completion.decision;
+    if (completion.decision === "completed") phase.completedAt = timestamp();
+    const repair = phase.repairAttempts.at(-1);
+    if (repair && !repair.outcome) {
+      repair.validation = phase.validationResults;
+      repair.outcome = completion.decision;
+    }
+    next.events.push({ state: "executing", message: `Phase ${phase.id} completion gate: ${completion.decision}. ${completion.reason}`, timestamp: timestamp() });
+
+    if (completion.decision === "blocked") {
+      next.blockers = [completion.reason];
+      return transition(next, "blocked", `Phase ${phase.id} is blocked.`);
+    }
+    if (completion.decision !== "completed") return next;
 
     const nextPhase = plan.phases.find((candidate) => candidate.status === "pending" && candidate.dependencies.every((id) => phaseById(plan, id)?.status === "completed"));
     if (nextPhase) {
       nextPhase.status = "active";
       nextPhase.startedAt = timestamp();
-      next.events.push({ state: "executing", message: `Phase ${nextPhase.id} started.`, timestamp: timestamp() });
+      next.events.push({ state: "executing", message: `Phase ${nextPhase.id} started after completion gate passed.`, timestamp: timestamp() });
       return next;
     }
 
     const unfinished = plan.phases.find((candidate) => candidate.status !== "completed");
     if (unfinished) return next;
     return transition(next, "validating", "All phases completed; targeted validation is required.");
+  });
+}
+
+export async function repairPhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  reason: string;
+  requestedScope?: string;
+  config: LeanRigorConfig;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (!state.plan) throw new WorkflowStateError("Cannot repair a phase without a plan.");
+    const next = structuredClone(state);
+    const plan = next.plan;
+    if (!plan) throw new WorkflowStateError("Cannot repair a phase without a plan.");
+    const phase = phaseById(plan, args.phaseId);
+    if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    if (phase.status !== "needs_repair") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only needs_repair can be repaired.`);
+    const budget = args.config.completionGate.maxRepairAttempts[next.mode];
+    if (phase.repairAttempts.length >= budget) {
+      phase.status = "needs_review";
+      if (phase.completion) {
+        phase.completion.decision = "needs_review";
+        phase.completion.dependentPhasesMayProceed = false;
+        phase.completion.reason = `Repair budget exhausted after ${phase.repairAttempts.length} attempt(s).`;
+      }
+      next.events.push({ state: "executing", message: `Phase ${phase.id} repair budget exhausted.`, timestamp: timestamp() });
+      return next;
+    }
+    const attempt: PhaseRepairAttempt = {
+      attempt: phase.repairAttempts.length + 1,
+      reason: args.reason,
+      requestedScope: args.requestedScope ?? phase.completion?.reason ?? "Repair the bounded completion-gate issue.",
+      validation: [],
+      timestamp: timestamp()
+    };
+    phase.repairAttempts.push(attempt);
+    phase.status = "active";
+    phase.startedAt = timestamp();
+    phase.completedAt = undefined;
+    next.events.push({ state: "executing", message: `Phase ${phase.id} repair attempt ${attempt.attempt}/${budget} started.`, timestamp: timestamp() });
+    return next;
   });
 }
 
@@ -596,8 +724,17 @@ export function nextActions(state: SequentialWorkflowState): string[] {
       ];
     case "executing": {
       const active = state.plan?.phases.find((phase) => phase.status === "active");
+      const repair = state.plan?.phases.find((phase) => phase.status === "needs_repair");
+      const review = state.plan?.phases.find((phase) => phase.status === "needs_review");
+      const replan = state.plan?.phases.find((phase) => phase.status === "needs_replan");
+      if (repair) return [`leanrigor flow repair ${id} ${repair.id} --reason "<reason>" --root "${state.root}"`];
+      if (review) return [`leanrigor flow phase-status ${id} ${review.id} --root "${state.root}"`, `leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
+      if (replan) return [`leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       return active
-        ? [`leanrigor flow phase-complete ${id} ${active.id} --files "<comma-separated>" --command "<command>" --root "${state.root}"`]
+        ? [
+          `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
+          `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
+        ]
         : [`leanrigor flow phase-start ${id} --root "${state.root}"`];
     }
     case "validating":
@@ -652,7 +789,7 @@ function applyTriageResult(
 
   next.approach = buildApproach(triage, config);
   if (next.approach.required) return transition(next, "awaiting_approach_approval", "Approach recommendation is awaiting approval.");
-  return withPlan(next);
+  return withPlan(next, config);
 }
 
 function enforceOneClarification(triage: TriageOutput, clarificationAlreadyAnswered: boolean): TriageOutput {
@@ -663,10 +800,10 @@ function enforceOneClarification(triage: TriageOutput, clarificationAlreadyAnswe
   return next;
 }
 
-function withPlan(state: SequentialWorkflowState): SequentialWorkflowState {
+function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig): SequentialWorkflowState {
   if (!state.triage) throw new WorkflowStateError("Cannot plan before triage completes.");
   const planning = transition(state, "planning", "Sequential plan generation started.");
-  planning.plan = buildPlan(planning.request, state.triage, planning.root, {
+  planning.plan = buildPlan(planning.request, state.triage, planning.root, config, {
     revisionRequests: planning.plan?.revisionRequests ?? []
   });
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
@@ -695,36 +832,42 @@ function buildApproach(triage: TriageOutput, config: LeanRigorConfig): ApproachR
   };
 }
 
-function buildPlan(request: string, triage: TriageOutput, root: string, options?: { revisionRequests?: ExecutionPlan["revisionRequests"] }): ExecutionPlan {
+function buildPlan(request: string, triage: TriageOutput, root: string, config?: LeanRigorConfig, options?: { revisionRequests?: ExecutionPlan["revisionRequests"] }): ExecutionPlan {
   const mode = triage.workflow.finalMode;
   const validationCommands = defaultValidationCommands(root, mode, triage);
   const targets = triage.inspection.targets.length > 0 ? triage.inspection.targets : ["relevant implementation boundary", "nearby tests"];
   const revisionNote = options?.revisionRequests?.at(-1)?.feedback;
+  const boundaries = inferBoundaries(request, triage, targets);
   const phases = mode === "fast"
     ? fastPhases(targets, validationCommands)
     : mode === "standard"
-      ? standardPhases(targets, validationCommands)
-      : rigorousPhases(targets, validationCommands, triage);
+      ? standardPhases(targets, validationCommands, boundaries)
+      : rigorousPhases(targets, validationCommands, triage, boundaries);
 
-  return {
+  const plan: ExecutionPlan = {
     version: 1,
     summary: revisionNote
       ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})`
       : `Sequential plan for: ${request.trim()}`,
     principles: [
       "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
-      "Record changed files, commands, validation evidence, and scope deviations before moving on.",
+      "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
+      "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
+      "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
       "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
     ],
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
+  const issues = validatePlanQuality(plan, mode, config);
+  if (issues.length > 0) throw new WorkflowStateError(`Generated plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
+  return plan;
 }
 
 function fastPhases(targets: string[], validationCommands: string[]): WorkflowPhase[] {
   return [phase({
     id: "phase-1",
-    objective: "Apply the small low-risk change and verify the immediate diff.",
+    objective: "Apply the small low-risk requested change.",
     rationale: "Fast mode keeps ceremony compact when triage found low ambiguity, low blast radius, and no material safety risk.",
     dependencies: [],
     areas: targets,
@@ -735,53 +878,117 @@ function fastPhases(targets: string[], validationCommands: string[]): WorkflowPh
   })];
 }
 
-function standardPhases(targets: string[], validationCommands: string[]): WorkflowPhase[] {
-  return [
+function standardPhases(targets: string[], validationCommands: string[], boundaries: BoundarySet): WorkflowPhase[] {
+  if (boundaries.backend && boundaries.frontend) {
+    return [
+      phase({
+        id: "phase-1",
+        objective: "Add the backend behavior or public contract for the requested outcome.",
+        rationale: "The backend boundary is an independently reviewable dependency for the frontend consumer.",
+        dependencies: [],
+        areas: filterAreas(targets, ["backend", "api", "service", "server", "src"]),
+        acceptance: ["The backend outcome is implemented without unrelated refactoring.", "The contract or behavior can be inspected independently of UI changes."],
+        validationCommands: validationCommands.slice(0, 1),
+        riskLevel: "medium",
+        modelTier: "medium"
+      }),
+      phase({
+        id: "phase-2",
+        objective: "Update the frontend consumer for the approved behavior.",
+        rationale: "The consumer depends on the backend behavior or contract from phase-1.",
+        dependencies: ["phase-1"],
+        areas: filterAreas(targets, ["frontend", "ui", "client", "component", "app"]),
+        acceptance: ["The frontend path uses the approved backend behavior or contract.", "No database, migration, or production configuration changes are introduced."],
+        validationCommands: validationCommands.slice(0, 1),
+        riskLevel: "medium",
+        modelTier: "medium"
+      }),
+      phase({
+        id: "phase-3",
+        objective: "Add focused regression coverage for the changed behavior.",
+        rationale: "Regression evidence should be reviewable separately from implementation edits.",
+        dependencies: ["phase-2"],
+        areas: unique([...targets, "nearby tests or package checks"]),
+        acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
+        validationCommands,
+        riskLevel: "medium",
+        modelTier: "medium"
+      })
+    ];
+  }
+  const phases = [
     phase({
       id: "phase-1",
-      objective: "Inspect the relevant boundary and implement the requested behavior.",
-      rationale: "Standard mode first resolves the concrete implementation boundary before editing.",
+      objective: boundaries.publicContract
+        ? "Add the public contract for the requested behavior."
+        : "Implement the primary behavior for the requested outcome.",
+      rationale: boundaries.publicContract
+        ? "The public contract must be reviewable before any consumer or coverage updates."
+        : "Standard mode keeps implementation focused on the primary functional outcome.",
       dependencies: [],
       areas: targets,
-      acceptance: ["The implementation follows nearby patterns.", "Scope remains limited to the approved request."],
+      acceptance: boundaries.publicContract
+        ? ["The public contract is explicit and compatible with the approved request.", "No unrelated consumer or documentation edits are mixed into the contract change."]
+        : ["The requested behavior follows nearby patterns.", "Scope remains limited to the approved request."],
       validationCommands: validationCommands.slice(0, 1),
       riskLevel: "medium",
       modelTier: "medium"
     }),
     phase({
       id: "phase-2",
-      objective: "Add focused coverage or checks for the changed behavior.",
-      rationale: "The validation phase should prove the behavioral change rather than only inspecting the diff.",
+      objective: "Add focused regression coverage for the changed behavior.",
+      rationale: "Coverage is materially distinct from implementation and proves the behavior under review.",
       dependencies: ["phase-1"],
       areas: unique([...targets, "nearby tests or package checks"]),
-      acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason."],
+      acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
       validationCommands,
       riskLevel: "medium",
       modelTier: "medium"
     })
   ];
+  if (boundaries.documentation) {
+    phases.push(phase({
+      id: "phase-3",
+      objective: "Update user-facing documentation for the changed behavior.",
+      rationale: "Documentation can be reviewed after behavior and regression evidence are in place.",
+      dependencies: ["phase-2"],
+      areas: ["README.md", "docs/**", "commands/**"],
+      acceptance: ["Documentation reflects verified behavior.", "No runtime behavior changes are introduced in the documentation phase."],
+      validationCommands: ["git diff --check"],
+      riskLevel: "low",
+      modelTier: "small"
+    }));
+  }
+  return phases;
 }
 
-function rigorousPhases(targets: string[], validationCommands: string[], triage: TriageOutput): WorkflowPhase[] {
+function rigorousPhases(targets: string[], validationCommands: string[], triage: TriageOutput, boundaries: BoundarySet): WorkflowPhase[] {
   const highRiskAreas = unique([
     ...targets,
     ...triage.escalationReasons.map((reason) => `risk: ${reason}`)
   ]);
+  const firstObjective = boundaries.migration
+    ? "Isolate the migration contract and rollback-sensitive assumptions."
+    : boundaries.security
+      ? "Isolate the security-sensitive contract and invariants."
+      : boundaries.publicContract
+        ? "Isolate the public contract and compatibility expectations."
+        : "Isolate the high-risk boundary and safety assumptions.";
   return [
     phase({
       id: "phase-1",
-      objective: "Confirm the high-risk boundary, contracts, and rollback-sensitive assumptions.",
-      rationale: "Rigorous work needs explicit risk containment before implementation starts.",
+      objective: firstObjective,
+      rationale: "Rigorous work separates high-risk boundaries before behavior changes.",
       dependencies: [],
       areas: highRiskAreas,
-      acceptance: ["Security, migration, API, data, or production concerns are identified where relevant.", "The approved scope still matches the original request."],
+      acceptance: ["The high-risk boundary is explicit and independently reviewable.", "The approved scope still matches the original request."],
       validationCommands: validationCommands.slice(0, 1),
       riskLevel: "high",
       modelTier: "large"
     }),
     phase({
       id: "phase-2",
-      objective: "Implement the approved change with compatibility and safety checks preserved.",
+      objective: "Implement the approved high-risk behavior change.",
       rationale: "The implementation phase depends on the established risk boundary.",
       dependencies: ["phase-1"],
       areas: targets,
@@ -792,7 +999,7 @@ function rigorousPhases(targets: string[], validationCommands: string[], triage:
     }),
     phase({
       id: "phase-3",
-      objective: "Harden validation evidence across the affected integration boundary.",
+      objective: "Add high-risk regression and integration validation evidence.",
       rationale: "Rigorous mode requires broader evidence before final integrated review.",
       dependencies: ["phase-2"],
       areas: unique([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
@@ -802,6 +1009,105 @@ function rigorousPhases(targets: string[], validationCommands: string[], triage:
       modelTier: "large"
     })
   ];
+}
+
+interface BoundarySet {
+  backend: boolean;
+  frontend: boolean;
+  migration: boolean;
+  security: boolean;
+  publicContract: boolean;
+  documentation: boolean;
+}
+
+function inferBoundaries(request: string, triage: TriageOutput, targets: string[]): BoundarySet {
+  const text = `${request} ${targets.join(" ")} ${triage.escalationReasons.join(" ")}`.toLowerCase();
+  return {
+    backend: /\b(api|backend|server|service|database|db|persistence|schema)\b/.test(text),
+    frontend: /\b(frontend|front-end|ui|client|component|editor|page|view)\b/.test(text),
+    migration: /\b(migration|migrations|rollback|schema change|database)\b/.test(text),
+    security: /\b(auth|authentication|authorization|permission|credential|secret|security)\b/.test(text),
+    publicContract: /\b(api|contract|schema|openapi|graphql|proto|public)\b/.test(text),
+    documentation: /\b(doc|docs|documentation|readme)\b/.test(text)
+  };
+}
+
+function filterAreas(targets: string[], keywords: string[]): string[] {
+  const filtered = targets.filter((target) => keywords.some((keyword) => target.toLowerCase().includes(keyword)));
+  return filtered.length > 0 ? filtered : targets;
+}
+
+export function validatePlanQuality(plan: ExecutionPlan, mode?: WorkflowMode, config?: LeanRigorConfig): string[] {
+  const issues: string[] = [];
+  const ids = new Set<string>();
+  for (const phase of plan.phases) {
+    if (ids.has(phase.id)) issues.push(`Phase ${phase.id} is duplicated.`);
+    ids.add(phase.id);
+    if (!phase.objective.trim()) issues.push(`Phase ${phase.id} is missing an objective.`);
+    if (hasMultiplePrimaryObjectives(phase.objective)) issues.push(`Phase ${phase.id} appears to have multiple primary objectives.`);
+    if (isBroadContainer(phase.objective)) issues.push(`Phase ${phase.id} is a vague or overly broad container.`);
+    if (phase.acceptanceCriteria.length === 0) issues.push(`Phase ${phase.id} has no acceptance criteria.`);
+    if (phase.acceptanceCriteria.some((criterion) => !isInspectableCriterion(criterion))) {
+      issues.push(`Phase ${phase.id} has non-testable or non-inspectable acceptance criteria.`);
+    }
+    if (phase.validationCommands.length === 0) issues.push(`Phase ${phase.id} has no validation command or check expectation.`);
+    if (phase.expectedFilesOrAreas.length === 0) issues.push(`Phase ${phase.id} has no bounded expected write area.`);
+    if (phase.expectedFilesOrAreas.length >= (config?.taskSizing.reviewSplitThresholdFiles ?? 8) && mode !== "fast") {
+      issues.push(`Phase ${phase.id} lists many expected write areas and should be reviewed for splitting.`);
+    }
+  }
+  for (const phase of plan.phases) {
+    for (const dependency of phase.dependencies) {
+      if (!ids.has(dependency)) issues.push(`Phase ${phase.id} depends on missing phase ${dependency}.`);
+    }
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const byId = new Map(plan.phases.map((phase) => [phase.id, phase]));
+  const visit = (id: string): void => {
+    if (visiting.has(id)) {
+      issues.push(`Dependency cycle detected at ${id}.`);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of byId.get(id)?.dependencies ?? []) visit(dependency);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const phase of plan.phases) visit(phase.id);
+  if (mode === "fast" && plan.phases.length === 1) return unique(issues);
+  const broadPhase = plan.phases.find((phase) => boundaryWordCount(phase.objective) > 1 && !/coverage|validation|documentation/.test(phase.objective.toLowerCase()));
+  if (broadPhase) issues.push(`Phase ${broadPhase.id} mixes architectural boundaries.`);
+  return unique(issues);
+}
+
+function hasMultiplePrimaryObjectives(objective: string): boolean {
+  const lower = objective.toLowerCase();
+  if (/\b(backend|frontend|tests?|docs?|documentation|migration|schema|api|consumer)\b.*\band\b.*\b(backend|frontend|tests?|docs?|documentation|migration|schema|api|consumer)\b/.test(lower)) return true;
+  return /\b(update|add|implement|refactor|change|fix)\b.*\band\b.*\b(update|add|implement|refactor|change|fix)\b/.test(lower);
+}
+
+function isBroadContainer(objective: string): boolean {
+  return /\b(whole feature|backend, frontend|frontend, tests|tests and docs|some related|various|everything|all changes|whole task)\b/i.test(objective);
+}
+
+function isInspectableCriterion(criterion: string): boolean {
+  const lower = criterion.toLowerCase();
+  if (/^(done|works|complete|as needed|tbd)\.?$/.test(lower.trim())) return false;
+  return lower.length >= 12;
+}
+
+function boundaryWordCount(value: string): number {
+  const lower = value.toLowerCase();
+  return [
+    /\bbackend|api|service|server\b/.test(lower),
+    /\bfrontend|ui|client|component\b/.test(lower),
+    /\btests?|coverage|validation\b/.test(lower),
+    /\bdocs?|documentation|readme\b/.test(lower),
+    /\bmigration|database|schema\b/.test(lower),
+    /\bauth|security|permission|credential\b/.test(lower)
+  ].filter(Boolean).length;
 }
 
 function phase(args: {
@@ -829,7 +1135,8 @@ function phase(args: {
     filesChanged: [],
     commandsRun: [],
     validationResults: [],
-    scopeDeviations: []
+    scopeDeviations: [],
+    repairAttempts: []
   };
 }
 
@@ -921,6 +1228,200 @@ function buildCommitPlan(state: SequentialWorkflowState): CommitPlan {
     groups,
     note: "Proposal only. LeanRigor never runs git commit or git push automatically."
   };
+}
+
+function buildCompletionRecord(args: {
+  state: SequentialWorkflowState;
+  phase: WorkflowPhase;
+  criteria?: CriterionCompletionEvidence[];
+  assumptions?: string[];
+  remainingRisks?: string[];
+  blockedReason?: string;
+  requestedRepairScope?: string;
+  config?: LeanRigorConfig;
+}): PhaseCompletionRecord {
+  const criteria = normaliseCriteria(args.phase, args.criteria);
+  const validation = summarisePhaseValidation(args.phase, args.state.mode, args.config);
+  const policy = decideCompletionGate({
+    phase: args.phase,
+    criteria,
+    validationStatus: validation.status,
+    blockedReason: args.blockedReason,
+    remainingRisks: args.remainingRisks ?? [],
+    config: args.config,
+    mode: args.state.mode
+  });
+  const decision = policy.decision;
+  return {
+    phaseId: args.phase.id,
+    objective: args.phase.objective,
+    criteria,
+    filesChanged: args.phase.filesChanged,
+    validation,
+    scopeDeviations: args.phase.scopeDeviations,
+    assumptions: unique(args.assumptions ?? []),
+    remainingRisks: unique(args.remainingRisks ?? []),
+    dependentPhasesMayProceed: decision === "completed",
+    decision,
+    reason: args.blockedReason ?? policy.reason ?? args.requestedRepairScope ?? "Completion gate evaluated.",
+    repairAttempt: args.phase.repairAttempts.length,
+    timestamp: timestamp(),
+    workflowRevision: args.state.revision
+  };
+}
+
+function normaliseCriteria(phase: WorkflowPhase, supplied?: CriterionCompletionEvidence[]): CriterionCompletionEvidence[] {
+  const byCriterion = new Map((supplied ?? []).map((criterion) => [criterion.criterion, criterion]));
+  return phase.acceptanceCriteria.map((criterion) => {
+    const suppliedCriterion = byCriterion.get(criterion);
+    return {
+      criterion,
+      status: suppliedCriterion?.status ?? "uncertain",
+      evidence: unique(suppliedCriterion?.evidence ?? [])
+    };
+  });
+}
+
+function summarisePhaseValidation(phase: WorkflowPhase, mode: WorkflowMode, config?: LeanRigorConfig): PhaseCompletionRecord["validation"] {
+  const activeRepair = phase.repairAttempts.find((attempt) => !attempt.outcome);
+  const commands = activeRepair
+    ? phase.validationResults.filter((evidence) => evidence.timestamp >= activeRepair.timestamp)
+    : phase.validationResults;
+  const skipped = commands.filter((evidence) => evidence.skipped).map((evidence) => ({
+    command: evidence.command,
+    reason: evidence.skippedReason ?? "No reason recorded."
+  }));
+  if (commands.some((evidence) => evidence.status === "failed" || (evidence.exitStatus ?? 0) !== 0 && !evidence.skipped)) {
+    return { status: "failed", commands, skipped };
+  }
+  const expected = phase.validationCommands;
+  const missing = expected.filter((command) => !commands.some((evidence) => sameCommand(evidence.command, command)));
+  if (commands.length === 0 || missing.length > 0) {
+    if (!gateRequiresValidation(config)) return { status: "passed", commands, skipped };
+    return { status: "missing", commands, skipped };
+  }
+  if (commands.every((evidence) => evidence.status === "skipped")) {
+    return { status: allowSkippedValidation(mode, config) ? "skipped" : "failed", commands, skipped };
+  }
+  if (commands.some((evidence) => evidence.status === "skipped" && !allowSkippedValidation(mode, config))) {
+    return { status: "failed", commands, skipped };
+  }
+  return { status: "passed", commands, skipped };
+}
+
+function decideCompletionGate(args: {
+  phase: WorkflowPhase;
+  criteria: CriterionCompletionEvidence[];
+  validationStatus: PhaseCompletionRecord["validation"]["status"];
+  blockedReason?: string;
+  remainingRisks: string[];
+  config?: LeanRigorConfig;
+  mode: WorkflowMode;
+}): { decision: CompletionGateDecision; reason?: string } {
+  if (!args.config?.completionGate.enabled && args.criteria.every((criterion) => criterion.status === "met" || criterion.status === "not_applicable")) {
+    return { decision: "completed", reason: "Completion gate is disabled by configuration." };
+  }
+  if (args.blockedReason) return { decision: "blocked", reason: args.blockedReason };
+  const materialDeviation = args.phase.scopeDeviations.find((deviation) => isMaterialScopeDeviation(deviation));
+  if (materialDeviation) return { decision: "needs_replan", reason: materialDeviation };
+  const highRiskDeviation = args.phase.scopeDeviations.find((deviation) => isReviewScopeDeviation(deviation));
+  if (highRiskDeviation) return { decision: "needs_review", reason: highRiskDeviation };
+  const notMet = args.criteria.find((criterion) => criterion.status === "not_met");
+  if (notMet) return { decision: "needs_repair", reason: `Criterion not met: ${notMet.criterion}` };
+  const uncertain = args.criteria.find((criterion) => criterion.status === "uncertain");
+  if (uncertain) return { decision: "needs_review", reason: `Criterion uncertain: ${uncertain.criterion}` };
+  if (gateRequiresEvidence(args.config)) {
+    const missingEvidence = args.criteria.find((criterion) => criterion.status === "met" && criterion.evidence.length === 0);
+    if (missingEvidence) return { decision: "needs_review", reason: `Evidence missing for criterion: ${missingEvidence.criterion}` };
+  }
+  if (args.validationStatus === "failed") return { decision: "needs_repair", reason: "Validation failed or skipped validation is not allowed in this mode." };
+  if (args.validationStatus === "missing") return { decision: "needs_repair", reason: "Declared validation evidence is missing." };
+  const criticalRisk = args.remainingRisks.find((risk) => /\b(critical|severe|data loss|security|unsafe)\b/i.test(risk));
+  if (criticalRisk) return { decision: "needs_review", reason: `Critical remaining risk: ${criticalRisk}` };
+  return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };
+}
+
+function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): string[] {
+  const deviations: string[] = [];
+  const expected = phase.expectedFilesOrAreas.filter(isPathLikeArea);
+  if (expected.length > 0) {
+    for (const file of phase.filesChanged) {
+      if (!expected.some((area) => areaMatchesFile(area, file))) deviations.push(`changed file outside expected scope: ${file}`);
+    }
+  }
+  const objective = phase.objective.toLowerCase();
+  for (const file of phase.filesChanged) {
+    const lower = file.toLowerCase();
+    if ((lower === "package.json" || lower === "package-lock.json" || lower.endsWith("/package.json")) && !/\b(dependency|package|build|tooling)\b/.test(objective)) {
+      deviations.push(`production dependency or package manifest changed outside approved phase scope: ${file}`);
+    }
+    if (lower.includes("migration") && !/\bmigration|database|schema\b/.test(objective)) {
+      deviations.push(`migration introduced outside approved phase scope: ${file}`);
+    }
+    if (/\b(api|schema|openapi|graphql|proto)\b/.test(lower) && !/\b(test|spec)\b/.test(lower) && !/\b(api|contract|schema|public|coverage|validation)\b/.test(objective)) {
+      deviations.push(`public contract changed outside approved phase scope: ${file}`);
+    }
+    if (matchesConfiguredPath(file, config?.risk.rigorousPaths ?? []) && phase.riskLevel !== "high") {
+      deviations.push(`sensitive path touched by non-rigorous phase: ${file}`);
+    }
+    const expectedDocumentation = phase.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
+    if ((/\b(readme|docs?|documentation)\b/.test(objective) || expectedDocumentation) && !/\.(md|mdx|txt|rst)$/.test(lower) && !lower.startsWith("docs/")) {
+      deviations.push(`documentation phase changed runtime behavior: ${file}`);
+    }
+  }
+  return unique(deviations);
+}
+
+function gateRequiresEvidence(config?: LeanRigorConfig): boolean {
+  return config?.completionGate.requireEvidence ?? true;
+}
+
+function gateRequiresValidation(config?: LeanRigorConfig): boolean {
+  return config?.completionGate.requireValidation ?? true;
+}
+
+function allowSkippedValidation(mode: WorkflowMode, config?: LeanRigorConfig): boolean {
+  return config?.completionGate.allowSkippedValidation[mode] ?? mode === "fast";
+}
+
+function sameCommand(recorded: string, expected: string): boolean {
+  return recorded.trim() === expected.trim();
+}
+
+function isPathLikeArea(area: string): boolean {
+  return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
+}
+
+function areaMatchesFile(area: string, file: string): boolean {
+  const normalArea = area.replace(/\\/g, "/").replace(/^\.\//, "");
+  const normalFile = file.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalArea.endsWith("/**")) return normalFile.startsWith(normalArea.slice(0, -3));
+  if (normalArea.endsWith("/*")) {
+    const prefix = normalArea.slice(0, -1);
+    return normalFile.startsWith(prefix) && !normalFile.slice(prefix.length).includes("/");
+  }
+  if (normalArea.includes("*")) {
+    const pattern = `^${normalArea.split("*").map(escapeRegex).join(".*")}$`;
+    return new RegExp(pattern).test(normalFile);
+  }
+  if (!path.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  return normalFile === normalArea;
+}
+
+function matchesConfiguredPath(file: string, patterns: string[]): boolean {
+  return patterns.some((pattern) => areaMatchesFile(pattern, file));
+}
+
+function isMaterialScopeDeviation(deviation: string): boolean {
+  return /outside expected scope|production dependency|migration introduced|public contract changed|documentation phase changed runtime/.test(deviation);
+}
+
+function isReviewScopeDeviation(deviation: string): boolean {
+  return /sensitive path touched/.test(deviation);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function selectStartablePhase(state: SequentialWorkflowState, phaseId?: string): WorkflowPhase {

@@ -157,6 +157,97 @@
         "type": "string"
       }
     },
+    "completionGate": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "requireEvidence": {
+          "type": "boolean",
+          "default": true
+        },
+        "requireValidation": {
+          "type": "boolean",
+          "default": true
+        },
+        "allowSkippedValidation": {
+          "type": "object",
+          "properties": {
+            "fast": {
+              "type": "boolean",
+              "default": true
+            },
+            "standard": {
+              "type": "boolean",
+              "default": false
+            },
+            "rigorous": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "maxRepairAttempts": {
+          "type": "object",
+          "properties": {
+            "fast": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1
+            },
+            "standard": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 2
+            },
+            "rigorous": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 2
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskSizing": {
+      "type": "object",
+      "properties": {
+        "maxPrimaryObjectives": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "preferredWriteFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        },
+        "reviewSplitThresholdFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8
+        },
+        "requireSplitWhen": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "multiple architectural boundaries",
+            "independent backend and frontend outcomes",
+            "database migration plus application behaviour",
+            "public contract plus consumer updates",
+            "implementation mixed with unrelated refactoring"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "introspection": {
       "type": "object",
       "properties": {

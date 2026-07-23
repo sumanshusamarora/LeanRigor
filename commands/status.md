@@ -11,8 +11,9 @@ Run:
 "${CLAUDE_PLUGIN_ROOT}/bin/leanrigor" flow status $ARGUMENTS
 ```
 
-Report lifecycle state, mode, pending user action, phase progress, validation,
-review, blockers, and next valid commands. State is repository-local under
-`.leanrigor/`.
+Report lifecycle state, mode, pending user action, current phase objective,
+completion-gate status, criteria progress, validation status, repair attempts,
+scope deviations, blockers or pending-review reason, review state, and next
+valid command. State is repository-local under `.leanrigor/`.
 
 $ARGUMENTS

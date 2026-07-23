@@ -9,11 +9,18 @@ Lifecycle:
 
 `blocked` and `cancelled` are explicit escape states.
 
+During `executing`, each phase must pass:
+
+`active -> targeted validation -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
+
 Rules:
 
 - Ask at most one blocking clarification question, exactly as persisted.
 - Never plan or edit past an approval gate.
-- Execute one active phase at a time; record changed files, commands, validation evidence, and scope deviations.
+- Execute one active phase at a time. Phases are small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, validation expectations, and meaningful dependencies.
+- Run declared validation or explicitly record skipped validation with a reason.
+- Submit structured criterion evidence, changed files, validation, assumptions, risks, and scope deviations with `flow phase-complete`.
+- Follow the returned gate decision. Do not mark a phase done because Claude says it is done, and do not unlock the next phase yourself.
 - Fast may skip the separate approach gate only when LeanRigor marks it unnecessary.
 - Standard and Rigorous require approach and plan approval.
 - Final integrated review is required before commit proposal.

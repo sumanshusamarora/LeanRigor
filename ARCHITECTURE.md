@@ -154,12 +154,32 @@ The persisted lifecycle is:
 The CLI/state contract is deliberately narrow: LeanRigor records the original
 request, repository root, triage result, approach recommendation, phase plan,
 approvals, phase timestamps, changed files, commands run, validation evidence,
-integrated review result, repair attempts, blockers, and commit proposal.
+per-phase completion records, repair attempts, blockers, integrated review
+result, and commit proposal.
 Claude Code performs the actual edits and command execution in the active
 session, then records concise evidence back into state.
 
+Phases are generated as small functional outcomes rather than file lists. The
+planner validates one primary objective, acyclic dependencies, inspectable
+acceptance criteria, validation expectations, bounded expected areas, and broad
+container phases before presenting the plan for approval.
+
+During execution, each active phase must pass targeted validation and an
+evidence-based completion gate before dependents unlock:
+
+`active -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
+
+Completion records persist objective, criterion statuses and evidence, changed
+files, validation outcomes and skipped reasons, scope deviations, assumptions,
+remaining risks, dependent readiness, timestamp, and workflow revision. The
+gate uses deterministic policy for the final decision: missing evidence,
+missing or failed validation, criteria not met, disallowed skipped validation,
+changed files outside expected scope, high-risk path triggers, migration or new
+dependency detection, public contract changes, repair budgets, and dependency
+status override optimistic agent or model judgement.
+
 This implementation is sequential only. It does not add parallel agents,
-worktrees, OpenCode, Codex, CodeGraph, or per-phase completion hooks.
+worktrees, OpenCode, Codex, or CodeGraph.
 
 ## Safety boundaries
 
@@ -167,13 +187,14 @@ The framework prepares but does not automatically execute commits. Pushes, deplo
 
 ## Backlog
 
-1. Small, cohesive task-phase sizing
-2. Evidence-based per-phase completion gate
-3. Optional CodeGraph inspection provider
-4. Persistent file leases
-5. Parallel agents and worktrees
-6. OpenCode adapter
-7. Codex adapter
+1. Strengthen LeanRigor engineering skills and mode-specific methodology:
+   design, coding, debugging, testing, review, evidence, scope control,
+   security, migration, API and production safeguards.
+2. Optional CodeGraph inspection provider
+3. Persistent file leases
+4. Parallel agents and worktrees
+5. OpenCode adapter
+6. Codex adapter
 
 ## Model-backed triage runtime
 

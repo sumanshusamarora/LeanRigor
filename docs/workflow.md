@@ -11,8 +11,10 @@ leanrigor flow status <workflow-id>
 leanrigor flow answer <workflow-id> "<answer>"
 leanrigor flow approve-approach <workflow-id>
 leanrigor flow approve-plan <workflow-id>
-leanrigor flow phase-complete <workflow-id> phase-1 --files "src/api.ts" --command "npm test"
-leanrigor flow record-validation <workflow-id> --command "npm test" --exit 0 --result "targeted tests passed"
+leanrigor flow record-validation <workflow-id> --phase phase-1 --command "npm test" --exit 0 --result "targeted tests passed"
+leanrigor flow phase-complete <workflow-id> phase-1 --evidence-file phase-1-completion.json
+leanrigor flow phase-status <workflow-id> phase-1
+leanrigor flow repair <workflow-id> phase-1 --reason "Targeted validation failed"
 leanrigor flow record-review <workflow-id> --status passed --summary "Integrated review passed"
 leanrigor flow commit-plan <workflow-id>
 leanrigor flow complete <workflow-id>
@@ -28,8 +30,8 @@ leanrigor flow complete <workflow-id>
 | `awaiting_approach_approval` | Standard/Rigorous approach gate is pending. | `flow approve-approach` or `flow reject-approach`. |
 | `planning` | Sequential plan is being generated. | Internal transition to plan approval. |
 | `awaiting_plan_approval` | Phased plan is ready but implementation is blocked. | `flow approve-plan` or `flow revise-plan`. |
-| `executing` | Exactly one phase is active. | Complete the active phase and record evidence. |
-| `validating` | All phases are complete; validation evidence is required. | `flow record-validation`, then review. |
+| `executing` | Exactly one phase is active or awaiting repair/review/replan after its completion gate. | Record phase validation, submit completion evidence, repair, review, or replan. |
+| `validating` | All phase gates passed; final validation/review is still required. | `flow record-validation`, then review. |
 | `reviewing` | Final integrated review is being recorded. | `flow record-review`. |
 | `awaiting_commit_approval` | Review passed and a commit proposal exists. | Inspect proposal; optionally `flow complete`. |
 | `completed` | Workflow was closed by explicit user action. | None. |
@@ -60,24 +62,124 @@ blocks the workflow rather than silently choosing a different path.
 
 ## Planning
 
-Plans are sequential. Each phase includes an ID, objective, rationale,
-dependencies, expected files or areas, acceptance criteria, validation commands,
-risk level, model tier recommendation, status, timestamps, changed files,
-commands, validation results, and scope deviations.
+Plans are sequential and sized by functional outcome and dependency boundary.
+Each phase should usually have one primary objective, a clear deliverable,
+acceptance criteria, bounded expected write areas, validation commands, and a
+meaningful dependency relationship to later phases.
 
-The first implementation intentionally avoids parallel agents, worktrees,
-OpenCode, Codex, CodeGraph, and per-phase completion hooks.
+Plan validation checks that phase dependencies are acyclic, criteria are
+inspectable, validation expectations are present, and no phase is an obvious
+container such as "implement the whole feature" or "update backend, frontend,
+tests and docs." File-count heuristics are advisory: cohesive refactors may
+touch many files, while unrelated changes in one file still belong in separate
+phases.
+
+Mode differences:
+
+| Mode | Phase sizing |
+|---|---|
+| Fast | One compact phase is acceptable for genuinely small, low-risk work. |
+| Standard | Prefer a few cohesive phases; split materially distinct implementation, consumer, coverage, or documentation outcomes. |
+| Rigorous | Isolate migrations, security-sensitive work, public contracts, production infrastructure, destructive operations, and other high-risk boundaries. |
+
+The implementation intentionally avoids parallel agents, worktrees, OpenCode,
+Codex, and CodeGraph.
 
 ## Execution Contract
 
 LeanRigor CLI owns durable state and approval gates. Claude Code owns the actual
 repository inspection, edits, command execution, and review work in the active
 session. After each significant step Claude records concise evidence back into
-LeanRigor with `flow phase-complete`, `flow record-validation`, and
+LeanRigor with `flow record-validation`, `flow phase-complete`, and
 `flow record-review`.
 
-The next phase is unlocked only after the active phase completes. Scope
-deviations are persisted rather than hidden.
+Each phase lifecycle is:
+
+```text
+active -> targeted validation -> completion gate
+-> completed | needs_repair | needs_review | needs_replan | blocked
+```
+
+A phase does not transition directly from active execution to completed. The
+next dependent phase unlocks only when the completion gate returns
+`completed`.
+
+Completion evidence persists:
+
+- original objective;
+- every acceptance criterion with `met`, `not_met`, `uncertain`, or
+  `not_applicable`;
+- concise evidence for each criterion;
+- changed files;
+- validation commands, exit codes, summaries, and skipped-validation reasons;
+- scope deviations;
+- assumptions introduced during execution;
+- remaining risks;
+- dependent-phase readiness;
+- timestamp and workflow revision.
+
+Completion evidence must not include chain of thought or verbose
+self-reflection.
+
+Example evidence file:
+
+```json
+{
+  "criteria": [
+    {
+      "criterion": "The requested behavior follows nearby patterns.",
+      "status": "met",
+      "evidence": ["Updated service path uses the existing assignment helper."]
+    }
+  ],
+  "filesChanged": ["src/services/assignment.ts", "tests/assignment.test.ts"],
+  "validation": [
+    {
+      "command": "npm test -- assignment",
+      "exitStatus": 0,
+      "result": "8 tests passed"
+    }
+  ],
+  "scopeDeviations": [],
+  "assumptions": [],
+  "remainingRisks": []
+}
+```
+
+## Completion Gate
+
+The gate produces one of:
+
+| Decision | Meaning |
+|---|---|
+| `completed` | All required criteria are met, evidence exists, validation expectations are satisfied, scope is compatible, and no critical risk remains. |
+| `needs_repair` | The objective is still valid and a bounded repair can address incomplete work or failed validation. |
+| `needs_review` | Criteria may be met but evidence is ambiguous, specialist judgement is required, or sensitive areas were touched unexpectedly. |
+| `needs_replan` | Scope expanded materially, assumptions invalidated the plan, contracts changed, or dependencies need restructuring. |
+| `blocked` | External access/information is missing, a safety condition cannot be met, or a repair budget is exhausted into a blocker. |
+
+Deterministic policy owns the final transition. It checks missing evidence,
+missing or failed validation, skipped validation by mode, criteria not marked
+`met`, changed files outside expected scope, high-risk path triggers, migration
+and dependency detection, public contract changes, repair budgets, and phase
+dependency status. Model or agent judgement may inform semantic evidence, but
+it cannot override these deterministic checks.
+
+Scope deviations are recorded and evaluated rather than treated as automatic
+failures. Examples that escalate include a documentation phase changing runtime
+behavior, a frontend phase changing migrations, a low-risk phase touching
+authentication paths, a new production dependency, or a public contract change
+not present in the approved plan.
+
+Repair is bounded per phase:
+
+```bash
+leanrigor flow repair <workflow-id> <phase-id> --reason "<reason>"
+```
+
+The repair record includes attempt number, reason, requested scope, validation
+after repair, and final outcome. After the configured repair budget is
+exhausted, LeanRigor moves the phase to review/replan/block instead of looping.
 
 ## Validation And Review
 
@@ -91,7 +193,8 @@ Validation is proportional to mode:
 
 Every validation record includes command, exit status, concise result, skipped
 flag, skipped reason when relevant, and timestamp. LeanRigor does not mark
-validation successful without evidence.
+validation successful without evidence. Fast may accept skipped validation with
+a reason; Standard and Rigorous reject skipped validation by default.
 
 Final review records one of:
 
@@ -100,9 +203,12 @@ Final review records one of:
 - `needs_replan`
 - `blocked`
 
-Repair appends a single active repair phase and returns to execution until the
-configured repair budget is exhausted. Replan returns to plan approval. Blocked
-requires external action.
+Per-phase gates check local completeness and evidence so unfinished work cannot
+progress. The final integrated review remains required and checks cross-phase
+consistency, the original request, integration regressions, and overall scope.
+Integrated review repair still appends a bounded repair phase and returns to
+execution until the configured review repair budget is exhausted. Replan returns
+to plan approval. Blocked requires external action.
 
 ## Commit Proposal
 
@@ -121,3 +227,7 @@ leanrigor flow cancel <workflow-id> --root /path/to/repository
 Workflow state is repository-local and survives process restarts, Claude Code
 restarts, and context compaction. Reads and writes are schema-validated; writes
 are atomic and guarded by an optimistic revision check.
+
+Status and resume expose the current phase objective, gate decision, criteria
+progress, validation status, repair attempts, scope deviations, blocker or
+pending-review reason, and next valid action.

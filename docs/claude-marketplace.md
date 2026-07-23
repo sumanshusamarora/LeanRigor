@@ -148,4 +148,6 @@ validate:claude-plugin` fails.
   `/leanrigor`.
 - The plugin requires Node on PATH.
 - The plugin remains sequential; parallel agents, worktrees, OpenCode, Codex,
-  CodeGraph, and per-phase completion gates are future work.
+  and CodeGraph are future work.
+- Per-phase completion gates are implemented in the bundled runtime and exposed
+  through `flow phase-complete`, `flow phase-status`, and `flow repair`.
