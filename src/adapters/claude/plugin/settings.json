@@ -1,0 +1,17 @@
+{
+  "_leanrigor": "generated_by: leanrigor | asset_version: 1",
+  "_note": "Hooks in this file protect the LeanRigor commit workflow. The PreToolUse hook blocks automatic git commit and git push. Verified hook behaviour requires Claude Code to be installed and running. See docs/claude-code.md for details.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/leanrigor/protect-git.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
