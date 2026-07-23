@@ -18,7 +18,7 @@ set -uo pipefail
 INPUT=$(cat 2>/dev/null) || INPUT=""
 
 # Fail open if stdin is empty or does not look like tool-input JSON
-if [ -z "$INPUT" ] || ! echo "$INPUT" | grep -q '"command"'; then
+if [ -z "$INPUT" ] || ! echo "$INPUT" | grep -qE '"command"[[:space:]]*:'; then
   exit 0
 fi
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { access, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { HarnessAdapter, InstallReport, UninstallReport } from "../types.js";
 import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
@@ -145,13 +145,17 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push(`Platform: Claude Code`);
     output.push(`Claude assets available: ${ASSET_VERSION}`);
 
-    // Check Claude CLI availability
-    try {
-      await access("/usr/local/bin/claude");
-      output.push("Claude CLI: found at /usr/local/bin/claude");
-    } catch {
-      const claudeInPath = await which("claude");
-      output.push(claudeInPath ? `Claude CLI: found (${claudeInPath})` : "Claude CLI: not found on PATH");
+    // Check Claude CLI availability — check PATH first, then common fallback location
+    const claudeInPath = await which("claude");
+    if (claudeInPath) {
+      output.push(`Claude CLI: found (${claudeInPath})`);
+    } else {
+      try {
+        await access("/usr/local/bin/claude");
+        output.push("Claude CLI: found at /usr/local/bin/claude");
+      } catch {
+        output.push("Claude CLI: not found on PATH");
+      }
     }
 
     // Check model tier resolution
@@ -242,7 +246,6 @@ async function removeIfEmpty(dir: string): Promise<void> {
   try {
     const entries = await readdir(dir);
     if (entries.length === 0) {
-      const { rmdir } = await import("node:fs/promises");
       await rmdir(dir).catch(() => { /* ignore */ });
     }
   } catch { /* ignore */ }

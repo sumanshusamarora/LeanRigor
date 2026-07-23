@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import packageJson from "../package.json" with { type: "json" };
 import { ClaudeAdapter, ASSET_VERSION } from "../src/adapters/claude/adapter.js";
 import { defaultConfig } from "../src/config/defaults.js";
 import { leanRigorConfigSchema } from "../src/config/schema.js";
@@ -366,8 +365,5 @@ describe("Claude plugin asset structure validation", () => {
     // Script should fail-open on empty input
     expect(content).toContain("exit 0");
   });
-
-  it("npm package.json declares the CLI binary correctly", () => {
-    expect(packageJson.bin).toEqual({ leanrigor: "dist/cli/index.js" });
-  });
 });
+

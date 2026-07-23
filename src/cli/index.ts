@@ -122,7 +122,7 @@ function printInstallReport(report: InstallReport): void {
   if (report.skipped.length > 0) {
     console.log("\nSkipped because file differs:");
     for (const f of report.skipped) console.log(`  ${f}`);
-    console.log("\nUse `leanrigor init --force-owned-files` to replace only files");
+    console.log("\nUse `leanrigor init --adapter claude --force-owned-files` to replace only files");
     console.log("that contain LeanRigor ownership metadata.");
   }
 }
