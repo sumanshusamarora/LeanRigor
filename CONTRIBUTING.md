@@ -99,7 +99,7 @@ Open an issue and include:
 
 - A clear title and description of the problem.
 - Steps to reproduce the issue reliably.
-- Expected vs. actual behaviour.
+- Expected vs. actual behavior.
 - Your Node.js version, OS, and LeanRigor version (`leanrigor --version`).
 - Any relevant log output or error messages.
 
