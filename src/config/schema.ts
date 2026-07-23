@@ -14,21 +14,21 @@ export const leanRigorConfigSchema = z.object({
     defaultMode: workflowMode.default("adaptive"),
     allowUserOverride: z.boolean().default(true),
     automaticTriage: z.boolean().default(true)
-  }).default({}),
+  }).prefault({}),
   models: z.object({
     tiers: z.object({
       small: adapterModelMap.default({ claude: "haiku" }),
       medium: adapterModelMap.default({ claude: "sonnet" }),
       large: adapterModelMap.default({ claude: "opus" }),
       inherit: adapterModelMap.default({})
-    }).default({}),
+    }).prefault({}),
     failIfUnavailable: z.boolean().default(true),
     fallback: z.object({
       small: z.array(modelTierSchema).default(["medium", "inherit"]),
       medium: z.array(modelTierSchema).default(["large", "inherit"]),
       large: z.array(modelTierSchema).default(["inherit"])
-    }).default({})
-  }).default({}),
+    }).prefault({})
+  }).prefault({}),
   routing: z.object({
     triage: modelTierSchema.default("small"),
     repositoryInspection: modelTierSchema.default("small"),
@@ -41,24 +41,24 @@ export const leanRigorConfigSchema = z.object({
     integratedReview: modelTierSchema.default("medium"),
     highRiskReview: modelTierSchema.default("large"),
     commitPlanning: modelTierSchema.default("small")
-  }).default({}),
+  }).prefault({}),
   instructions: z.array(z.string()).default([]),
   risk: z.object({
     rigorousPaths: z.array(z.string()).default(["auth/**", "payments/**", "migrations/**", "infrastructure/production/**"]),
     protectedPaths: z.array(z.string()).default([".git/**", ".env", "secrets/**"])
-  }).default({}),
+  }).prefault({}),
   testing: z.object({
     bugFixes: z.enum(["optional", "recommended", "regression-required"]).default("regression-required"),
     publicApi: z.enum(["optional", "recommended", "contract-required"]).default("contract-required"),
     uiCopy: z.enum(["optional", "recommended"]).default("optional")
-  }).default({}),
+  }).prefault({}),
   introspection: z.object({
     preflight: z.enum(["always", "mode-based", "manual"]).default("always"),
     deepReflection: z.enum(["triggered", "always", "manual"]).default("triggered"),
     triggerAfterFailedRepairs: z.number().int().min(1).max(10).default(2),
     triggerOnScopeExpansion: z.boolean().default(true),
     triggerOnArchitectureChange: z.boolean().default(true)
-  }).default({}),
+  }).prefault({}),
   review: z.object({
     fast: z.enum(["sanity", "integrated", "deep"]).default("sanity"),
     standard: z.enum(["sanity", "integrated", "deep"]).default("integrated"),
@@ -66,7 +66,7 @@ export const leanRigorConfigSchema = z.object({
     multiAgent: z.enum(["integrated", "deep", "specialist"]).default("integrated"),
     highRiskPaths: z.enum(["deep", "specialist"]).default("deep"),
     allowUserOverride: z.boolean().default(true)
-  }).default({}),
+  }).prefault({}),
   triage: z.object({
     chooseLowestSafeMode: z.boolean().default(true),
     requireExplicitRigorousTrigger: z.boolean().default(true),
@@ -77,25 +77,25 @@ export const leanRigorConfigSchema = z.object({
     maxAssumptions: z.number().int().min(0).max(5).default(3),
     maxInspectionTargets: z.number().int().min(0).max(10).default(5),
     fallbackMode: z.enum(["standard", "rigorous"]).default("standard")
-  }).default({}),
+  }).prefault({}),
   parallelism: z.object({
     enabled: z.boolean().default(true),
     maxAgents: z.number().int().min(1).max(16).default(3),
     isolation: z.enum(["shared-worktree", "isolated-worktrees"]).default("shared-worktree"),
     forbidSharedWrites: z.boolean().default(true)
-  }).default({}),
+  }).prefault({}),
   git: z.object({
     autoCommit: z.boolean().default(false),
     requireConfirmation: z.boolean().default(true),
     commitStyle: z.enum(["conventional", "plain"]).default("conventional")
-  }).default({}),
+  }).prefault({}),
   budgets: z.object({
     clarificationQuestions: z.number().int().min(0).default(3),
     options: z.number().int().min(1).max(5).default(3),
     reviewRounds: z.number().int().min(0).default(1),
     repairRounds: z.number().int().min(0).default(2),
     triageCalls: z.number().int().min(1).max(3).default(2)
-  }).default({})
+  }).prefault({})
 });
 
 export type LeanRigorConfig = z.infer<typeof leanRigorConfigSchema>;

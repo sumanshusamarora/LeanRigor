@@ -49,7 +49,6 @@ export async function runTriage(args: {
   }
 
   const maxAttempts = Math.min(2, config.budgets.triageCalls);
-  let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -65,7 +64,6 @@ export async function runTriage(args: {
         warnings
       };
     } catch (error) {
-      lastError = error;
       warnings.push(`Model triage attempt ${attempt} failed: ${messageOf(error)}`);
     }
   }

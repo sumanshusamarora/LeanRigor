@@ -23,19 +23,23 @@ export async function loadConfig(root: string): Promise<LeanRigorConfig> {
       merged = deepMerge(merged, raw);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw new Error(`Unable to load LeanRigor configuration from ${location}: ${(error as Error).message}`);
+      throw new Error(`Unable to load LeanRigor configuration from ${location}: ${(error as Error).message}`, { cause: error });
     }
   }
   return leanRigorConfigSchema.parse(merged);
 }
 
-function deepMerge(base: any, override: any): any {
-  if (!base || typeof base !== "object" || Array.isArray(base)) return override ?? base;
-  const out = { ...base };
-  for (const [key, value] of Object.entries(override ?? {})) {
-    out[key] = value && typeof value === "object" && !Array.isArray(value)
-      ? deepMerge(out[key] ?? {}, value)
-      : value;
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepMerge(base: unknown, override: unknown): unknown {
+  if (!isJsonObject(base)) return override ?? base;
+  const out: JsonObject = { ...base };
+  for (const [key, value] of Object.entries(isJsonObject(override) ? override : {})) {
+    out[key] = isJsonObject(value) ? deepMerge(out[key] ?? {}, value) : value;
   }
   return out;
 }

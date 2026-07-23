@@ -26,7 +26,7 @@ export function resolveModelTier(tier: ModelTier, harness: Harness, config: Lean
   if (configured) return { tier, model: configured, source: "config" };
   if (config.models.failIfUnavailable) {
     throw new ModelConfigurationError(
-      `No ${harness} model is configured for tier '${tier}'. Run 'leanrigor init models' or set ` +
+      `No ${harness} model is configured for tier '${tier}'. Run 'leanrigor models' (or legacy 'leanrigor init models') or set ` +
       `LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}.`
     );
   }

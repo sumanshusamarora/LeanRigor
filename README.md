@@ -4,7 +4,7 @@ A first-draft, local workflow controller for applying proportional engineering d
 
 ## Status
 
-This repository is an architectural and functional draft. The core primitives are executable and tested. Claude Code integration is scaffolded; production-grade agent dispatch and isolated worktrees are future work.
+This repository is an architectural and functional draft. The TypeScript CLI now installs dependencies, type checks, builds to `dist/`, passes the Vitest suite, and has been verified through local `npm pack` installation. Claude Code integration is scaffolded; production-grade agent dispatch and isolated worktrees are future work.
 
 ## Principles
 
@@ -21,9 +21,11 @@ This repository is an architectural and functional draft. The core primitives ar
 ```bash
 npm install
 npm run build
-node dist/src/cli/index.js setup --root /path/to/repository
-node dist/src/cli/index.js triage "Fix the assignment regression" --root /path/to/repository
-node dist/src/cli/index.js doctor --root /path/to/repository
+npm pack
+npm install /path/to/leanrigor-0.1.0-draft.tgz
+npx leanrigor init --root /path/to/repository
+npx leanrigor triage "Fix the assignment regression" --provider deterministic --root /path/to/repository
+npx leanrigor doctor --root /path/to/repository
 ```
 
 ## Documents
