@@ -89,7 +89,7 @@ For local development or a pre-publish install:
 npm install
 npm run build
 npm pack
-npm install -g ./leanrigor-0.2.0-draft.tgz
+npm install -g ./leanrigor-$(node -p "require('./package.json').version").tgz
 ```
 
 You can also run the CLI directly from the repository:
@@ -297,3 +297,12 @@ and
 4. Optional CodeGraph inspection provider
 5. OpenCode adapter
 6. Codex adapter
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for
+development setup, branch conventions, and pull request guidelines.
+
+## License
+
+LeanRigor is released under the [MIT License](LICENSE).
