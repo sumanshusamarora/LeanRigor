@@ -9,6 +9,7 @@ import { ClaudeAdapter } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
 import { runTriage } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
+import type { InstallReport, UninstallReport } from "../adapters/types.js";
 
 const program = new Command();
 program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.1.0-draft");
@@ -17,13 +18,38 @@ program.command("setup")
   .alias("init")
   .description("Create repository configuration and Claude Code adapter files")
   .option("--root <path>", "repository root", process.cwd())
-  .action(async ({ root }) => {
+  .option("--adapter <adapter>", "harness adapter: claude", "claude")
+  .option("--force-owned-files", "replace LeanRigor-owned files that have local changes")
+  .action(async ({ root, adapter, forceOwnedFiles }) => {
+    if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
     const configDir = path.join(root, ".leanrigor");
     await mkdir(configDir, { recursive: true });
     const config = await initConfig(root);
-    await new ClaudeAdapter().install(root, config);
+    const report = await new ClaudeAdapter().install(root, config, forceOwnedFiles as boolean);
     console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
-    console.log(`For OpenCode, set provider/model identifiers with 'leanrigor models'.`);
+    printInstallReport(report);
+  });
+
+program.command("uninstall")
+  .description("Remove LeanRigor-owned adapter files from a repository")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--adapter <adapter>", "harness adapter: claude", "claude")
+  .option("--remove-config", "also remove .leanrigor/config.json")
+  .action(async ({ root, adapter, removeConfig }) => {
+    if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
+    const report = await new ClaudeAdapter().uninstall(root);
+    printUninstallReport(report);
+    if (removeConfig) {
+      const configPath = path.join(root, ".leanrigor", "config.json");
+      try {
+        const { unlink, rmdir } = await import("node:fs/promises");
+        await unlink(configPath);
+        await rmdir(path.join(root, ".leanrigor")).catch(() => { /* ignore: directory may contain other files */ });
+        console.log("Removed .leanrigor/config.json");
+      } catch {
+        console.log(".leanrigor/config.json not found.");
+      }
+    }
   });
 
 program.command("models")
@@ -70,9 +96,49 @@ program.command("triage")
 program.command("status").option("--root <path>", "repository root", process.cwd()).action(async ({ root }) => {
   const state = await loadWorkflow(root); console.log(state ? JSON.stringify(state, null, 2) : "No active workflow.");
 });
-program.command("doctor").option("--root <path>", "repository root", process.cwd()).action(async ({ root }) => {
-  const config = await loadConfig(root); console.log((await new ClaudeAdapter().doctor(root, config)).join("\n"));
-});
+
+program.command("doctor")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--adapter <adapter>", "harness adapter: claude", "claude")
+  .action(async ({ root, adapter }) => {
+    if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
+    const config = await loadConfig(root);
+    console.log((await new ClaudeAdapter().doctor(root, config)).join("\n"));
+  });
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function printInstallReport(report: InstallReport): void {
+  if (report.installed.length > 0) {
+    console.log("\nInstalled:");
+    for (const f of report.installed) console.log(`  ${f}`);
+  }
+  if (report.alreadyCurrent.length > 0) {
+    console.log("\nAlready current:");
+    for (const f of report.alreadyCurrent) console.log(`  ${f}`);
+  }
+  if (report.skipped.length > 0) {
+    console.log("\nSkipped because file differs:");
+    for (const f of report.skipped) console.log(`  ${f}`);
+    console.log("\nUse `leanrigor init --adapter claude --force-owned-files` to replace only LeanRigor-owned files.");
+  }
+}
+
+function printUninstallReport(report: UninstallReport): void {
+  if (report.removed.length > 0) {
+    console.log("\nRemoved:");
+    for (const f of report.removed) console.log(`  ${f}`);
+  }
+  if (report.skipped.length > 0) {
+    console.log("\nSkipped (user file or user-modified owned file):");
+    for (const f of report.skipped) console.log(`  ${f}`);
+  }
+  if (report.removed.length === 0 && report.skipped.length === 0) {
+    console.log("No LeanRigor-owned files found.");
+  }
+}
 
 async function initConfig(root: string) {
   const configPath = path.join(root, ".leanrigor", "config.json");

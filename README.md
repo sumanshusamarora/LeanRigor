@@ -23,9 +23,15 @@ npm install
 npm run build
 npm pack
 npm install /path/to/leanrigor-0.1.0-draft.tgz
-npx leanrigor init --root /path/to/repository
+
+# Initialise a repository with Claude Code plugin assets
+npx leanrigor init --adapter claude --root /path/to/repository
+
+# Check everything is current
+npx leanrigor doctor --adapter claude --root /path/to/repository
+
+# Triage a request
 npx leanrigor triage "Fix the assignment regression" --provider deterministic --root /path/to/repository
-npx leanrigor doctor --root /path/to/repository
 ```
 
 ## Documents

@@ -17,6 +17,31 @@ The core never selects vendor-specific model names. It selects capability profil
 
 Adapters resolve these profiles to actual models.
 
+## Claude Code plugin installation boundary
+
+The Claude adapter ships a complete plugin integration. The installation model is:
+
+```
+npm package (dist/adapters/claude/plugin/)
+  ├── commands/          ← installed to .claude/commands/
+  ├── agents/            ← installed to .claude/agents/
+  └── hooks/             ← installed to .claude/leanrigor/
+
+Target repository (.claude/)
+  ├── commands/          ← five /leanrigor-* commands
+  ├── agents/            ← leanrigor-triage subagent
+  ├── leanrigor/         ← protect-git.sh hook script
+  └── settings.json      ← hooks configuration
+```
+
+Asset source of truth: `src/adapters/claude/plugin/`. The build step copies
+non-TypeScript assets alongside compiled output so they are accessible at
+runtime via `import.meta.url`.
+
+Every installed file is tagged with `generated_by: leanrigor | asset_version: N`
+so the installer can safely detect ownership, report conflicts, and determine
+whether a file has been user-modified before removing it during uninstall.
+
 ## Model routing
 
 Automatic triage is enabled by default. For Claude Code, the default `small` profile resolves to `haiku`. The triage agent is isolated and read-only; it does not replace the model selected for the main session.
