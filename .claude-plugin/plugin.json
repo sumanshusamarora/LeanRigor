@@ -12,21 +12,16 @@
   "license": "MIT",
   "keywords": ["claude-code", "workflow", "triage", "validation", "review"],
   "commands": [
-    "./commands/leanrigor.md",
-    "./commands/leanrigor-plan.md",
-    "./commands/leanrigor-status.md",
-    "./commands/leanrigor-review.md",
-    "./commands/leanrigor-commit.md"
+    "./commands/start.md",
+    "./commands/plan.md",
+    "./commands/status.md",
+    "./commands/review.md",
+    "./commands/commit.md"
   ],
   "agents": [
     "./agents/leanrigor-triage.md"
   ],
   "skills": [
-    "./plugin-skills/leanrigor",
-    "./plugin-skills/leanrigor-plan",
-    "./plugin-skills/leanrigor-status",
-    "./plugin-skills/leanrigor-review",
-    "./plugin-skills/leanrigor-commit",
     "./plugin-skills/sequential-workflow"
   ]
 }

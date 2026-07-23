@@ -3,7 +3,7 @@ description: Record the final integrated LeanRigor review for the current diff.
 argument-hint: "[workflow-id]"
 ---
 
-# /leanrigor-review
+# /leanrigor:review
 
 Run:
 

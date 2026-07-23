@@ -1,4 +1,4 @@
-import { access, cp, mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, readdir, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +11,13 @@ import { ClaudeAdapter } from "../src/adapters/claude/adapter.js";
 import { defaultConfig } from "../src/config/defaults.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const expectedMarketplaceCommands = [
+  "./commands/start.md",
+  "./commands/plan.md",
+  "./commands/status.md",
+  "./commands/review.md",
+  "./commands/commit.md"
+];
 
 async function tempDir(prefix: string): Promise<string> {
   return mkdtemp(path.join(tmpdir(), prefix));
@@ -48,6 +55,7 @@ describe("Claude marketplace plugin manifests", () => {
   it("declares only plugin-root-relative component paths", () => {
     expect(plugin.name).toBe("leanrigor");
     expect(plugin.version).toBe(packageJson.version);
+    expect(plugin.commands).toEqual(expectedMarketplaceCommands);
     for (const key of ["commands", "agents", "skills"] as const) {
       const entries = Array.isArray(plugin[key]) ? plugin[key] : [plugin[key]];
       for (const entry of entries) {
@@ -56,6 +64,20 @@ describe("Claude marketplace plugin manifests", () => {
       }
     }
     expect(plugin).not.toHaveProperty("hooks");
+  });
+
+  it("exposes only the concise marketplace command names", async () => {
+    const commandFiles = (await readdir(path.join(repoRoot, "commands"))).sort();
+    expect(commandFiles).toEqual(["commit.md", "plan.md", "review.md", "start.md", "status.md"]);
+    expect(commandFiles.some((name) => name.includes("leanrigor-"))).toBe(false);
+    expect(plugin.commands).not.toContain("./commands/leanrigor.md");
+    expect(plugin.commands).not.toContain("./commands/leanrigor-plan.md");
+  });
+
+  it("does not expose internal workflow skills as marketplace commands", async () => {
+    await expect(access(path.join(repoRoot, "skills"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(repoRoot, "internal-skills", "triage-task", "SKILL.md"))).resolves.toBeUndefined();
+    await expect(access(path.join(repoRoot, "internal-skills", "prepare-commits", "SKILL.md"))).resolves.toBeUndefined();
   });
 
   it("resolves marketplace references and every referenced asset", async () => {
@@ -150,5 +172,24 @@ describe("Claude marketplace plugin package inclusion", () => {
       "plugin-skills/",
       "runtime/"
     ]));
+    expect(packageJson.files).not.toContain("skills/");
+    expect(packageJson.files).toContain("internal-skills/");
+  });
+
+  it("dry-run package contains only the intended user-facing command files", async () => {
+    const result = await run("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"]);
+    expect(result.code).toBe(0);
+    const pack = JSON.parse(result.stdout) as Array<{ files: Array<{ path: string }> }>;
+    const files = pack[0]?.files.map((entry) => entry.path).sort() ?? [];
+    const commandFiles = files.filter((file) => file.startsWith("commands/"));
+    expect(commandFiles).toEqual([
+      "commands/commit.md",
+      "commands/plan.md",
+      "commands/review.md",
+      "commands/start.md",
+      "commands/status.md"
+    ]);
+    expect(files.some((file) => file.startsWith("skills/"))).toBe(false);
+    expect(files).toContain("internal-skills/triage-task/SKILL.md");
   });
 });

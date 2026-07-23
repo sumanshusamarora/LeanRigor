@@ -54,7 +54,7 @@
     "README.md",
     "LICENSE",
     "docs/",
-    "skills/",
+    "internal-skills/",
     "templates/"
   ],
   "license": "MIT"

@@ -44,15 +44,19 @@ Current Claude Code marketplace installs expose plugin commands with a plugin
 namespace. Use:
 
 ```text
-/leanrigor:leanrigor
-/leanrigor:leanrigor-plan
-/leanrigor:leanrigor-status
-/leanrigor:leanrigor-review
-/leanrigor:leanrigor-commit
+/leanrigor:start Fix the typo in README.md
+/leanrigor:plan
+/leanrigor:status
+/leanrigor:review
+/leanrigor:commit
 ```
 
-The exact GitHub marketplace command will work after these marketplace files are
-published to `sumanshusamarora/LeanRigor`.
+Claude Code namespaces marketplace plugin commands as `/plugin-name:command`.
+LeanRigor therefore uses concise command names such as `/leanrigor:start` and
+`/leanrigor:plan`.
+
+After upgrading the plugin, restart or reload Claude Code if autocomplete still
+shows older command names.
 
 ### Npm And Project-Local Claude Assets
 
@@ -172,8 +176,6 @@ and [Claude plugin marketplace docs](https://code.claude.com/docs/en/plugin-mark
 
 ## Deliberate Limitations
 
-- The marketplace GitHub shorthand cannot be fully verified until the manifest
-  files are published to the remote repository.
 - Current Claude Code marketplace commands are namespaced by plugin name.
 - Triage has deterministic fallback; model-backed triage is available through
   the Claude adapter when configured.

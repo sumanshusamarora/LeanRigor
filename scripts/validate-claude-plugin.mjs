@@ -76,6 +76,13 @@ function commandFilesFrom(manifest) {
 
 const marketplace = await readJson(".claude-plugin/marketplace.json");
 const plugin = await readJson(".claude-plugin/plugin.json");
+const expectedCommands = [
+  "./commands/start.md",
+  "./commands/plan.md",
+  "./commands/status.md",
+  "./commands/review.md",
+  "./commands/commit.md"
+];
 
 if (marketplace) {
   if (marketplace.name !== "leanrigor") fail("marketplace name must be leanrigor");
@@ -91,11 +98,15 @@ if (marketplace) {
 if (plugin) {
   if (plugin.name !== "leanrigor") fail("plugin name must be leanrigor");
   if (plugin.version !== packageJson.version) fail("plugin version must match package.json");
+  if (JSON.stringify(plugin.commands) !== JSON.stringify(expectedCommands)) {
+    fail(`plugin commands must be exactly ${expectedCommands.join(", ")}`);
+  }
   for (const key of ["commands", "agents", "skills", "hooks"]) {
     if (plugin[key]) assertRelativeInside(plugin[key], `plugin.${key}`);
   }
   for (const file of commandFilesFrom(plugin)) {
     await assertExists(file, "command");
+    if (path.basename(file).includes("leanrigor-")) fail(`${file}: marketplace command filename must not contain leanrigor-`);
     const content = await readFile(path.join(root, file), "utf8");
     const fm = extractFrontmatter(content, file);
     if (!fm.description) fail(`${file}: command frontmatter needs description`);
@@ -118,6 +129,12 @@ await assertExists("bin/leanrigor", "plugin launcher");
 await assertExecutable("bin/leanrigor");
 await assertExists("runtime/leanrigor-cli.js", "bundled runtime");
 await assertExists("plugin-skills/sequential-workflow/SKILL.md", "plugin skill");
+try {
+  await access(path.join(root, "skills"));
+  fail("root skills/ directory must not exist because Claude exposes it as marketplace commands");
+} catch (error) {
+  if (error.code !== "ENOENT") fail(`could not inspect root skills/ directory: ${error.message}`);
+}
 
 const hooks = await readJson("hooks/hooks.json");
 if (hooks) {

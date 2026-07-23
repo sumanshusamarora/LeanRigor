@@ -1,9 +1,9 @@
 ---
-name: leanrigor-status
 description: Report the current repository-local LeanRigor workflow state.
+argument-hint: "[workflow-id]"
 ---
 
-# /leanrigor-status
+# /leanrigor:status
 
 Run:
 

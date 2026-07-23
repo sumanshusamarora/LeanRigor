@@ -1,9 +1,9 @@
 ---
-name: leanrigor-commit
 description: Show the LeanRigor commit proposal without committing.
+argument-hint: "[workflow-id]"
 ---
 
-# /leanrigor-commit
+# /leanrigor:commit
 
 Confirm the workflow is in `awaiting_commit_approval`:
 

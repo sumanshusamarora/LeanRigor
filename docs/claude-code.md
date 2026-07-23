@@ -20,11 +20,11 @@ Current Claude Code marketplace installs expose plugin commands with the plugin
 namespace:
 
 ```text
-/leanrigor:leanrigor
-/leanrigor:leanrigor-plan
-/leanrigor:leanrigor-status
-/leanrigor:leanrigor-review
-/leanrigor:leanrigor-commit
+/leanrigor:start
+/leanrigor:plan
+/leanrigor:status
+/leanrigor:review
+/leanrigor:commit
 ```
 
 Use the project-local fallback below when you want unqualified commands such as
@@ -65,7 +65,7 @@ Marketplace plugin assets are rooted in the plugin directory:
 |---|---|
 | `.claude-plugin/marketplace.json` | Marketplace catalog |
 | `.claude-plugin/plugin.json` | Plugin manifest |
-| `commands/leanrigor*.md` | Global slash commands |
+| `commands/start.md`, `plan.md`, `status.md`, `review.md`, `commit.md` | Global namespaced slash commands |
 | `agents/leanrigor-triage.md` | Read-only triage subagent |
 | `plugin-skills/sequential-workflow/SKILL.md` | Shared workflow instruction |
 | `hooks/hooks.json` | Plugin hook configuration |
@@ -155,9 +155,9 @@ files and unrelated `.claude` files are preserved and reported as skipped.
 
 The command names below are unqualified in project-local fallback mode. In
 marketplace mode, prefix them with `leanrigor:`; for example,
-`/leanrigor:leanrigor-status`.
+`/leanrigor:status`.
 
-### `/leanrigor`
+### `/leanrigor` or `/leanrigor:start`
 
 Orchestrates the full adaptive workflow:
 
@@ -169,24 +169,24 @@ Orchestrates the full adaptive workflow:
 6. Records validation evidence and final integrated review
 7. Shows a commit proposal without committing
 
-### `/leanrigor-plan`
+### `/leanrigor-plan` or `/leanrigor:plan`
 
 Plan only, no implementation. It uses the same persisted flow gates and stops
 at plan approval.
 
-### `/leanrigor-status`
+### `/leanrigor-status` or `/leanrigor:status`
 
 Reports the current workflow state from `.leanrigor/workflows/`: lifecycle
 state, mode, phase progress, pending user action, validation, review, blockers,
 and next valid commands.
 
-### `/leanrigor-review`
+### `/leanrigor-review` or `/leanrigor:review`
 
 Reviews the current diff against the LeanRigor review policy for the active
 workflow mode and records `passed`, `needs_repair`, `needs_replan`, or
 `blocked` with `leanrigor flow record-review`.
 
-### `/leanrigor-commit`
+### `/leanrigor-commit` or `/leanrigor:commit`
 
 Inspects the diff and proposes cohesive commit groups with conventional commit
 messages and exact git commands. Does not execute commits without explicit

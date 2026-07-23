@@ -35,3 +35,12 @@ jobs:
       - run: npm pack
       - run: |
           tar -tf leanrigor-0.1.0-draft.tgz | grep -E 'package/(\\.claude-plugin|commands|agents|hooks|bin|plugin-skills|runtime)/' >/dev/null
+          tar -tf leanrigor-0.1.0-draft.tgz | grep '^package/commands/' | sort > /tmp/leanrigor-commands.txt
+          printf '%s\n' \
+            package/commands/commit.md \
+            package/commands/plan.md \
+            package/commands/review.md \
+            package/commands/start.md \
+            package/commands/status.md > /tmp/leanrigor-expected-commands.txt
+          diff -u /tmp/leanrigor-expected-commands.txt /tmp/leanrigor-commands.txt
+          ! tar -tf leanrigor-0.1.0-draft.tgz | grep '^package/skills/'

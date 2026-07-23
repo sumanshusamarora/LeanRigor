@@ -26,6 +26,8 @@ Current Claude Code documentation says:
   enabled.
 - Hook commands may reference `${CLAUDE_PLUGIN_ROOT}`.
 - User-scope plugin installation is global across projects by default.
+- Root `commands/` and `skills/` entries are user-facing. LeanRigor therefore
+  keeps internal workflow reference skills under `internal-skills/`.
 
 ## Runtime Strategy
 
@@ -56,12 +58,16 @@ Current Claude Code marketplace installs expose plugin slash commands with the
 plugin namespace:
 
 ```text
-/leanrigor:leanrigor
-/leanrigor:leanrigor-plan
-/leanrigor:leanrigor-status
-/leanrigor:leanrigor-review
-/leanrigor:leanrigor-commit
+/leanrigor:start
+/leanrigor:plan
+/leanrigor:status
+/leanrigor:review
+/leanrigor:commit
 ```
+
+Claude Code namespaces marketplace plugin commands as `/plugin-name:command`.
+LeanRigor therefore keeps the command segment concise. The primary entry point
+is `/leanrigor:start`.
 
 The npm/project-local fallback still exposes unqualified commands such as
 `/leanrigor` because it installs command files into the target repository's
@@ -98,7 +104,7 @@ supported for users who cannot use Claude's plugin marketplace.
 
 ## First Use
 
-On first `/leanrigor:leanrigor` use in a repository, the bundled runtime
+On first `/leanrigor:start` use in a repository, the bundled runtime
 creates `.leanrigor/config.json` if it is missing, records safe defaults, and
 detects top-level `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md` references.
 Workflow files are created under `.leanrigor/workflows/` as needed.
@@ -135,11 +141,10 @@ validate:claude-plugin` fails.
 
 ## Limitations
 
-- `/plugin marketplace add sumanshusamarora/LeanRigor` cannot succeed until
-  these marketplace files are published to that GitHub repository. Local
-  marketplace installation from this working tree has been verified.
+- After marketplace updates, Claude Code may need a plugin refresh, reinstall,
+  or restart before autocomplete drops older command names.
 - Current Claude Code marketplace commands are plugin-namespaced. Use
-  `/leanrigor:leanrigor`; use the npm/project-local fallback for unqualified
+  `/leanrigor:start`; use the npm/project-local fallback for unqualified
   `/leanrigor`.
 - The plugin requires Node on PATH.
 - The plugin remains sequential; parallel agents, worktrees, OpenCode, Codex,

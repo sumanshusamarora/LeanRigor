@@ -19080,7 +19080,7 @@ var ClaudeCliTriageProvider = class {
   }
 };
 async function buildTriagePrompt(root, request) {
-  const skillPath = path4.join(root, "skills", "triage-task", "SKILL.md");
+  const skillPath = path4.join(root, "internal-skills", "triage-task", "SKILL.md");
   const skill = await readFile4(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
   return [
     "You are the bounded triage classifier for LeanRigor.",

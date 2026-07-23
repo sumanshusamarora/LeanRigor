@@ -47,7 +47,7 @@ export class ClaudeCliTriageProvider implements TriageProvider {
 }
 
 export async function buildTriagePrompt(root: string, request: string): Promise<string> {
-  const skillPath = path.join(root, "skills", "triage-task", "SKILL.md");
+  const skillPath = path.join(root, "internal-skills", "triage-task", "SKILL.md");
   const skill = await readFile(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
   return [
     "You are the bounded triage classifier for LeanRigor.",

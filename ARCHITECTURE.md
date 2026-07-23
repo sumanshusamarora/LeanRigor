@@ -26,9 +26,10 @@ Marketplace plugin:
 ```
 Repository root
   ├── .claude-plugin/     ← marketplace.json and plugin.json
-  ├── commands/           ← global /leanrigor commands
+  ├── commands/           ← global /leanrigor:start-style commands
   ├── agents/             ← triage agent
   ├── plugin-skills/      ← shared workflow skill
+  ├── internal-skills/    ← non-discovered workflow reference skills
   ├── hooks/              ← hooks.json and protect-git.sh
   ├── bin/                ← launcher added to Bash PATH
   └── runtime/            ← bundled CLI runtime

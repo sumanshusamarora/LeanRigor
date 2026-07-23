@@ -22,7 +22,9 @@
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
   - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
-  - Global commands, triage agent, workflow skill, hook config, plugin launcher, and bundled runtime.
+  - Global `/leanrigor:start`, `/leanrigor:plan`, `/leanrigor:status`,
+    `/leanrigor:review`, and `/leanrigor:commit` commands, triage agent,
+    workflow skill, hook config, plugin launcher, and bundled runtime.
   - `npm run build:claude-plugin` bundles the CLI and dependencies to `runtime/leanrigor-cli.js`.
   - `npm run validate:claude-plugin` validates manifests, assets, executable bits, path containment, versions, and runs `claude plugin validate . --strict` when available.
 - Production TypeScript compilation is separated from test type checking: `npm run build` emits only `src/**/*.ts` to `dist/`, while `npm run typecheck` also checks `tests/**/*.ts` without emitting them.
@@ -79,29 +81,33 @@ All commands below were run in this environment on July 23, 2026.
   verified in a real Claude Code session:
   - `claude plugin marketplace add ./` — passed.
   - `claude plugin install leanrigor@leanrigor -s user` — passed.
-  - `/leanrigor:leanrigor` was discoverable and started a Fast workflow in a
+  - The previous marketplace command surface started a Fast workflow in a
     disposable Git repository.
   - The workflow created `.leanrigor/`, did not create `.claude/`, edited a
     small README typo after approval, recorded validation and review evidence,
     generated a commit proposal, and did not commit or push.
-  - `/leanrigor:leanrigor-status` was available in a second unrelated
-    repository without local asset installation.
+  - A status command was available in a second unrelated repository without
+    local asset installation.
   - `claude plugin uninstall leanrigor@leanrigor -s user --keep-data` removed
     the commands; reinstall restored them while repository workflow state
     remained intact.
-  - Exact GitHub shorthand
-    `claude plugin marketplace add sumanshusamarora/LeanRigor` failed because
-    the remote repository does not yet contain `.claude-plugin/marketplace.json`.
+  - The remote GitHub marketplace path has since been made available.
   - Unqualified `/leanrigor` was not exposed by the current marketplace plugin
     runtime; current Claude Code exposes marketplace plugin commands with the
-    plugin namespace, for example `/leanrigor:leanrigor`.
+    plugin namespace.
+- Marketplace command naming cleanup is implemented and must be verified by the
+  next real Claude Code autocomplete smoke:
+  - expected commands: `/leanrigor:start`, `/leanrigor:plan`,
+    `/leanrigor:status`, `/leanrigor:review`, and `/leanrigor:commit`;
+  - old redundant commands such as `/leanrigor:leanrigor` and
+    `/leanrigor:leanrigor-status` should not appear;
+  - internal workflow skills moved to `internal-skills/` so `triage-task` and
+    `prepare-commits` are not exposed as marketplace commands.
 
 ## Known remaining limitations
 
-- Exact GitHub marketplace installation cannot be verified until these files
-  are published to `sumanshusamarora/LeanRigor`.
 - Current Claude Code marketplace commands are namespaced by plugin name. Use
-  `/leanrigor:leanrigor` for marketplace installs and the npm/project-local
+  `/leanrigor:start` for marketplace installs and the npm/project-local
   fallback for unqualified `/leanrigor`.
 - OpenCode support remains a roadmap item; no OpenCode adapter was added.
 - Parallel execution interfaces and policy primitives exist, but this workflow does not autonomously spawn coding agents.
@@ -110,9 +116,10 @@ All commands below were run in this environment on July 23, 2026.
 - Commit planning remains conservative and requires human review.
 - Hook asset installation and path resolution are tested. Live hook firing in
   Claude Code was not independently triggered during the marketplace smoke.
-- The `skills/` directory is included in the npm package for reference but is not currently installed to the target repository by `leanrigor init`.
+- Internal workflow skills live under `internal-skills/` so Claude marketplace
+  installs do not expose them as user-facing commands.
 
 ## Next implementation step
 
-Publish the marketplace files, then rerun the exact GitHub shorthand smoke test
-before announcing marketplace availability.
+Refresh the published marketplace plugin after each command asset change and
+rerun the autocomplete smoke test before announcing the new command surface.

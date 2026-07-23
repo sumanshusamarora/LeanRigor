@@ -20,8 +20,8 @@ Recommended:
 ```
 
 This installs LeanRigor globally in Claude Code. Current marketplace installs
-expose namespaced commands such as `/leanrigor:leanrigor` and
-`/leanrigor:leanrigor-status`. On first use in a repository, LeanRigor creates
+expose namespaced commands such as `/leanrigor:start` and
+`/leanrigor:status`. On first use in a repository, LeanRigor creates
 `.leanrigor/config.json` and later `.leanrigor/workflows/`; it does not create
 `.claude/`.
 

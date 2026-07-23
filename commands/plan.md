@@ -3,7 +3,7 @@ description: Show or revise the current persisted LeanRigor sequential plan.
 argument-hint: "[request or plan feedback]"
 ---
 
-# /leanrigor-plan
+# /leanrigor:plan
 
 Use:
 

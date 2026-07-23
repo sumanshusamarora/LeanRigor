@@ -27,7 +27,7 @@ if echo "$CMD" | grep -qE '(^|[[:space:]])git[[:space:]]+push'; then
 fi
 
 if echo "$CMD" | grep -qE '(^|[[:space:]])git[[:space:]]+commit'; then
-  echo "LeanRigor: git commit is blocked by the plugin safety hook. Use /leanrigor-commit for a proposal first." >&2
+  echo "LeanRigor: git commit is blocked by the plugin safety hook. Use /leanrigor:commit for a proposal first." >&2
   exit 1
 fi
 

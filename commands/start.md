@@ -3,7 +3,7 @@ description: Start or resume a persisted LeanRigor workflow for a coding request
 argument-hint: "[coding request]"
 ---
 
-# /leanrigor
+# /leanrigor:start
 
 Use the plugin-owned LeanRigor runtime:
 
