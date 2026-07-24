@@ -13,7 +13,9 @@ Invoke the plugin-owned runtime internally through
 Behaviour:
 
 1. Run `leanrigor init-report` internally to produce the deterministic
-   configuration report.
+   configuration report. The runtime automatically bootstraps missing
+   project assets before generating the report — no separate init step
+   is needed.
 2. Display the returned report substantially as-is.
 3. **Invariant: Never reconstruct configuration diagnostics from memory or
    prose.** Render the structured LeanRigor report and preserve exact
@@ -27,6 +29,9 @@ Behaviour:
 6. Never silently rewrite all config. Prefer explicit, scoped mutations.
 7. For repository policy changes, confirm with the user before writing because
    changes affect all contributors.
+8. **In marketplace mode, never suggest the manual init command.**
+   The runtime handles bootstrapping automatically. Only mention explicit
+   initialization in npm/global install mode or when explicitly asked.
 
 ## Scope guidance
 

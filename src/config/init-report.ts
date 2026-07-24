@@ -3,7 +3,8 @@ import { loadUserConfig, loadRepoPolicy, configFileExists } from "./load.js";
 import { ConfigScope } from "./config-scope.js";
 import { resolveEffectiveConfig } from "./resolver.js";
 import { formatModelTierJson } from "./model-display.js";
-import { ClaudeAdapter, type AssetInspectionResult } from "../adapters/claude/adapter.js";
+import { ClaudeAdapter, isMarketplaceRuntime, type AssetInspectionResult } from "../adapters/claude/adapter.js";
+import type { EnsureBootstrappedResult } from "../core/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,7 @@ export interface InitReport {
     modified: string[];
     missing: string[];
     conflicts: string[];
+    adoptable: string[];
     totalAvailable: number;
     installedCount: number;
   };
@@ -38,6 +40,15 @@ export interface InitReport {
     status: AssetInspectionResult["settingsState"];
     detail: string;
   };
+  /** Whether the runtime is running from the marketplace plugin. */
+  isMarketplace: boolean;
+  /** Bootstrap result if bootstrapping ran before this report. */
+  bootstrap: {
+    bootstrapped: boolean;
+    installed: number;
+    adopted: number;
+    settingsModified: boolean;
+  } | null;
   constraints: string[];
   warnings: string[];
   validExamples: Array<{ description: string; command: string; scope: string }>;
@@ -175,7 +186,10 @@ function buildExampleCommands(): InitReport["validExamples"] {
  * conversational layer should display the rendered output as-is and
  * never independently reconstruct diagnostics.
  */
-export async function buildInitReport(root: string): Promise<InitReport> {
+export async function buildInitReport(
+  root: string,
+  bootstrapResult?: EnsureBootstrappedResult | null,
+): Promise<InitReport> {
   // --- Resolve effective config ---
   const effective = await resolveEffectiveConfig(root);
 
@@ -234,6 +248,7 @@ export async function buildInitReport(root: string): Promise<InitReport> {
       modified: inspection.modified,
       missing: inspection.missing,
       conflicts: inspection.conflicts,
+      adoptable: inspection.adoptable,
       totalAvailable: inspection.totalAvailable,
       installedCount: inspection.installedCount,
     },
@@ -242,6 +257,15 @@ export async function buildInitReport(root: string): Promise<InitReport> {
       status: inspection.settingsState,
       detail: inspection.settingsDetail,
     },
+    isMarketplace: isMarketplaceRuntime(),
+    bootstrap: bootstrapResult
+      ? {
+          bootstrapped: bootstrapResult.bootstrapped,
+          installed: bootstrapResult.report?.installed.length ?? 0,
+          adopted: bootstrapResult.report?.adopted.length ?? 0,
+          settingsModified: bootstrapResult.report?.settingsModified ?? false,
+        }
+      : null,
     constraints: effective.constraints,
     warnings: effective.warnings,
     validExamples: buildExampleCommands(),

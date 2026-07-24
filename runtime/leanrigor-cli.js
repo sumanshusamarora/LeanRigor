@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path16 = __require("node:path");
+    var path18 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path16.resolve(baseDir, baseName);
+          const localBin = path18.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path16.extname(baseName))) return void 0;
+          if (sourceExt.includes(path18.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path16.resolve(
-            path16.dirname(resolvedScriptPath),
+          executableDir = path18.resolve(
+            path18.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path16.basename(
+            const legacyName = path18.basename(
               this._scriptPath,
-              path16.extname(this._scriptPath)
+              path18.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path16.extname(executableFile));
+        launchWithNode = sourceExt.includes(path18.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path16.basename(filename, path16.extname(filename));
+        this._name = path18.basename(filename, path18.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path17) {
-        if (path17 === void 0) return this._executableDir;
-        this._executableDir = path17;
+      executableDir(path19) {
+        if (path19 === void 0) return this._executableDir;
+        this._executableDir = path19;
         return this;
       }
       /**
@@ -3722,10 +3722,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path16) {
-  if (!path16)
+function getElementAtPath(obj, path18) {
+  if (!path18)
     return obj;
-  return path16.reduce((acc, key) => acc?.[key], obj);
+  return path18.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4053,11 +4053,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path16, issues) {
+function prefixIssues(path18, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path16);
+    iss.path.unshift(path18);
     return iss;
   });
 }
@@ -4274,16 +4274,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path16 = []) => {
+  const processError = (error52, path18 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path16, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path18, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
       } else {
-        const fullpath = [...path16, ...issue2.path];
+        const fullpath = [...path18, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4310,17 +4310,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path16 = []) => {
+  const processError = (error52, path18 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path16, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path18, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
       } else {
-        const fullpath = [...path16, ...issue2.path];
+        const fullpath = [...path18, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4352,8 +4352,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path16 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path16) {
+  const path18 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path18) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17783,13 +17783,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path16 = ref.slice(1).split("/").filter(Boolean);
-  if (path16.length === 0) {
+  const path18 = ref.slice(1).split("/").filter(Boolean);
+  if (path18.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path16[0] === defsKey) {
-    const key = path16[1];
+  if (path18[0] === defsKey) {
+    const key = path18[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -19073,8 +19073,8 @@ var {
 
 // src/cli/index.ts
 init_load();
-import { readFile as readFile12 } from "node:fs/promises";
-import path15 from "node:path";
+import { readFile as readFile13 } from "node:fs/promises";
+import path17 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
@@ -19099,8 +19099,8 @@ async function loadWorkflow(root) {
 // src/adapters/claude/adapter.ts
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { access, chmod, mkdir as mkdir4, readFile as readFile4, readdir as readdir2, rmdir, stat, unlink, writeFile as writeFile4 } from "node:fs/promises";
-import path5 from "node:path";
+import { access, chmod, mkdir as mkdir5, readFile as readFile5, readdir as readdir2, rmdir, stat, unlink, writeFile as writeFile5 } from "node:fs/promises";
+import path6 from "node:path";
 
 // src/config/models.ts
 var CLAUDE_ADAPTER_ENV = {
@@ -19302,14 +19302,242 @@ async function writeConfig(root, config2) {
 // src/adapters/claude/adapter.ts
 init_load();
 init_config_scope();
-var ASSET_VERSION = 4;
+
+// src/adapters/claude/settings-merger.ts
+import { mkdir as mkdir4, readFile as readFile4, writeFile as writeFile4 } from "node:fs/promises";
+import path5 from "node:path";
+var PROTECT_GIT_PATH = "protect-git.sh";
+async function mergeLeanRigorHooks(settingsPath, packagedSettingsPath) {
+  let current;
+  let currentRaw;
+  try {
+    currentRaw = await readFile4(settingsPath, "utf8");
+    current = JSON.parse(currentRaw);
+  } catch (err) {
+    const code = err.code;
+    if (code === "ENOENT") {
+      return createFromPackaged(settingsPath, packagedSettingsPath);
+    }
+    if (err instanceof SyntaxError) {
+      return {
+        modified: false,
+        state: "shared_malformed",
+        detail: "present but not valid JSON (shared_malformed)"
+      };
+    }
+    return {
+      modified: false,
+      state: "shared_unwritable",
+      detail: `cannot read: ${err.message}`
+    };
+  }
+  let packaged;
+  try {
+    const packagedRaw = await readFile4(packagedSettingsPath, "utf8");
+    packaged = JSON.parse(packagedRaw);
+  } catch {
+    return {
+      modified: false,
+      state: "shared_unwritable",
+      detail: "packaged settings template not found or unreadable"
+    };
+  }
+  const lrEntry = extractLRPreToolUseEntry(packaged);
+  if (!lrEntry) {
+    return {
+      modified: false,
+      state: "shared_unwritable",
+      detail: "packaged settings does not contain a valid LR PreToolUse entry"
+    };
+  }
+  const modified = upsertLRHook(current, lrEntry);
+  if (!modified) {
+    return {
+      modified: false,
+      state: "shared_current",
+      detail: "current (LeanRigor hook entries present; coexists with user settings)"
+    };
+  }
+  try {
+    await writeFile4(settingsPath, JSON.stringify(current, null, 2) + "\n", "utf8");
+  } catch (err) {
+    return {
+      modified: false,
+      state: "shared_unwritable",
+      detail: `cannot write: ${err.message}`
+    };
+  }
+  return {
+    modified: true,
+    state: "shared_merged",
+    detail: "LeanRigor hook entries merged (coexists with user settings)"
+  };
+}
+async function removeLeanRigorHooks(settingsPath) {
+  let current;
+  try {
+    const raw = await readFile4(settingsPath, "utf8");
+    current = JSON.parse(raw);
+  } catch (err) {
+    const code = err.code;
+    if (code === "ENOENT") {
+      return { modified: false, state: "shared_current", detail: "settings.json not found" };
+    }
+    if (err instanceof SyntaxError) {
+      return { modified: false, state: "shared_malformed", detail: "not valid JSON" };
+    }
+    return { modified: false, state: "shared_unwritable", detail: `cannot read: ${err.message}` };
+  }
+  const modified = removeLRPreToolUseEntries(current);
+  if (!modified) {
+    return { modified: false, state: "shared_current", detail: "no LeanRigor entries to remove" };
+  }
+  try {
+    await writeFile4(settingsPath, JSON.stringify(current, null, 2) + "\n", "utf8");
+  } catch (err) {
+    return { modified: false, state: "shared_unwritable", detail: `cannot write: ${err.message}` };
+  }
+  return { modified: true, state: "shared_removed", detail: "LeanRigor hook entries removed" };
+}
+async function checkSettingsState(settingsPath, packagedSettingsPath) {
+  let current;
+  try {
+    const raw = await readFile4(settingsPath, "utf8");
+    current = JSON.parse(raw);
+  } catch (err) {
+    const code = err.code;
+    if (code === "ENOENT") {
+      return { state: "shared_missing_leanrigor_entries", detail: "missing" };
+    }
+    if (err instanceof SyntaxError) {
+      return { state: "shared_malformed", detail: "present but not valid JSON (shared_malformed)" };
+    }
+    return { state: "shared_unwritable", detail: `cannot read: ${err.message}` };
+  }
+  let packaged;
+  try {
+    const packagedRaw = await readFile4(packagedSettingsPath, "utf8");
+    packaged = JSON.parse(packagedRaw);
+  } catch {
+    return { state: "shared_unwritable", detail: "packaged settings template unreadable" };
+  }
+  const lrEntry = extractLRPreToolUseEntry(packaged);
+  if (!lrEntry) {
+    return { state: "shared_unwritable", detail: "packaged settings invalid" };
+  }
+  const hasLR = hasLRPreToolUseEntries(current);
+  if (!hasLR) {
+    return { state: "shared_missing_leanrigor_entries", detail: "present but does not contain LeanRigor-owned hook entries (shared configuration)" };
+  }
+  const hasCurrent = lrEntriesMatch(current, lrEntry);
+  if (!hasCurrent) {
+    return { state: "shared_conflicting_leanrigor_entries", detail: "LeanRigor hook entries present but differ from expected (shared_conflicting_leanrigor_entries)" };
+  }
+  return { state: "shared_current", detail: "current (LeanRigor hook entries present; coexists with user settings)" };
+}
+async function createFromPackaged(settingsPath, packagedSettingsPath) {
+  let packaged;
+  try {
+    packaged = await readFile4(packagedSettingsPath, "utf8");
+  } catch {
+    return { modified: false, state: "shared_unwritable", detail: "packaged settings template not found" };
+  }
+  try {
+    JSON.parse(packaged);
+  } catch {
+    return { modified: false, state: "shared_unwritable", detail: "packaged settings template is not valid JSON" };
+  }
+  try {
+    await mkdir4(path5.dirname(settingsPath), { recursive: true });
+    await writeFile4(settingsPath, packaged, "utf8");
+  } catch (err) {
+    return { modified: false, state: "shared_unwritable", detail: `cannot create: ${err.message}` };
+  }
+  return {
+    modified: true,
+    state: "shared_merged",
+    detail: "created with LeanRigor hook entries"
+  };
+}
+function extractLRPreToolUseEntry(packaged) {
+  const hooks = packaged.hooks;
+  if (!hooks) return void 0;
+  const preToolUse = hooks.PreToolUse;
+  if (!preToolUse || !Array.isArray(preToolUse)) return void 0;
+  return preToolUse.find((entry) => isLRHookEntry(entry));
+}
+function isLRHookEntry(entry) {
+  if (!entry.hooks || !Array.isArray(entry.hooks)) return false;
+  return entry.hooks.some((h) => typeof h.command === "string" && h.command.includes(PROTECT_GIT_PATH));
+}
+function upsertLRHook(current, lrEntry) {
+  if (!current.hooks || typeof current.hooks !== "object" || Array.isArray(current.hooks)) {
+    current.hooks = {};
+  }
+  const hooks = current.hooks;
+  if (!hooks.PreToolUse || !Array.isArray(hooks.PreToolUse)) {
+    hooks.PreToolUse = [];
+  }
+  let preToolUse = hooks.PreToolUse;
+  const existingIndex = preToolUse.findIndex((entry) => isLRHookEntry(entry));
+  if (existingIndex >= 0 && deepEqual(preToolUse[existingIndex], lrEntry)) {
+    const duplicates = preToolUse.filter((entry, idx) => idx !== existingIndex && isLRHookEntry(entry));
+    if (duplicates.length > 0) {
+      preToolUse = preToolUse.filter((entry) => !isLRHookEntry(entry) || entry === preToolUse[existingIndex]);
+      hooks.PreToolUse = preToolUse;
+      return true;
+    }
+    return false;
+  }
+  preToolUse = preToolUse.filter((entry) => !isLRHookEntry(entry));
+  preToolUse.push(lrEntry);
+  hooks.PreToolUse = preToolUse;
+  return true;
+}
+function hasLRPreToolUseEntries(current) {
+  const hooks = current.hooks;
+  if (!hooks) return false;
+  const preToolUse = hooks.PreToolUse;
+  if (!preToolUse || !Array.isArray(preToolUse)) return false;
+  return preToolUse.some((entry) => isLRHookEntry(entry));
+}
+function lrEntriesMatch(current, lrEntry) {
+  const hooks = current.hooks;
+  if (!hooks) return false;
+  const preToolUse = hooks.PreToolUse;
+  if (!preToolUse || !Array.isArray(preToolUse)) return false;
+  const existing = preToolUse.find((entry) => isLRHookEntry(entry));
+  if (!existing) return false;
+  return deepEqual(existing, lrEntry);
+}
+function removeLRPreToolUseEntries(current) {
+  const hooks = current.hooks;
+  if (!hooks) return false;
+  const preToolUse = hooks.PreToolUse;
+  if (!preToolUse || !Array.isArray(preToolUse)) return false;
+  const before = preToolUse.length;
+  hooks.PreToolUse = preToolUse.filter((entry) => !isLRHookEntry(entry));
+  if (hooks.PreToolUse.length === 0) {
+    delete hooks.PreToolUse;
+    if (Object.keys(hooks).length === 0) {
+      delete current.hooks;
+    }
+  }
+  return before !== (hooks.PreToolUse?.length ?? 0);
+}
+function deepEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// src/adapters/claude/adapter.ts
+var ASSET_VERSION = 5;
 var OWNERSHIP_TOKEN = "generated_by: leanrigor";
-var PROTECT_GIT_DEST = path5.join(".claude", "leanrigor", "protect-git.sh");
+var PROTECT_GIT_DEST = path6.join(".claude", "leanrigor", "protect-git.sh");
 function pluginDir() {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
 }
 function packageRoot() {
-  return path5.resolve(pluginDir(), "..", "..", "..", "..");
+  return path6.resolve(pluginDir(), "..", "..", "..", "..");
 }
 var METHODOLOGY_FILES = [
   "core.md",
@@ -19321,9 +19549,9 @@ var METHODOLOGY_FILES = [
   "review.md",
   "evidence.md",
   "safeguards.md",
-  path5.join("modes", "fast.md"),
-  path5.join("modes", "standard.md"),
-  path5.join("modes", "rigorous.md")
+  path6.join("modes", "fast.md"),
+  path6.join("modes", "standard.md"),
+  path6.join("modes", "rigorous.md")
 ];
 function sha256(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -19332,7 +19560,7 @@ function isLeanRigorOwned(content) {
   return content.includes(OWNERSHIP_TOKEN);
 }
 async function readPackagedAsset(assetPath, vars) {
-  let content = await readFile4(assetPath, "utf8");
+  let content = await readFile5(assetPath, "utf8");
   if (vars) {
     for (const [key, value] of Object.entries(vars)) {
       content = content.replaceAll(`{{${key}}}`, value);
@@ -19343,26 +19571,30 @@ async function readPackagedAsset(assetPath, vars) {
 function assetManifest(triageModel) {
   const plugin = pluginDir();
   const methodology = METHODOLOGY_FILES.map((file2) => ({
-    src: path5.join(packageRoot(), "methodology", file2),
-    dest: path5.join(".claude", "leanrigor", "methodology", file2)
+    src: path6.join(packageRoot(), "methodology", file2),
+    dest: path6.join(".claude", "leanrigor", "methodology", file2)
   }));
   return [
-    { src: path5.join(plugin, "commands", "leanrigor.md"), dest: path5.join(".claude", "commands", "leanrigor.md") },
-    { src: path5.join(plugin, "commands", "leanrigor-init.md"), dest: path5.join(".claude", "commands", "leanrigor-init.md") },
-    { src: path5.join(plugin, "commands", "leanrigor-plan.md"), dest: path5.join(".claude", "commands", "leanrigor-plan.md") },
-    { src: path5.join(plugin, "commands", "leanrigor-status.md"), dest: path5.join(".claude", "commands", "leanrigor-status.md") },
-    { src: path5.join(plugin, "commands", "leanrigor-review.md"), dest: path5.join(".claude", "commands", "leanrigor-review.md") },
-    { src: path5.join(plugin, "commands", "leanrigor-commit.md"), dest: path5.join(".claude", "commands", "leanrigor-commit.md") },
-    { src: path5.join(plugin, "leanrigor", "sequential-workflow.md"), dest: path5.join(".claude", "leanrigor", "sequential-workflow.md") },
+    // protect-git.sh MUST come before settings.json to avoid the stale-hook catch-22
+    { src: path6.join(plugin, "hooks", "protect-git.sh"), dest: path6.join(".claude", "leanrigor", "protect-git.sh") },
+    { src: path6.join(plugin, "commands", "leanrigor.md"), dest: path6.join(".claude", "commands", "leanrigor.md") },
+    { src: path6.join(plugin, "commands", "leanrigor-init.md"), dest: path6.join(".claude", "commands", "leanrigor-init.md") },
+    { src: path6.join(plugin, "commands", "leanrigor-plan.md"), dest: path6.join(".claude", "commands", "leanrigor-plan.md") },
+    { src: path6.join(plugin, "commands", "leanrigor-status.md"), dest: path6.join(".claude", "commands", "leanrigor-status.md") },
+    { src: path6.join(plugin, "commands", "leanrigor-review.md"), dest: path6.join(".claude", "commands", "leanrigor-review.md") },
+    { src: path6.join(plugin, "commands", "leanrigor-commit.md"), dest: path6.join(".claude", "commands", "leanrigor-commit.md") },
+    { src: path6.join(plugin, "leanrigor", "sequential-workflow.md"), dest: path6.join(".claude", "leanrigor", "sequential-workflow.md") },
     {
-      src: path5.join(plugin, "agents", "leanrigor-triage.md.tpl"),
-      dest: path5.join(".claude", "agents", "leanrigor-triage.md"),
+      src: path6.join(plugin, "agents", "leanrigor-triage.md.tpl"),
+      dest: path6.join(".claude", "agents", "leanrigor-triage.md"),
       vars: { TRIAGE_MODEL: triageModel }
     },
-    { src: path5.join(plugin, "hooks", "protect-git.sh"), dest: path5.join(".claude", "leanrigor", "protect-git.sh") },
-    { src: path5.join(plugin, "settings.json"), dest: path5.join(".claude", "settings.json") },
+    { src: path6.join(plugin, "settings.json"), dest: path6.join(".claude", "settings.json") },
     ...methodology
   ];
+}
+function assetManifestWithoutSettings(triageModel) {
+  return assetManifest(triageModel).filter((entry) => entry.dest !== ".claude/settings.json");
 }
 var ClaudeAdapter = class {
   name = "claude";
@@ -19376,23 +19608,23 @@ var ClaudeAdapter = class {
     const manifest = assetManifest(triageModel);
     const report = { installed: [], alreadyCurrent: [], skipped: [] };
     for (const entry of manifest) {
-      const targetPath = path5.join(root, entry.dest);
-      await mkdir4(path5.dirname(targetPath), { recursive: true });
+      const targetPath = path6.join(root, entry.dest);
+      await mkdir5(path6.dirname(targetPath), { recursive: true });
       const expected = await readPackagedAsset(entry.src, entry.vars);
       let existing;
       try {
-        existing = await readFile4(targetPath, "utf8");
+        existing = await readFile5(targetPath, "utf8");
       } catch {
       }
       if (existing === void 0) {
-        await writeFile4(targetPath, expected, "utf8");
+        await writeFile5(targetPath, expected, "utf8");
         await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else if (sha256(existing) === sha256(expected)) {
         await ensureExecutableIfHook(entry.dest, targetPath);
         report.alreadyCurrent.push(entry.dest);
       } else if (isLeanRigorOwned(existing) && force) {
-        await writeFile4(targetPath, expected, "utf8");
+        await writeFile5(targetPath, expected, "utf8");
         await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else {
@@ -19401,16 +19633,82 @@ var ClaudeAdapter = class {
     }
     return report;
   }
+  /**
+   * Bootstrap the LeanRigor project environment for first use.
+   *
+   * Ordering is critical:
+   * 1. Create directories
+   * 2. Install protect-git.sh first (avoid the stale-hook catch-22)
+   * 3. chmod +x protect-git.sh
+   * 4. Install remaining LeanRigor-owned assets (with content-equality adoption)
+   * 5. Merge LeanRigor hook entries into shared .claude/settings.json
+   *
+   * This method is safe to call repeatedly — already-current files are skipped.
+   */
+  async bootstrap(root, config2, force = false) {
+    const triageModel = resolveModelTier(config2.routing.triage, "claude", config2).model ?? "haiku";
+    const manifest = assetManifestWithoutSettings(triageModel);
+    const report = {
+      installed: [],
+      alreadyCurrent: [],
+      adopted: [],
+      skipped: [],
+      settingsModified: false,
+      settingsState: "unknown"
+    };
+    for (const entry of manifest) {
+      const targetPath = path6.join(root, entry.dest);
+      let expected;
+      try {
+        expected = await readPackagedAsset(entry.src, entry.vars);
+      } catch {
+        report.skipped.push(entry.dest);
+        continue;
+      }
+      let existing;
+      try {
+        existing = await readFile5(targetPath, "utf8");
+      } catch {
+      }
+      if (existing === void 0) {
+        await mkdir5(path6.dirname(targetPath), { recursive: true });
+        await writeFile5(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
+        report.installed.push(entry.dest);
+      } else if (sha256(existing) === sha256(expected)) {
+        if (!isLeanRigorOwned(existing)) {
+          await adoptAsset(targetPath, expected);
+          await ensureExecutableIfHook(entry.dest, targetPath);
+          report.adopted.push(entry.dest);
+        } else {
+          await ensureExecutableIfHook(entry.dest, targetPath);
+          report.alreadyCurrent.push(entry.dest);
+        }
+      } else if (isLeanRigorOwned(existing) && force) {
+        await writeFile5(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
+        report.installed.push(entry.dest);
+      } else {
+        report.skipped.push(entry.dest);
+      }
+    }
+    const settingsPath = path6.join(root, ".claude", "settings.json");
+    const packagedSettingsPath = path6.join(pluginDir(), "settings.json");
+    const mergeResult = await mergeLeanRigorHooks(settingsPath, packagedSettingsPath);
+    report.settingsModified = mergeResult.modified;
+    report.settingsState = mergeResult.state;
+    return report;
+  }
   async uninstall(root) {
     const config2 = await loadConfigForUninstall(root);
     const triageModel = resolveModelTier(config2.routing.triage, "claude", config2).model ?? "haiku";
-    const manifest = assetManifest(triageModel);
+    const manifest = assetManifestWithoutSettings(triageModel);
     const report = { removed: [], skipped: [] };
     for (const entry of manifest) {
-      const targetPath = path5.join(root, entry.dest);
+      const targetPath = path6.join(root, entry.dest);
       let existing;
       try {
-        existing = await readFile4(targetPath, "utf8");
+        existing = await readFile5(targetPath, "utf8");
       } catch {
       }
       if (existing === void 0) continue;
@@ -19425,15 +19723,17 @@ var ClaudeAdapter = class {
       }
       await unlink(targetPath);
       report.removed.push(entry.dest);
-      const claudeDir = path5.join(root, ".claude");
-      let dir = path5.dirname(targetPath);
+      const claudeDir = path6.join(root, ".claude");
+      let dir = path6.dirname(targetPath);
       while (dir.length > claudeDir.length && dir.startsWith(claudeDir)) {
         const removed = await removeIfEmpty(dir);
         if (!removed) break;
-        dir = path5.dirname(dir);
+        dir = path6.dirname(dir);
       }
       await removeIfEmpty(claudeDir);
     }
+    const settingsPath = path6.join(root, ".claude", "settings.json");
+    await removeLeanRigorHooks(settingsPath);
     return report;
   }
   async doctor(root, config2) {
@@ -19483,7 +19783,8 @@ var ClaudeAdapter = class {
     }
     output.push("");
     output.push(`Claude assets installed: ${inspection.installedCount}/${inspection.totalAvailable}`);
-    if (inspection.missing.length === 0 && inspection.conflicts.length === 0 && inspection.modified.length === 0) {
+    const assetIssues = [...inspection.missing, ...inspection.conflicts, ...inspection.modified];
+    if (assetIssues.length === 0) {
       output.push("Status: current");
     } else {
       output.push("Status: incomplete or needs attention");
@@ -19491,17 +19792,20 @@ var ClaudeAdapter = class {
     if (inspection.current.length > 0) {
       output.push("");
       output.push("Current:");
-      for (const f of inspection.current) {
-        const suffix = isSettingsJson(f) ? " (LeanRigor-managed; coexists with user settings)" : "";
-        output.push(`  ${f}${suffix}`);
-      }
+      for (const f of inspection.current) output.push(`  ${f}`);
+    }
+    if (inspection.adoptable.length > 0) {
+      output.push("");
+      output.push("Adoptable (content matches packaged version, safe to adopt on next bootstrap):");
+      for (const f of inspection.adoptable) output.push(`  ${f}`);
     }
     output.push("");
     output.push("Git protection hook:");
     output.push(`  ${inspection.protectGitState}`);
     if (inspection.missing.length > 0) {
       output.push("");
-      output.push("Missing (run `leanrigor init --adapter claude` to install):");
+      const cmd = isMarketplaceRuntime() ? "next LeanRigor command" : "`leanrigor init --adapter claude`";
+      output.push(`Missing (will be repaired automatically by ${cmd}):`);
       for (const f of inspection.missing) output.push(`  ${f}`);
     }
     if (inspection.modified.length > 0) {
@@ -19518,6 +19822,9 @@ var ClaudeAdapter = class {
     output.push("");
     output.push("Shared configuration:");
     output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
+    output.push("");
+    const bootstrapped = inspection.missing.length === 0 && inspection.adoptable.length === 0 && inspection.settingsState === "shared_current";
+    output.push(`Project bootstrap: ${bootstrapped ? "complete" : inspection.missing.length > 0 ? "incomplete" : "repairable"}`);
     output.push("");
     output.push(`Automatic triage: ${config2.workflow.automaticTriage ? "enabled" : "disabled"}`);
     output.push("");
@@ -19542,14 +19849,16 @@ var ClaudeAdapter = class {
     const modified = [];
     const missing = [];
     const conflicts = [];
+    const adoptable = [];
     let protectGitState = "missing";
     for (const entry of manifest) {
-      const targetPath = path5.join(root, entry.dest);
+      const targetPath = path6.join(root, entry.dest);
       let existing;
       try {
-        existing = await readFile4(targetPath, "utf8");
+        existing = await readFile5(targetPath, "utf8");
       } catch {
       }
+      if (isSettingsJson(entry.dest)) continue;
       if (existing === void 0) {
         missing.push(entry.dest);
         manifestEntries.push({ dest: entry.dest, status: "missing" });
@@ -19559,9 +19868,17 @@ var ClaudeAdapter = class {
       installedCount += 1;
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
       if (!isLeanRigorOwned(existing)) {
-        conflicts.push(entry.dest);
-        manifestEntries.push({ dest: entry.dest, status: "conflict" });
-        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
+        if (expected !== void 0 && sha256(existing) === sha256(expected)) {
+          adoptable.push(entry.dest);
+          manifestEntries.push({ dest: entry.dest, status: "adoptable" });
+          if (isProtectGit(entry.dest)) {
+            protectGitState = await isExecutable(targetPath) ? "adoptable and executable" : "adoptable but not executable";
+          }
+        } else {
+          conflicts.push(entry.dest);
+          manifestEntries.push({ dest: entry.dest, status: "conflict" });
+          if (isProtectGit(entry.dest)) protectGitState = "content differs from packaged version (not LeanRigor-owned)";
+        }
       } else if (expected !== void 0 && sha256(existing) === sha256(expected)) {
         current.push(entry.dest);
         manifestEntries.push({ dest: entry.dest, status: "current" });
@@ -19574,9 +19891,12 @@ var ClaudeAdapter = class {
         if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
       }
     }
-    const settingsState = deriveSettingsState(missing, conflicts, modified);
-    const settingsDetail = describeSettingsState(missing, conflicts, modified);
-    const gitignoreStatus = await ensureGitignore(path5.join(root, ".leanrigor"));
+    const settingsPath = path6.join(root, ".claude", "settings.json");
+    const packagedSettingsPath = path6.join(pluginDir(), "settings.json");
+    const settingsCheck = await checkSettingsState(settingsPath, packagedSettingsPath);
+    const settingsState = settingsCheck.state;
+    const settingsDetail = settingsCheck.detail;
+    const gitignoreStatus = await ensureGitignore(path6.join(root, ".leanrigor"));
     const trackedFiles = await checkTrackedLeanrigorFiles(root);
     return {
       manifest: manifestEntries,
@@ -19584,7 +19904,8 @@ var ClaudeAdapter = class {
       modified,
       missing,
       conflicts,
-      totalAvailable: manifest.length,
+      adoptable,
+      totalAvailable: manifest.filter((e) => !isSettingsJson(e.dest)).length,
       installedCount,
       settingsState,
       settingsDetail,
@@ -19600,25 +19921,8 @@ function isProtectGit(dest) {
 function isSettingsJson(dest) {
   return dest === ".claude/settings.json";
 }
-function deriveSettingsState(missing, conflicts, modified) {
-  const settingsPath = ".claude/settings.json";
-  if (missing.includes(settingsPath)) return "missing";
-  if (conflicts.includes(settingsPath)) return "shared_unowned";
-  if (modified.includes(settingsPath)) return "modified_owned";
-  return "shared_current";
-}
-function describeSettingsState(missing, conflicts, modified) {
-  const state = deriveSettingsState(missing, conflicts, modified);
-  switch (state) {
-    case "missing":
-      return "missing";
-    case "shared_unowned":
-      return "present but not LeanRigor-owned (shared configuration)";
-    case "modified_owned":
-      return "modified (LeanRigor hook entries may have local changes)";
-    case "shared_current":
-      return "current (LeanRigor hook entries present; coexists with user settings)";
-  }
+async function adoptAsset(targetPath, expectedContent) {
+  await writeFile5(targetPath, expectedContent, "utf8");
 }
 async function ensureExecutableIfHook(dest, targetPath) {
   if (isProtectGit(dest)) await chmod(targetPath, 493);
@@ -19662,18 +19966,19 @@ async function which(command) {
 async function readPackageVersion() {
   try {
     const packageJsonPath = fileURLToPath(new URL("../../../package.json", import.meta.url));
-    const pkg = JSON.parse(await readFile4(packageJsonPath, "utf8"));
+    const pkg = JSON.parse(await readFile5(packageJsonPath, "utf8"));
     return pkg.version ?? "unknown";
   } catch {
     return "unknown";
   }
 }
 function runtimeSource() {
-  if (process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
-    return "marketplace plugin runtime";
-  }
-  if (process.argv[1]?.includes(`${path5.sep}node_modules${path5.sep}`)) return "npm package CLI";
+  if (isMarketplaceRuntime()) return "marketplace plugin runtime";
+  if (process.argv[1]?.includes(`${path6.sep}node_modules${path6.sep}`)) return "npm package CLI";
   return "local development or global CLI";
+}
+function isMarketplaceRuntime() {
+  return process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || Boolean(process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) || Boolean(process.env.CLAUDE_PLUGIN_ROOT);
 }
 async function loadConfigForUninstall(root) {
   try {
@@ -19687,8 +19992,8 @@ async function loadConfigForUninstall(root) {
 
 // src/adapters/claude/triage-provider.ts
 import { spawn } from "node:child_process";
-import { readFile as readFile5 } from "node:fs/promises";
-import path6 from "node:path";
+import { readFile as readFile6 } from "node:fs/promises";
+import path7 from "node:path";
 var ClaudeCliTriageProvider = class {
   constructor(runCommand = defaultCommandRunner) {
     this.runCommand = runCommand;
@@ -19717,8 +20022,8 @@ var ClaudeCliTriageProvider = class {
   }
 };
 async function buildTriagePrompt(root, request) {
-  const skillPath = path6.join(root, "internal-skills", "triage-task", "SKILL.md");
-  const skill = await readFile5(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
+  const skillPath = path7.join(root, "internal-skills", "triage-task", "SKILL.md");
+  const skill = await readFile6(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
   return [
     "You are the bounded triage classifier for LeanRigor.",
     "You may inspect the repository with Read/Glob/Grep to inform your assessment, but keep inspection minimal.",
@@ -20023,8 +20328,8 @@ init_schema();
 // src/config/resolver.ts
 init_defaults();
 init_load();
-import { readFile as readFile6 } from "node:fs/promises";
-import path7 from "node:path";
+import { readFile as readFile7 } from "node:fs/promises";
+import path8 from "node:path";
 
 // src/config/merger.ts
 function mergeValue(lower, higher, rule) {
@@ -20230,9 +20535,9 @@ function buildProvenanceMap(obj, source, prefix = "") {
 init_config_scope();
 init_schema();
 async function loadLocalConfigRaw(root) {
-  const filePath = path7.join(root, ".leanrigor", "config.json");
+  const filePath = path8.join(root, ".leanrigor", "config.json");
   try {
-    const raw = await readFile6(filePath, "utf8");
+    const raw = await readFile7(filePath, "utf8");
     return JSON.parse(raw);
   } catch (error51) {
     if (error51.code === "ENOENT") return null;
@@ -20502,7 +20807,7 @@ function buildExampleCommands() {
     scope: entry.scope
   }));
 }
-async function buildInitReport(root) {
+async function buildInitReport(root, bootstrapResult) {
   const effective = await resolveEffectiveConfig(root);
   const userConfig = await loadUserConfig();
   const repoPolicy = await loadRepoPolicy(root);
@@ -20549,6 +20854,7 @@ async function buildInitReport(root) {
       modified: inspection.modified,
       missing: inspection.missing,
       conflicts: inspection.conflicts,
+      adoptable: inspection.adoptable,
       totalAvailable: inspection.totalAvailable,
       installedCount: inspection.installedCount
     },
@@ -20557,6 +20863,13 @@ async function buildInitReport(root) {
       status: inspection.settingsState,
       detail: inspection.settingsDetail
     },
+    isMarketplace: isMarketplaceRuntime(),
+    bootstrap: bootstrapResult ? {
+      bootstrapped: bootstrapResult.bootstrapped,
+      installed: bootstrapResult.report?.installed.length ?? 0,
+      adopted: bootstrapResult.report?.adopted.length ?? 0,
+      settingsModified: bootstrapResult.report?.settingsModified ?? false
+    } : null,
     constraints: effective.constraints,
     warnings: effective.warnings,
     validExamples: buildExampleCommands()
@@ -20568,6 +20881,15 @@ function renderInitReport(report) {
   const lines = [];
   lines.push("=== LeanRigor Configuration ===");
   lines.push("");
+  if (report.bootstrap?.bootstrapped) {
+    lines.push("LeanRigor project bootstrap completed.");
+    const parts = [];
+    if (report.bootstrap.installed > 0) parts.push(`Installed: ${report.bootstrap.installed} assets`);
+    if (report.bootstrap.adopted > 0) parts.push(`Adopted: ${report.bootstrap.adopted} files`);
+    if (report.bootstrap.settingsModified) parts.push("Shared settings: LeanRigor entries merged");
+    lines.push(parts.join(". ") || "No changes needed.");
+    lines.push("");
+  }
   renderConfigFiles(report, lines);
   lines.push(`.leanrigor/.gitignore: ${report.gitignore.message}`);
   lines.push("");
@@ -20583,7 +20905,7 @@ function renderInitReport(report) {
   }
   lines.push("");
   lines.push("Shared configuration:");
-  lines.push(renderSettingsState(report.settings));
+  lines.push(renderSettingsState(report.settings, report.isMarketplace));
   lines.push("");
   lines.push("LeanRigor-managed assets:");
   lines.push(`  total available: ${report.assets.totalAvailable}`);
@@ -20591,6 +20913,7 @@ function renderInitReport(report) {
   lines.push(`  current: ${report.assets.current.length}`);
   lines.push(`  modified: ${report.assets.modified.length}`);
   lines.push(`  missing: ${report.assets.missing.length}`);
+  lines.push(`  adoptable: ${report.assets.adoptable.length}`);
   lines.push(`  conflicts: ${report.assets.conflicts.length}`);
   if (report.assets.modified.length > 0) {
     lines.push("");
@@ -20602,8 +20925,19 @@ function renderInitReport(report) {
   }
   if (report.assets.missing.length > 0) {
     lines.push("");
-    lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    if (report.isMarketplace) {
+      lines.push("Missing assets (will be repaired automatically on next command):");
+    } else {
+      lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    }
     for (const f of report.assets.missing) {
+      lines.push(`  ${f}`);
+    }
+  }
+  if (report.assets.adoptable.length > 0) {
+    lines.push("");
+    lines.push("Adoptable assets (content matches packaged version, safe to adopt on next bootstrap):");
+    for (const f of report.assets.adoptable) {
       lines.push(`  ${f}`);
     }
   }
@@ -20674,7 +21008,7 @@ function renderModelTable(models) {
   ).join("\n");
   return [header, sep, body].join("\n");
 }
-function renderSettingsState(settings) {
+function renderSettingsState(settings, isMarketplace) {
   const lines = [];
   lines.push(`  ${settings.path}: ${settings.detail}`);
   switch (settings.status) {
@@ -20683,22 +21017,94 @@ function renderSettingsState(settings) {
       lines.push("  LeanRigor-owned hook entries are current.");
       lines.push("  Unrelated user settings were preserved.");
       break;
-    case "shared_unowned":
+    case "shared_missing_leanrigor_entries":
       lines.push("  .claude/settings.json is shared Claude Code configuration.");
       lines.push("  The file exists but does not contain LeanRigor-owned hook entries.");
-      lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
+      if (!isMarketplace) {
+        lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
+      } else {
+        lines.push("  LeanRigor hook entries will be merged on next bootstrap.");
+      }
+      break;
+    case "shared_conflicting_leanrigor_entries":
+      lines.push("  .claude/settings.json is shared Claude Code configuration.");
+      lines.push("  LeanRigor-owned hook entries are present but differ from expected.");
+      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
       break;
     case "missing":
       lines.push("  .claude/settings.json is missing.");
-      lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
+      if (!isMarketplace) {
+        lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
+      } else {
+        lines.push("  Will be created with LeanRigor hook entries on next bootstrap.");
+      }
       break;
-    case "modified_owned":
-      lines.push("  .claude/settings.json is shared Claude Code configuration.");
-      lines.push("  LeanRigor-owned hook entries have local modifications.");
-      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+    case "shared_malformed":
+      lines.push("  .claude/settings.json exists but is not valid JSON.");
+      lines.push("  Fix the file manually before LeanRigor can manage its hook entries.");
+      break;
+    case "shared_unwritable":
+      lines.push("  .claude/settings.json cannot be read or written.");
+      lines.push("  Check file permissions and try again.");
       break;
   }
   return lines.join("\n");
+}
+
+// src/core/bootstrap.ts
+import path9 from "node:path";
+async function ensureBootstrapped(root, opts = {}) {
+  const warnings = [];
+  const config2 = await ensureRepositoryConfig(root);
+  await ensureGitignore(path9.join(root, ".leanrigor"));
+  const adapter = new ClaudeAdapter();
+  const hasBootstrap = typeof adapter.bootstrap === "function";
+  if (!hasBootstrap) {
+    const report2 = await adapter.install(root, config2, opts.force ?? false);
+    const bootstrapped2 = report2.installed.length > 0;
+    return {
+      bootstrapped: bootstrapped2,
+      report: {
+        installed: report2.installed,
+        alreadyCurrent: report2.alreadyCurrent,
+        adopted: [],
+        skipped: report2.skipped,
+        settingsModified: false,
+        settingsState: "unknown"
+      },
+      config: config2,
+      warnings
+    };
+  }
+  let report;
+  try {
+    report = await adapter.bootstrap(root, config2, opts.force ?? false);
+  } catch (err) {
+    warnings.push(`Bootstrap skipped: ${err.message}`);
+    return {
+      bootstrapped: false,
+      report: null,
+      config: config2,
+      warnings
+    };
+  }
+  const bootstrapped = report.installed.length > 0 || report.adopted.length > 0 || report.settingsModified;
+  if (report.skipped.length > 0) {
+    warnings.push(
+      `${report.skipped.length} file(s) were skipped (non-owned or user-modified): ${report.skipped.join(", ")}`
+    );
+  }
+  if (report.adopted.length > 0) {
+    warnings.push(
+      `${report.adopted.length} file(s) had matching content but no ownership token \u2014 adopted: ${report.adopted.join(", ")}`
+    );
+  }
+  return {
+    bootstrapped,
+    report,
+    config: config2,
+    warnings
+  };
 }
 
 // src/cli/index.ts
@@ -20711,9 +21117,9 @@ init_repo_policy();
 init_zod();
 init_defaults();
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir7, readFile as readFile10 } from "node:fs/promises";
+import { mkdir as mkdir8, readFile as readFile11 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path12 from "node:path";
+import path14 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -20736,12 +21142,12 @@ function commitCommands(proposal) {
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access2, constants, lstat, mkdir as mkdir5, readFile as readFile7, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
-import path9 from "node:path";
+import { access as access2, constants, lstat, mkdir as mkdir6, readFile as readFile8, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
+import path11 from "node:path";
 import { promisify } from "node:util";
 
 // src/core/ownership.ts
-import path8 from "node:path";
+import path10 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -20758,7 +21164,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path8.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path10.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -21036,7 +21442,7 @@ async function preflightGitRepository(root, config2) {
   if (workspaceRoot.length > config2.execution.maxWorkspacePathLength) {
     return { ok: false, code: "workspace_path_too_long", repositoryRoot, gitCommonDir, workspaceRoot };
   }
-  const writable = await mkdir5(workspaceRoot, { recursive: true }).then(() => access2(workspaceRoot, constants.W_OK)).then(() => true).catch(() => false);
+  const writable = await mkdir6(workspaceRoot, { recursive: true }).then(() => access2(workspaceRoot, constants.W_OK)).then(() => true).catch(() => false);
   if (!writable) return { ok: false, code: "workspace_root_not_writable", repositoryRoot, gitCommonDir, workspaceRoot };
   const dirty = (await git(repositoryRoot, ["status", "--porcelain=v1", "--untracked-files=all"])).trim();
   if (dirty) warnings.push("User working tree has local changes outside the LeanRigor workflow baseline.");
@@ -21059,13 +21465,13 @@ async function ensureIntegrationWorkspace(state, config2) {
   const existing = state.git;
   if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
   const names = workspaceNames(state.id, void 0, config2);
-  const workflowRoot = path9.join(preflight.workspaceRoot, state.id);
-  const integrationPath = path9.join(workflowRoot, "integration");
+  const workflowRoot = path11.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path11.join(workflowRoot, "integration");
   ensurePathLength(integrationPath, config2);
   await ensurePathAvailable(integrationPath, state.id, "integration");
   const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
   const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
-  await mkdir5(path9.dirname(integrationPath), { recursive: true });
+  await mkdir6(path11.dirname(integrationPath), { recursive: true });
   await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
   const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
   const now = timestamp();
@@ -21127,12 +21533,12 @@ async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
     throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
   const names = workspaceNames(state.id, phaseId, config2);
-  const workflowRoot = path9.join(gitState.context.workspaceRoot, state.id);
-  const phasePath = path9.join(workflowRoot, "phases", names.phasePathSegment);
+  const workflowRoot = path11.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path11.join(workflowRoot, "phases", names.phasePathSegment);
   ensurePathLength(phasePath, config2);
   await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
   const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
-  await mkdir5(path9.dirname(phasePath), { recursive: true });
+  await mkdir6(path11.dirname(phasePath), { recursive: true });
   await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
   const now = timestamp();
   await writeOwnershipMetadata(workflowRoot, {
@@ -21508,24 +21914,24 @@ function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
 function resolveWorkspaceRoot(repositoryRoot, config2) {
-  if (config2.execution.workspaceRoot) return path9.resolve(repositoryRoot, config2.execution.workspaceRoot);
-  return path9.join(path9.dirname(repositoryRoot), ".leanrigor-worktrees", path9.basename(repositoryRoot));
+  if (config2.execution.workspaceRoot) return path11.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  return path11.join(path11.dirname(repositoryRoot), ".leanrigor-worktrees", path11.basename(repositoryRoot));
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
-  const dir = path9.join(workflowRoot, ".leanrigor-owned-worktrees");
-  await mkdir5(dir, { recursive: true });
+  const dir = path11.join(workflowRoot, ".leanrigor-owned-worktrees");
+  await mkdir6(dir, { recursive: true });
   const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
-  await writeFile5(path9.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+  await writeFile6(path11.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
 }
 async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
-  const workflowRoot = workspaceType === "integration" ? path9.dirname(worktreePath) : path9.dirname(path9.dirname(worktreePath));
-  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path9.basename(worktreePath))}.json`;
-  const file2 = path9.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  const workflowRoot = workspaceType === "integration" ? path11.dirname(worktreePath) : path11.dirname(path11.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path11.basename(worktreePath))}.json`;
+  const file2 = path11.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
-    const parsed = JSON.parse(await readFile7(file2, "utf8"));
+    const parsed = JSON.parse(await readFile8(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
-    if (path9.resolve(parsed.path) !== path9.resolve(worktreePath)) return void 0;
+    if (path11.resolve(parsed.path) !== path11.resolve(worktreePath)) return void 0;
     return parsed;
   } catch {
     return void 0;
@@ -21554,14 +21960,14 @@ async function runShellCommand(command, cwd) {
 }
 async function gitOperationInProgress(commonDir, gitDir) {
   const checks = [
-    [path9.join(gitDir, "MERGE_HEAD"), "merge"],
-    [path9.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
-    [path9.join(gitDir, "REVERT_HEAD"), "revert"],
-    [path9.join(gitDir, "BISECT_LOG"), "bisect"],
-    [path9.join(gitDir, "rebase-merge"), "rebase"],
-    [path9.join(gitDir, "rebase-apply"), "rebase"],
-    [path9.join(commonDir, "rebase-merge"), "rebase"],
-    [path9.join(commonDir, "rebase-apply"), "rebase"]
+    [path11.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path11.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path11.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path11.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path11.join(gitDir, "rebase-merge"), "rebase"],
+    [path11.join(gitDir, "rebase-apply"), "rebase"],
+    [path11.join(commonDir, "rebase-merge"), "rebase"],
+    [path11.join(commonDir, "rebase-apply"), "rebase"]
   ];
   for (const [file2, operation] of checks) {
     if (await pathExists(file2)) return operation;
@@ -21569,10 +21975,10 @@ async function gitOperationInProgress(commonDir, gitDir) {
   return void 0;
 }
 async function resolveGitPath(cwd, gitPath) {
-  return path9.isAbsolute(gitPath) ? gitPath : path9.resolve(cwd, gitPath);
+  return path11.isAbsolute(gitPath) ? gitPath : path11.resolve(cwd, gitPath);
 }
 async function canonical(value) {
-  return realpath(path9.resolve(value));
+  return realpath(path11.resolve(value));
 }
 function gitVersionSupportsWorktree(versionText) {
   const match = versionText.match(/git version (\d+)\.(\d+)/);
@@ -21593,9 +21999,9 @@ async function findNestedRepositories(repositoryRoot) {
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
-      const child = path9.join(dir, entry.name);
-      if (await pathExists(path9.join(child, ".git"))) {
-        nested.push(path9.relative(repositoryRoot, child));
+      const child = path11.join(dir, entry.name);
+      if (await pathExists(path11.join(child, ".git"))) {
+        nested.push(path11.relative(repositoryRoot, child));
         continue;
       }
       await walk(child, depth + 1);
@@ -21632,7 +22038,7 @@ function parseModeChanges(raw) {
 }
 async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
   for (const file2 of changedFiles) {
-    const full = path9.join(worktreePath, file2);
+    const full = path11.join(worktreePath, file2);
     let info;
     try {
       info = await lstat(full);
@@ -21641,7 +22047,7 @@ async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
     }
     if (!info.isSymbolicLink()) continue;
     const target = await readlink(full);
-    if (path9.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+    if (path11.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
       throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
     }
   }
@@ -21659,22 +22065,22 @@ function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function isPathInside(child, parent) {
-  const relative = path9.relative(path9.resolve(parent), path9.resolve(child));
-  return relative === "" || !relative.startsWith("..") && !path9.isAbsolute(relative);
+  const relative = path11.relative(path11.resolve(parent), path11.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path11.isAbsolute(relative);
 }
 async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
 }
 
 // src/core/workflow-lock.ts
-import { open as open2, readFile as readFile9, mkdir as mkdir6, rm as rm2, writeFile as writeFile6 } from "node:fs/promises";
+import { open as open2, readFile as readFile10, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
 import os from "node:os";
-import path11 from "node:path";
+import path13 from "node:path";
 
 // src/core/workflow-store.ts
-import { open, readFile as readFile8, rename as rename2, rm } from "node:fs/promises";
+import { open, readFile as readFile9, rename as rename2, rm } from "node:fs/promises";
 import { randomUUID as randomUUID2 } from "node:crypto";
-import path10 from "node:path";
+import path12 from "node:path";
 var RevisionConflictError = class extends Error {
   constructor(expectedRevision, actualRevision) {
     super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
@@ -21686,8 +22092,8 @@ var RevisionConflictError = class extends Error {
   code = "revision_conflict";
 };
 async function atomicWriteJson2(file2, value) {
-  const dir = path10.dirname(file2);
-  const temp = path10.join(dir, `.${path10.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
+  const dir = path12.dirname(file2);
+  const temp = path12.join(dir, `.${path12.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
   const handle = await open(temp, "wx");
   try {
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
@@ -21728,13 +22134,13 @@ var WorkflowLockOwnershipError = class extends Error {
   code = "workflow_lock_owner_mismatch";
 };
 function lockPath(root, workflowId2) {
-  return path11.join(path11.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+  return path13.join(path13.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
 }
 async function acquireWorkflowLock(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const lock = buildLock(options, now);
   const file2 = lockPath(options.root, options.workflowId);
-  await mkdir6(path11.dirname(file2), { recursive: true });
+  await mkdir7(path13.dirname(file2), { recursive: true });
   try {
     const handle = await open2(file2, "wx");
     try {
@@ -21776,7 +22182,7 @@ async function releaseWorkflowLock(root, workflowId2, ownerId) {
 }
 async function readWorkflowLock(root, workflowId2) {
   try {
-    return JSON.parse(await readFile9(lockPath(root, workflowId2), "utf8"));
+    return JSON.parse(await readFile10(lockPath(root, workflowId2), "utf8"));
   } catch (error51) {
     if (error51.code === "ENOENT") return void 0;
     throw error51;
@@ -21797,7 +22203,7 @@ function buildLock(options, now) {
 }
 
 // src/core/flow.ts
-var WORKFLOW_DIR = path12.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path14.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -22132,7 +22538,7 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path12.resolve(options.root);
+  const root = path14.resolve(options.root);
   const now = timestamp2();
   let state = {
     version: STATE_VERSION,
@@ -22605,7 +23011,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path12.join(path12.resolve(root), WORKFLOW_DIR);
+  const dir = path14.join(path14.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -22629,7 +23035,7 @@ async function loadFlowState(root, workflowId2) {
   const file2 = workflowPath(root, workflowId2);
   let raw;
   try {
-    raw = await readFile10(file2, "utf8");
+    raw = await readFile11(file2, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") throw new WorkflowNotFoundError(`Workflow not found: ${workflowId2}`);
     throw error51;
@@ -22642,12 +23048,12 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path12.join(path12.resolve(root), WORKFLOW_DIR);
-  await mkdir7(dir, { recursive: true });
+  const dir = path14.join(path14.resolve(root), WORKFLOW_DIR);
+  await mkdir8(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
     try {
-      await readFile10(target, "utf8");
+      await readFile11(target, "utf8");
       throw new StaleWorkflowError(`Workflow already exists: ${parsed.id}`);
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -23087,7 +23493,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path12.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path14.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -23293,7 +23699,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path12.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path14.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -23415,7 +23821,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path12.resolve(root),
+      root: path14.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -23431,7 +23837,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path12.resolve(root);
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path14.resolve(root);
   migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
@@ -23494,7 +23900,7 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path12.join(path12.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path14.join(path14.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
   return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID3().slice(0, 8)}`;
@@ -23719,8 +24125,8 @@ function unique4(values) {
 
 // src/core/execution/claude-provider.ts
 import { execFile as execFile2, spawn as spawn2 } from "node:child_process";
-import { mkdir as mkdir8, open as open3, readFile as readFile11, rename as rename3, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
-import path13 from "node:path";
+import { mkdir as mkdir9, open as open3, readFile as readFile12, rename as rename3, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
+import path15 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/execution/errors.ts
@@ -23817,11 +24223,11 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
     ];
     if (this.options.model) args.push("--model", this.options.model);
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path13.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
-    await mkdir8(artifactDir, { recursive: true });
-    const statusPath = path13.join(artifactDir, "status.json");
-    const stdoutPath = path13.join(artifactDir, "stdout.json");
-    const stderrPath = path13.join(artifactDir, "stderr.txt");
+    const artifactDir = path15.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    await mkdir9(artifactDir, { recursive: true });
+    const statusPath = path15.join(artifactDir, "status.json");
+    const stdoutPath = path15.join(artifactDir, "stdout.json");
+    const stderrPath = path15.join(artifactDir, "stderr.txt");
     const providerMetadata = {
       command: this.options.command ?? "claude",
       args,
@@ -23917,8 +24323,8 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
       const status = await readCollectibleStatus(handle);
       if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
       if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
-      const stdout = await readFile11(metadata.stdoutPath, "utf8").catch(() => "");
-      const stderr = await readFile11(metadata.stderrPath, "utf8").catch(() => "");
+      const stdout = await readFile12(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile12(metadata.stderrPath, "utf8").catch(() => "");
       if (status?.status === "failed") {
         throw withArtifactDiagnostics(new ExecutionError("provider_process_exited", "Claude CLI exited before returning a successful provider result."), handle, metadata, stdout, stderr, status);
       }
@@ -23953,7 +24359,7 @@ ${stderr}`;
 };
 async function writeStatus(statusPath, status) {
   const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile7(tempPath, `${JSON.stringify(status, null, 2)}
+  await writeFile8(tempPath, `${JSON.stringify(status, null, 2)}
 `, "utf8");
   await rename3(tempPath, statusPath);
 }
@@ -23962,7 +24368,7 @@ async function readPersistedStatus(handle) {
   if (!metadata) return void 0;
   try {
     await stat3(metadata.statusPath);
-    return JSON.parse(await readFile11(metadata.statusPath, "utf8"));
+    return JSON.parse(await readFile12(metadata.statusPath, "utf8"));
   } catch {
     return void 0;
   }
@@ -24536,8 +24942,8 @@ function errorDetails(error51) {
 
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { mkdir as mkdir9, rm as rm3, writeFile as writeFile8 } from "node:fs/promises";
-import path14 from "node:path";
+import { mkdir as mkdir10, rm as rm3, writeFile as writeFile9 } from "node:fs/promises";
+import path16 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -24633,17 +25039,17 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path14.resolve(workspacePath, edit.path);
-      const relative = path14.relative(workspacePath, target);
-      if (relative.startsWith("..") || path14.isAbsolute(relative)) {
+      const target = path16.resolve(workspacePath, edit.path);
+      const relative = path16.relative(workspacePath, target);
+      if (relative.startsWith("..") || path16.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir9(path14.dirname(target), { recursive: true });
-      await writeFile8(target, edit.content ?? "", "utf8");
+      await mkdir10(path16.dirname(target), { recursive: true });
+      await writeFile9(target, edit.content ?? "", "utf8");
     }
   }
   executionFromHandle(handle) {
@@ -24710,29 +25116,28 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.0-draft");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-draft");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-  const config2 = await ensureRepositoryConfig(root);
-  const report = await new ClaudeAdapter().install(root, config2, forceOwnedFiles);
+  const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
   console.log(`LeanRigor configured.`);
   console.log("Configuration files:");
   console.log(`  User config:          ~/.config/leanrigor/config.json`);
   console.log(`  Repository policy:    leanrigor.config.json (committed)`);
   console.log(`  Local config:         .leanrigor/config.json (private, never committed)`);
   console.log(`  ${claudeDefaultsBlurb()}`);
-  printInstallReport(report);
+  printBootstrapReport(result);
 });
 program2.command("uninstall").description("Remove LeanRigor-owned adapter files from a repository").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--remove-config", "also remove .leanrigor/config.json").action(async ({ root, adapter, removeConfig }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path15.join(root, ".leanrigor", "config.json");
+    const configPath = path17.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path15.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path17.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -24895,8 +25300,12 @@ program2.command("doctor").option("--root <path>", "repository root", process.cw
   console.log("  leanrigor config show");
   console.log("  leanrigor config show --json");
 });
-program2.command("init-report").description("Produce a deterministic structured configuration report").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured JSON report").action(async ({ root, json: json2 }) => {
-  const report = await buildInitReport(root);
+program2.command("init-report").description("Produce a deterministic structured configuration report").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured JSON report").option("--no-bootstrap", "skip automatic bootstrapping before generating report").action(async ({ root, json: json2, bootstrap: doBootstrap }) => {
+  let bootstrapResult = null;
+  if (doBootstrap !== false) {
+    bootstrapResult = await ensureBootstrapped(root);
+  }
+  const report = await buildInitReport(root, bootstrapResult);
   if (json2) {
     console.log(JSON.stringify(report, null, 2));
   } else {
@@ -24905,7 +25314,7 @@ program2.command("init-report").description("Produce a deterministic structured 
 });
 var flow = program2.command("flow").description("Run the persisted sequential LeanRigor workflow");
 flow.command("start").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, options) => {
-  const config2 = await ensureRepositoryConfig(options.root);
+  const { config: config2 } = await ensureBootstrapped(options.root);
   const state = await startFlow({
     request,
     root: options.root,
@@ -25146,10 +25555,16 @@ flow.command("list").option("--root <path>", "repository root", process.cwd()).a
 flow.command("cancel").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await cancelFlow(options.root, workflowId2, mutationOptions(options)));
 });
-function printInstallReport(report) {
+function printBootstrapReport(result) {
+  if (!result.report) return;
+  const report = result.report;
   if (report.installed.length > 0) {
     console.log("\nInstalled:");
     for (const f of report.installed) console.log(`  ${f}`);
+  }
+  if (report.adopted.length > 0) {
+    console.log("\nAdopted (content matched, ownership token added):");
+    for (const f of report.adopted) console.log(`  ${f}`);
   }
   if (report.alreadyCurrent.length > 0) {
     console.log("\nAlready current:");
@@ -25159,6 +25574,10 @@ function printInstallReport(report) {
     console.log("\nSkipped because file differs:");
     for (const f of report.skipped) console.log(`  ${f}`);
     console.log("\nUse `leanrigor init --adapter claude --force-owned-files` to replace only LeanRigor-owned files.");
+  }
+  if (report.settingsModified) {
+    console.log(`
+Shared settings: LeanRigor hook entries ${report.settingsState === "shared_merged" ? "merged" : report.settingsState}.`);
   }
 }
 function printUninstallReport(report) {
@@ -25276,7 +25695,7 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
 }
 async function executionProvider(providerName, scriptFile) {
   if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile12(path15.resolve(scriptFile), "utf8")) : {};
+    const scripts = scriptFile ? JSON.parse(await readFile13(path17.resolve(scriptFile), "utf8")) : {};
     return new ScriptedExecutionProvider(scripts);
   }
   if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
@@ -25375,7 +25794,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile12(path15.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile13(path17.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {

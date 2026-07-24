@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 4 -->
+<!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor-status
 
 Report concise human-readable LeanRigor workflow status.

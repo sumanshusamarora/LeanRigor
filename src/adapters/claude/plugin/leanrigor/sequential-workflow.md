@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 4 -->
+<!-- generated_by: leanrigor | asset_version: 5 -->
 # LeanRigor Conversational Workflow
 
 Use `leanrigor flow` as the persisted source of truth. Users should respond in

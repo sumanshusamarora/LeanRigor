@@ -9,6 +9,7 @@ import { formatModelTierLine } from "../../config/model-display.js";
 import { ensureGitignore, checkTrackedLeanrigorFiles, type GitignoreStatus } from "../../config/bootstrap.js";
 import { configFileExists, loadUserConfig, loadRepoPolicy } from "../../config/load.js";
 import { ConfigScope } from "../../config/config-scope.js";
+import { mergeLeanRigorHooks, removeLeanRigorHooks, checkSettingsState } from "./settings-merger.js";
 
 // ---------------------------------------------------------------------------
 // Asset inspection types
@@ -17,23 +18,41 @@ import { ConfigScope } from "../../config/config-scope.js";
 /** Structured result from asset inspection, reused by doctor and init-report. */
 export interface AssetInspectionResult {
   /** Per-asset manifest entries with their status. */
-  manifest: Array<{ dest: string; status: "current" | "missing" | "conflict" | "modified" }>;
+  manifest: Array<{ dest: string; status: "current" | "missing" | "conflict" | "modified" | "adoptable" }>;
   current: string[];
   modified: string[];
   missing: string[];
   conflicts: string[];
+  /** Files that exist without ownership but whose content matches the packaged version — safe to adopt. */
+  adoptable: string[];
   totalAvailable: number;
   installedCount: number;
-  /** Classified state of .claude/settings.json. */
-  settingsState: "shared_current" | "missing" | "shared_unowned" | "modified_owned";
+  /** Classified state of .claude/settings.json (from settings-merger). */
+  settingsState: "shared_current" | "shared_missing_leanrigor_entries" | "shared_conflicting_leanrigor_entries" | "shared_malformed" | "shared_unwritable" | "missing";
   settingsDetail: string;
   protectGitState: string;
   gitignoreStatus: GitignoreStatus;
   trackedLeanrigorFiles: string[];
 }
 
+/** Result from a bootstrap run. */
+export interface BootstrapReport {
+  /** Files that were installed (previously missing). */
+  installed: string[];
+  /** Files that were already current (no changes needed). */
+  alreadyCurrent: string[];
+  /** Files that were adopted (content matched but lacked ownership token). */
+  adopted: string[];
+  /** Files that were skipped (non-owned with different content, or user-modified owned files). */
+  skipped: string[];
+  /** Whether the .claude/settings.json was modified during bootstrap. */
+  settingsModified: boolean;
+  /** State of settings after bootstrap. */
+  settingsState: string;
+}
+
 /** Version stamp embedded in every generated asset. Increment when assets change in a breaking way. */
-export const ASSET_VERSION = 4;
+export const ASSET_VERSION = 5;
 
 /** String embedded in every LeanRigor-generated file for ownership detection. */
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";
@@ -96,6 +115,8 @@ function assetManifest(triageModel: string): Array<{ src: string; dest: string; 
     dest: path.join(".claude", "leanrigor", "methodology", file)
   }));
   return [
+    // protect-git.sh MUST come before settings.json to avoid the stale-hook catch-22
+    { src: path.join(plugin, "hooks", "protect-git.sh"),         dest: path.join(".claude", "leanrigor", "protect-git.sh") },
     { src: path.join(plugin, "commands", "leanrigor.md"),        dest: path.join(".claude", "commands", "leanrigor.md") },
     { src: path.join(plugin, "commands", "leanrigor-init.md"),   dest: path.join(".claude", "commands", "leanrigor-init.md") },
     { src: path.join(plugin, "commands", "leanrigor-plan.md"),   dest: path.join(".claude", "commands", "leanrigor-plan.md") },
@@ -108,10 +129,14 @@ function assetManifest(triageModel: string): Array<{ src: string; dest: string; 
       dest: path.join(".claude", "agents", "leanrigor-triage.md"),
       vars: { TRIAGE_MODEL: triageModel }
     },
-    { src: path.join(plugin, "hooks", "protect-git.sh"),         dest: path.join(".claude", "leanrigor", "protect-git.sh") },
     { src: path.join(plugin, "settings.json"),                   dest: path.join(".claude", "settings.json") },
     ...methodology
   ];
+}
+
+/** Asset manifest without the shared settings.json entry. Used by bootstrap. */
+function assetManifestWithoutSettings(triageModel: string): Array<{ src: string; dest: string; vars?: Record<string, string> }> {
+  return assetManifest(triageModel).filter((entry) => entry.dest !== ".claude/settings.json");
 }
 
 export class ClaudeAdapter implements HarnessAdapter {
@@ -160,10 +185,88 @@ export class ClaudeAdapter implements HarnessAdapter {
     return report;
   }
 
+  /**
+   * Bootstrap the LeanRigor project environment for first use.
+   *
+   * Ordering is critical:
+   * 1. Create directories
+   * 2. Install protect-git.sh first (avoid the stale-hook catch-22)
+   * 3. chmod +x protect-git.sh
+   * 4. Install remaining LeanRigor-owned assets (with content-equality adoption)
+   * 5. Merge LeanRigor hook entries into shared .claude/settings.json
+   *
+   * This method is safe to call repeatedly — already-current files are skipped.
+   */
+  async bootstrap(root: string, config: LeanRigorConfig, force = false): Promise<BootstrapReport> {
+    const triageModel = resolveModelTier(config.routing.triage, "claude", config).model ?? "haiku";
+    const manifest = assetManifestWithoutSettings(triageModel);
+    const report: BootstrapReport = {
+      installed: [],
+      alreadyCurrent: [],
+      adopted: [],
+      skipped: [],
+      settingsModified: false,
+      settingsState: "unknown",
+    };
+
+    // Install assets one at a time — only create directories when we're about to write
+    for (const entry of manifest) {
+      const targetPath = path.join(root, entry.dest);
+      let expected: string;
+      try {
+        expected = await readPackagedAsset(entry.src, entry.vars);
+      } catch {
+        // Source asset not readable — skip (e.g. bundled runtime without plugin files)
+        report.skipped.push(entry.dest);
+        continue;
+      }
+
+      let existing: string | undefined;
+      try { existing = await readFile(targetPath, "utf8"); } catch { /* file missing */ }
+
+      if (existing === undefined) {
+        // Missing — install
+        await mkdir(path.dirname(targetPath), { recursive: true });
+        await writeFile(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
+        report.installed.push(entry.dest);
+      } else if (sha256(existing) === sha256(expected)) {
+        // Content matches — current or adoptable
+        if (!isLeanRigorOwned(existing)) {
+          // Content-equal but no ownership token — adopt by adding the token
+          await adoptAsset(targetPath, expected);
+          await ensureExecutableIfHook(entry.dest, targetPath);
+          report.adopted.push(entry.dest);
+        } else {
+          // Already owned and current
+          await ensureExecutableIfHook(entry.dest, targetPath);
+          report.alreadyCurrent.push(entry.dest);
+        }
+      } else if (isLeanRigorOwned(existing) && force) {
+        // Owned, modified, force-replace
+        await writeFile(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
+        report.installed.push(entry.dest);
+      } else {
+        // Non-owned different content, or modified owned without force — skip
+        report.skipped.push(entry.dest);
+      }
+    }
+
+    // Merge LeanRigor hook entries into shared .claude/settings.json
+    const settingsPath = path.join(root, ".claude", "settings.json");
+    const packagedSettingsPath = path.join(pluginDir(), "settings.json");
+    const mergeResult = await mergeLeanRigorHooks(settingsPath, packagedSettingsPath);
+    report.settingsModified = mergeResult.modified;
+    report.settingsState = mergeResult.state;
+
+    return report;
+  }
+
   async uninstall(root: string): Promise<UninstallReport> {
     const config = await loadConfigForUninstall(root);
     const triageModel = resolveModelTier(config.routing.triage, "claude", config).model ?? "haiku";
-    const manifest = assetManifest(triageModel);
+    const manifest = assetManifestWithoutSettings(triageModel);
     const report: UninstallReport = { removed: [], skipped: [] };
 
     for (const entry of manifest) {
@@ -205,6 +308,11 @@ export class ClaudeAdapter implements HarnessAdapter {
       }
       await removeIfEmpty(claudeDir);
     }
+
+    // Remove LeanRigor hook entries from shared .claude/settings.json
+    // (do NOT delete the file — it is shared with other Claude Code settings)
+    const settingsPath = path.join(root, ".claude", "settings.json");
+    await removeLeanRigorHooks(settingsPath);
 
     return report;
   }
@@ -268,7 +376,8 @@ export class ClaudeAdapter implements HarnessAdapter {
     // Asset summary
     output.push("");
     output.push(`Claude assets installed: ${inspection.installedCount}/${inspection.totalAvailable}`);
-    if (inspection.missing.length === 0 && inspection.conflicts.length === 0 && inspection.modified.length === 0) {
+    const assetIssues = [...inspection.missing, ...inspection.conflicts, ...inspection.modified];
+    if (assetIssues.length === 0) {
       output.push("Status: current");
     } else {
       output.push("Status: incomplete or needs attention");
@@ -277,10 +386,13 @@ export class ClaudeAdapter implements HarnessAdapter {
     if (inspection.current.length > 0) {
       output.push("");
       output.push("Current:");
-      for (const f of inspection.current) {
-        const suffix = isSettingsJson(f) ? " (LeanRigor-managed; coexists with user settings)" : "";
-        output.push(`  ${f}${suffix}`);
-      }
+      for (const f of inspection.current) output.push(`  ${f}`);
+    }
+
+    if (inspection.adoptable.length > 0) {
+      output.push("");
+      output.push("Adoptable (content matches packaged version, safe to adopt on next bootstrap):");
+      for (const f of inspection.adoptable) output.push(`  ${f}`);
     }
 
     // Git protection hook — reported individually
@@ -290,7 +402,8 @@ export class ClaudeAdapter implements HarnessAdapter {
 
     if (inspection.missing.length > 0) {
       output.push("");
-      output.push("Missing (run `leanrigor init --adapter claude` to install):");
+      const cmd = isMarketplaceRuntime() ? "next LeanRigor command" : "`leanrigor init --adapter claude`";
+      output.push(`Missing (will be repaired automatically by ${cmd}):`);
       for (const f of inspection.missing) output.push(`  ${f}`);
     }
     if (inspection.modified.length > 0) {
@@ -309,6 +422,12 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push("");
     output.push("Shared configuration:");
     output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
+
+    // Bootstrap health
+    output.push("");
+    const bootstrapped = inspection.missing.length === 0 && inspection.adoptable.length === 0
+      && (inspection.settingsState === "shared_current");
+    output.push(`Project bootstrap: ${bootstrapped ? "complete" : inspection.missing.length > 0 ? "incomplete" : "repairable"}`);
 
     // Workflow settings
     output.push("");
@@ -340,12 +459,16 @@ export class ClaudeAdapter implements HarnessAdapter {
     const modified: string[] = [];
     const missing: string[] = [];
     const conflicts: string[] = [];
+    const adoptable: string[] = [];
     let protectGitState = "missing";
 
     for (const entry of manifest) {
       const targetPath = path.join(root, entry.dest);
       let existing: string | undefined;
       try { existing = await readFile(targetPath, "utf8"); } catch { /* missing */ }
+
+      // settings.json is handled separately via the settings-merger
+      if (isSettingsJson(entry.dest)) continue;
 
       if (existing === undefined) {
         missing.push(entry.dest);
@@ -357,9 +480,21 @@ export class ClaudeAdapter implements HarnessAdapter {
       installedCount += 1;
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
       if (!isLeanRigorOwned(existing)) {
-        conflicts.push(entry.dest);
-        manifestEntries.push({ dest: entry.dest, status: "conflict" });
-        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
+        // Check for content-equality: if the file matches the packaged version exactly,
+        // it's adoptable rather than a conflict (e.g. manually copied protect-git.sh).
+        if (expected !== undefined && sha256(existing) === sha256(expected)) {
+          adoptable.push(entry.dest);
+          manifestEntries.push({ dest: entry.dest, status: "adoptable" });
+          if (isProtectGit(entry.dest)) {
+            protectGitState = await isExecutable(targetPath)
+              ? "adoptable and executable"
+              : "adoptable but not executable";
+          }
+        } else {
+          conflicts.push(entry.dest);
+          manifestEntries.push({ dest: entry.dest, status: "conflict" });
+          if (isProtectGit(entry.dest)) protectGitState = "content differs from packaged version (not LeanRigor-owned)";
+        }
       } else if (expected !== undefined && sha256(existing) === sha256(expected)) {
         current.push(entry.dest);
         manifestEntries.push({ dest: entry.dest, status: "current" });
@@ -375,8 +510,12 @@ export class ClaudeAdapter implements HarnessAdapter {
       }
     }
 
-    const settingsState = deriveSettingsState(missing, conflicts, modified);
-    const settingsDetail = describeSettingsState(missing, conflicts, modified);
+    // Use the settings-merger for actual .claude/settings.json state detection
+    const settingsPath = path.join(root, ".claude", "settings.json");
+    const packagedSettingsPath = path.join(pluginDir(), "settings.json");
+    const settingsCheck = await checkSettingsState(settingsPath, packagedSettingsPath);
+    const settingsState = settingsCheck.state;
+    const settingsDetail = settingsCheck.detail;
 
     const gitignoreStatus = await ensureGitignore(path.join(root, ".leanrigor"));
     const trackedFiles = await checkTrackedLeanrigorFiles(root);
@@ -387,7 +526,8 @@ export class ClaudeAdapter implements HarnessAdapter {
       modified,
       missing,
       conflicts,
-      totalAvailable: manifest.length,
+      adoptable,
+      totalAvailable: manifest.filter((e) => !isSettingsJson(e.dest)).length,
       installedCount,
       settingsState,
       settingsDetail,
@@ -406,30 +546,13 @@ function isSettingsJson(dest: string): boolean {
   return dest === ".claude/settings.json";
 }
 
-function deriveSettingsState(
-  missing: string[],
-  conflicts: string[],
-  modified: string[],
-): AssetInspectionResult["settingsState"] {
-  const settingsPath = ".claude/settings.json";
-  if (missing.includes(settingsPath)) return "missing";
-  if (conflicts.includes(settingsPath)) return "shared_unowned";
-  if (modified.includes(settingsPath)) return "modified_owned";
-  return "shared_current";
-}
-
-function describeSettingsState(
-  missing: string[],
-  conflicts: string[],
-  modified: string[],
-): string {
-  const state = deriveSettingsState(missing, conflicts, modified);
-  switch (state) {
-    case "missing": return "missing";
-    case "shared_unowned": return "present but not LeanRigor-owned (shared configuration)";
-    case "modified_owned": return "modified (LeanRigor hook entries may have local changes)";
-    case "shared_current": return "current (LeanRigor hook entries present; coexists with user settings)";
-  }
+/**
+ * Adopt a content-equal file that lacks LeanRigor ownership.
+ * Writes the packaged asset (which includes the ownership token) to the target,
+ * effectively converting a manually-copied file into a LeanRigor-owned one.
+ */
+async function adoptAsset(targetPath: string, expectedContent: string): Promise<void> {
+  await writeFile(targetPath, expectedContent, "utf8");
 }
 
 async function ensureExecutableIfHook(dest: string, targetPath: string): Promise<void> {
@@ -487,11 +610,16 @@ async function readPackageVersion(): Promise<string> {
 }
 
 function runtimeSource(): string {
-  if (process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
-    return "marketplace plugin runtime";
-  }
+  if (isMarketplaceRuntime()) return "marketplace plugin runtime";
   if (process.argv[1]?.includes(`${path.sep}node_modules${path.sep}`)) return "npm package CLI";
   return "local development or global CLI";
+}
+
+/** Detect if the runtime was launched from the Claude marketplace plugin. */
+export function isMarketplaceRuntime(): boolean {
+  return process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin"
+    || Boolean(process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT)
+    || Boolean(process.env.CLAUDE_PLUGIN_ROOT);
 }
 
 /** Load config for uninstall without crashing if config is missing. */

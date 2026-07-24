@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "leanrigor",
   "displayName": "LeanRigor",
-  "version": "0.3.0-draft",
+  "version": "0.3.1-draft",
   "description": "Adaptive rigor and model routing for persisted Claude Code engineering workflows.",
   "author": {
     "name": "Sam Arora"

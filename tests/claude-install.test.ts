@@ -287,12 +287,16 @@ describe("Claude plugin uninstall", () => {
     await adapter.install(root, defaultConfig());
     const report = await adapter.uninstall(root);
 
-    expect(report.removed).toHaveLength(EXPECTED_DEST_PATHS.length);
+    // settings.json is shared — it is handled via removeLeanRigorHooks, not removed as a file
+    const fileDestPaths = EXPECTED_DEST_PATHS.filter(p => p !== path.join(".claude", "settings.json"));
+    expect(report.removed).toHaveLength(fileDestPaths.length);
     expect(report.skipped).toHaveLength(0);
 
-    for (const dest of EXPECTED_DEST_PATHS) {
+    for (const dest of fileDestPaths) {
       await expect(stat(path.join(root, dest))).rejects.toMatchObject({ code: "ENOENT" });
     }
+    // settings.json should still exist (shared file, hooks removed)
+    await expect(stat(path.join(root, ".claude", "settings.json"))).resolves.toBeDefined();
   });
 
   it("preserves user-modified owned files during uninstall", async () => {
@@ -344,7 +348,9 @@ describe("Claude plugin doctor", () => {
     expect(text).toContain("Git protection hook:");
     expect(text).toContain("current and executable");
     expect(text).toContain(`LeanRigor CLI:`);
-    expect(text).toContain(`Claude assets installed: ${EXPECTED_DEST_PATHS.length}/${EXPECTED_DEST_PATHS.length}`);
+    // settings.json is excluded from total (handled by settings-merger)
+    const assetCount = EXPECTED_DEST_PATHS.filter(p => p !== path.join(".claude", "settings.json")).length;
+    expect(text).toContain(`Claude assets installed: ${assetCount}/${assetCount}`);
   });
 
   it("detects an installed but non-executable hook", async () => {

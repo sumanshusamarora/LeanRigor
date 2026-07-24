@@ -137,8 +137,8 @@ describe("buildInitReport — settings", () => {
 
     const report = await buildInitReport(root);
 
-    // Settings should be classified as shared_unowned, not conflict-warning
-    expect(report.settings.status).toBe("shared_unowned");
+    // Settings should be classified as shared_missing_leanrigor_entries, not conflict
+    expect(report.settings.status).toBe("shared_missing_leanrigor_entries");
   });
 
   it("produces no warnings for unrelated .claude/settings.json content", async () => {

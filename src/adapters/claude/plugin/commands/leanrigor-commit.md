@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 4 -->
+<!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor-commit
 
 Show the persisted LeanRigor commit proposal without executing it.

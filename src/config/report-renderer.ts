@@ -16,6 +16,17 @@ export function renderInitReport(report: InitReport): string {
   lines.push("=== LeanRigor Configuration ===");
   lines.push("");
 
+  // --- Bootstrap summary (if bootstrapping ran before this report) ---
+  if (report.bootstrap?.bootstrapped) {
+    lines.push("LeanRigor project bootstrap completed.");
+    const parts: string[] = [];
+    if (report.bootstrap.installed > 0) parts.push(`Installed: ${report.bootstrap.installed} assets`);
+    if (report.bootstrap.adopted > 0) parts.push(`Adopted: ${report.bootstrap.adopted} files`);
+    if (report.bootstrap.settingsModified) parts.push("Shared settings: LeanRigor entries merged");
+    lines.push(parts.join(". ") || "No changes needed.");
+    lines.push("");
+  }
+
   // --- Configuration files ---
   renderConfigFiles(report, lines);
 
@@ -40,7 +51,7 @@ export function renderInitReport(report: InitReport): string {
   // --- Shared settings ---
   lines.push("");
   lines.push("Shared configuration:");
-  lines.push(renderSettingsState(report.settings));
+  lines.push(renderSettingsState(report.settings, report.isMarketplace));
 
   // --- Asset drift ---
   lines.push("");
@@ -50,6 +61,7 @@ export function renderInitReport(report: InitReport): string {
   lines.push(`  current: ${report.assets.current.length}`);
   lines.push(`  modified: ${report.assets.modified.length}`);
   lines.push(`  missing: ${report.assets.missing.length}`);
+  lines.push(`  adoptable: ${report.assets.adoptable.length}`);
   lines.push(`  conflicts: ${report.assets.conflicts.length}`);
 
   if (report.assets.modified.length > 0) {
@@ -63,8 +75,20 @@ export function renderInitReport(report: InitReport): string {
 
   if (report.assets.missing.length > 0) {
     lines.push("");
-    lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    if (report.isMarketplace) {
+      lines.push("Missing assets (will be repaired automatically on next command):");
+    } else {
+      lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    }
     for (const f of report.assets.missing) {
+      lines.push(`  ${f}`);
+    }
+  }
+
+  if (report.assets.adoptable.length > 0) {
+    lines.push("");
+    lines.push("Adoptable assets (content matches packaged version, safe to adopt on next bootstrap):");
+    for (const f of report.assets.adoptable) {
       lines.push(`  ${f}`);
     }
   }
@@ -166,7 +190,7 @@ function renderModelTable(
   return [header, sep, body].join("\n");
 }
 
-function renderSettingsState(settings: InitReport["settings"]): string {
+function renderSettingsState(settings: InitReport["settings"], isMarketplace: boolean): string {
   const lines: string[] = [];
   lines.push(`  ${settings.path}: ${settings.detail}`);
 
@@ -176,19 +200,35 @@ function renderSettingsState(settings: InitReport["settings"]): string {
       lines.push("  LeanRigor-owned hook entries are current.");
       lines.push("  Unrelated user settings were preserved.");
       break;
-    case "shared_unowned":
+    case "shared_missing_leanrigor_entries":
       lines.push("  .claude/settings.json is shared Claude Code configuration.");
       lines.push("  The file exists but does not contain LeanRigor-owned hook entries.");
-      lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
+      if (!isMarketplace) {
+        lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
+      } else {
+        lines.push("  LeanRigor hook entries will be merged on next bootstrap.");
+      }
+      break;
+    case "shared_conflicting_leanrigor_entries":
+      lines.push("  .claude/settings.json is shared Claude Code configuration.");
+      lines.push("  LeanRigor-owned hook entries are present but differ from expected.");
+      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
       break;
     case "missing":
       lines.push("  .claude/settings.json is missing.");
-      lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
+      if (!isMarketplace) {
+        lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
+      } else {
+        lines.push("  Will be created with LeanRigor hook entries on next bootstrap.");
+      }
       break;
-    case "modified_owned":
-      lines.push("  .claude/settings.json is shared Claude Code configuration.");
-      lines.push("  LeanRigor-owned hook entries have local modifications.");
-      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+    case "shared_malformed":
+      lines.push("  .claude/settings.json exists but is not valid JSON.");
+      lines.push("  Fix the file manually before LeanRigor can manage its hook entries.");
+      break;
+    case "shared_unwritable":
+      lines.push("  .claude/settings.json cannot be read or written.");
+      lines.push("  Check file permissions and try again.");
       break;
   }
 

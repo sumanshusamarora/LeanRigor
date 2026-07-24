@@ -8,12 +8,13 @@ import { ClaudeAdapter } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
 import { runTriage } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
-import type { InstallReport, UninstallReport } from "../adapters/types.js";
+import type { UninstallReport } from "../adapters/types.js";
 import { resolveEffectiveConfig, formatEffectiveConfig } from "../config/resolver.js";
 import { claudeDefaultsBlurb } from "../config/model-display.js";
 import { buildInitReport } from "../config/init-report.js";
 import { renderInitReport } from "../config/report-renderer.js";
 import { ensureRepositoryConfig, writeConfig } from "../config/bootstrap.js";
+import { ensureBootstrapped, type EnsureBootstrappedResult } from "../core/bootstrap.js";
 import { atomicWriteJson } from "../config/atomic-write.js";
 import { ConfigScope, scopePath, REPO_POLICY_FORBIDDEN_KEYS } from "../config/config-scope.js";
 import { loadUserConfig, loadRepoPolicy, loadLocalConfig } from "../config/load.js";
@@ -72,7 +73,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.0-draft");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-draft");
 
 program.command("setup")
   .alias("init")
@@ -82,16 +83,14 @@ program.command("setup")
   .option("--force-owned-files", "replace LeanRigor-owned files that have local changes")
   .action(async ({ root, adapter, forceOwnedFiles }) => {
     if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-    // Bootstrap .leanrigor/ with .gitignore and config
-    const config = await ensureRepositoryConfig(root);
-    const report = await new ClaudeAdapter().install(root, config, forceOwnedFiles as boolean);
+    const result = await ensureBootstrapped(root, { force: forceOwnedFiles as boolean });
     console.log(`LeanRigor configured.`);
     console.log("Configuration files:");
     console.log(`  User config:          ~/.config/leanrigor/config.json`);
     console.log(`  Repository policy:    leanrigor.config.json (committed)`);
     console.log(`  Local config:         .leanrigor/config.json (private, never committed)`);
     console.log(`  ${claudeDefaultsBlurb()}`);
-    printInstallReport(report);
+    printBootstrapReport(result);
   });
 
 program.command("uninstall")
@@ -345,8 +344,14 @@ program.command("init-report")
   .description("Produce a deterministic structured configuration report")
   .option("--root <path>", "repository root", process.cwd())
   .option("--json", "print structured JSON report")
-  .action(async ({ root, json }) => {
-    const report = await buildInitReport(root);
+  .option("--no-bootstrap", "skip automatic bootstrapping before generating report")
+  .action(async ({ root, json, bootstrap: doBootstrap }) => {
+    // Bootstrap missing assets before generating the report (unless --no-bootstrap)
+    let bootstrapResult: EnsureBootstrappedResult | null = null;
+    if (doBootstrap !== false) {
+      bootstrapResult = await ensureBootstrapped(root);
+    }
+    const report = await buildInitReport(root, bootstrapResult);
     if (json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
@@ -361,7 +366,8 @@ flow.command("start")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .action(async (request, options) => {
-    const config = await ensureRepositoryConfig(options.root);
+    // Bootstrap project environment before starting the workflow
+    const { config } = await ensureBootstrapped(options.root);
     const state = await startFlow({
       request,
       root: options.root,
@@ -879,10 +885,16 @@ flow.command("cancel")
 // Helpers
 // ---------------------------------------------------------------------------
 
-function printInstallReport(report: InstallReport): void {
+function printBootstrapReport(result: EnsureBootstrappedResult): void {
+  if (!result.report) return;
+  const report = result.report;
   if (report.installed.length > 0) {
     console.log("\nInstalled:");
     for (const f of report.installed) console.log(`  ${f}`);
+  }
+  if (report.adopted.length > 0) {
+    console.log("\nAdopted (content matched, ownership token added):");
+    for (const f of report.adopted) console.log(`  ${f}`);
   }
   if (report.alreadyCurrent.length > 0) {
     console.log("\nAlready current:");
@@ -892,6 +904,9 @@ function printInstallReport(report: InstallReport): void {
     console.log("\nSkipped because file differs:");
     for (const f of report.skipped) console.log(`  ${f}`);
     console.log("\nUse `leanrigor init --adapter claude --force-owned-files` to replace only LeanRigor-owned files.");
+  }
+  if (report.settingsModified) {
+    console.log(`\nShared settings: LeanRigor hook entries ${report.settingsState === "shared_merged" ? "merged" : report.settingsState}.`);
   }
 }
 
