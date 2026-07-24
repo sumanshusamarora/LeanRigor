@@ -19203,6 +19203,19 @@ function formatAllModelTiers(harness, config2) {
 function claudeDefaultsBlurb() {
   return "Claude adapter defaults: small \u2192 haiku, medium \u2192 sonnet, large \u2192 opus";
 }
+function formatModelTierJson(tier, harness, config2) {
+  const resolved = resolveModelTier(tier, harness, config2);
+  const model = resolved.resolvedModel ?? resolved.model;
+  return {
+    tier,
+    adapter: harness,
+    adapterAlias: resolved.adapterAlias ?? null,
+    resolvedModel: model ?? null,
+    source: resolved.source,
+    sourceLabel: modelSourceLabel(resolved.source, tier, harness),
+    isClaudeAlias: resolved.adapterAlias !== void 0 && resolved.adapterAlias === model
+  };
+}
 
 // src/config/bootstrap.ts
 init_schema();
@@ -19438,13 +19451,12 @@ var ClaudeAdapter = class {
     output.push(`  Repository policy (leanrigor.config.json): ${repoPolicy ? "found" : "not found"}`);
     const localExists = await configFileExists(ConfigScope.Local, root);
     output.push(`  Local config (.leanrigor/config.json): ${localExists ? "found" : "not found (using defaults)"}`);
+    const inspection = await this.inspectAssets(root, config2);
     output.push("");
-    const gitignoreStatus = await ensureGitignore(path5.join(root, ".leanrigor"));
-    output.push(gitignoreStatus.message);
-    const trackedFiles = await checkTrackedLeanrigorFiles(root);
-    if (trackedFiles.length > 0) {
-      output.push(`\u26A0 WARNING: ${trackedFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
-      for (const file2 of trackedFiles) {
+    output.push(inspection.gitignoreStatus.message);
+    if (inspection.trackedLeanrigorFiles.length > 0) {
+      output.push(`\u26A0 WARNING: ${inspection.trackedLeanrigorFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
+      for (const file2 of inspection.trackedLeanrigorFiles) {
         output.push(`  .leanrigor/${file2}`);
       }
       output.push("  These files contain private runtime state and should not be committed.");
@@ -19469,79 +19481,43 @@ var ClaudeAdapter = class {
         output.push(`  ${tier}: ERROR \u2014 ${error51.message}`);
       }
     }
-    const triageModel = resolveModelTier(config2.routing.triage, "claude", config2).model ?? "haiku";
-    const manifest = assetManifest(triageModel);
-    let installedCount = 0;
-    const missingAssets = [];
-    const currentAssets = [];
-    const conflictAssets = [];
-    const modifiedOwnedAssets = [];
-    let protectGitState = "missing";
-    for (const entry of manifest) {
-      const targetPath = path5.join(root, entry.dest);
-      let existing;
-      try {
-        existing = await readFile4(targetPath, "utf8");
-      } catch {
-      }
-      if (existing === void 0) {
-        missingAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "missing";
-        continue;
-      }
-      installedCount += 1;
-      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
-      if (!isLeanRigorOwned(existing)) {
-        conflictAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
-      } else if (expected !== void 0 && sha256(existing) === sha256(expected)) {
-        currentAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) {
-          protectGitState = await isExecutable(targetPath) ? "current and executable" : "installed but not executable";
-        }
-      } else {
-        modifiedOwnedAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
-      }
-    }
-    const totalAvailable = manifest.length;
     output.push("");
-    output.push(`Claude assets installed: ${installedCount}/${totalAvailable}`);
-    if (missingAssets.length === 0 && conflictAssets.length === 0 && modifiedOwnedAssets.length === 0) {
+    output.push(`Claude assets installed: ${inspection.installedCount}/${inspection.totalAvailable}`);
+    if (inspection.missing.length === 0 && inspection.conflicts.length === 0 && inspection.modified.length === 0) {
       output.push("Status: current");
     } else {
       output.push("Status: incomplete or needs attention");
     }
-    if (currentAssets.length > 0) {
+    if (inspection.current.length > 0) {
       output.push("");
       output.push("Current:");
-      for (const f of currentAssets) {
+      for (const f of inspection.current) {
         const suffix = isSettingsJson(f) ? " (LeanRigor-managed; coexists with user settings)" : "";
         output.push(`  ${f}${suffix}`);
       }
     }
     output.push("");
     output.push("Git protection hook:");
-    output.push(`  ${protectGitState}`);
-    if (missingAssets.length > 0) {
+    output.push(`  ${inspection.protectGitState}`);
+    if (inspection.missing.length > 0) {
       output.push("");
       output.push("Missing (run `leanrigor init --adapter claude` to install):");
-      for (const f of missingAssets) output.push(`  ${f}`);
+      for (const f of inspection.missing) output.push(`  ${f}`);
     }
-    if (modifiedOwnedAssets.length > 0) {
+    if (inspection.modified.length > 0) {
       output.push("");
       output.push("Modified (LeanRigor-owned files with local changes):");
-      for (const f of modifiedOwnedAssets) output.push(`  ${f}`);
+      for (const f of inspection.modified) output.push(`  ${f}`);
       output.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
     }
-    if (conflictAssets.length > 0) {
+    if (inspection.conflicts.length > 0) {
       output.push("");
       output.push("Conflict (non-LeanRigor files in expected locations):");
-      for (const f of conflictAssets) output.push(`  ${f}`);
+      for (const f of inspection.conflicts) output.push(`  ${f}`);
     }
     output.push("");
     output.push("Shared configuration:");
-    output.push(`  .claude/settings.json: ${describeSettingsState(missingAssets, conflictAssets, modifiedOwnedAssets)}`);
+    output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
     output.push("");
     output.push(`Automatic triage: ${config2.workflow.automaticTriage ? "enabled" : "disabled"}`);
     output.push("");
@@ -19553,6 +19529,70 @@ var ClaudeAdapter = class {
     output.push("  Change local setting:  leanrigor config set <path> <value> --scope local");
     return output;
   }
+  /**
+   * Inspect installed plugin assets and return structured status.
+   * Fact-only: no speculation about why files differ.
+   */
+  async inspectAssets(root, config2) {
+    const triageModel = resolveModelTier(config2.routing.triage, "claude", config2).model ?? "haiku";
+    const manifest = assetManifest(triageModel);
+    const manifestEntries = [];
+    let installedCount = 0;
+    const current = [];
+    const modified = [];
+    const missing = [];
+    const conflicts = [];
+    let protectGitState = "missing";
+    for (const entry of manifest) {
+      const targetPath = path5.join(root, entry.dest);
+      let existing;
+      try {
+        existing = await readFile4(targetPath, "utf8");
+      } catch {
+      }
+      if (existing === void 0) {
+        missing.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "missing" });
+        if (isProtectGit(entry.dest)) protectGitState = "missing";
+        continue;
+      }
+      installedCount += 1;
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
+      if (!isLeanRigorOwned(existing)) {
+        conflicts.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "conflict" });
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
+      } else if (expected !== void 0 && sha256(existing) === sha256(expected)) {
+        current.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "current" });
+        if (isProtectGit(entry.dest)) {
+          protectGitState = await isExecutable(targetPath) ? "current and executable" : "installed but not executable";
+        }
+      } else {
+        modified.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "modified" });
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
+      }
+    }
+    const settingsState = deriveSettingsState(missing, conflicts, modified);
+    const settingsDetail = describeSettingsState(missing, conflicts, modified);
+    const gitignoreStatus = await ensureGitignore(path5.join(root, ".leanrigor"));
+    const trackedFiles = await checkTrackedLeanrigorFiles(root);
+    return {
+      manifest: manifestEntries,
+      current,
+      modified,
+      missing,
+      conflicts,
+      totalAvailable: manifest.length,
+      installedCount,
+      settingsState,
+      settingsDetail,
+      protectGitState,
+      gitignoreStatus,
+      trackedLeanrigorFiles: trackedFiles
+    };
+  }
 };
 function isProtectGit(dest) {
   return dest === PROTECT_GIT_DEST;
@@ -19560,12 +19600,25 @@ function isProtectGit(dest) {
 function isSettingsJson(dest) {
   return dest === ".claude/settings.json";
 }
-function describeSettingsState(missing, conflicts, modified) {
+function deriveSettingsState(missing, conflicts, modified) {
   const settingsPath = ".claude/settings.json";
   if (missing.includes(settingsPath)) return "missing";
-  if (conflicts.includes(settingsPath)) return "present but not LeanRigor-owned (shared configuration)";
-  if (modified.includes(settingsPath)) return "modified (LeanRigor hook entries may have local changes)";
-  return "current (LeanRigor hook entries present; coexists with user settings)";
+  if (conflicts.includes(settingsPath)) return "shared_unowned";
+  if (modified.includes(settingsPath)) return "modified_owned";
+  return "shared_current";
+}
+function describeSettingsState(missing, conflicts, modified) {
+  const state = deriveSettingsState(missing, conflicts, modified);
+  switch (state) {
+    case "missing":
+      return "missing";
+    case "shared_unowned":
+      return "present but not LeanRigor-owned (shared configuration)";
+    case "modified_owned":
+      return "modified (LeanRigor hook entries may have local changes)";
+    case "shared_current":
+      return "current (LeanRigor hook entries present; coexists with user settings)";
+  }
 }
 async function ensureExecutableIfHook(dest, targetPath) {
   if (isProtectGit(dest)) await chmod(targetPath, 493);
@@ -20335,6 +20388,317 @@ function scopeLabel(source) {
     case ConfigScope.Builtin:
       return "built-in default";
   }
+}
+
+// src/config/init-report.ts
+init_config_scope();
+init_load();
+init_config_scope();
+var VALID_EXAMPLES = [
+  // User-level (userConfigSchema)
+  {
+    description: "Set personal small-tier model for all repos",
+    path: "models.claude.small",
+    example: '"claude-haiku-4-5"',
+    scope: "user"
+  },
+  {
+    description: "Set personal medium-tier model for all repos",
+    path: "models.claude.medium",
+    example: '"claude-sonnet-5"',
+    scope: "user"
+  },
+  {
+    description: "Set personal large-tier model for all repos",
+    path: "models.claude.large",
+    example: '"claude-opus-4-8"',
+    scope: "user"
+  },
+  {
+    description: "Increase personal parallelism",
+    path: "execution.parallelism",
+    example: "4",
+    scope: "user"
+  },
+  {
+    description: "Set personal execution verbosity",
+    path: "execution.verbosity",
+    example: '"verbose"',
+    scope: "user"
+  },
+  // Repo policy (repoPolicyConfigSchema — no concrete model IDs)
+  {
+    description: "Set project default workflow mode",
+    path: "workflow.defaultMode",
+    example: '"standard"',
+    scope: "repo"
+  },
+  {
+    description: "Set minimum review level for rigorous mode",
+    path: "review.rigorous",
+    example: '"specialist"',
+    scope: "repo"
+  },
+  {
+    description: "Require completion evidence across all modes",
+    path: "safety.requireEvidence",
+    example: "true",
+    scope: "repo"
+  },
+  {
+    description: "Add paths that trigger rigorous review",
+    path: "safety.rigorousPaths",
+    example: '["auth/**", "payments/**"]',
+    scope: "repo"
+  },
+  {
+    description: "Set minimum planning tier for the team",
+    path: "minimumTiers.planning",
+    example: '"medium"',
+    scope: "repo"
+  },
+  {
+    description: "Set minimum review level for standard mode",
+    path: "review.standard",
+    example: '"deep"',
+    scope: "repo"
+  },
+  {
+    description: "Set testing requirement for public API changes",
+    path: "testing.publicApi",
+    example: '"contract-required"',
+    scope: "repo"
+  },
+  // Local (leanRigorConfigSchema — full schema)
+  {
+    description: "Set local max parallel phases (this repo only)",
+    path: "execution.maxParallelPhases",
+    example: "2",
+    scope: "local"
+  },
+  {
+    description: "Set local default workflow mode",
+    path: "workflow.defaultMode",
+    example: '"fast"',
+    scope: "local"
+  },
+  {
+    description: "Set local poll interval for execution",
+    path: "execution.pollIntervalSeconds",
+    example: "10",
+    scope: "local"
+  },
+  {
+    description: "Set local phase lease timeout",
+    path: "execution.phaseLeaseTimeoutSeconds",
+    example: "1800",
+    scope: "local"
+  }
+];
+function buildExampleCommands() {
+  return VALID_EXAMPLES.map((entry) => ({
+    description: entry.description,
+    command: `leanrigor config set ${entry.path} ${entry.example} --scope ${entry.scope}`,
+    scope: entry.scope
+  }));
+}
+async function buildInitReport(root) {
+  const effective = await resolveEffectiveConfig(root);
+  const userConfig = await loadUserConfig();
+  const repoPolicy = await loadRepoPolicy(root);
+  const localExists = await configFileExists(ConfigScope.Local, root);
+  const configurationFiles = {
+    user: {
+      path: scopePath(ConfigScope.User, ""),
+      status: userConfig ? "found" : "missing"
+    },
+    repositoryPolicy: {
+      path: scopePath(ConfigScope.RepoPolicy, root),
+      status: repoPolicy ? "found" : "missing"
+    },
+    local: {
+      path: scopePath(ConfigScope.Local, root),
+      status: localExists ? "found" : "missing"
+    }
+  };
+  const models = ["small", "medium", "large"].map((tier) => {
+    const json2 = formatModelTierJson(tier, "claude", effective.values);
+    return {
+      tier: json2.tier,
+      adapter: json2.adapter,
+      adapterAlias: json2.adapterAlias,
+      resolvedModel: json2.resolvedModel,
+      source: json2.sourceLabel,
+      sourceCode: json2.source
+    };
+  });
+  const execution = {};
+  for (const [key, entry] of effective.provenance) {
+    if (key.startsWith("execution.")) {
+      execution[key] = { value: entry.value, source: entry.source };
+    }
+  }
+  const inspection = await new ClaudeAdapter().inspectAssets(root, effective.values);
+  return {
+    configurationFiles,
+    gitignore: inspection.gitignoreStatus,
+    models,
+    execution,
+    assets: {
+      current: inspection.current,
+      modified: inspection.modified,
+      missing: inspection.missing,
+      conflicts: inspection.conflicts,
+      totalAvailable: inspection.totalAvailable,
+      installedCount: inspection.installedCount
+    },
+    settings: {
+      path: ".claude/settings.json",
+      status: inspection.settingsState,
+      detail: inspection.settingsDetail
+    },
+    constraints: effective.constraints,
+    warnings: effective.warnings,
+    validExamples: buildExampleCommands()
+  };
+}
+
+// src/config/report-renderer.ts
+function renderInitReport(report) {
+  const lines = [];
+  lines.push("=== LeanRigor Configuration ===");
+  lines.push("");
+  renderConfigFiles(report, lines);
+  lines.push(`.leanrigor/.gitignore: ${report.gitignore.message}`);
+  lines.push("");
+  lines.push("Model tier resolution:");
+  lines.push(renderModelTable(report.models));
+  if (Object.keys(report.execution).length > 0) {
+    lines.push("");
+    lines.push("Execution:");
+    for (const [key, entry] of Object.entries(report.execution)) {
+      const shortKey = key.replace("execution.", "");
+      lines.push(`  ${shortKey}: ${JSON.stringify(entry.value)} (source: ${entry.source})`);
+    }
+  }
+  lines.push("");
+  lines.push("Shared configuration:");
+  lines.push(renderSettingsState(report.settings));
+  lines.push("");
+  lines.push("LeanRigor-managed assets:");
+  lines.push(`  total available: ${report.assets.totalAvailable}`);
+  lines.push(`  installed: ${report.assets.installedCount}`);
+  lines.push(`  current: ${report.assets.current.length}`);
+  lines.push(`  modified: ${report.assets.modified.length}`);
+  lines.push(`  missing: ${report.assets.missing.length}`);
+  lines.push(`  conflicts: ${report.assets.conflicts.length}`);
+  if (report.assets.modified.length > 0) {
+    lines.push("");
+    lines.push("Modified assets (LeanRigor-owned files with local changes):");
+    for (const f of report.assets.modified) {
+      lines.push(`  ${f}`);
+    }
+    lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+  }
+  if (report.assets.missing.length > 0) {
+    lines.push("");
+    lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    for (const f of report.assets.missing) {
+      lines.push(`  ${f}`);
+    }
+  }
+  if (report.assets.conflicts.length > 0) {
+    lines.push("");
+    lines.push("Conflicting assets (non-LeanRigor files in expected locations):");
+    for (const f of report.assets.conflicts) {
+      lines.push(`  ${f}`);
+    }
+  }
+  if (report.constraints.length > 0) {
+    lines.push("");
+    lines.push("Constraints (repository policy):");
+    for (const constraint of report.constraints) {
+      lines.push(`  ${constraint}`);
+    }
+  }
+  if (report.warnings.length > 0) {
+    lines.push("");
+    lines.push("Warnings:");
+    for (const warning of report.warnings) {
+      lines.push(`  \u26A0 ${warning}`);
+    }
+  }
+  lines.push("");
+  lines.push("Configuration commands:");
+  lines.push("  Show effective config: leanrigor config show");
+  lines.push("  Show config detail:   leanrigor config show --json");
+  lines.push("");
+  lines.push("Example mutations:");
+  for (const example of report.validExamples) {
+    lines.push(`  # ${example.description}`);
+    lines.push(`  ${example.command}`);
+  }
+  return lines.join("\n");
+}
+function renderConfigFiles(report, lines) {
+  lines.push("Configuration files:");
+  lines.push(`  User config:          ${report.configurationFiles.user.path} (${report.configurationFiles.user.status})`);
+  lines.push(`  Repository policy:    ${report.configurationFiles.repositoryPolicy.path} (${report.configurationFiles.repositoryPolicy.status})`);
+  lines.push(`  Local config:         ${report.configurationFiles.local.path} (${report.configurationFiles.local.status})`);
+  lines.push("");
+  const allMissing = report.configurationFiles.user.status === "missing" && report.configurationFiles.repositoryPolicy.status === "missing" && report.configurationFiles.local.status === "missing";
+  if (allMissing) {
+    lines.push("No user, repository-policy, or local configuration files were found.");
+    lines.push("");
+    lines.push("Effective values currently come from:");
+    lines.push("  - Claude adapter-derived model mappings");
+    lines.push("  - built-in execution defaults");
+  }
+}
+function renderModelTable(models) {
+  const rows = models.map((m) => ({
+    tier: m.tier,
+    alias: m.adapterAlias ?? "\u2014",
+    model: m.resolvedModel ?? "\u2014",
+    source: m.source
+  }));
+  const tierWidth = Math.max(8, ...rows.map((r) => r.tier.length));
+  const aliasWidth = Math.max(13, ...rows.map((r) => r.alias.length));
+  const modelWidth = Math.max(15, ...rows.map((r) => r.model.length));
+  const sourceWidth = Math.max(6, ...rows.map((r) => r.source.length));
+  const pad = (s, w) => s.padEnd(w);
+  const header = `${pad("Tier", tierWidth)} | ${pad("Claude alias", aliasWidth)} | ${pad("Resolved model", modelWidth)} | Source`;
+  const sep = `${"\u2014".repeat(tierWidth)}\u2014|\u2014${"\u2014".repeat(aliasWidth)}\u2014|\u2014${"\u2014".repeat(modelWidth)}\u2014|\u2014${"\u2014".repeat(sourceWidth)}`;
+  const body = rows.map(
+    (r) => `${pad(r.tier, tierWidth)} | ${pad(r.alias, aliasWidth)} | ${pad(r.model, modelWidth)} | ${r.source}`
+  ).join("\n");
+  return [header, sep, body].join("\n");
+}
+function renderSettingsState(settings) {
+  const lines = [];
+  lines.push(`  ${settings.path}: ${settings.detail}`);
+  switch (settings.status) {
+    case "shared_current":
+      lines.push("  .claude/settings.json is shared Claude Code configuration.");
+      lines.push("  LeanRigor-owned hook entries are current.");
+      lines.push("  Unrelated user settings were preserved.");
+      break;
+    case "shared_unowned":
+      lines.push("  .claude/settings.json is shared Claude Code configuration.");
+      lines.push("  The file exists but does not contain LeanRigor-owned hook entries.");
+      lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
+      break;
+    case "missing":
+      lines.push("  .claude/settings.json is missing.");
+      lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
+      break;
+    case "modified_owned":
+      lines.push("  .claude/settings.json is shared Claude Code configuration.");
+      lines.push("  LeanRigor-owned hook entries have local modifications.");
+      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+      break;
+  }
+  return lines.join("\n");
 }
 
 // src/cli/index.ts
@@ -24530,6 +24894,14 @@ program2.command("doctor").option("--root <path>", "repository root", process.cw
   console.log("To see effective config with provenance:");
   console.log("  leanrigor config show");
   console.log("  leanrigor config show --json");
+});
+program2.command("init-report").description("Produce a deterministic structured configuration report").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured JSON report").action(async ({ root, json: json2 }) => {
+  const report = await buildInitReport(root);
+  if (json2) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(renderInitReport(report));
+  }
 });
 var flow = program2.command("flow").description("Run the persisted sequential LeanRigor workflow");
 flow.command("start").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, options) => {

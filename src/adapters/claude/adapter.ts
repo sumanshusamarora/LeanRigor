@@ -6,9 +6,31 @@ import type { HarnessAdapter, InstallReport, UninstallReport } from "../types.js
 import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
 import { resolveModelTier } from "../../config/models.js";
 import { formatModelTierLine } from "../../config/model-display.js";
-import { ensureGitignore, checkTrackedLeanrigorFiles } from "../../config/bootstrap.js";
+import { ensureGitignore, checkTrackedLeanrigorFiles, type GitignoreStatus } from "../../config/bootstrap.js";
 import { configFileExists, loadUserConfig, loadRepoPolicy } from "../../config/load.js";
 import { ConfigScope } from "../../config/config-scope.js";
+
+// ---------------------------------------------------------------------------
+// Asset inspection types
+// ---------------------------------------------------------------------------
+
+/** Structured result from asset inspection, reused by doctor and init-report. */
+export interface AssetInspectionResult {
+  /** Per-asset manifest entries with their status. */
+  manifest: Array<{ dest: string; status: "current" | "missing" | "conflict" | "modified" }>;
+  current: string[];
+  modified: string[];
+  missing: string[];
+  conflicts: string[];
+  totalAvailable: number;
+  installedCount: number;
+  /** Classified state of .claude/settings.json. */
+  settingsState: "shared_current" | "missing" | "shared_unowned" | "modified_owned";
+  settingsDetail: string;
+  protectGitState: string;
+  gitignoreStatus: GitignoreStatus;
+  trackedLeanrigorFiles: string[];
+}
 
 /** Version stamp embedded in every generated asset. Increment when assets change in a breaking way. */
 export const ASSET_VERSION = 4;
@@ -205,16 +227,17 @@ export class ClaudeAdapter implements HarnessAdapter {
     const localExists = await configFileExists(ConfigScope.Local, root);
     output.push(`  Local config (.leanrigor/config.json): ${localExists ? "found" : "not found (using defaults)"}`);
 
+    // Use structured asset inspection
+    const inspection = await this.inspectAssets(root, config);
+
     // .leanrigor/.gitignore status
     output.push("");
-    const gitignoreStatus = await ensureGitignore(path.join(root, ".leanrigor"));
-    output.push(gitignoreStatus.message);
+    output.push(inspection.gitignoreStatus.message);
 
     // Check for tracked .leanrigor files
-    const trackedFiles = await checkTrackedLeanrigorFiles(root);
-    if (trackedFiles.length > 0) {
-      output.push(`⚠ WARNING: ${trackedFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
-      for (const file of trackedFiles) {
+    if (inspection.trackedLeanrigorFiles.length > 0) {
+      output.push(`⚠ WARNING: ${inspection.trackedLeanrigorFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
+      for (const file of inspection.trackedLeanrigorFiles) {
         output.push(`  .leanrigor/${file}`);
       }
       output.push("  These files contain private runtime state and should not be committed.");
@@ -242,58 +265,19 @@ export class ClaudeAdapter implements HarnessAdapter {
       } catch (error) { output.push(`  ${tier}: ERROR — ${(error as Error).message}`); }
     }
 
-    // Check installed assets
-    const triageModel = resolveModelTier(config.routing.triage, "claude", config).model ?? "haiku";
-    const manifest = assetManifest(triageModel);
-    let installedCount = 0;
-    const missingAssets: string[] = [];
-    const currentAssets: string[] = [];
-    const conflictAssets: string[] = [];
-    const modifiedOwnedAssets: string[] = [];
-    let protectGitState = "missing";
-
-    for (const entry of manifest) {
-      const targetPath = path.join(root, entry.dest);
-      let existing: string | undefined;
-      try { existing = await readFile(targetPath, "utf8"); } catch { /* missing */ }
-
-      if (existing === undefined) {
-        missingAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "missing";
-        continue;
-      }
-
-      installedCount += 1;
-      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
-      if (!isLeanRigorOwned(existing)) {
-        conflictAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
-      } else if (expected !== undefined && sha256(existing) === sha256(expected)) {
-        currentAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) {
-          protectGitState = await isExecutable(targetPath)
-            ? "current and executable"
-            : "installed but not executable";
-        }
-      } else {
-        modifiedOwnedAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
-      }
-    }
-
-    const totalAvailable = manifest.length;
+    // Asset summary
     output.push("");
-    output.push(`Claude assets installed: ${installedCount}/${totalAvailable}`);
-    if (missingAssets.length === 0 && conflictAssets.length === 0 && modifiedOwnedAssets.length === 0) {
+    output.push(`Claude assets installed: ${inspection.installedCount}/${inspection.totalAvailable}`);
+    if (inspection.missing.length === 0 && inspection.conflicts.length === 0 && inspection.modified.length === 0) {
       output.push("Status: current");
     } else {
       output.push("Status: incomplete or needs attention");
     }
 
-    if (currentAssets.length > 0) {
+    if (inspection.current.length > 0) {
       output.push("");
       output.push("Current:");
-      for (const f of currentAssets) {
+      for (const f of inspection.current) {
         const suffix = isSettingsJson(f) ? " (LeanRigor-managed; coexists with user settings)" : "";
         output.push(`  ${f}${suffix}`);
       }
@@ -302,29 +286,29 @@ export class ClaudeAdapter implements HarnessAdapter {
     // Git protection hook — reported individually
     output.push("");
     output.push("Git protection hook:");
-    output.push(`  ${protectGitState}`);
+    output.push(`  ${inspection.protectGitState}`);
 
-    if (missingAssets.length > 0) {
+    if (inspection.missing.length > 0) {
       output.push("");
       output.push("Missing (run `leanrigor init --adapter claude` to install):");
-      for (const f of missingAssets) output.push(`  ${f}`);
+      for (const f of inspection.missing) output.push(`  ${f}`);
     }
-    if (modifiedOwnedAssets.length > 0) {
+    if (inspection.modified.length > 0) {
       output.push("");
       output.push("Modified (LeanRigor-owned files with local changes):");
-      for (const f of modifiedOwnedAssets) output.push(`  ${f}`);
+      for (const f of inspection.modified) output.push(`  ${f}`);
       output.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
     }
-    if (conflictAssets.length > 0) {
+    if (inspection.conflicts.length > 0) {
       output.push("");
       output.push("Conflict (non-LeanRigor files in expected locations):");
-      for (const f of conflictAssets) output.push(`  ${f}`);
+      for (const f of inspection.conflicts) output.push(`  ${f}`);
     }
 
     // Shared settings.json summary
     output.push("");
     output.push("Shared configuration:");
-    output.push(`  .claude/settings.json: ${describeSettingsState(missingAssets, conflictAssets, modifiedOwnedAssets)}`);
+    output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
 
     // Workflow settings
     output.push("");
@@ -341,6 +325,77 @@ export class ClaudeAdapter implements HarnessAdapter {
 
     return output;
   }
+
+  /**
+   * Inspect installed plugin assets and return structured status.
+   * Fact-only: no speculation about why files differ.
+   */
+  async inspectAssets(root: string, config: LeanRigorConfig): Promise<AssetInspectionResult> {
+    const triageModel = resolveModelTier(config.routing.triage, "claude", config).model ?? "haiku";
+    const manifest = assetManifest(triageModel);
+    const manifestEntries: AssetInspectionResult["manifest"] = [];
+
+    let installedCount = 0;
+    const current: string[] = [];
+    const modified: string[] = [];
+    const missing: string[] = [];
+    const conflicts: string[] = [];
+    let protectGitState = "missing";
+
+    for (const entry of manifest) {
+      const targetPath = path.join(root, entry.dest);
+      let existing: string | undefined;
+      try { existing = await readFile(targetPath, "utf8"); } catch { /* missing */ }
+
+      if (existing === undefined) {
+        missing.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "missing" });
+        if (isProtectGit(entry.dest)) protectGitState = "missing";
+        continue;
+      }
+
+      installedCount += 1;
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
+      if (!isLeanRigorOwned(existing)) {
+        conflicts.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "conflict" });
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
+      } else if (expected !== undefined && sha256(existing) === sha256(expected)) {
+        current.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "current" });
+        if (isProtectGit(entry.dest)) {
+          protectGitState = await isExecutable(targetPath)
+            ? "current and executable"
+            : "installed but not executable";
+        }
+      } else {
+        modified.push(entry.dest);
+        manifestEntries.push({ dest: entry.dest, status: "modified" });
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
+      }
+    }
+
+    const settingsState = deriveSettingsState(missing, conflicts, modified);
+    const settingsDetail = describeSettingsState(missing, conflicts, modified);
+
+    const gitignoreStatus = await ensureGitignore(path.join(root, ".leanrigor"));
+    const trackedFiles = await checkTrackedLeanrigorFiles(root);
+
+    return {
+      manifest: manifestEntries,
+      current,
+      modified,
+      missing,
+      conflicts,
+      totalAvailable: manifest.length,
+      installedCount,
+      settingsState,
+      settingsDetail,
+      protectGitState,
+      gitignoreStatus,
+      trackedLeanrigorFiles: trackedFiles,
+    };
+  }
 }
 
 function isProtectGit(dest: string): boolean {
@@ -351,16 +406,30 @@ function isSettingsJson(dest: string): boolean {
   return dest === ".claude/settings.json";
 }
 
+function deriveSettingsState(
+  missing: string[],
+  conflicts: string[],
+  modified: string[],
+): AssetInspectionResult["settingsState"] {
+  const settingsPath = ".claude/settings.json";
+  if (missing.includes(settingsPath)) return "missing";
+  if (conflicts.includes(settingsPath)) return "shared_unowned";
+  if (modified.includes(settingsPath)) return "modified_owned";
+  return "shared_current";
+}
+
 function describeSettingsState(
   missing: string[],
   conflicts: string[],
   modified: string[],
 ): string {
-  const settingsPath = ".claude/settings.json";
-  if (missing.includes(settingsPath)) return "missing";
-  if (conflicts.includes(settingsPath)) return "present but not LeanRigor-owned (shared configuration)";
-  if (modified.includes(settingsPath)) return "modified (LeanRigor hook entries may have local changes)";
-  return "current (LeanRigor hook entries present; coexists with user settings)";
+  const state = deriveSettingsState(missing, conflicts, modified);
+  switch (state) {
+    case "missing": return "missing";
+    case "shared_unowned": return "present but not LeanRigor-owned (shared configuration)";
+    case "modified_owned": return "modified (LeanRigor hook entries may have local changes)";
+    case "shared_current": return "current (LeanRigor hook entries present; coexists with user settings)";
+  }
 }
 
 async function ensureExecutableIfHook(dest: string, targetPath: string): Promise<void> {

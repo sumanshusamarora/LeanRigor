@@ -12,22 +12,20 @@ Invoke the plugin-owned runtime internally through
 
 Behaviour:
 
-1. Run `leanrigor doctor` and `leanrigor config show` internally to inspect the
-   current configuration state.
-2. Report which configuration files are present:
-   - User config (`~/.config/leanrigor/config.json`)
-   - Repository policy (`leanrigor.config.json` — may be committed)
-   - Local config (`.leanrigor/config.json` — private, never committed)
-3. Report `.leanrigor/.gitignore` status.
-4. Report resolved model tiers with provenance.
-5. Report any configuration warnings or constraints.
-6. If `$ARGUMENTS` is empty, present the current state and suggest available
-   configuration commands.
-7. If `$ARGUMENTS` requests a change, translate it into the appropriate
+1. Run `leanrigor init-report` internally to produce the deterministic
+   configuration report.
+2. Display the returned report substantially as-is.
+3. **Invariant: Never reconstruct configuration diagnostics from memory or
+   prose.** Render the structured LeanRigor report and preserve exact
+   provenance, paths, statuses, warnings, and schema-valid commands.
+   Do not invent environment-variable names, config paths, ownership
+   conflicts, or explanations for asset drift.
+4. After presenting the report, offer to help with configuration changes.
+5. If `$ARGUMENTS` requests a change, translate it into the appropriate
    `leanrigor config set` or `leanrigor config unset` command with the correct
    `--scope` option.
-8. Never silently rewrite all config. Prefer explicit, scoped mutations.
-9. For repository policy changes, confirm with the user before writing because
+6. Never silently rewrite all config. Prefer explicit, scoped mutations.
+7. For repository policy changes, confirm with the user before writing because
    changes affect all contributors.
 
 ## Scope guidance

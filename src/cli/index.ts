@@ -11,6 +11,8 @@ import { leanRigorConfigSchema } from "../config/schema.js";
 import type { InstallReport, UninstallReport } from "../adapters/types.js";
 import { resolveEffectiveConfig, formatEffectiveConfig } from "../config/resolver.js";
 import { claudeDefaultsBlurb } from "../config/model-display.js";
+import { buildInitReport } from "../config/init-report.js";
+import { renderInitReport } from "../config/report-renderer.js";
 import { ensureRepositoryConfig, writeConfig } from "../config/bootstrap.js";
 import { atomicWriteJson } from "../config/atomic-write.js";
 import { ConfigScope, scopePath, REPO_POLICY_FORBIDDEN_KEYS } from "../config/config-scope.js";
@@ -337,6 +339,19 @@ program.command("doctor")
     console.log("To see effective config with provenance:");
     console.log("  leanrigor config show");
     console.log("  leanrigor config show --json");
+  });
+
+program.command("init-report")
+  .description("Produce a deterministic structured configuration report")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured JSON report")
+  .action(async ({ root, json }) => {
+    const report = await buildInitReport(root);
+    if (json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderInitReport(report));
+    }
   });
 
 const flow = program.command("flow").description("Run the persisted sequential LeanRigor workflow");
