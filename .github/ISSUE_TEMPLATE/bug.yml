@@ -1,0 +1,86 @@
+name: Bug report
+description: Report a reproducible LeanRigor defect
+title: "[Bug]: "
+labels:
+  - "type:bug"
+  - "status:needs-triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve LeanRigor. Remove secrets and private repository content from logs.
+  - type: input
+    id: version
+    attributes:
+      label: LeanRigor version or commit
+      placeholder: 0.2.0-alpha.1 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation type
+      options:
+        - Claude Code marketplace
+        - npm package or tarball
+        - Source checkout
+        - Project-local Claude assets
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node.js version, and coding-agent version
+      placeholder: Ubuntu 24.04, Node 20.16, Claude Code 2.x
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Triage or workflow policy
+        - Planning or completion gates
+        - Claude plugin or commands
+        - Execution provider or coordinator
+        - Worktrees or integration
+        - CLI or configuration
+        - Installation or packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: Provide the smallest reliable sequence of actions.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitised logs or workflow status
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, private source code, customer data, and sensitive provider transcripts.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true
