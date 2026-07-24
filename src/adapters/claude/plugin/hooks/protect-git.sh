@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # generated_by: leanrigor | asset_version: 1
 #
 # LeanRigor git protection hook
@@ -14,7 +14,7 @@
 # Verified behaviour: not tested without Claude Code installed.
 # Hook format follows Claude Code settings.json PreToolUse conventions.
 
-set -uo pipefail
+set -u
 INPUT=$(cat 2>/dev/null || true)
 
 # Fail open if stdin is empty or does not look like tool-input JSON

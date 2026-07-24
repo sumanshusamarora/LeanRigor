@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { access, mkdir, readFile, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, readdir, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { HarnessAdapter, InstallReport, UninstallReport } from "../types.js";
 import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
@@ -11,6 +11,7 @@ export const ASSET_VERSION = 3;
 
 /** String embedded in every LeanRigor-generated file for ownership detection. */
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";
+const PROTECT_GIT_DEST = path.join(".claude", "leanrigor", "protect-git.sh");
 
 /** Directory containing the Claude plugin source assets, resolved at runtime. */
 function pluginDir(): string {
@@ -112,13 +113,16 @@ export class ClaudeAdapter implements HarnessAdapter {
       if (existing === undefined) {
         // File does not exist — install it
         await writeFile(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else if (sha256(existing) === sha256(expected)) {
         // File exists and is identical to the packaged version
+        await ensureExecutableIfHook(entry.dest, targetPath);
         report.alreadyCurrent.push(entry.dest);
       } else if (isLeanRigorOwned(existing) && force) {
         // File is owned and user requested force-replace
         await writeFile(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else {
         // User file or user-modified owned file — do not overwrite
@@ -218,6 +222,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     const currentAssets: string[] = [];
     const conflictAssets: string[] = [];
     const modifiedOwnedAssets: string[] = [];
+    let protectGitState = "protect-git.sh: missing";
 
     for (const entry of manifest) {
       const targetPath = path.join(root, entry.dest);
@@ -226,6 +231,7 @@ export class ClaudeAdapter implements HarnessAdapter {
 
       if (existing === undefined) {
         missingAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: missing";
         continue;
       }
 
@@ -233,10 +239,17 @@ export class ClaudeAdapter implements HarnessAdapter {
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
       if (!isLeanRigorOwned(existing)) {
         conflictAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
       } else if (expected !== undefined && sha256(existing) === sha256(expected)) {
         currentAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) {
+          protectGitState = await isExecutable(targetPath)
+            ? "protect-git.sh: current and executable"
+            : "protect-git.sh: installed but not executable";
+        }
       } else {
         modifiedOwnedAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
       }
     }
 
@@ -254,6 +267,8 @@ export class ClaudeAdapter implements HarnessAdapter {
       output.push("Current:");
       for (const f of currentAssets) output.push(`  ${f}`);
     }
+    output.push("");
+    output.push(protectGitState);
     if (missingAssets.length > 0) {
       output.push("");
       output.push("Missing (run `leanrigor init --adapter claude` to install):");
@@ -276,6 +291,24 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push(`Automatic triage: ${config.workflow.automaticTriage ? "enabled" : "disabled"}`);
 
     return output;
+  }
+}
+
+function isProtectGit(dest: string): boolean {
+  return dest === PROTECT_GIT_DEST;
+}
+
+async function ensureExecutableIfHook(dest: string, targetPath: string): Promise<void> {
+  if (isProtectGit(dest)) await chmod(targetPath, 0o755);
+}
+
+async function isExecutable(targetPath: string): Promise<boolean> {
+  if (process.platform === "win32") return true;
+  try {
+    const mode = (await stat(targetPath)).mode;
+    return (mode & 0o111) !== 0;
+  } catch {
+    return false;
   }
 }
 

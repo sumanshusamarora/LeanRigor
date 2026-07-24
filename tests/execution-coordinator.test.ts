@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { ExecutionCoordinator } from "../src/core/execution/coordinator.js";
-import { ScriptedExecutionProvider } from "../src/core/execution/scripted-provider.js";
 import { integrationStatus } from "../src/core/flow.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 

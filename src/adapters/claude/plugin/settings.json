@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/leanrigor/protect-git.sh"
+            "command": "sh .claude/leanrigor/protect-git.sh"
           }
         ]
       }

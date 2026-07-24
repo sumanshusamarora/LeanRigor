@@ -1,10 +1,13 @@
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ClaudeAdapter, ASSET_VERSION } from "../src/adapters/claude/adapter.js";
 import { defaultConfig } from "../src/config/defaults.js";
 import { leanRigorConfigSchema } from "../src/config/schema.js";
+
+const POSIX = process.platform !== "win32";
 
 async function tempRepo(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "leanrigor-claude-test-"));
@@ -50,6 +53,14 @@ describe("Claude plugin clean installation", () => {
       const s = await stat(absPath);
       expect(s.isFile(), `expected file to exist: ${dest}`).toBe(true);
     }
+  });
+
+  it("creates an executable git protection hook on POSIX filesystems", async () => {
+    if (!POSIX) return;
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    await expectExecutable(path.join(root, ".claude", "leanrigor", "protect-git.sh"));
   });
 
   it("each installed file contains the LeanRigor ownership token", async () => {
@@ -116,6 +127,20 @@ describe("Claude plugin repeat-safe installation", () => {
     );
     expect(contentsAfter).toEqual(contentsBefore);
   });
+
+  it("repairs a missing executable bit when hook contents are unchanged", async () => {
+    if (!POSIX) return;
+    const root = await tempRepo();
+    const adapter = new ClaudeAdapter();
+    const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
+    await adapter.install(root, defaultConfig());
+    await chmod(hook, 0o644);
+
+    const report = await adapter.install(root, defaultConfig());
+
+    expect(report.alreadyCurrent).toContain(path.join(".claude", "leanrigor", "protect-git.sh"));
+    await expectExecutable(hook);
+  });
 });
 
 describe("Claude plugin conflict handling", () => {
@@ -162,6 +187,37 @@ describe("Claude plugin conflict handling", () => {
     const after = await readFile(target, "utf8");
     expect(after).not.toContain("My custom addition");
     expect(after).toContain("generated_by: leanrigor");
+  });
+
+  it("does not silently overwrite a user-modified hook or repair its mode without force", async () => {
+    if (!POSIX) return;
+    const root = await tempRepo();
+    const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
+    await new ClaudeAdapter().install(root, defaultConfig());
+    const original = await readFile(hook, "utf8");
+    await writeFile(hook, `${original}\n# user modification\n`, "utf8");
+    await chmod(hook, 0o644);
+
+    const report = await new ClaudeAdapter().install(root, defaultConfig());
+
+    expect(report.skipped).toContain(path.join(".claude", "leanrigor", "protect-git.sh"));
+    expect(await readFile(hook, "utf8")).toContain("user modification");
+    expect(await executableMode(hook)).toBe(false);
+  });
+
+  it("force restores hook contents and executable mode", async () => {
+    if (!POSIX) return;
+    const root = await tempRepo();
+    const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
+    await new ClaudeAdapter().install(root, defaultConfig());
+    await writeFile(hook, `${await readFile(hook, "utf8")}\n# user modification\n`, "utf8");
+    await chmod(hook, 0o644);
+
+    const report = await new ClaudeAdapter().install(root, defaultConfig(), true);
+
+    expect(report.installed).toContain(path.join(".claude", "leanrigor", "protect-git.sh"));
+    expect(await readFile(hook, "utf8")).not.toContain("user modification");
+    await expectExecutable(hook);
   });
 
   it("never overwrites a non-owned file even with force=true", async () => {
@@ -280,8 +336,21 @@ describe("Claude plugin doctor", () => {
     const text = output.join("\n");
 
     expect(text).toContain("Status: current");
+    expect(text).toContain("protect-git.sh: current and executable");
     expect(text).toContain(`LeanRigor CLI:`);
     expect(text).toContain(`Claude assets installed: ${EXPECTED_DEST_PATHS.length}/${EXPECTED_DEST_PATHS.length}`);
+  });
+
+  it("detects an installed but non-executable hook", async () => {
+    if (!POSIX) return;
+    const root = await tempRepo();
+    const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
+    await new ClaudeAdapter().install(root, defaultConfig());
+    await chmod(hook, 0o644);
+
+    const text = (await new ClaudeAdapter().doctor(root, defaultConfig())).join("\n");
+
+    expect(text).toContain("protect-git.sh: installed but not executable");
   });
 
   it("reports missing assets when nothing is installed", async () => {
@@ -375,9 +444,56 @@ describe("Claude plugin asset structure validation", () => {
 
     const scriptPath = path.join(root, ".claude", "leanrigor", "protect-git.sh");
     const content = await readFile(scriptPath, "utf8");
-    expect(content).toMatch(/^#!\/usr\/bin\/env bash/);
+    expect(content).toMatch(/^#!\/bin\/sh/);
     expect(content).toContain("generated_by: leanrigor");
+    if (POSIX) await expectExecutable(scriptPath);
     // Script should fail-open on empty input
     expect(content).toContain("exit 0");
   });
+
+  it("allows ordinary Bash commands without hook errors", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+    const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
+
+    const result = await runHook(hook, { command: "npm test" });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("blocks prohibited Git commands with the expected hook decision", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+    const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
+
+    const result = await runHook(hook, { command: "git commit -m test" });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("git commit");
+    expect(result.stderr).toContain("blocked");
+  });
 });
+
+async function executableMode(file: string): Promise<boolean> {
+  return ((await stat(file)).mode & 0o111) !== 0;
+}
+
+async function expectExecutable(file: string): Promise<void> {
+  expect(await executableMode(file), `${file} should have an executable bit`).toBe(true);
+}
+
+async function runHook(file: string, input: unknown): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("sh", [file], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (exitCode) => resolve({ exitCode, stdout, stderr }));
+    child.stdin.end(JSON.stringify(input));
+  });
+}

@@ -109,7 +109,15 @@ export class ExecutionCoordinator {
         continue;
       }
 
-      const status = await this.provider.getStatus(handle);
+      let status;
+      try {
+        status = await this.provider.getStatus(handle);
+      } catch (error) {
+        const message = `Provider status failed: ${error instanceof Error ? error.message : String(error)}`;
+        await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", message);
+        blocked.push({ phaseId: record.phaseId, reason: message });
+        continue;
+      }
       if (status.status === "running" || status.status === "queued") {
         if (status.heartbeatAt) {
           await heartbeatPhase({ root: this.root, workflowId: this.workflowId, phaseId: record.phaseId, ownerId: record.leaseOwnerId, config: this.config, mutation: { ownerId: record.leaseOwnerId } });
@@ -128,7 +136,15 @@ export class ExecutionCoordinator {
       }
 
       await this.updateRecord(record.phaseId, { status: "collecting", diagnostics: status.diagnostics });
-      const result = await this.provider.collectResult(handle);
+      let result: PhaseExecutionResult;
+      try {
+        result = await this.provider.collectResult(handle);
+      } catch (error) {
+        const message = `Provider result collection failed: ${error instanceof Error ? error.message : String(error)}`;
+        await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", message);
+        blocked.push({ phaseId: record.phaseId, reason: message });
+        continue;
+      }
       const accepted = await this.recordResult(record, result);
       completed.push({ phaseId: record.phaseId, provider: record.providerId, status: accepted, workspacePath: record.workspacePath, leaseOwnerId: record.leaseOwnerId });
       if (accepted !== "result_recorded") blocked.push({ phaseId: record.phaseId, reason: result.summary });
@@ -349,10 +365,23 @@ export class ExecutionCoordinator {
 
   private result(state: SequentialWorkflowState, dispatched: DispatchSummary[], nextAction: ExecutionNextAction, message: string): CoordinatorResult {
     const records = Object.values(state.execution.records);
+    const latestRecord = [...records].sort((a, b) => Date.parse(b.completedAt ?? b.heartbeatAt ?? b.startedAt) - Date.parse(a.completedAt ?? a.heartbeatAt ?? a.startedAt))[0];
+    const activePhase = state.plan?.phases.find((phase) => ["leased", "running", "completion_pending"].includes(phase.status));
+    const gatePhase = activePhase ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
+    const integrated = state.git ? integrationStatus(state) : undefined;
     return {
       workflowId: state.id,
       revision: state.revision,
       state: state.state,
+      executionMode: records.length > 0 ? "coordinator" : "manual",
+      provider: this.provider.id,
+      runningPhase: activePhase?.id,
+      lastProviderStatus: latestRecord ? `${latestRecord.phaseId}: ${latestRecord.status}` : undefined,
+      phaseGateStatus: gatePhase ? `${gatePhase.id}: ${gatePhase.completion?.decision ?? gatePhase.status}` : undefined,
+      integrationStatus: state.git?.integration.status,
+      combinedValidationStatus: integrated?.validation ? `${integrated.validation.status} @ ${integrated.validation.integrationCommit.slice(0, 12)}` : "not_run",
+      pendingUserGate: nextAction === "await_user" || nextAction === "repair" || nextAction === "review" || nextAction === "resolve_conflict" || nextAction === "final_review" || nextAction === "commit_proposal" ? nextAction : null,
+      nextValidAction: nextAction,
       running: records.filter((record) => ACTIVE_EXECUTION_STATUSES.has(record.status)).map((record) => ({ phaseId: record.phaseId, provider: record.providerId, status: record.status })),
       completed: records.filter((record) => ["completed", "result_recorded"].includes(record.status)).map((record) => ({ phaseId: record.phaseId, provider: record.providerId, status: record.status })),
       blocked: [

@@ -49,7 +49,7 @@ worktrees.
 
 `/leanrigor:start` is the primary command and owns the normal workflow:
 
-`triage summary -> Approach approval? -> Plan approval -> sequential execution -> per-phase completion gate -> final integrated review -> commit proposal`
+`triage summary -> Approach approval? -> Plan approval -> coordinator/manual execution -> per-phase completion gate -> final integrated review -> commit proposal`
 
 Use `flow active --json` to discover repository workflows and `flow next
 --json` to read the next gate. Use transition commands internally after user
@@ -92,11 +92,36 @@ Ask one concise clarification for ambiguous responses.
 
 ## Phase And Review Rules
 
+Execution mode is explicit:
+
+- `execution.mode = coordinator`: default when LeanRigor workspaces and an
+  execution provider are configured. Claude approves the plan, invokes or
+  resumes the coordinator, monitors persisted execution records, and presents
+  gates. Claude must not implement phase edits itself and must not edit the
+  original working tree.
+- `execution.mode = manual`: fallback for environments without a configured
+  provider. Claude may perform phase work manually, but only in the
+  LeanRigor-assigned phase workspace and only through persisted
+  phase-completion gates.
+
+Never mix coordinator and manual execution within one workflow. Never claim a
+phase is complete from visible file changes alone; only persisted LeanRigor
+state and gates decide completion. Never compensate for an unavailable workflow
+transition by narrating that the workflow is complete. Report the persisted
+state and the exact blocker.
+
 During execution, each phase must pass:
 
 `planned -> ready -> leased/running -> targeted validation -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
 
-Before implementation, read the current workflow revision and use a stable owner
+In coordinator mode, invoke `flow execute-next` or `flow execution-poll` and
+continue until the next meaningful persisted gate. A worker completion should
+be followed by result collection, completion gate evaluation, internal phase
+integration, combined validation when all phases are integrated, and the final
+integrated review gate. Stop only when the coordinator reports a user gate,
+repair, conflict, final review, commit proposal, or a real error.
+
+In manual mode before implementation, read the current workflow revision and use a stable owner
 ID for this Claude session. Acquire/start a phase lease for one ready phase and
 create its phase workspace. Before editing, verify that the current directory
 equals the active phase workspace returned by LeanRigor and that Git root is

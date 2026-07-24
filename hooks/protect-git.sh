@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/sh
 #
 # LeanRigor git protection hook for marketplace/plugin installs.
 # Blocks automatic git commit, git push, and git reset --hard. Fails open when
 # input is missing or cannot be parsed.
 
-set -uo pipefail
+set -u
 INPUT=$(cat 2>/dev/null || true)
 
 if [ -z "$INPUT" ] || ! echo "$INPUT" | grep -qE '"command"[[:space:]]*:'; then

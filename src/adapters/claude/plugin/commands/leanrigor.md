@@ -19,6 +19,12 @@ Read `.claude/leanrigor/sequential-workflow.md` first.
    review`, `Final integrated review`, and `Commit proposal` states.
 6. After user approval, invoke the transition internally and continue to the
    next meaningful gate before replying.
+7. When execution providers/workspaces are configured, use the coordinator
+   execution path (`flow execute-next` / `flow execution-poll`) and render only
+   persisted coordinator gates. Do not implement phase edits in the original
+   working tree.
+8. Never compensate for an unavailable workflow transition by narrating that the
+   workflow is complete. Report the persisted state and the exact blocker.
 
 Normal output must not ask users to copy-paste LeanRigor CLI commands. Show
 commands only in troubleshooting fallback or when explicitly requested.

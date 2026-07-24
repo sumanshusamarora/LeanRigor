@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path12 = __require("node:path");
+    var path13 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path12.resolve(baseDir, baseName);
+          const localBin = path13.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path12.extname(baseName))) return void 0;
+          if (sourceExt.includes(path13.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path12.resolve(
-            path12.dirname(resolvedScriptPath),
+          executableDir = path13.resolve(
+            path13.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path12.basename(
+            const legacyName = path13.basename(
               this._scriptPath,
-              path12.extname(this._scriptPath)
+              path13.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path12.extname(executableFile));
+        launchWithNode = sourceExt.includes(path13.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path12.basename(filename, path12.extname(filename));
+        this._name = path13.basename(filename, path13.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path13) {
-        if (path13 === void 0) return this._executableDir;
-        this._executableDir = path13;
+      executableDir(path14) {
+        if (path14 === void 0) return this._executableDir;
+        this._executableDir = path14;
         return this;
       }
       /**
@@ -3722,10 +3722,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path12) {
-  if (!path12)
+function getElementAtPath(obj, path13) {
+  if (!path13)
     return obj;
-  return path12.reduce((acc, key) => acc?.[key], obj);
+  return path13.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4053,11 +4053,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path12, issues) {
+function prefixIssues(path13, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path12);
+    iss.path.unshift(path13);
     return iss;
   });
 }
@@ -4274,16 +4274,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path12 = []) => {
+  const processError = (error52, path13 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else {
-        const fullpath = [...path12, ...issue2.path];
+        const fullpath = [...path13, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4310,17 +4310,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path12 = []) => {
+  const processError = (error52, path13 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
       } else {
-        const fullpath = [...path12, ...issue2.path];
+        const fullpath = [...path13, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4352,8 +4352,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path12 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path12) {
+  const path13 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path13) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17783,13 +17783,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path12 = ref.slice(1).split("/").filter(Boolean);
-  if (path12.length === 0) {
+  const path13 = ref.slice(1).split("/").filter(Boolean);
+  if (path13.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path12[0] === defsKey) {
-    const key = path12[1];
+  if (path13[0] === defsKey) {
+    const key = path13[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18785,8 +18785,8 @@ var {
 // src/cli/index.ts
 init_load();
 init_defaults();
-import { mkdir as mkdir7, readdir as readdir3, readFile as readFile9, writeFile as writeFile6 } from "node:fs/promises";
-import path11 from "node:path";
+import { mkdir as mkdir8, readdir as readdir3, readFile as readFile10, writeFile as writeFile7 } from "node:fs/promises";
+import path12 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
@@ -18811,7 +18811,7 @@ async function loadWorkflow(root) {
 // src/adapters/claude/adapter.ts
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { access, mkdir as mkdir2, readFile as readFile3, readdir, rmdir, unlink, writeFile as writeFile2 } from "node:fs/promises";
+import { access, chmod, mkdir as mkdir2, readFile as readFile3, readdir, rmdir, stat, unlink, writeFile as writeFile2 } from "node:fs/promises";
 import path3 from "node:path";
 
 // src/config/models.ts
@@ -18844,6 +18844,7 @@ function isClaudeAlias(model) {
 // src/adapters/claude/adapter.ts
 var ASSET_VERSION = 3;
 var OWNERSHIP_TOKEN = "generated_by: leanrigor";
+var PROTECT_GIT_DEST = path3.join(".claude", "leanrigor", "protect-git.sh");
 function pluginDir() {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
 }
@@ -18924,11 +18925,14 @@ var ClaudeAdapter = class {
       }
       if (existing === void 0) {
         await writeFile2(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else if (sha256(existing) === sha256(expected)) {
+        await ensureExecutableIfHook(entry.dest, targetPath);
         report.alreadyCurrent.push(entry.dest);
       } else if (isLeanRigorOwned(existing) && force) {
         await writeFile2(targetPath, expected, "utf8");
+        await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else {
         report.skipped.push(entry.dest);
@@ -19007,6 +19011,7 @@ var ClaudeAdapter = class {
     const currentAssets = [];
     const conflictAssets = [];
     const modifiedOwnedAssets = [];
+    let protectGitState = "protect-git.sh: missing";
     for (const entry of manifest) {
       const targetPath = path3.join(root, entry.dest);
       let existing;
@@ -19016,16 +19021,22 @@ var ClaudeAdapter = class {
       }
       if (existing === void 0) {
         missingAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: missing";
         continue;
       }
       installedCount += 1;
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
       if (!isLeanRigorOwned(existing)) {
         conflictAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
       } else if (expected !== void 0 && sha256(existing) === sha256(expected)) {
         currentAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) {
+          protectGitState = await isExecutable(targetPath) ? "protect-git.sh: current and executable" : "protect-git.sh: installed but not executable";
+        }
       } else {
         modifiedOwnedAssets.push(entry.dest);
+        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
       }
     }
     const totalAvailable = manifest.length;
@@ -19041,6 +19052,8 @@ var ClaudeAdapter = class {
       output.push("Current:");
       for (const f of currentAssets) output.push(`  ${f}`);
     }
+    output.push("");
+    output.push(protectGitState);
     if (missingAssets.length > 0) {
       output.push("");
       output.push("Missing (run `leanrigor init --adapter claude` to install):");
@@ -19062,6 +19075,21 @@ var ClaudeAdapter = class {
     return output;
   }
 };
+function isProtectGit(dest) {
+  return dest === PROTECT_GIT_DEST;
+}
+async function ensureExecutableIfHook(dest, targetPath) {
+  if (isProtectGit(dest)) await chmod(targetPath, 493);
+}
+async function isExecutable(targetPath) {
+  if (process.platform === "win32") return true;
+  try {
+    const mode2 = (await stat(targetPath)).mode;
+    return (mode2 & 73) !== 0;
+  } catch {
+    return false;
+  }
+}
 async function removeIfEmpty(dir) {
   try {
     const entries = await readdir(dir);
@@ -19076,9 +19104,9 @@ async function removeIfEmpty(dir) {
   return false;
 }
 async function which(command) {
-  const { spawn: spawn2 } = await import("node:child_process");
+  const { spawn: spawn3 } = await import("node:child_process");
   return new Promise((resolve) => {
-    const child = spawn2("which", [command], { stdio: ["ignore", "pipe", "ignore"] });
+    const child = spawn3("which", [command], { stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     child.stdout?.on("data", (chunk) => {
       out += chunk.toString();
@@ -19478,7 +19506,7 @@ function commitCommands(proposal) {
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access2, constants, lstat, mkdir as mkdir3, readFile as readFile5, readdir as readdir2, readlink, realpath, stat, writeFile as writeFile3 } from "node:fs/promises";
+import { access as access2, constants, lstat, mkdir as mkdir3, readFile as readFile5, readdir as readdir2, readlink, realpath, stat as stat2, writeFile as writeFile3 } from "node:fs/promises";
 import path6 from "node:path";
 import { promisify } from "node:util";
 
@@ -20405,7 +20433,7 @@ function isPathInside(child, parent) {
   return relative === "" || !relative.startsWith("..") && !path6.isAbsolute(relative);
 }
 async function pathExists(target) {
-  return stat(target).then(() => true).catch(() => false);
+  return stat2(target).then(() => true).catch(() => false);
 }
 
 // src/core/workflow-lock.ts
@@ -22460,7 +22488,9 @@ function unique4(values) {
 }
 
 // src/core/execution/claude-provider.ts
-import { execFile as execFile2 } from "node:child_process";
+import { execFile as execFile2, spawn as spawn2 } from "node:child_process";
+import { mkdir as mkdir6, open as open3, readFile as readFile9, rename as rename2, stat as stat3, writeFile as writeFile5 } from "node:fs/promises";
+import path10 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/execution/errors.ts
@@ -22555,6 +22585,20 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
     ];
     if (this.options.model) args.push("--model", this.options.model);
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const artifactDir = path10.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    await mkdir6(artifactDir, { recursive: true });
+    const statusPath = path10.join(artifactDir, "status.json");
+    const stdoutPath = path10.join(artifactDir, "stdout.json");
+    const stderrPath = path10.join(artifactDir, "stderr.txt");
+    const providerMetadata = {
+      command: this.options.command ?? "claude",
+      args,
+      maxTurns: this.options.maxTurns ?? 12,
+      permissionMode: this.options.permissionMode ?? "acceptEdits",
+      statusPath,
+      stdoutPath,
+      stderrPath
+    };
     const handle = {
       providerId: this.id,
       providerExecutionId: executionId,
@@ -22564,37 +22608,67 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
       workspacePath: input.workspacePath,
       startedAt,
       lastKnownStatus: "running",
-      providerMetadata: { command: this.options.command ?? "claude", maxTurns: this.options.maxTurns ?? 12, permissionMode: this.options.permissionMode ?? "acceptEdits" }
+      providerMetadata
     };
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), input.timeoutSeconds * 1e3);
-    const promise2 = execFileAsync2(this.options.command ?? "claude", args, {
+    const stdout = await open3(stdoutPath, "w");
+    const stderr = await open3(stderrPath, "w");
+    const child = spawn2(this.options.command ?? "claude", args, {
       cwd: input.workspacePath,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
+      detached: true,
+      stdio: ["ignore", stdout.fd, stderr.fd],
       signal: controller.signal,
       env: { ...process.env, CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1" }
-    }).finally(() => clearTimeout(timeout));
+    });
+    await stdout.close();
+    await stderr.close();
+    providerMetadata.pid = child.pid;
+    await writeStatus(statusPath, { status: "running", pid: child.pid, startedAt });
     const execution = {
       handle,
       controller,
-      promise: promise2,
       status: "running",
       startedAt,
       diagnostics: {}
     };
     this.executions.set(executionId, execution);
-    promise2.then(() => {
-      execution.status = "completed";
+    const timeout = setTimeout(() => {
+      controller.abort();
+      if (child.pid) killProcessGroup(child.pid, "SIGTERM");
+    }, input.timeoutSeconds * 1e3);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      execution.status = controller.signal.aborted ? "timed_out" : code === 0 ? "completed" : "failed";
       execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
-    }).catch((error51) => {
-      execution.status = controller.signal.aborted ? "timed_out" : "failed";
-      execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
-      execution.diagnostics = redactDiagnostics({ error: error51 instanceof Error ? error51.message : String(error51) });
+      execution.diagnostics = signal || code ? { exitCode: code, signal } : {};
+      void writeStatus(statusPath, {
+        status: execution.status,
+        pid: child.pid,
+        startedAt,
+        completedAt: execution.completedAt,
+        exitCode: code,
+        signal,
+        diagnostics: execution.diagnostics
+      });
     });
+    child.once("error", (error51) => {
+      clearTimeout(timeout);
+      execution.status = "failed";
+      execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
+      execution.diagnostics = redactDiagnostics({ error: error51.message });
+      void writeStatus(statusPath, { status: "failed", pid: child.pid, startedAt, completedAt: execution.completedAt, diagnostics: execution.diagnostics });
+    });
+    child.unref();
     return handle;
   }
   async getStatus(handle) {
+    const persisted = await readPersistedStatus(handle);
+    if (persisted) {
+      if (persisted.status === "running" && persisted.pid && !pidIsRunning(persisted.pid)) {
+        return { status: "completed", heartbeatAt: (/* @__PURE__ */ new Date()).toISOString(), diagnostics: { ...persisted.diagnostics, pid: persisted.pid, statusInferredFromPid: true } };
+      }
+      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? (/* @__PURE__ */ new Date()).toISOString() : persisted.completedAt, diagnostics: persisted.diagnostics };
+    }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
     return {
@@ -22604,24 +22678,33 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
     };
   }
   async collectResult(handle) {
+    const metadata = claudeMetadata(handle);
+    if (metadata) {
+      const status = await readPersistedStatus(handle);
+      if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
+      const stdout = await readFile9(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile9(metadata.stderrPath, "utf8").catch(() => "");
+      try {
+        return parseClaudeResult(stdout, stderr);
+      } catch (error51) {
+        const message = `${error51 instanceof Error ? error51.message : String(error51)}
+${stdout}
+${stderr}`;
+        if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
+        throw error51;
+      }
+    }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
-    try {
-      const output = await execution.promise;
-      return parseClaudeResult(output.stdout, output.stderr);
-    } catch (error51) {
-      const output = commandOutput(error51);
-      const message = `${error51 instanceof Error ? error51.message : String(error51)}
-${output.stdout}
-${output.stderr}`;
-      if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
-      if (execution.status === "timed_out") {
-        return emptyResult("timed_out", "Claude execution timed out.");
-      }
-      throw new ExecutionError("provider_process_exited", "Claude CLI exited before returning a structured result.", { message: redact(message) });
-    }
+    throw new ExecutionError("execution_not_found", `Claude execution has no persisted result artifacts: ${handle.providerExecutionId}`);
   }
   async cancel(handle, reason) {
+    const metadata = claudeMetadata(handle);
+    if (metadata) {
+      const status = await readPersistedStatus(handle);
+      if (status?.pid && pidIsRunning(status.pid)) killProcessGroup(status.pid, "SIGTERM");
+      await writeStatus(metadata.statusPath, { status: "cancelled", pid: status?.pid, startedAt: status?.startedAt ?? handle.startedAt, completedAt: (/* @__PURE__ */ new Date()).toISOString(), diagnostics: { reason } });
+    }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) return;
     execution.status = "cancelled";
@@ -22630,6 +22713,45 @@ ${output.stderr}`;
     execution.controller.abort();
   }
 };
+async function writeStatus(statusPath, status) {
+  const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile5(tempPath, `${JSON.stringify(status, null, 2)}
+`, "utf8");
+  await rename2(tempPath, statusPath);
+}
+async function readPersistedStatus(handle) {
+  const metadata = claudeMetadata(handle);
+  if (!metadata) return void 0;
+  try {
+    await stat3(metadata.statusPath);
+    return JSON.parse(await readFile9(metadata.statusPath, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function claudeMetadata(handle) {
+  const metadata = handle.providerMetadata;
+  if (!metadata || typeof metadata.statusPath !== "string" || typeof metadata.stdoutPath !== "string" || typeof metadata.stderrPath !== "string") return void 0;
+  return metadata;
+}
+function pidIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function killProcessGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+    }
+  }
+}
 function parseClaudeResult(stdout, stderr) {
   let outer;
   try {
@@ -22681,14 +22803,6 @@ function redactDiagnostics(value) {
 }
 function redact(value) {
   return value.replace(/(api[_-]?key|token|secret|password)[=:]\S+/gi, "$1=[REDACTED]");
-}
-function commandOutput(error51) {
-  if (!error51 || typeof error51 !== "object") return { stdout: "", stderr: "" };
-  const candidate = error51;
-  return {
-    stdout: typeof candidate.stdout === "string" ? candidate.stdout : "",
-    stderr: typeof candidate.stderr === "string" ? candidate.stderr : ""
-  };
 }
 
 // src/core/execution/types.ts
@@ -22779,7 +22893,15 @@ var ExecutionCoordinator = class {
         blocked.push({ phaseId: record2.phaseId, reason: "Execution timed out." });
         continue;
       }
-      const status = await this.provider.getStatus(handle);
+      let status;
+      try {
+        status = await this.provider.getStatus(handle);
+      } catch (error51) {
+        const message = `Provider status failed: ${error51 instanceof Error ? error51.message : String(error51)}`;
+        await this.markPhaseStopped(record2.phaseId, record2.leaseOwnerId, "failed", message);
+        blocked.push({ phaseId: record2.phaseId, reason: message });
+        continue;
+      }
       if (status.status === "running" || status.status === "queued") {
         if (status.heartbeatAt) {
           await heartbeatPhase({ root: this.root, workflowId: this.workflowId, phaseId: record2.phaseId, ownerId: record2.leaseOwnerId, config: this.config, mutation: { ownerId: record2.leaseOwnerId } });
@@ -22796,7 +22918,15 @@ var ExecutionCoordinator = class {
         continue;
       }
       await this.updateRecord(record2.phaseId, { status: "collecting", diagnostics: status.diagnostics });
-      const result = await this.provider.collectResult(handle);
+      let result;
+      try {
+        result = await this.provider.collectResult(handle);
+      } catch (error51) {
+        const message = `Provider result collection failed: ${error51 instanceof Error ? error51.message : String(error51)}`;
+        await this.markPhaseStopped(record2.phaseId, record2.leaseOwnerId, "failed", message);
+        blocked.push({ phaseId: record2.phaseId, reason: message });
+        continue;
+      }
       const accepted = await this.recordResult(record2, result);
       completed.push({ phaseId: record2.phaseId, provider: record2.providerId, status: accepted, workspacePath: record2.workspacePath, leaseOwnerId: record2.leaseOwnerId });
       if (accepted !== "result_recorded") blocked.push({ phaseId: record2.phaseId, reason: result.summary });
@@ -23001,10 +23131,23 @@ var ExecutionCoordinator = class {
   }
   result(state, dispatched, nextAction, message) {
     const records = Object.values(state.execution.records);
+    const latestRecord = [...records].sort((a, b) => Date.parse(b.completedAt ?? b.heartbeatAt ?? b.startedAt) - Date.parse(a.completedAt ?? a.heartbeatAt ?? a.startedAt))[0];
+    const activePhase = state.plan?.phases.find((phase2) => ["leased", "running", "completion_pending"].includes(phase2.status));
+    const gatePhase = activePhase ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
+    const integrated = state.git ? integrationStatus2(state) : void 0;
     return {
       workflowId: state.id,
       revision: state.revision,
       state: state.state,
+      executionMode: records.length > 0 ? "coordinator" : "manual",
+      provider: this.provider.id,
+      runningPhase: activePhase?.id,
+      lastProviderStatus: latestRecord ? `${latestRecord.phaseId}: ${latestRecord.status}` : void 0,
+      phaseGateStatus: gatePhase ? `${gatePhase.id}: ${gatePhase.completion?.decision ?? gatePhase.status}` : void 0,
+      integrationStatus: state.git?.integration.status,
+      combinedValidationStatus: integrated?.validation ? `${integrated.validation.status} @ ${integrated.validation.integrationCommit.slice(0, 12)}` : "not_run",
+      pendingUserGate: nextAction === "await_user" || nextAction === "repair" || nextAction === "review" || nextAction === "resolve_conflict" || nextAction === "final_review" || nextAction === "commit_proposal" ? nextAction : null,
+      nextValidAction: nextAction,
       running: records.filter((record2) => ACTIVE_EXECUTION_STATUSES.has(record2.status)).map((record2) => ({ phaseId: record2.phaseId, provider: record2.providerId, status: record2.status })),
       completed: records.filter((record2) => ["completed", "result_recorded"].includes(record2.status)).map((record2) => ({ phaseId: record2.phaseId, provider: record2.providerId, status: record2.status })),
       blocked: [
@@ -23039,8 +23182,8 @@ var ExecutionCoordinator = class {
 
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir6, rm as rm3, writeFile as writeFile5 } from "node:fs/promises";
-import path10 from "node:path";
+import { mkdir as mkdir7, rm as rm3, writeFile as writeFile6 } from "node:fs/promises";
+import path11 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -23128,24 +23271,25 @@ var ScriptedExecutionProvider = class {
     }
     return this.buildResult(execution.input, execution.script);
   }
-  async cancel(handle, _reason) {
+  async cancel(handle, reason) {
+    void reason;
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) return;
     execution.cancelled = true;
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path10.resolve(workspacePath, edit.path);
-      const relative = path10.relative(workspacePath, target);
-      if (relative.startsWith("..") || path10.isAbsolute(relative)) {
+      const target = path11.resolve(workspacePath, edit.path);
+      const relative = path11.relative(workspacePath, target);
+      if (relative.startsWith("..") || path11.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir6(path10.dirname(target), { recursive: true });
-      await writeFile5(target, edit.content ?? "", "utf8");
+      await mkdir7(path11.dirname(target), { recursive: true });
+      await writeFile6(target, edit.content ?? "", "utf8");
     }
   }
   executionFromHandle(handle) {
@@ -23215,8 +23359,8 @@ var program2 = new Command();
 program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-  const configDir = path11.join(root, ".leanrigor");
-  await mkdir7(configDir, { recursive: true });
+  const configDir = path12.join(root, ".leanrigor");
+  await mkdir8(configDir, { recursive: true });
   const config2 = await initConfig(root);
   const report = await new ClaudeAdapter().install(root, config2, forceOwnedFiles);
   console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
@@ -23227,11 +23371,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path11.join(root, ".leanrigor", "config.json");
+    const configPath = path12.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path11.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path12.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -23659,10 +23803,10 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
 }
 async function executionProvider(providerName, scriptFile) {
   if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile9(path11.resolve(scriptFile), "utf8")) : {};
+    const scripts = scriptFile ? JSON.parse(await readFile10(path12.resolve(scriptFile), "utf8")) : {};
     return new ScriptedExecutionProvider(scripts);
   }
-  if (providerName === "claude") return new ClaudeCliExecutionProvider();
+  if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 function printCoordinatorResult(result, json2) {
@@ -23673,11 +23817,19 @@ function printCoordinatorResult(result, json2) {
   const lines = [
     `Workflow ${result.workflowId} revision ${result.revision}: ${result.state}`,
     result.message,
+    result.executionMode ? `Execution mode: ${result.executionMode}` : void 0,
+    result.provider ? `Provider: ${result.provider}` : void 0,
+    result.runningPhase ? `Running phase: ${result.runningPhase}` : void 0,
+    result.lastProviderStatus ? `Last provider status: ${result.lastProviderStatus}` : void 0,
+    result.phaseGateStatus ? `Phase gate: ${result.phaseGateStatus}` : void 0,
+    result.integrationStatus ? `Integration: ${result.integrationStatus}` : void 0,
+    result.combinedValidationStatus ? `Combined validation: ${result.combinedValidationStatus}` : void 0,
+    result.pendingUserGate ? `Pending user gate: ${result.pendingUserGate}` : void 0,
     result.dispatched.length > 0 ? `Dispatched: ${result.dispatched.map((item) => `${item.phaseId} (${item.provider})`).join(", ")}` : void 0,
     result.running.length > 0 ? `Running: ${result.running.map((item) => `${item.phaseId} (${item.status})`).join(", ")}` : void 0,
     result.completed.length > 0 ? `Completed evidence: ${result.completed.map((item) => item.phaseId).join(", ")}` : void 0,
     result.blocked.length > 0 ? `Blocked: ${result.blocked.map((item) => `${item.phaseId}: ${item.reason}`).join("; ")}` : void 0,
-    `Next action: ${result.nextAction}`
+    `Next action: ${result.nextValidAction ?? result.nextAction}`
   ].filter((line) => Boolean(line));
   console.log(lines.join("\n"));
 }
@@ -23750,7 +23902,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile9(path11.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile10(path12.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {
@@ -23783,8 +23935,8 @@ async function initConfig(root) {
   return ensureRepositoryConfig(root);
 }
 async function ensureRepositoryConfig(root) {
-  const configPath = path11.join(root, ".leanrigor", "config.json");
-  const existing = await readFile9(configPath, "utf8").catch(() => void 0);
+  const configPath = path12.join(root, ".leanrigor", "config.json");
+  const existing = await readFile10(configPath, "utf8").catch(() => void 0);
   if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));
   const config2 = defaultConfig();
   config2.instructions = await detectInstructions(root);
@@ -23792,9 +23944,9 @@ async function ensureRepositoryConfig(root) {
   return config2;
 }
 async function writeConfig(root, config2) {
-  const dir = path11.join(root, ".leanrigor");
-  await mkdir7(dir, { recursive: true });
-  await writeFile6(path11.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
+  const dir = path12.join(root, ".leanrigor");
+  await mkdir8(dir, { recursive: true });
+  await writeFile7(path12.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
 }
 async function detectInstructions(root) {
   const candidates = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];

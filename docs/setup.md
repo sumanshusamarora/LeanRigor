@@ -106,6 +106,19 @@ fallback or when you want repository-local unqualified commands such as
 Use `--force-owned-files` to restore LeanRigor-owned files to the packaged
 version. Non-owned files are never overwritten, even with `--force-owned-files`.
 
+`leanrigor init --adapter claude` explicitly sets
+`.claude/leanrigor/protect-git.sh` to mode `0755` whenever it writes, restores,
+or finds the unmodified packaged hook. This does not depend on Git file mode or
+npm tarball extraction preserving executable bits. `leanrigor doctor --adapter
+claude` reports:
+
+```text
+protect-git.sh: current and executable
+protect-git.sh: installed but not executable
+protect-git.sh: missing
+protect-git.sh: modified
+```
+
 ## Configuration
 
 Configuration lives in `.leanrigor/config.json`. The `$schema` field points at

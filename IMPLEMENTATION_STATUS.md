@@ -31,6 +31,14 @@
   - Controlled `integrate-phase`, idempotent already-integrated handling, dependency order enforcement, cherry-pick textual conflict detection, and persisted conflict metadata.
   - `integration-status`, `validate-integration`, conservative `workspace-cleanup`, and idempotent `workspace-recover`.
   - Final integrated review for workspace-backed workflows requires every completed phase to be integrated and the current integration head to have passing combined validation.
+- Execution coordinator progression:
+  - `execute-next`, `execute-ready`, and `execution-poll` support coordinator mode with scripted and Claude CLI providers.
+  - Provider results are collected as structured evidence, then LeanRigor runs completion gates, creates internal phase transfer commits, integrates accepted phases, updates the integration head, runs combined validation, and reaches final integrated review through persisted transitions.
+  - Coordinator status output reports execution mode, provider, running phase, last provider status, phase gate, integration status, combined validation status, pending user gate, and next valid action without exposing provider transcripts.
+- Claude CLI execution provider prototype:
+  - Dispatches Claude Code CLI print mode with `cwd` set to the assigned phase workspace.
+  - Persists bounded status/stdout/stderr artifacts under `.leanrigor/executions/` so a later CLI `execution-poll` can collect results after restart.
+  - Requires structured provider output; process exit alone does not mark a phase complete.
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
   - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
@@ -55,14 +63,14 @@
   - `protect-git.sh` hook script blocking automatic `git commit`, `git push`, and `git reset --hard`.
   - `settings.json` configuring the `PreToolUse` hook.
   - Command/workflow assets tagged with `generated_by: leanrigor | asset_version: 3`; methodology assets carry the same ownership marker.
-- Install is repeat-safe: files already matching the packaged version are reported as "already current" without writes.
+- Install is repeat-safe: files already matching the packaged version are reported as "already current"; the Git protection hook executable bit is repaired when contents are current.
 - Conflict detection: user-created files and user-modified LeanRigor-owned files are skipped and reported.
-- `--force-owned-files` flag restores LeanRigor-owned files without touching user files.
+- `--force-owned-files` flag restores LeanRigor-owned files without touching user files, and restores hook contents plus executable mode.
 - `leanrigor uninstall --adapter claude` removes only LeanRigor-owned unmodified files; user-modified and unrelated files are preserved.
-- Enhanced `leanrigor doctor --adapter claude` reports CLI version, Claude CLI availability, model tier resolution, per-asset status, and overall health.
+- Enhanced `leanrigor doctor --adapter claude` reports CLI version, Claude CLI availability, model tier resolution, per-asset status, hook permission state, and overall health.
 - Plugin command/agent/hook source lives in `src/adapters/claude/plugin/`; shared methodology source lives in `methodology/`.
 - Plugin assets are included in `npm pack` via `dist/` and verified present in the tarball.
-- Regression tests cover: clean install, repeat-safe install, conflict detection, force-replace, uninstall, doctor output, asset structure, model tier substitution, and JSON validity.
+- Regression tests cover: clean install, packed-install hook mode restoration, repeat-safe hook permission repair, conflict detection, force-replace, uninstall, doctor output including non-executable hook detection, shell hook invocation, blocked/allowed hook decisions, asset structure, model tier substitution, JSON validity, restartable Claude CLI result collection, malformed provider output, and coordinator execution-to-final-review progression.
 
 ## Verification commands executed
 

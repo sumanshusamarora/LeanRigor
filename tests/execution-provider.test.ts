@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { ClaudeCliExecutionProvider } from "../src/core/execution/claude-provider.js";
 import { ScriptedExecutionProvider } from "../src/core/execution/scripted-provider.js";
 import type { PhaseExecutionInput } from "../src/core/execution/types.js";
 
@@ -41,6 +42,35 @@ describe("scripted execution provider", () => {
   });
 });
 
+describe("Claude CLI execution provider", () => {
+  it("collects a structured result after provider restart", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, phaseResultJson());
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch(input(workspace));
+    const restarted = new ClaudeCliExecutionProvider({ command });
+
+    await waitForTerminalStatus(restarted, handle);
+    const result = await restarted.collectResult(handle);
+
+    expect(result.status).toBe("completed");
+    expect(result.changedFiles).toEqual(["src/math.js"]);
+    expect(handle.providerMetadata).toMatchObject({ stdoutPath: expect.any(String), stderrPath: expect.any(String), statusPath: expect.any(String) });
+  });
+
+  it("does not treat process exit alone as a completed phase result", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, "not-json");
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch(input(workspace));
+    const restarted = new ClaudeCliExecutionProvider({ command });
+
+    await waitForTerminalStatus(restarted, handle);
+
+    await expect(restarted.collectResult(handle)).rejects.toMatchObject({ code: "provider_protocol_error" });
+  });
+});
+
 function input(workspacePath: string): PhaseExecutionInput {
   return {
     workflowId: "lr-test",
@@ -65,3 +95,32 @@ function input(workspacePath: string): PhaseExecutionInput {
   };
 }
 
+async function fakeClaude(root: string, result: string): Promise<string> {
+  const command = path.join(root, "fake-claude.sh");
+  await writeFile(command, `#!/bin/sh\nprintf '%s\\n' '${result.replaceAll("'", "'\\''")}'\n`, "utf8");
+  await chmod(command, 0o755);
+  return command;
+}
+
+function phaseResultJson(): string {
+  const result = {
+    status: "completed",
+    summary: "Verified: fake Claude completed.",
+    changedFiles: ["src/math.js"],
+    validation: [{ command: "npm test", exitCode: 0, status: "passed", result: "pass" }],
+    criterionEvidence: [{ criterion: "API works.", status: "met", evidence: ["fake"] }],
+    assumptions: [],
+    scopeDeviations: [],
+    remainingRisks: []
+  };
+  return JSON.stringify({ result: JSON.stringify(result) });
+}
+
+async function waitForTerminalStatus(provider: ClaudeCliExecutionProvider, handle: Awaited<ReturnType<ClaudeCliExecutionProvider["dispatch"]>>): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    const status = await provider.getStatus(handle);
+    if (status.status !== "running" && status.status !== "queued") return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("fake Claude provider did not reach a terminal status");
+}

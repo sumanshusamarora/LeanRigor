@@ -827,7 +827,7 @@ async function executionProvider(providerName: string, scriptFile?: string): Pro
     const scripts = scriptFile ? JSON.parse(await readFile(path.resolve(scriptFile), "utf8")) as Record<string, ScriptedPhase> : {};
     return new ScriptedExecutionProvider(scripts);
   }
-  if (providerName === "claude") return new ClaudeCliExecutionProvider();
+  if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 
@@ -839,11 +839,19 @@ function printCoordinatorResult(result: CoordinatorResult, json: boolean): void 
   const lines = [
     `Workflow ${result.workflowId} revision ${result.revision}: ${result.state}`,
     result.message,
+    result.executionMode ? `Execution mode: ${result.executionMode}` : undefined,
+    result.provider ? `Provider: ${result.provider}` : undefined,
+    result.runningPhase ? `Running phase: ${result.runningPhase}` : undefined,
+    result.lastProviderStatus ? `Last provider status: ${result.lastProviderStatus}` : undefined,
+    result.phaseGateStatus ? `Phase gate: ${result.phaseGateStatus}` : undefined,
+    result.integrationStatus ? `Integration: ${result.integrationStatus}` : undefined,
+    result.combinedValidationStatus ? `Combined validation: ${result.combinedValidationStatus}` : undefined,
+    result.pendingUserGate ? `Pending user gate: ${result.pendingUserGate}` : undefined,
     result.dispatched.length > 0 ? `Dispatched: ${result.dispatched.map((item) => `${item.phaseId} (${item.provider})`).join(", ")}` : undefined,
     result.running.length > 0 ? `Running: ${result.running.map((item) => `${item.phaseId} (${item.status})`).join(", ")}` : undefined,
     result.completed.length > 0 ? `Completed evidence: ${result.completed.map((item) => item.phaseId).join(", ")}` : undefined,
     result.blocked.length > 0 ? `Blocked: ${result.blocked.map((item) => `${item.phaseId}: ${item.reason}`).join("; ")}` : undefined,
-    `Next action: ${result.nextAction}`
+    `Next action: ${result.nextValidAction ?? result.nextAction}`
   ].filter((line): line is string => Boolean(line));
   console.log(lines.join("\n"));
 }

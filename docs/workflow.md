@@ -207,22 +207,43 @@ evidence; fail, block, time out, stop heartbeating, return malformed evidence,
 or modify unexpected files. It exists to exercise LeanRigor workflow machinery
 without a live model session.
 
-`claude` is a minimal real-Claude provider prototype using Claude Code CLI
-print mode in the assigned phase workspace. It uses non-interactive arguments,
-sets `cwd` to the phase worktree, applies timeout/cancellation, requests
-structured output, redacts persisted diagnostics, and never commits, pushes,
-merges, or deploys. The selected path is the smaller reliable implementation
-for this iteration; a future SDK provider can use the same contract.
+`claude-cli` (also accepted as `claude` for compatibility) is a minimal
+real-Claude provider prototype using Claude Code CLI print mode in the assigned
+phase workspace. It uses non-interactive arguments, sets `cwd` to the phase
+worktree, persists bounded status/stdout/stderr artifacts under `.leanrigor/`,
+applies timeout/cancellation, requests structured output, redacts diagnostics,
+and never commits, pushes, merges, or deploys. Process exit alone is not a
+completion decision; LeanRigor must collect a structured result and pass the
+completion gate.
 
-Native Claude plugin behavior has two intended runtime paths:
+Authoritative coordinator progression is:
 
-- interactive plugin path: the active Claude session may dispatch plugin-defined
-  phase workers through Claude-native subagents when available;
-- headless or test path: the coordinator may use a programmatic provider such
-  as `scripted` or the real-Claude CLI prototype.
+```text
+provider terminal result
+-> collect structured result
+-> verify lease and phase workspace
+-> persist validation/evidence
+-> completion gate
+-> internal phase transfer commit
+-> integrate phase
+-> update integration head
+-> combined validation on current integration head
+-> final integrated review gate
+-> commit proposal only after final review passes
+```
 
-The marketplace plugin should not require nested Claude CLI processes when
-native subagents are available.
+If any transition is unavailable, Claude must report the persisted state and
+blocker. It must not narrate a workflow as complete while state remains
+`executing`.
+
+Runtime paths are explicit:
+
+- `execution.mode = coordinator`: use `flow execute-next` and
+  `flow execution-poll`; Claude monitors persisted gates and does not implement
+  phase edits itself.
+- `execution.mode = manual`: fallback when no provider is configured; Claude
+  may implement a phase only in the LeanRigor-assigned phase workspace and must
+  submit persisted completion evidence.
 
 ## Integration Workspace
 

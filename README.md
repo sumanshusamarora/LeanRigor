@@ -24,8 +24,11 @@ proportionally by Fast, Standard, and Rigorous mode overlays.
 This repository is an architectural and functional draft. The TypeScript CLI
 installs, type checks, builds, packs, and passes the Vitest suite. Native Claude
 Code marketplace packaging is implemented and locally validated. Git worktree
-isolation is implemented for phase and integration workspaces. Parallel agents,
-OpenCode, Codex, Cursor, Copilot, and Antigravity adapters remain future work.
+isolation is implemented for phase and integration workspaces. The execution
+coordinator, scripted provider, and Claude CLI provider prototype persist
+execution-to-integration progression through combined validation and final
+review. Parallel agents, OpenCode, Codex, Cursor, Copilot, and Antigravity
+adapters remain future work.
 
 ## Install
 
@@ -80,6 +83,10 @@ leanrigor doctor --adapter claude --root /path/to/repository
 
 Project-local installation creates LeanRigor-owned files under `.claude/` and
 exposes unqualified Claude slash commands such as `/leanrigor`.
+The installed `.claude/leanrigor/protect-git.sh` hook is explicitly chmodded to
+`0755` on install, repeat init, and forced repair; `leanrigor doctor --adapter
+claude` reports whether it is current, missing, modified, or installed without
+an executable bit.
 
 ### From Source
 
@@ -160,14 +167,15 @@ methodology files relevant to the current step.
 
 During execution, LeanRigor derives ready phases from an explicit dependency
 DAG. The default remains sequential: `execution.maxParallelPhases` is `1`, and
-LeanRigor does not spawn parallel agents. Internally, a ready phase is leased to
-the current owner before work starts, then it must run or explicitly skip its
-declared validation and submit structured completion evidence. The
-deterministic gate then returns `completed`, `needs_repair`, `needs_review`,
-`needs_replan`, or `blocked`. Failed validation blocks progression, unexpected
-scope deviations are recorded and escalated when material, and repair attempts
-are bounded by mode. The final integrated review still runs after all per-phase
-gates pass.
+LeanRigor does not spawn parallel agents. In coordinator mode, `flow
+execute-next` and `flow execution-poll` lease ready phases, dispatch the
+configured provider, collect structured results, run completion gates, create
+internal phase transfer commits, integrate accepted phases, run combined
+validation, and stop at the persisted final integrated review gate. In manual
+mode, Claude may perform phase work only in the assigned phase workspace and
+must still submit persisted completion evidence. Failed validation blocks
+progression, unexpected scope deviations are recorded and escalated when
+material, and repair attempts are bounded by mode.
 
 Workflow mutations use atomic revisioned persistence and persistent workflow
 locks. Phase leases, ownership metadata, stale-lease recovery, Git worktree
@@ -259,7 +267,7 @@ the current Superpowers repository.
 | Testing | RED-GREEN-REFACTOR TDD is documented for features, bugs, refactors, and behavior changes. | Proportional testing: sanity for Fast, targeted/unit/integration defaults for Standard, broader/risk-specific checks for Rigorous. |
 | Debugging | Systematic root-cause process before fixes. | Reproduce, observe, narrow, hypothesize, test, root-cause, minimal fix, regression coverage, with depth by mode. |
 | Review | Task and final code review are part of documented execution flows. | Sanity, integrated, deep, and specialist review levels feed LeanRigor completion gates. |
-| Worktrees | Documented worktree skill detects/creates isolated workspaces. | Not implemented in this iteration; worktree isolation remains backlog. |
+| Worktrees | Documented worktree skill detects/creates isolated workspaces. | Implemented for LeanRigor phase and integration workspaces with internal transfer commits. |
 | Subagents | Documented subagent-driven development dispatches implementers and reviewers. | Not implemented in this iteration; scheduling is parallel-ready but execution remains sequential unless driven manually. |
 | Adaptive mode selection | The README documents a strong default workflow; no claim is made here about risk-based mode selection. | Built-in adaptive mode selection with deterministic escalation for high-risk triggers. |
 | Model-tier routing | Subagent documentation advises choosing models by role and task complexity. | Portable small/medium/large routing is built into configuration and workflow stages. |
@@ -282,6 +290,9 @@ and
 - Current Claude Code marketplace commands are namespaced by plugin name.
 - Triage has deterministic fallback; model-backed triage is available through
   the Claude adapter when configured.
+- The Claude CLI execution provider is a prototype for real provider execution;
+  run `scripts/smoke-claude-cli-execution.sh` manually to verify it against an
+  authenticated local Claude CLI. It is not run in ordinary CI.
 - The current workflow is parallel-ready but does not autonomously spawn coding
   agents.
 - Durable workflow locks and phase leases exist; worktree isolation and merge

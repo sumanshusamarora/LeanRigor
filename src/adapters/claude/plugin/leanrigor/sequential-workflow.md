@@ -7,7 +7,7 @@ concise summaries.
 
 Normal flow:
 
-`triage summary -> Approach approval? -> Plan approval -> sequential execution -> per-phase completion gate -> final integrated review -> commit proposal`
+`triage summary -> Approach approval? -> Plan approval -> coordinator/manual execution -> per-phase completion gate -> final integrated review -> commit proposal`
 
 Use `leanrigor flow active --json` to discover active workflows and
 `leanrigor flow next --json` to inspect the current gate. Do not show shell
@@ -56,9 +56,15 @@ Rules:
 - Multiple active workflows: show ID, request, state, mode, updated time, and ask the user to choose.
 - Interpret `approve`, `looks good`, and `continue` according to the current gate.
 - Approval at approach immediately generates and renders the actual phased plan.
-- Approval at plan derives ready phases; initialize the integration workspace,
-  then start one ready phase internally with a stable session owner, phase lease,
-  and phase workspace.
+- Approval at plan derives ready phases. When execution providers/workspaces are
+  configured, use `execution.mode = coordinator`: invoke `flow execute-next` or
+  `flow execution-poll`, monitor persisted execution records, and present only
+  persisted gates. Do not implement phase edits yourself and do not edit the
+  original working tree.
+- Use `execution.mode = manual` only when no configured provider/workspace path
+  is available. In manual mode, initialize the integration workspace, then start
+  one ready phase internally with a stable session owner, phase lease, and phase
+  workspace.
 - `continue` must not bypass `needs_repair`, `needs_review`, or `needs_replan`.
 - Ask one concise clarification for ambiguous responses.
 - Before editing, verify that the current directory equals the active phase
@@ -66,6 +72,9 @@ Rules:
   stop rather than editing the wrong tree.
 - Use the workspace path returned by LeanRigor for all phase work. Never edit
   the user's original working tree when a phase workspace exists.
+- Never claim a phase is complete from visible file changes alone. Never
+  compensate for an unavailable workflow transition by narrating that the
+  workflow is complete. Report the persisted state and the exact blocker.
 - Read the current revision before mutating. Run or skip declared validation
   with a reason in the phase workspace, then submit phase completion evidence as
   the same lease owner.

@@ -1,4 +1,6 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { mkdir, open, readFile, rename, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 import { ExecutionError } from "./errors.js";
 import type { ExecutionProvider } from "./provider.js";
@@ -10,11 +12,31 @@ const execFileAsync = promisify(execFile);
 interface ClaudeExecution {
   handle: ExecutionHandle;
   controller: AbortController;
-  promise: Promise<{ stdout: string; stderr: string }>;
   status: "running" | "completed" | "failed" | "cancelled" | "timed_out";
   startedAt: string;
   completedAt?: string;
   diagnostics: Record<string, unknown>;
+}
+
+interface PersistedClaudeMetadata {
+  command: string;
+  args?: string[];
+  maxTurns: number;
+  permissionMode: string;
+  pid?: number;
+  statusPath: string;
+  stdoutPath: string;
+  stderrPath: string;
+}
+
+interface PersistedClaudeStatus {
+  status: "running" | "completed" | "failed" | "cancelled" | "timed_out";
+  pid?: number;
+  startedAt: string;
+  completedAt?: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  diagnostics?: Record<string, unknown>;
 }
 
 export interface ClaudeCliExecutionProviderOptions {
@@ -62,6 +84,20 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     ];
     if (this.options.model) args.push("--model", this.options.model);
     const startedAt = new Date().toISOString();
+    const artifactDir = path.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    await mkdir(artifactDir, { recursive: true });
+    const statusPath = path.join(artifactDir, "status.json");
+    const stdoutPath = path.join(artifactDir, "stdout.json");
+    const stderrPath = path.join(artifactDir, "stderr.txt");
+    const providerMetadata: PersistedClaudeMetadata = {
+      command: this.options.command ?? "claude",
+      args,
+      maxTurns: this.options.maxTurns ?? 12,
+      permissionMode: this.options.permissionMode ?? "acceptEdits",
+      statusPath,
+      stdoutPath,
+      stderrPath
+    };
     const handle: ExecutionHandle = {
       providerId: this.id,
       providerExecutionId: executionId,
@@ -71,38 +107,68 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       workspacePath: input.workspacePath,
       startedAt,
       lastKnownStatus: "running",
-      providerMetadata: { command: this.options.command ?? "claude", maxTurns: this.options.maxTurns ?? 12, permissionMode: this.options.permissionMode ?? "acceptEdits" }
+      providerMetadata: providerMetadata as unknown as Record<string, unknown>
     };
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), input.timeoutSeconds * 1000);
-    const promise = execFileAsync(this.options.command ?? "claude", args, {
+    const stdout = await open(stdoutPath, "w");
+    const stderr = await open(stderrPath, "w");
+    const child = spawn(this.options.command ?? "claude", args, {
       cwd: input.workspacePath,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
+      detached: true,
+      stdio: ["ignore", stdout.fd, stderr.fd],
       signal: controller.signal,
       env: { ...process.env, CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1" }
-    }).finally(() => clearTimeout(timeout));
+    });
+    await stdout.close();
+    await stderr.close();
+    providerMetadata.pid = child.pid;
+    await writeStatus(statusPath, { status: "running", pid: child.pid, startedAt });
     const execution: ClaudeExecution = {
       handle,
       controller,
-      promise,
       status: "running",
       startedAt,
       diagnostics: {}
     };
     this.executions.set(executionId, execution);
-    promise.then(() => {
-      execution.status = "completed";
+    const timeout = setTimeout(() => {
+      controller.abort();
+      if (child.pid) killProcessGroup(child.pid, "SIGTERM");
+    }, input.timeoutSeconds * 1000);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      execution.status = controller.signal.aborted ? "timed_out" : code === 0 ? "completed" : "failed";
       execution.completedAt = new Date().toISOString();
-    }).catch((error: unknown) => {
-      execution.status = controller.signal.aborted ? "timed_out" : "failed";
-      execution.completedAt = new Date().toISOString();
-      execution.diagnostics = redactDiagnostics({ error: error instanceof Error ? error.message : String(error) });
+      execution.diagnostics = signal || code ? { exitCode: code, signal } : {};
+      void writeStatus(statusPath, {
+        status: execution.status,
+        pid: child.pid,
+        startedAt,
+        completedAt: execution.completedAt,
+        exitCode: code,
+        signal,
+        diagnostics: execution.diagnostics
+      });
     });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      execution.status = "failed";
+      execution.completedAt = new Date().toISOString();
+      execution.diagnostics = redactDiagnostics({ error: error.message });
+      void writeStatus(statusPath, { status: "failed", pid: child.pid, startedAt, completedAt: execution.completedAt, diagnostics: execution.diagnostics });
+    });
+    child.unref();
     return handle;
   }
 
   async getStatus(handle: ExecutionHandle): Promise<ExecutionStatus> {
+    const persisted = await readPersistedStatus(handle);
+    if (persisted) {
+      if (persisted.status === "running" && persisted.pid && !pidIsRunning(persisted.pid)) {
+        return { status: "completed", heartbeatAt: new Date().toISOString(), diagnostics: { ...persisted.diagnostics, pid: persisted.pid, statusInferredFromPid: true } };
+      }
+      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? new Date().toISOString() : persisted.completedAt, diagnostics: persisted.diagnostics };
+    }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
     return {
@@ -113,29 +179,82 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
   }
 
   async collectResult(handle: ExecutionHandle): Promise<PhaseExecutionResult> {
+    const metadata = claudeMetadata(handle);
+    if (metadata) {
+      const status = await readPersistedStatus(handle);
+      if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
+      const stdout = await readFile(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile(metadata.stderrPath, "utf8").catch(() => "");
+      try {
+        return parseClaudeResult(stdout, stderr);
+      } catch (error) {
+        const message = `${error instanceof Error ? error.message : String(error)}\n${stdout}\n${stderr}`;
+        if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
+        throw error;
+      }
+    }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
-    try {
-      const output = await execution.promise;
-      return parseClaudeResult(output.stdout, output.stderr);
-    } catch (error) {
-      const output = commandOutput(error);
-      const message = `${error instanceof Error ? error.message : String(error)}\n${output.stdout}\n${output.stderr}`;
-      if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
-      if (execution.status === "timed_out") {
-        return emptyResult("timed_out", "Claude execution timed out.");
-      }
-      throw new ExecutionError("provider_process_exited", "Claude CLI exited before returning a structured result.", { message: redact(message) });
-    }
+    throw new ExecutionError("execution_not_found", `Claude execution has no persisted result artifacts: ${handle.providerExecutionId}`);
   }
 
   async cancel(handle: ExecutionHandle, reason?: string): Promise<void> {
+    const metadata = claudeMetadata(handle);
+    if (metadata) {
+      const status = await readPersistedStatus(handle);
+      if (status?.pid && pidIsRunning(status.pid)) killProcessGroup(status.pid, "SIGTERM");
+      await writeStatus(metadata.statusPath, { status: "cancelled", pid: status?.pid, startedAt: status?.startedAt ?? handle.startedAt, completedAt: new Date().toISOString(), diagnostics: { reason } });
+    }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) return;
     execution.status = "cancelled";
     execution.completedAt = new Date().toISOString();
     execution.diagnostics = { reason };
     execution.controller.abort();
+  }
+}
+
+async function writeStatus(statusPath: string, status: PersistedClaudeStatus): Promise<void> {
+  const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tempPath, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+  await rename(tempPath, statusPath);
+}
+
+async function readPersistedStatus(handle: ExecutionHandle): Promise<PersistedClaudeStatus | undefined> {
+  const metadata = claudeMetadata(handle);
+  if (!metadata) return undefined;
+  try {
+    await stat(metadata.statusPath);
+    return JSON.parse(await readFile(metadata.statusPath, "utf8")) as PersistedClaudeStatus;
+  } catch {
+    return undefined;
+  }
+}
+
+function claudeMetadata(handle: ExecutionHandle): PersistedClaudeMetadata | undefined {
+  const metadata = handle.providerMetadata as Partial<PersistedClaudeMetadata> | undefined;
+  if (!metadata || typeof metadata.statusPath !== "string" || typeof metadata.stdoutPath !== "string" || typeof metadata.stderrPath !== "string") return undefined;
+  return metadata as PersistedClaudeMetadata;
+}
+
+function pidIsRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Process already exited.
+    }
   }
 }
 
@@ -205,13 +324,4 @@ function redactDiagnostics(value: Record<string, unknown>): Record<string, unkno
 
 function redact(value: string): string {
   return value.replace(/(api[_-]?key|token|secret|password)[=:]\S+/gi, "$1=[REDACTED]");
-}
-
-function commandOutput(error: unknown): { stdout: string; stderr: string } {
-  if (!error || typeof error !== "object") return { stdout: "", stderr: "" };
-  const candidate = error as { stdout?: unknown; stderr?: unknown };
-  return {
-    stdout: typeof candidate.stdout === "string" ? candidate.stdout : "",
-    stderr: typeof candidate.stderr === "string" ? candidate.stderr : ""
-  };
 }

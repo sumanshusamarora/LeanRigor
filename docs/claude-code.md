@@ -273,7 +273,9 @@ The hook command uses `${CLAUDE_PLUGIN_ROOT}/hooks/protect-git.sh`.
 
 In project-local fallback mode, `.claude/settings.json` configures a
 `PreToolUse` hook on the Bash tool that runs
-`.claude/leanrigor/protect-git.sh`.
+`sh .claude/leanrigor/protect-git.sh`. The installer still explicitly chmods
+the hook to `0755` after clean install, repeat install, and
+`--force-owned-files` repair so direct execution is also healthy.
 
 The guard script blocks:
 
@@ -283,6 +285,19 @@ The guard script blocks:
 
 The script fails open: any input it cannot parse causes it to exit 0 rather
 than blocking legitimate tool use.
+
+For end-to-end provider verification, run the manual smoke script from a
+checkout with an authenticated Claude CLI:
+
+```bash
+scripts/smoke-claude-cli-execution.sh
+```
+
+The script creates a disposable repository, initializes project-local Claude
+assets, verifies the hook and doctor output, runs coordinator execution through
+the `claude-cli` provider, polls to the persisted final integrated review gate,
+records a passing final review, confirms a commit proposal exists, and confirms
+no final user commit or push occurred.
 
 **Hook behaviour**: The hooks format follows Claude Code's current plugin hook
 conventions for marketplace mode and `settings.json` `PreToolUse` conventions

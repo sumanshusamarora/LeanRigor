@@ -110,6 +110,15 @@ export interface CoordinatorResult {
   workflowId: string;
   revision: number;
   state: string;
+  executionMode?: "coordinator" | "manual";
+  provider?: string;
+  runningPhase?: string;
+  lastProviderStatus?: string;
+  phaseGateStatus?: string;
+  integrationStatus?: string;
+  combinedValidationStatus?: string;
+  pendingUserGate?: string | null;
+  nextValidAction?: ExecutionNextAction;
   running: CoordinatorPhaseSummary[];
   completed: CoordinatorPhaseSummary[];
   blocked: Array<{ phaseId: string; reason: string }>;
@@ -132,4 +141,3 @@ export function toValidationEvidence(phaseId: string, entry: ExecutionValidation
     timestamp: entry.timestamp ?? new Date().toISOString()
   };
 }
-

@@ -135,7 +135,8 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
     return this.buildResult(execution.input, execution.script);
   }
 
-  async cancel(handle: ExecutionHandle, _reason?: string): Promise<void> {
+  async cancel(handle: ExecutionHandle, reason?: string): Promise<void> {
+    void reason;
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) return;
     execution.cancelled = true;
