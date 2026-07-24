@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a LeanRigor product or workflow improvement
+title: "[Feature]: "
+labels:
+  - "type:feature"
+  - "status:needs-triage"
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user problem before describing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current workaround
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Best-fit architectural layer
+      options:
+        - LeanRigor workflow or policy control plane
+        - Execution provider
+        - Workspace or Git mechanics
+        - Claude Code adapter
+        - Documentation or contributor experience
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include native coding-agent features or reusable tools where relevant.
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risk, compatibility, or safety considerations
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and roadmap items.
+          required: true
+        - label: I have not presented this proposed capability as already implemented.
+          required: true
