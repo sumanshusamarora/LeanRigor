@@ -19156,7 +19156,7 @@ var ClaudeCliTriageProvider = class {
   async classify(request, root, config2) {
     const model = resolveModelTier(config2.routing.triage, "claude", config2).model;
     const prompt = await buildTriagePrompt(root, request);
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "1", "--disallowedTools", "Edit", "Write", "Bash"];
+    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "5", "--disallowedTools", "Edit", "Write", "Bash", "Agent", "Task", "WebSearch", "WebFetch"];
     if (model) args.push("--model", model);
     const result = await this.runCommand("claude", args, root);
     if (result.exitCode !== 0) {
@@ -19179,7 +19179,8 @@ async function buildTriagePrompt(root, request) {
   const skill = await readFile4(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
   return [
     "You are the bounded triage classifier for LeanRigor.",
-    "Follow the contract below exactly. Return only one JSON object; no prose or markdown.",
+    "You may inspect the repository with Read/Glob/Grep to inform your assessment, but keep inspection minimal.",
+    "Follow the contract below exactly. Return only one JSON object as your final response; no prose or markdown.",
     skill,
     "User request:",
     request
