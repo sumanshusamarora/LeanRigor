@@ -17,9 +17,9 @@ export const leanRigorConfigSchema = z.object({
   }).prefault({}),
   models: z.object({
     tiers: z.object({
-      small: adapterModelMap.default({ claude: "haiku" }),
-      medium: adapterModelMap.default({ claude: "sonnet" }),
-      large: adapterModelMap.default({ claude: "opus" }),
+      small: adapterModelMap.default({}),
+      medium: adapterModelMap.default({}),
+      large: adapterModelMap.default({}),
       inherit: adapterModelMap.default({})
     }).prefault({}),
     failIfUnavailable: z.boolean().default(true),

@@ -78,6 +78,7 @@ const marketplace = await readJson(".claude-plugin/marketplace.json");
 const plugin = await readJson(".claude-plugin/plugin.json");
 const expectedCommands = [
   "./commands/start.md",
+  "./commands/init.md",
   "./commands/plan.md",
   "./commands/status.md",
   "./commands/review.md",

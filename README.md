@@ -48,12 +48,79 @@ Then, from a repository:
 ```
 
 Claude presents triage, approvals, the plan, phase progress, validation,
-integrated review, and a commit proposal conversationally.
+integrated review, and a commit proposal conversationally. Marketplace mode does
+not create a repository-local `.claude/` directory. LeanRigor lazily creates
+`.leanrigor/` with a protective `.gitignore` on first use — no explicit init is
+required after plugin installation.
+
+Available marketplace commands:
+
+```text
+/leanrigor:start
+/leanrigor:init
+/leanrigor:plan
+/leanrigor:status
+/leanrigor:review
+/leanrigor:commit
+```
+
+Claude Code namespaces marketplace plugin commands as `/plugin-name:command`.
+LeanRigor therefore uses concise command names such as `/leanrigor:start` and
+`/leanrigor:plan`. After upgrading the plugin, restart or reload Claude Code if
+autocomplete still shows older command names.
 
 ### npm and project-local Claude assets
 
-The npm package is not yet published as a stable public release. For source or
-pre-release testing:
+The npm package is not yet published as a stable public release. Use this
+fallback when Claude Code marketplace installation is unavailable or when you
+explicitly want repository-local `.claude/` assets:
+
+```bash
+npm install -g leanrigor
+leanrigor init --adapter claude --root /path/to/repository
+leanrigor doctor --adapter claude --root /path/to/repository
+```
+
+## Configuration
+
+LeanRigor uses a layered configuration hierarchy with deterministic precedence:
+
+| File | Location | Scope | Committed? |
+|---|---|---|---|
+| User preferences | `~/.config/leanrigor/config.json` | Personal defaults across repos | No |
+| Repository policy | `leanrigor.config.json` | Team safety policy, min tiers | Yes |
+| Local config | `.leanrigor/config.json` | Private overrides, concrete models | No |
+| Runtime state | `.leanrigor/workflows/` | Workflow persistence | No |
+
+**Precedence** (highest to lowest): CLI flags → environment variables → local
+config → repo policy → user config → adapter defaults → built-in defaults.
+
+**Safety constraints**: Repository policy minimums and maximums cannot be
+weakened by personal preferences. For example, if the repo policy requires
+`large` tier for reviews, user config cannot downgrade it.
+
+**Portable model tiers**: Repository policy specifies portable capability tiers
+(`small`, `medium`, `large`, `inherit`) — not concrete model names. Each
+contributor resolves these to their own models via user config, local config, or
+environment variables like `ANTHROPIC_DEFAULT_HAIKU_MODEL`.
+
+**Claude adapter**: Derives defaults from `ANTHROPIC_DEFAULT_HAIKU_MODEL` /
+`ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL` environment
+variables, falling back to Claude aliases `haiku` / `sonnet` / `opus`. The
+`inherit` tier omits `--model`.
+
+Inspect effective configuration:
+
+```bash
+leanrigor config show
+leanrigor config show --json
+leanrigor config get execution.maxParallelPhases
+leanrigor config set execution.maxParallelPhases 4 --scope local
+```
+
+### From Source
+
+For local development or a pre-publish install:
 
 ```bash
 npm install

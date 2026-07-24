@@ -16,6 +16,7 @@ async function tempRepo(): Promise<string> {
 /** All target paths produced by a fresh install. */
 const EXPECTED_DEST_PATHS = [
   path.join(".claude", "commands", "leanrigor.md"),
+  path.join(".claude", "commands", "leanrigor-init.md"),
   path.join(".claude", "commands", "leanrigor-plan.md"),
   path.join(".claude", "commands", "leanrigor-status.md"),
   path.join(".claude", "commands", "leanrigor-review.md"),
@@ -237,15 +238,19 @@ describe("Claude plugin conflict handling", () => {
 describe("Claude plugin triage agent model tier", () => {
   it("embeds the configured Small tier model in the triage agent", async () => {
     const root = await tempRepo();
-    await new ClaudeAdapter().install(root, defaultConfig());
+    // Use explicit model mapping to avoid environment-dependent resolution
+    const config = leanRigorConfigSchema.parse({ models: { tiers: { small: { claude: "haiku" } } } });
+    await new ClaudeAdapter().install(root, config);
 
     const agent = await readFile(path.join(root, ".claude", "agents", "leanrigor-triage.md"), "utf8");
     expect(agent).toContain("model: haiku");
+    // Template variable should be fully substituted
+    expect(agent).not.toContain("{{TRIAGE_MODEL}}");
   });
 
   it("omits explicit model from the triage agent when routing.triage is inherit", async () => {
     const root = await tempRepo();
-    const config = leanRigorConfigSchema.parse({ routing: { triage: "inherit" } });
+    const config = leanRigorConfigSchema.parse({ routing: { triage: "inherit" }, models: { tiers: { small: { claude: "haiku" } } } });
     await new ClaudeAdapter().install(root, config);
 
     const agent = await readFile(path.join(root, ".claude", "agents", "leanrigor-triage.md"), "utf8");
@@ -381,7 +386,11 @@ describe("Claude plugin doctor", () => {
 
   it("reports model tier resolution in doctor output", async () => {
     const root = await tempRepo();
-    const output = await new ClaudeAdapter().doctor(root, defaultConfig());
+    // Use explicit model mappings for deterministic test output
+    const config = leanRigorConfigSchema.parse({
+      models: { tiers: { small: { claude: "haiku" }, medium: { claude: "sonnet" }, large: { claude: "opus" } } }
+    });
+    const output = await new ClaudeAdapter().doctor(root, config);
     const text = output.join("\n");
 
     expect(text).toContain("small: haiku");

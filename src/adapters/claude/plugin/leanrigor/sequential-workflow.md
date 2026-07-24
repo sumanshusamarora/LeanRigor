@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 3 -->
+<!-- generated_by: leanrigor | asset_version: 4 -->
 # LeanRigor Conversational Workflow
 
 Use `leanrigor flow` as the persisted source of truth. Users should respond in
@@ -14,6 +14,21 @@ Use `leanrigor flow active --json` to discover active workflows and
 commands during normal use.
 LeanRigor is parallel-ready internally, but default execution remains
 sequential. Do not spawn parallel agents.
+
+## Configuration
+
+LeanRigor uses a layered configuration hierarchy (highest precedence first):
+
+1. CLI flags
+2. Environment variables (`LEANRIGOR_*`, `ANTHROPIC_DEFAULT_*`)
+3. Private local config: `.leanrigor/config.json` (never committed)
+4. Committed repository policy: `leanrigor.config.json`
+5. User config: `~/.config/leanrigor/config.json`
+6. Adapter-derived defaults (Claude: haiku/sonnet/opus)
+7. Built-in defaults
+
+Use `/leanrigor:init` to inspect configuration, change settings, or see
+effective values with provenance.
 
 ## Engineering Methodology
 

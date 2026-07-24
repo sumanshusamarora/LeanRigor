@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 3 -->
+<!-- generated_by: leanrigor | asset_version: 4 -->
 # /leanrigor-review
 
 Show or perform the valid LeanRigor review step.

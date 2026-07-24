@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 3 -->
+<!-- generated_by: leanrigor | asset_version: 4 -->
 # /leanrigor
 
 Primary conversational LeanRigor workflow command.
@@ -10,7 +10,8 @@ Read `.claude/leanrigor/sequential-workflow.md` first.
 1. Use `leanrigor flow active --json` and `leanrigor flow next --json`
    internally to find the current gate.
 2. If `$ARGUMENTS` is a new request and no active workflow exists, start the
-   workflow internally, then render the next gate.
+   workflow internally, then render the next gate. LeanRigor lazily creates
+   `.leanrigor/` and its `.gitignore` on first use — no explicit init is needed.
 3. If one active workflow exists, resume it and interpret `$ARGUMENTS` as a
    natural-language response when present.
 4. If multiple active workflows exist, present the selection and ask the user

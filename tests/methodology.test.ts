@@ -43,7 +43,7 @@ describe("engineering methodology assets", () => {
 
   it("keeps methodology out of user-facing slash commands", async () => {
     const commandFiles = await readdir(path.join(repoRoot, "commands"));
-    expect(commandFiles.sort()).toEqual(["commit.md", "plan.md", "review.md", "start.md", "status.md"]);
+    expect(commandFiles.sort()).toEqual(["commit.md", "init.md", "plan.md", "review.md", "start.md", "status.md"]);
     for (const command of commandFiles) {
       const content = await readFile(path.join(repoRoot, "commands", command), "utf8");
       expect(content).not.toContain("Core Engineering Methodology");

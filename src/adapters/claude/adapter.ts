@@ -5,9 +5,12 @@ import path from "node:path";
 import type { HarnessAdapter, InstallReport, UninstallReport } from "../types.js";
 import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
 import { isClaudeAlias, resolveModelTier } from "../../config/models.js";
+import { ensureGitignore, checkTrackedLeanrigorFiles } from "../../config/bootstrap.js";
+import { configFileExists, loadUserConfig, loadRepoPolicy } from "../../config/load.js";
+import { ConfigScope } from "../../config/config-scope.js";
 
 /** Version stamp embedded in every generated asset. Increment when assets change in a breaking way. */
-export const ASSET_VERSION = 3;
+export const ASSET_VERSION = 4;
 
 /** String embedded in every LeanRigor-generated file for ownership detection. */
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";
@@ -71,6 +74,7 @@ function assetManifest(triageModel: string): Array<{ src: string; dest: string; 
   }));
   return [
     { src: path.join(plugin, "commands", "leanrigor.md"),        dest: path.join(".claude", "commands", "leanrigor.md") },
+    { src: path.join(plugin, "commands", "leanrigor-init.md"),   dest: path.join(".claude", "commands", "leanrigor-init.md") },
     { src: path.join(plugin, "commands", "leanrigor-plan.md"),   dest: path.join(".claude", "commands", "leanrigor-plan.md") },
     { src: path.join(plugin, "commands", "leanrigor-status.md"), dest: path.join(".claude", "commands", "leanrigor-status.md") },
     { src: path.join(plugin, "commands", "leanrigor-review.md"), dest: path.join(".claude", "commands", "leanrigor-review.md") },
@@ -190,6 +194,31 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push(`Claude assets available: ${ASSET_VERSION}`);
     output.push(`Runtime source: ${runtimeSource()}`);
 
+    // Configuration files found
+    output.push("");
+    output.push("Configuration files:");
+    const userConfig = await loadUserConfig();
+    output.push(`  User config (~/.config/leanrigor/config.json): ${userConfig ? "found" : "not found"}`);
+    const repoPolicy = await loadRepoPolicy(root);
+    output.push(`  Repository policy (leanrigor.config.json): ${repoPolicy ? "found" : "not found"}`);
+    const localExists = await configFileExists(ConfigScope.Local, root);
+    output.push(`  Local config (.leanrigor/config.json): ${localExists ? "found" : "not found (using defaults)"}`);
+
+    // .leanrigor/.gitignore status
+    output.push("");
+    const gitignoreStatus = await ensureGitignore(path.join(root, ".leanrigor"));
+    output.push(gitignoreStatus.message);
+
+    // Check for tracked .leanrigor files
+    const trackedFiles = await checkTrackedLeanrigorFiles(root);
+    if (trackedFiles.length > 0) {
+      output.push(`⚠ WARNING: ${trackedFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
+      for (const file of trackedFiles) {
+        output.push(`  .leanrigor/${file}`);
+      }
+      output.push("  These files contain private runtime state and should not be committed.");
+    }
+
     // Check Claude CLI availability — check PATH first, then common fallback location
     const claudeInPath = await which("claude");
     if (claudeInPath) {
@@ -203,14 +232,15 @@ export class ClaudeAdapter implements HarnessAdapter {
       }
     }
 
-    // Check model tier resolution
+    // Check model tier resolution with provenance
     output.push("");
     output.push("Model tier resolution:");
     for (const tier of ["small", "medium", "large"] as const) {
       try {
         const resolved = resolveModelTier(tier, "claude", config);
         const detail = resolved.model && isClaudeAlias(resolved.model) ? "Claude alias" : "custom identifier";
-        output.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${resolved.source}${resolved.model ? `, ${detail}` : ""})`);
+        const sourceLabel = modelSourceLabel(resolved.source);
+        output.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${sourceLabel}${resolved.model ? `, ${detail}` : ""})`);
       } catch (error) { output.push(`  ${tier}: ERROR — ${(error as Error).message}`); }
     }
 
@@ -290,6 +320,15 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push("");
     output.push(`Automatic triage: ${config.workflow.automaticTriage ? "enabled" : "disabled"}`);
 
+    // Config management hints
+    output.push("");
+    output.push("Configuration management:");
+    output.push("  Show effective config: leanrigor config show");
+    output.push("  Show config detail:   leanrigor config show --json");
+    output.push("  Change user setting:   leanrigor config set <path> <value> --scope user");
+    output.push("  Change repo policy:    leanrigor config set <path> <value> --scope repo");
+    output.push("  Change local setting:  leanrigor config set <path> <value> --scope local");
+
     return output;
   }
 }
@@ -368,5 +407,18 @@ async function loadConfigForUninstall(root: string): Promise<LeanRigorConfig> {
   } catch {
     const { defaultConfig } = await import("../../config/defaults.js");
     return defaultConfig();
+  }
+}
+
+/** Human-readable label for model resolution sources. */
+function modelSourceLabel(source: string): string {
+  switch (source) {
+    case "adapter-env": return "ANTHROPIC_DEFAULT_* environment variable";
+    case "platform-env": return "LEANRIGOR_CLAUDE_MODEL_* environment variable";
+    case "generic-env": return "LEANRIGOR_MODEL_* environment variable";
+    case "config": return "LeanRigor configuration file";
+    case "adapter-default": return "Claude alias default (haiku/sonnet/opus)";
+    case "inherit": return "inherited (no model specified)";
+    default: return source;
   }
 }

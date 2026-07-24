@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path13 = __require("node:path");
+    var path16 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path13.resolve(baseDir, baseName);
+          const localBin = path16.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path13.extname(baseName))) return void 0;
+          if (sourceExt.includes(path16.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path13.resolve(
-            path13.dirname(resolvedScriptPath),
+          executableDir = path16.resolve(
+            path16.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path13.basename(
+            const legacyName = path16.basename(
               this._scriptPath,
-              path13.extname(this._scriptPath)
+              path16.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path13.extname(executableFile));
+        launchWithNode = sourceExt.includes(path16.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path13.basename(filename, path13.extname(filename));
+        this._name = path16.basename(filename, path16.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path14) {
-        if (path14 === void 0) return this._executableDir;
-        this._executableDir = path14;
+      executableDir(path17) {
+        if (path17 === void 0) return this._executableDir;
+        this._executableDir = path17;
         return this;
       }
       /**
@@ -3722,10 +3722,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path13) {
-  if (!path13)
+function getElementAtPath(obj, path16) {
+  if (!path16)
     return obj;
-  return path13.reduce((acc, key) => acc?.[key], obj);
+  return path16.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4053,11 +4053,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path13, issues) {
+function prefixIssues(path16, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path13);
+    iss.path.unshift(path16);
     return iss;
   });
 }
@@ -4274,16 +4274,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path13 = []) => {
+  const processError = (error52, path16 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path16, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path16, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4310,17 +4310,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path13 = []) => {
+  const processError = (error52, path16 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path13, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path16, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path13, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else {
-        const fullpath = [...path13, ...issue2.path];
+        const fullpath = [...path16, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4352,8 +4352,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path13 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path13) {
+  const path16 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path16) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17783,13 +17783,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path13 = ref.slice(1).split("/").filter(Boolean);
-  if (path13.length === 0) {
+  const path16 = ref.slice(1).split("/").filter(Boolean);
+  if (path16.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path13[0] === defsKey) {
-    const key = path13[1];
+  if (path16[0] === defsKey) {
+    const key = path16[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18578,9 +18578,9 @@ var init_schema = __esm({
       }).prefault({}),
       models: external_exports.object({
         tiers: external_exports.object({
-          small: adapterModelMap.default({ claude: "haiku" }),
-          medium: adapterModelMap.default({ claude: "sonnet" }),
-          large: adapterModelMap.default({ claude: "opus" }),
+          small: adapterModelMap.default({}),
+          medium: adapterModelMap.default({}),
+          large: adapterModelMap.default({}),
           inherit: adapterModelMap.default({})
         }).prefault({}),
         failIfUnavailable: external_exports.boolean().default(true),
@@ -18706,18 +18706,263 @@ var init_schema = __esm({
   }
 });
 
+// src/config/schemas/user.ts
+var userConfigSchema;
+var init_user = __esm({
+  "src/config/schemas/user.ts"() {
+    "use strict";
+    init_zod();
+    userConfigSchema = external_exports.object({
+      $schema: external_exports.string().optional(),
+      version: external_exports.literal(1).default(1),
+      /** Preferred harness adapter. */
+      adapter: external_exports.enum(["claude"]).default("claude"),
+      /** Personal concrete model mappings per harness adapter. */
+      models: external_exports.object({
+        claude: external_exports.object({
+          small: external_exports.string().min(1).optional(),
+          medium: external_exports.string().min(1).optional(),
+          large: external_exports.string().min(1).optional()
+        }).prefault({})
+      }).prefault({}),
+      /** Personal execution preferences. */
+      execution: external_exports.object({
+        defaultProvider: external_exports.enum(["claude-cli", "scripted"]).optional(),
+        defaultMode: external_exports.enum(["coordinator", "manual"]).optional(),
+        pollIntervalSeconds: external_exports.number().int().min(1).max(3600).optional(),
+        workerTimeoutSeconds: external_exports.number().int().min(5).max(86400).optional(),
+        heartbeatGraceSeconds: external_exports.number().int().min(1).max(3600).optional(),
+        phaseLeaseTimeoutSeconds: external_exports.number().int().min(5).max(86400).optional(),
+        workflowLockTimeoutSeconds: external_exports.number().int().min(1).max(3600).optional(),
+        parallelism: external_exports.number().int().min(1).max(16).optional(),
+        verbosity: external_exports.enum(["quiet", "normal", "verbose"]).optional()
+      }).prefault({}),
+      /** Machine-specific paths. */
+      paths: external_exports.object({
+        claudeExecutable: external_exports.string().min(1).optional(),
+        workspaceRoot: external_exports.string().min(1).optional()
+      }).prefault({})
+    });
+  }
+});
+
+// src/config/schemas/repo-policy.ts
+var workflowMode2, reviewLevel, repoPolicyConfigSchema;
+var init_repo_policy = __esm({
+  "src/config/schemas/repo-policy.ts"() {
+    "use strict";
+    init_zod();
+    init_schema();
+    workflowMode2 = external_exports.enum(["adaptive", "fast", "standard", "rigorous"]);
+    reviewLevel = external_exports.enum(["sanity", "integrated", "deep", "specialist"]);
+    repoPolicyConfigSchema = external_exports.object({
+      $schema: external_exports.string().optional(),
+      version: external_exports.literal(1).default(1),
+      /** Workflow behaviour defaults and safety constraints. */
+      workflow: external_exports.object({
+        defaultMode: workflowMode2.optional(),
+        allowUserOverride: external_exports.boolean().optional(),
+        automaticTriage: external_exports.boolean().optional()
+      }).prefault({}),
+      /**
+       * Minimum capability tiers required for each task class.
+       * The strongest (highest) tier requirement wins — user/local
+       * preferences cannot downgrade these.
+       */
+      minimumTiers: external_exports.object({
+        triage: modelTierSchema.optional(),
+        planning: modelTierSchema.optional(),
+        implementation: modelTierSchema.optional(),
+        review: modelTierSchema.optional()
+      }).prefault({}),
+      /** Tier fallback chain when the preferred tier is unavailable. */
+      modelFallback: external_exports.object({
+        small: external_exports.array(modelTierSchema).default(["medium", "inherit"]),
+        medium: external_exports.array(modelTierSchema).default(["large", "inherit"]),
+        large: external_exports.array(modelTierSchema).default(["inherit"])
+      }).prefault({}),
+      /** Routing — which tier to use for each workflow step. */
+      routing: external_exports.object({
+        triage: modelTierSchema.optional(),
+        repositoryInspection: modelTierSchema.optional(),
+        clarification: modelTierSchema.optional(),
+        fastImplementation: modelTierSchema.optional(),
+        standardPlanning: modelTierSchema.optional(),
+        standardImplementation: modelTierSchema.optional(),
+        rigorousPlanning: modelTierSchema.optional(),
+        rigorousImplementation: modelTierSchema.optional(),
+        integratedReview: modelTierSchema.optional(),
+        highRiskReview: modelTierSchema.optional(),
+        commitPlanning: modelTierSchema.optional()
+      }).prefault({}),
+      /** Safety and risk policy. */
+      safety: external_exports.object({
+        /** Path patterns that trigger Rigorous mode automatically. */
+        rigorousPaths: external_exports.array(external_exports.string()).optional(),
+        /** Path patterns that must never be modified. */
+        protectedPaths: external_exports.array(external_exports.string()).optional(),
+        /** Require completion evidence before phase gates pass. */
+        requireEvidence: external_exports.boolean().optional(),
+        /** Require validation commands to run and pass. */
+        requireValidation: external_exports.boolean().optional(),
+        /** Maximum repair attempts per mode (policy caps). */
+        maxRepairAttempts: external_exports.object({
+          fast: external_exports.number().int().min(0).optional(),
+          standard: external_exports.number().int().min(0).optional(),
+          rigorous: external_exports.number().int().min(0).optional()
+        }).prefault({})
+      }).prefault({}),
+      /** Maximum permitted parallelism — caps user/local values. */
+      parallelism: external_exports.object({
+        maxPhases: external_exports.number().int().min(1).max(16).optional(),
+        maxAgents: external_exports.number().int().min(1).max(16).optional()
+      }).prefault({}),
+      /** Review policy per workflow mode. */
+      review: external_exports.object({
+        fast: reviewLevel.optional(),
+        standard: reviewLevel.optional(),
+        rigorous: reviewLevel.optional(),
+        multiAgent: reviewLevel.optional(),
+        highRiskPaths: reviewLevel.optional(),
+        allowUserOverride: external_exports.boolean().optional()
+      }).prefault({}),
+      /** Testing requirements per change category. */
+      testing: external_exports.object({
+        bugFixes: external_exports.enum(["optional", "recommended", "regression-required"]).optional(),
+        publicApi: external_exports.enum(["optional", "recommended", "contract-required"]).optional(),
+        uiCopy: external_exports.enum(["optional", "recommended"]).optional()
+      }).prefault({}),
+      /** Completion gate policy. */
+      completionGate: external_exports.object({
+        enabled: external_exports.boolean().optional(),
+        requireEvidence: external_exports.boolean().optional(),
+        requireValidation: external_exports.boolean().optional(),
+        allowSkippedValidation: external_exports.object({
+          fast: external_exports.boolean().optional(),
+          standard: external_exports.boolean().optional(),
+          rigorous: external_exports.boolean().optional()
+        }).prefault({})
+      }).prefault({}),
+      /** Task sizing constraints. */
+      taskSizing: external_exports.object({
+        maxPrimaryObjectives: external_exports.number().int().min(1).optional(),
+        preferredWriteFiles: external_exports.number().int().min(1).optional(),
+        reviewSplitThresholdFiles: external_exports.number().int().min(1).optional()
+      }).prefault({}),
+      /** Introspection settings. */
+      introspection: external_exports.object({
+        preflight: external_exports.enum(["always", "mode-based", "manual"]).optional(),
+        deepReflection: external_exports.enum(["triggered", "always", "manual"]).optional(),
+        triggerAfterFailedRepairs: external_exports.number().int().min(1).max(10).optional(),
+        triggerOnScopeExpansion: external_exports.boolean().optional(),
+        triggerOnArchitectureChange: external_exports.boolean().optional()
+      }).prefault({}),
+      /** Triage policy. */
+      triage: external_exports.object({
+        chooseLowestSafeMode: external_exports.boolean().optional(),
+        requireExplicitRigorousTrigger: external_exports.boolean().optional(),
+        fastRequiresPositiveEvidence: external_exports.boolean().optional(),
+        highConfidenceThreshold: external_exports.number().min(0).max(1).optional(),
+        mediumConfidenceThreshold: external_exports.number().min(0).max(1).optional(),
+        maxEscalationReasons: external_exports.number().int().min(1).max(5).optional(),
+        maxAssumptions: external_exports.number().int().min(0).max(5).optional(),
+        maxInspectionTargets: external_exports.number().int().min(0).max(10).optional(),
+        fallbackMode: external_exports.enum(["standard", "rigorous"]).optional()
+      }).prefault({}),
+      /** Git safety constraints. */
+      git: external_exports.object({
+        autoCommit: external_exports.literal(false).optional(),
+        requireConfirmation: external_exports.boolean().optional(),
+        commitStyle: external_exports.enum(["conventional", "plain"]).optional()
+      }).prefault({}),
+      /** Budget constraints. */
+      budgets: external_exports.object({
+        clarificationQuestions: external_exports.number().int().min(0).optional(),
+        options: external_exports.number().int().min(1).max(5).optional(),
+        reviewRounds: external_exports.number().int().min(0).optional(),
+        repairRounds: external_exports.number().int().min(0).optional(),
+        triageCalls: external_exports.number().int().min(1).max(3).optional()
+      }).prefault({})
+    });
+  }
+});
+
+// src/config/config-scope.ts
+import path from "node:path";
+import { homedir } from "node:os";
+function scopePath(scope, root) {
+  switch (scope) {
+    case ConfigScope.User:
+      return path.join(homedir(), ".config", "leanrigor", "config.json");
+    case ConfigScope.RepoPolicy:
+      return path.join(root, "leanrigor.config.json");
+    case ConfigScope.Local:
+      return path.join(root, ".leanrigor", "config.json");
+    default:
+      throw new Error(`Scope ${scope} does not have a file path.`);
+  }
+}
+var ConfigScope, PRECEDENCE, REPO_POLICY_FORBIDDEN_KEYS;
+var init_config_scope = __esm({
+  "src/config/config-scope.ts"() {
+    "use strict";
+    ConfigScope = {
+      /** CLI flags (highest precedence) */
+      Cli: "cli",
+      /** Environment variables: LEANRIGOR_*, ANTHROPIC_DEFAULT_* */
+      Env: "env",
+      /** Private per-repository config: .leanrigor/config.json */
+      Local: "local",
+      /** Shareable committed repository policy: leanrigor.config.json */
+      RepoPolicy: "repo",
+      /** User-wide preferences: ~/.config/leanrigor/config.json */
+      User: "user",
+      /** Adapter-derived defaults (Claude: ANTHROPIC_DEFAULT_* → alias) */
+      Adapter: "adapter",
+      /** Hard-coded built-in defaults */
+      Builtin: "builtin"
+    };
+    PRECEDENCE = [
+      ConfigScope.Builtin,
+      ConfigScope.Adapter,
+      ConfigScope.User,
+      ConfigScope.RepoPolicy,
+      ConfigScope.Local,
+      ConfigScope.Env,
+      ConfigScope.Cli
+    ];
+    REPO_POLICY_FORBIDDEN_KEYS = [
+      "$schema",
+      "version",
+      "models.tiers.small.claude",
+      "models.tiers.medium.claude",
+      "models.tiers.large.claude",
+      "models.tiers.small.opencode",
+      "models.tiers.medium.opencode",
+      "models.tiers.large.opencode",
+      "execution.workspaceRoot",
+      "execution.maxWorkspacePathLength",
+      "execution.workspaceBranchPrefix",
+      "execution.internalCommitSigning",
+      "instructions"
+    ];
+  }
+});
+
 // src/config/load.ts
 var load_exports = {};
 __export(load_exports, {
-  loadConfig: () => loadConfig
+  configFileExists: () => configFileExists,
+  loadConfig: () => loadConfig,
+  loadLocalConfig: () => loadLocalConfig,
+  loadRepoPolicy: () => loadRepoPolicy,
+  loadUserConfig: () => loadUserConfig
 });
 import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { homedir } from "node:os";
 async function loadConfig(root) {
   const locations = [
-    path.join(homedir(), ".config", "leanrigor", "config.json"),
-    path.join(root, ".leanrigor", "config.json"),
+    scopePath(ConfigScope.User, root),
+    scopePath(ConfigScope.Local, root),
     process.env.LEANRIGOR_CONFIG
   ].filter(Boolean);
   let merged = {};
@@ -18731,6 +18976,44 @@ async function loadConfig(root) {
     }
   }
   return leanRigorConfigSchema.parse(merged);
+}
+async function loadUserConfig() {
+  const filePath = scopePath(ConfigScope.User, "");
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf8"));
+    return userConfigSchema.parse(raw);
+  } catch (error51) {
+    if (error51.code === "ENOENT") return null;
+    throw new Error(`Unable to load user configuration from ${filePath}: ${error51.message}`, { cause: error51 });
+  }
+}
+async function loadRepoPolicy(root) {
+  const filePath = scopePath(ConfigScope.RepoPolicy, root);
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf8"));
+    return repoPolicyConfigSchema.parse(raw);
+  } catch (error51) {
+    if (error51.code === "ENOENT") return null;
+    throw new Error(`Unable to load repository policy from ${filePath}: ${error51.message}`, { cause: error51 });
+  }
+}
+async function loadLocalConfig(root) {
+  const filePath = scopePath(ConfigScope.Local, root);
+  try {
+    const raw = JSON.parse(await readFile(filePath, "utf8"));
+    return leanRigorConfigSchema.parse(raw);
+  } catch (error51) {
+    if (error51.code === "ENOENT") return null;
+    throw new Error(`Unable to load local configuration from ${filePath}: ${error51.message}`, { cause: error51 });
+  }
+}
+async function configFileExists(scope, root) {
+  try {
+    await readFile(scopePath(scope, root), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 function isJsonObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -18747,21 +19030,27 @@ var init_load = __esm({
   "src/config/load.ts"() {
     "use strict";
     init_schema();
+    init_user();
+    init_repo_policy();
+    init_config_scope();
   }
 });
 
 // src/config/defaults.ts
 var defaults_exports = {};
 __export(defaults_exports, {
+  BUILTIN_DEFAULTS: () => BUILTIN_DEFAULTS,
   defaultConfig: () => defaultConfig
 });
 function defaultConfig() {
   return leanRigorConfigSchema.parse({});
 }
+var BUILTIN_DEFAULTS;
 var init_defaults = __esm({
   "src/config/defaults.ts"() {
     "use strict";
     init_schema();
+    BUILTIN_DEFAULTS = leanRigorConfigSchema.parse({});
   }
 });
 
@@ -18784,9 +19073,8 @@ var {
 
 // src/cli/index.ts
 init_load();
-init_defaults();
-import { mkdir as mkdir8, readdir as readdir3, readFile as readFile10, writeFile as writeFile7 } from "node:fs/promises";
-import path12 from "node:path";
+import { readFile as readFile12 } from "node:fs/promises";
+import path15 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
@@ -18811,10 +19099,20 @@ async function loadWorkflow(root) {
 // src/adapters/claude/adapter.ts
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { access, chmod, mkdir as mkdir2, readFile as readFile3, readdir, rmdir, stat, unlink, writeFile as writeFile2 } from "node:fs/promises";
-import path3 from "node:path";
+import { access, chmod, mkdir as mkdir4, readFile as readFile4, readdir as readdir2, rmdir, stat, unlink, writeFile as writeFile4 } from "node:fs/promises";
+import path5 from "node:path";
 
 // src/config/models.ts
+var CLAUDE_ADAPTER_ENV = {
+  SMALL: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  MEDIUM: "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  LARGE: "ANTHROPIC_DEFAULT_OPUS_MODEL"
+};
+var CLAUDE_ALIAS_DEFAULTS = {
+  SMALL: "haiku",
+  MEDIUM: "sonnet",
+  LARGE: "opus"
+};
 var ENV_PREFIX = {
   claude: "LEANRIGOR_CLAUDE_MODEL_",
   opencode: "LEANRIGOR_OPENCODE_MODEL_"
@@ -18830,6 +19128,17 @@ function resolveModelTier(tier, harness, config2) {
   if (generic) return { tier, model: generic, source: "generic-env" };
   const configured = config2.models.tiers[tier][harness]?.trim();
   if (configured) return { tier, model: configured, source: "config" };
+  if (harness === "claude") {
+    const adapterEnvKey = CLAUDE_ADAPTER_ENV[suffix];
+    if (adapterEnvKey) {
+      const adapterEnv = process.env[adapterEnvKey]?.trim();
+      if (adapterEnv) return { tier, model: adapterEnv, source: "adapter-env" };
+    }
+  }
+  if (harness === "claude") {
+    const adapterDefault = CLAUDE_ALIAS_DEFAULTS[suffix];
+    if (adapterDefault) return { tier, model: adapterDefault, source: "adapter-default" };
+  }
   if (config2.models.failIfUnavailable) {
     throw new ModelConfigurationError(
       `No ${harness} model is configured for tier '${tier}'. Run 'leanrigor models' (or legacy 'leanrigor init models') or set LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}.`
@@ -18841,15 +19150,99 @@ function isClaudeAlias(model) {
   return ["haiku", "sonnet", "opus", "default"].includes(model);
 }
 
+// src/config/bootstrap.ts
+init_schema();
+init_defaults();
+import { mkdir as mkdir3, readFile as readFile3, readdir, writeFile as writeFile3 } from "node:fs/promises";
+import path4 from "node:path";
+
+// src/config/atomic-write.ts
+import { mkdir as mkdir2, rename, writeFile as writeFile2 } from "node:fs/promises";
+import path3 from "node:path";
+import { randomUUID } from "node:crypto";
+async function atomicWriteJson(filePath, data, pretty = true) {
+  const dir = path3.dirname(filePath);
+  await mkdir2(dir, { recursive: true });
+  const content = JSON.stringify(data, null, pretty ? 2 : void 0) + "\n";
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
+  await writeFile2(tmpPath, content, "utf8");
+  await rename(tmpPath, filePath);
+}
+
+// src/config/bootstrap.ts
+var GITIGNORE_CONTENT = "*\n!.gitignore\n";
+async function ensureGitignore(leanrigorDir) {
+  await mkdir3(leanrigorDir, { recursive: true });
+  const gitignorePath = path4.join(leanrigorDir, ".gitignore");
+  let existing;
+  try {
+    existing = await readFile3(gitignorePath, "utf8");
+  } catch {
+  }
+  if (existing === void 0) {
+    await writeFile3(gitignorePath, GITIGNORE_CONTENT, "utf8");
+    return { status: "created", message: ".leanrigor/.gitignore: created" };
+  }
+  const trimmed = existing.trim();
+  if (trimmed === GITIGNORE_CONTENT.trim()) {
+    return { status: "current", message: ".leanrigor/.gitignore: current" };
+  }
+  if (trimmed.includes("*") && trimmed.includes("!.gitignore")) {
+    return { status: "user_extended", message: ".leanrigor/.gitignore: current (user-extended)" };
+  }
+  return { status: "incomplete", message: ".leanrigor/.gitignore: runtime state may be tracked" };
+}
+async function checkTrackedLeanrigorFiles(root) {
+  const leanrigorDir = path4.join(root, ".leanrigor");
+  try {
+    const entries = await readdir(leanrigorDir);
+    return entries.filter((entry) => entry !== ".gitignore");
+  } catch {
+    return [];
+  }
+}
+async function ensureRepositoryConfig(root) {
+  const configPath = path4.join(root, ".leanrigor", "config.json");
+  await ensureGitignore(path4.join(root, ".leanrigor"));
+  let existing;
+  try {
+    existing = await readFile3(configPath, "utf8");
+  } catch {
+  }
+  if (existing) {
+    return leanRigorConfigSchema.parse(JSON.parse(existing));
+  }
+  const config2 = defaultConfig();
+  config2.instructions = await detectInstructions(root);
+  await atomicWriteJson(configPath, { $schema: "../node_modules/leanrigor/config.schema.json", ...config2 });
+  return config2;
+}
+async function detectInstructions(root) {
+  const candidates = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
+  try {
+    const topLevel = new Set(await readdir(root));
+    return candidates.filter((candidate) => topLevel.has(candidate));
+  } catch {
+    return [];
+  }
+}
+async function writeConfig(root, config2) {
+  const configPath = path4.join(root, ".leanrigor", "config.json");
+  await ensureGitignore(path4.join(root, ".leanrigor"));
+  await atomicWriteJson(configPath, { $schema: "../node_modules/leanrigor/config.schema.json", ...config2 });
+}
+
 // src/adapters/claude/adapter.ts
-var ASSET_VERSION = 3;
+init_load();
+init_config_scope();
+var ASSET_VERSION = 4;
 var OWNERSHIP_TOKEN = "generated_by: leanrigor";
-var PROTECT_GIT_DEST = path3.join(".claude", "leanrigor", "protect-git.sh");
+var PROTECT_GIT_DEST = path5.join(".claude", "leanrigor", "protect-git.sh");
 function pluginDir() {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
 }
 function packageRoot() {
-  return path3.resolve(pluginDir(), "..", "..", "..", "..");
+  return path5.resolve(pluginDir(), "..", "..", "..", "..");
 }
 var METHODOLOGY_FILES = [
   "core.md",
@@ -18861,9 +19254,9 @@ var METHODOLOGY_FILES = [
   "review.md",
   "evidence.md",
   "safeguards.md",
-  path3.join("modes", "fast.md"),
-  path3.join("modes", "standard.md"),
-  path3.join("modes", "rigorous.md")
+  path5.join("modes", "fast.md"),
+  path5.join("modes", "standard.md"),
+  path5.join("modes", "rigorous.md")
 ];
 function sha256(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -18872,7 +19265,7 @@ function isLeanRigorOwned(content) {
   return content.includes(OWNERSHIP_TOKEN);
 }
 async function readPackagedAsset(assetPath, vars) {
-  let content = await readFile3(assetPath, "utf8");
+  let content = await readFile4(assetPath, "utf8");
   if (vars) {
     for (const [key, value] of Object.entries(vars)) {
       content = content.replaceAll(`{{${key}}}`, value);
@@ -18883,23 +19276,24 @@ async function readPackagedAsset(assetPath, vars) {
 function assetManifest(triageModel) {
   const plugin = pluginDir();
   const methodology = METHODOLOGY_FILES.map((file2) => ({
-    src: path3.join(packageRoot(), "methodology", file2),
-    dest: path3.join(".claude", "leanrigor", "methodology", file2)
+    src: path5.join(packageRoot(), "methodology", file2),
+    dest: path5.join(".claude", "leanrigor", "methodology", file2)
   }));
   return [
-    { src: path3.join(plugin, "commands", "leanrigor.md"), dest: path3.join(".claude", "commands", "leanrigor.md") },
-    { src: path3.join(plugin, "commands", "leanrigor-plan.md"), dest: path3.join(".claude", "commands", "leanrigor-plan.md") },
-    { src: path3.join(plugin, "commands", "leanrigor-status.md"), dest: path3.join(".claude", "commands", "leanrigor-status.md") },
-    { src: path3.join(plugin, "commands", "leanrigor-review.md"), dest: path3.join(".claude", "commands", "leanrigor-review.md") },
-    { src: path3.join(plugin, "commands", "leanrigor-commit.md"), dest: path3.join(".claude", "commands", "leanrigor-commit.md") },
-    { src: path3.join(plugin, "leanrigor", "sequential-workflow.md"), dest: path3.join(".claude", "leanrigor", "sequential-workflow.md") },
+    { src: path5.join(plugin, "commands", "leanrigor.md"), dest: path5.join(".claude", "commands", "leanrigor.md") },
+    { src: path5.join(plugin, "commands", "leanrigor-init.md"), dest: path5.join(".claude", "commands", "leanrigor-init.md") },
+    { src: path5.join(plugin, "commands", "leanrigor-plan.md"), dest: path5.join(".claude", "commands", "leanrigor-plan.md") },
+    { src: path5.join(plugin, "commands", "leanrigor-status.md"), dest: path5.join(".claude", "commands", "leanrigor-status.md") },
+    { src: path5.join(plugin, "commands", "leanrigor-review.md"), dest: path5.join(".claude", "commands", "leanrigor-review.md") },
+    { src: path5.join(plugin, "commands", "leanrigor-commit.md"), dest: path5.join(".claude", "commands", "leanrigor-commit.md") },
+    { src: path5.join(plugin, "leanrigor", "sequential-workflow.md"), dest: path5.join(".claude", "leanrigor", "sequential-workflow.md") },
     {
-      src: path3.join(plugin, "agents", "leanrigor-triage.md.tpl"),
-      dest: path3.join(".claude", "agents", "leanrigor-triage.md"),
+      src: path5.join(plugin, "agents", "leanrigor-triage.md.tpl"),
+      dest: path5.join(".claude", "agents", "leanrigor-triage.md"),
       vars: { TRIAGE_MODEL: triageModel }
     },
-    { src: path3.join(plugin, "hooks", "protect-git.sh"), dest: path3.join(".claude", "leanrigor", "protect-git.sh") },
-    { src: path3.join(plugin, "settings.json"), dest: path3.join(".claude", "settings.json") },
+    { src: path5.join(plugin, "hooks", "protect-git.sh"), dest: path5.join(".claude", "leanrigor", "protect-git.sh") },
+    { src: path5.join(plugin, "settings.json"), dest: path5.join(".claude", "settings.json") },
     ...methodology
   ];
 }
@@ -18915,23 +19309,23 @@ var ClaudeAdapter = class {
     const manifest = assetManifest(triageModel);
     const report = { installed: [], alreadyCurrent: [], skipped: [] };
     for (const entry of manifest) {
-      const targetPath = path3.join(root, entry.dest);
-      await mkdir2(path3.dirname(targetPath), { recursive: true });
+      const targetPath = path5.join(root, entry.dest);
+      await mkdir4(path5.dirname(targetPath), { recursive: true });
       const expected = await readPackagedAsset(entry.src, entry.vars);
       let existing;
       try {
-        existing = await readFile3(targetPath, "utf8");
+        existing = await readFile4(targetPath, "utf8");
       } catch {
       }
       if (existing === void 0) {
-        await writeFile2(targetPath, expected, "utf8");
+        await writeFile4(targetPath, expected, "utf8");
         await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else if (sha256(existing) === sha256(expected)) {
         await ensureExecutableIfHook(entry.dest, targetPath);
         report.alreadyCurrent.push(entry.dest);
       } else if (isLeanRigorOwned(existing) && force) {
-        await writeFile2(targetPath, expected, "utf8");
+        await writeFile4(targetPath, expected, "utf8");
         await ensureExecutableIfHook(entry.dest, targetPath);
         report.installed.push(entry.dest);
       } else {
@@ -18946,10 +19340,10 @@ var ClaudeAdapter = class {
     const manifest = assetManifest(triageModel);
     const report = { removed: [], skipped: [] };
     for (const entry of manifest) {
-      const targetPath = path3.join(root, entry.dest);
+      const targetPath = path5.join(root, entry.dest);
       let existing;
       try {
-        existing = await readFile3(targetPath, "utf8");
+        existing = await readFile4(targetPath, "utf8");
       } catch {
       }
       if (existing === void 0) continue;
@@ -18964,12 +19358,12 @@ var ClaudeAdapter = class {
       }
       await unlink(targetPath);
       report.removed.push(entry.dest);
-      const claudeDir = path3.join(root, ".claude");
-      let dir = path3.dirname(targetPath);
+      const claudeDir = path5.join(root, ".claude");
+      let dir = path5.dirname(targetPath);
       while (dir.length > claudeDir.length && dir.startsWith(claudeDir)) {
         const removed = await removeIfEmpty(dir);
         if (!removed) break;
-        dir = path3.dirname(dir);
+        dir = path5.dirname(dir);
       }
       await removeIfEmpty(claudeDir);
     }
@@ -18982,6 +19376,25 @@ var ClaudeAdapter = class {
     output.push(`Platform: Claude Code`);
     output.push(`Claude assets available: ${ASSET_VERSION}`);
     output.push(`Runtime source: ${runtimeSource()}`);
+    output.push("");
+    output.push("Configuration files:");
+    const userConfig = await loadUserConfig();
+    output.push(`  User config (~/.config/leanrigor/config.json): ${userConfig ? "found" : "not found"}`);
+    const repoPolicy = await loadRepoPolicy(root);
+    output.push(`  Repository policy (leanrigor.config.json): ${repoPolicy ? "found" : "not found"}`);
+    const localExists = await configFileExists(ConfigScope.Local, root);
+    output.push(`  Local config (.leanrigor/config.json): ${localExists ? "found" : "not found (using defaults)"}`);
+    output.push("");
+    const gitignoreStatus = await ensureGitignore(path5.join(root, ".leanrigor"));
+    output.push(gitignoreStatus.message);
+    const trackedFiles = await checkTrackedLeanrigorFiles(root);
+    if (trackedFiles.length > 0) {
+      output.push(`\u26A0 WARNING: ${trackedFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
+      for (const file2 of trackedFiles) {
+        output.push(`  .leanrigor/${file2}`);
+      }
+      output.push("  These files contain private runtime state and should not be committed.");
+    }
     const claudeInPath = await which("claude");
     if (claudeInPath) {
       output.push(`Claude CLI: found (${claudeInPath})`);
@@ -18999,7 +19412,8 @@ var ClaudeAdapter = class {
       try {
         const resolved = resolveModelTier(tier, "claude", config2);
         const detail = resolved.model && isClaudeAlias(resolved.model) ? "Claude alias" : "custom identifier";
-        output.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${resolved.source}${resolved.model ? `, ${detail}` : ""})`);
+        const sourceLabel = modelSourceLabel(resolved.source);
+        output.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${sourceLabel}${resolved.model ? `, ${detail}` : ""})`);
       } catch (error51) {
         output.push(`  ${tier}: ERROR \u2014 ${error51.message}`);
       }
@@ -19013,10 +19427,10 @@ var ClaudeAdapter = class {
     const modifiedOwnedAssets = [];
     let protectGitState = "protect-git.sh: missing";
     for (const entry of manifest) {
-      const targetPath = path3.join(root, entry.dest);
+      const targetPath = path5.join(root, entry.dest);
       let existing;
       try {
-        existing = await readFile3(targetPath, "utf8");
+        existing = await readFile4(targetPath, "utf8");
       } catch {
       }
       if (existing === void 0) {
@@ -19072,6 +19486,13 @@ var ClaudeAdapter = class {
     }
     output.push("");
     output.push(`Automatic triage: ${config2.workflow.automaticTriage ? "enabled" : "disabled"}`);
+    output.push("");
+    output.push("Configuration management:");
+    output.push("  Show effective config: leanrigor config show");
+    output.push("  Show config detail:   leanrigor config show --json");
+    output.push("  Change user setting:   leanrigor config set <path> <value> --scope user");
+    output.push("  Change repo policy:    leanrigor config set <path> <value> --scope repo");
+    output.push("  Change local setting:  leanrigor config set <path> <value> --scope local");
     return output;
   }
 };
@@ -19092,7 +19513,7 @@ async function isExecutable(targetPath) {
 }
 async function removeIfEmpty(dir) {
   try {
-    const entries = await readdir(dir);
+    const entries = await readdir2(dir);
     if (entries.length === 0) {
       await rmdir(dir).catch(() => {
       });
@@ -19120,7 +19541,7 @@ async function which(command) {
 async function readPackageVersion() {
   try {
     const packageJsonPath = fileURLToPath(new URL("../../../package.json", import.meta.url));
-    const pkg = JSON.parse(await readFile3(packageJsonPath, "utf8"));
+    const pkg = JSON.parse(await readFile4(packageJsonPath, "utf8"));
     return pkg.version ?? "unknown";
   } catch {
     return "unknown";
@@ -19130,7 +19551,7 @@ function runtimeSource() {
   if (process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
     return "marketplace plugin runtime";
   }
-  if (process.argv[1]?.includes(`${path3.sep}node_modules${path3.sep}`)) return "npm package CLI";
+  if (process.argv[1]?.includes(`${path5.sep}node_modules${path5.sep}`)) return "npm package CLI";
   return "local development or global CLI";
 }
 async function loadConfigForUninstall(root) {
@@ -19142,11 +19563,29 @@ async function loadConfigForUninstall(root) {
     return defaultConfig2();
   }
 }
+function modelSourceLabel(source) {
+  switch (source) {
+    case "adapter-env":
+      return "ANTHROPIC_DEFAULT_* environment variable";
+    case "platform-env":
+      return "LEANRIGOR_CLAUDE_MODEL_* environment variable";
+    case "generic-env":
+      return "LEANRIGOR_MODEL_* environment variable";
+    case "config":
+      return "LeanRigor configuration file";
+    case "adapter-default":
+      return "Claude alias default (haiku/sonnet/opus)";
+    case "inherit":
+      return "inherited (no model specified)";
+    default:
+      return source;
+  }
+}
 
 // src/adapters/claude/triage-provider.ts
 import { spawn } from "node:child_process";
-import { readFile as readFile4 } from "node:fs/promises";
-import path4 from "node:path";
+import { readFile as readFile5 } from "node:fs/promises";
+import path6 from "node:path";
 var ClaudeCliTriageProvider = class {
   constructor(runCommand = defaultCommandRunner) {
     this.runCommand = runCommand;
@@ -19156,7 +19595,7 @@ var ClaudeCliTriageProvider = class {
   async classify(request, root, config2) {
     const model = resolveModelTier(config2.routing.triage, "claude", config2).model;
     const prompt = await buildTriagePrompt(root, request);
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "5", "--disallowedTools", "Edit", "Write", "Bash", "Agent", "Task", "WebSearch", "WebFetch"];
+    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "5", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     if (model) args.push("--model", model);
     const result = await this.runCommand("claude", args, root);
     if (result.exitCode !== 0) {
@@ -19175,8 +19614,8 @@ var ClaudeCliTriageProvider = class {
   }
 };
 async function buildTriagePrompt(root, request) {
-  const skillPath = path4.join(root, "internal-skills", "triage-task", "SKILL.md");
-  const skill = await readFile4(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
+  const skillPath = path6.join(root, "internal-skills", "triage-task", "SKILL.md");
+  const skill = await readFile5(skillPath, "utf8").catch(() => "Return only TriageOutput JSON. Do not modify files.");
   return [
     "You are the bounded triage classifier for LeanRigor.",
     "You may inspect the repository with Read/Glob/Grep to inform your assessment, but keep inspection minimal.",
@@ -19478,13 +19917,397 @@ function messageOf(error51) {
 // src/cli/index.ts
 init_schema();
 
+// src/config/resolver.ts
+init_defaults();
+init_load();
+import { readFile as readFile6 } from "node:fs/promises";
+import path7 from "node:path";
+
+// src/config/merger.ts
+function mergeValue(lower, higher, rule) {
+  if (higher !== void 0 && lower === void 0) return higher;
+  if (lower !== void 0 && higher === void 0) return lower;
+  if (lower === void 0 && higher === void 0) return void 0;
+  switch (rule) {
+    case "preference":
+      return higher !== void 0 ? higher : lower;
+    case "maximum":
+      if (typeof lower === "number" && typeof higher === "number") {
+        return Math.min(lower, higher);
+      }
+      return higher !== void 0 ? higher : lower;
+    case "minimum_tier": {
+      const tierOrder = {
+        inherit: 0,
+        small: 1,
+        medium: 2,
+        large: 3
+      };
+      const l = typeof lower === "string" ? tierOrder[lower] ?? 0 : 0;
+      const h = typeof higher === "string" ? tierOrder[higher] ?? 0 : 0;
+      return h >= l ? higher : lower;
+    }
+    case "mandatory":
+      return lower || higher;
+    case "union":
+      if (Array.isArray(lower) && Array.isArray(higher)) {
+        return [.../* @__PURE__ */ new Set([...lower, ...higher])];
+      }
+      return higher !== void 0 ? higher : lower;
+    default:
+      return higher !== void 0 ? higher : lower;
+  }
+}
+function applyRepoPolicy(base, policy) {
+  const constraints = [];
+  const config2 = structuredClone(base);
+  if (policy.minimumTiers?.triage) {
+    const baseTier = config2.routing.triage;
+    const policyTier = policy.minimumTiers.triage;
+    const resolved = mergeValue(baseTier, policyTier, "minimum_tier");
+    if (resolved !== baseTier) {
+      constraints.push(`routing.triage: repo policy requires minimum tier ${policyTier} (was ${baseTier})`);
+      config2.routing.triage = resolved;
+    }
+  }
+  if (policy.parallelism?.maxPhases !== void 0) {
+    const cap = policy.parallelism.maxPhases;
+    if (config2.execution.maxParallelPhases > cap) {
+      constraints.push(`execution.maxParallelPhases: capped at ${cap} by repo policy (was ${config2.execution.maxParallelPhases})`);
+      config2.execution.maxParallelPhases = cap;
+    }
+  }
+  if (policy.parallelism?.maxAgents !== void 0) {
+    const cap = policy.parallelism.maxAgents;
+    if (config2.parallelism.maxAgents > cap) {
+      constraints.push(`parallelism.maxAgents: capped at ${cap} by repo policy (was ${config2.parallelism.maxAgents})`);
+      config2.parallelism.maxAgents = cap;
+    }
+  }
+  if (policy.safety?.requireEvidence === true) {
+    config2.completionGate.requireEvidence = true;
+    constraints.push("completionGate.requireEvidence: forced enabled by repo policy");
+  }
+  if (policy.safety?.requireValidation === true) {
+    config2.completionGate.requireValidation = true;
+    constraints.push("completionGate.requireValidation: forced enabled by repo policy");
+  }
+  if (policy.safety?.maxRepairAttempts) {
+    for (const mode2 of ["fast", "standard", "rigorous"]) {
+      const cap = policy.safety.maxRepairAttempts[mode2];
+      if (cap !== void 0 && config2.completionGate.maxRepairAttempts[mode2] > cap) {
+        constraints.push(`completionGate.maxRepairAttempts.${mode2}: capped at ${cap} by repo policy`);
+        config2.completionGate.maxRepairAttempts[mode2] = cap;
+      }
+    }
+  }
+  if (policy.completionGate?.enabled === true && !config2.completionGate.enabled) {
+    config2.completionGate.enabled = true;
+    constraints.push("completionGate.enabled: forced enabled by repo policy");
+  }
+  if (policy.workflow?.defaultMode) config2.workflow.defaultMode = policy.workflow.defaultMode;
+  if (policy.workflow?.allowUserOverride !== void 0) config2.workflow.allowUserOverride = policy.workflow.allowUserOverride;
+  if (policy.workflow?.automaticTriage !== void 0) config2.workflow.automaticTriage = policy.workflow.automaticTriage;
+  if (policy.safety?.rigorousPaths) config2.risk.rigorousPaths = policy.safety.rigorousPaths;
+  if (policy.safety?.protectedPaths) config2.risk.protectedPaths = policy.safety.protectedPaths;
+  if (policy.completionGate?.allowSkippedValidation) {
+    if (policy.completionGate.allowSkippedValidation.fast !== void 0)
+      config2.completionGate.allowSkippedValidation.fast = policy.completionGate.allowSkippedValidation.fast;
+    if (policy.completionGate.allowSkippedValidation.standard !== void 0)
+      config2.completionGate.allowSkippedValidation.standard = policy.completionGate.allowSkippedValidation.standard;
+    if (policy.completionGate.allowSkippedValidation.rigorous !== void 0)
+      config2.completionGate.allowSkippedValidation.rigorous = policy.completionGate.allowSkippedValidation.rigorous;
+  }
+  if (policy.review) {
+    if (policy.review.fast) config2.review.fast = policy.review.fast;
+    if (policy.review.standard) config2.review.standard = policy.review.standard;
+    if (policy.review.rigorous) config2.review.rigorous = policy.review.rigorous;
+    if (policy.review.multiAgent) config2.review.multiAgent = policy.review.multiAgent;
+    if (policy.review.highRiskPaths) config2.review.highRiskPaths = policy.review.highRiskPaths;
+    if (policy.review.allowUserOverride !== void 0) config2.review.allowUserOverride = policy.review.allowUserOverride;
+  }
+  if (policy.testing) {
+    if (policy.testing.bugFixes) config2.testing.bugFixes = policy.testing.bugFixes;
+    if (policy.testing.publicApi) config2.testing.publicApi = policy.testing.publicApi;
+    if (policy.testing.uiCopy) config2.testing.uiCopy = policy.testing.uiCopy;
+  }
+  if (policy.taskSizing) {
+    if (policy.taskSizing.maxPrimaryObjectives !== void 0) config2.taskSizing.maxPrimaryObjectives = policy.taskSizing.maxPrimaryObjectives;
+    if (policy.taskSizing.preferredWriteFiles !== void 0) config2.taskSizing.preferredWriteFiles = policy.taskSizing.preferredWriteFiles;
+    if (policy.taskSizing.reviewSplitThresholdFiles !== void 0) config2.taskSizing.reviewSplitThresholdFiles = policy.taskSizing.reviewSplitThresholdFiles;
+  }
+  if (policy.introspection) {
+    if (policy.introspection.preflight) config2.introspection.preflight = policy.introspection.preflight;
+    if (policy.introspection.deepReflection) config2.introspection.deepReflection = policy.introspection.deepReflection;
+    if (policy.introspection.triggerAfterFailedRepairs !== void 0) config2.introspection.triggerAfterFailedRepairs = policy.introspection.triggerAfterFailedRepairs;
+    if (policy.introspection.triggerOnScopeExpansion !== void 0) config2.introspection.triggerOnScopeExpansion = policy.introspection.triggerOnScopeExpansion;
+    if (policy.introspection.triggerOnArchitectureChange !== void 0) config2.introspection.triggerOnArchitectureChange = policy.introspection.triggerOnArchitectureChange;
+  }
+  if (policy.triage) {
+    if (policy.triage.chooseLowestSafeMode !== void 0) config2.triage.chooseLowestSafeMode = policy.triage.chooseLowestSafeMode;
+    if (policy.triage.requireExplicitRigorousTrigger !== void 0) config2.triage.requireExplicitRigorousTrigger = policy.triage.requireExplicitRigorousTrigger;
+    if (policy.triage.fallbackMode) config2.triage.fallbackMode = policy.triage.fallbackMode;
+    if (policy.triage.highConfidenceThreshold !== void 0) config2.triage.highConfidenceThreshold = policy.triage.highConfidenceThreshold;
+    if (policy.triage.mediumConfidenceThreshold !== void 0) config2.triage.mediumConfidenceThreshold = policy.triage.mediumConfidenceThreshold;
+    if (policy.triage.maxEscalationReasons !== void 0) config2.triage.maxEscalationReasons = policy.triage.maxEscalationReasons;
+    if (policy.triage.maxAssumptions !== void 0) config2.triage.maxAssumptions = policy.triage.maxAssumptions;
+    if (policy.triage.maxInspectionTargets !== void 0) config2.triage.maxInspectionTargets = policy.triage.maxInspectionTargets;
+    if (policy.triage.fastRequiresPositiveEvidence !== void 0) config2.triage.fastRequiresPositiveEvidence = policy.triage.fastRequiresPositiveEvidence;
+  }
+  if (policy.git) {
+    if (policy.git.requireConfirmation !== void 0) config2.git.requireConfirmation = policy.git.requireConfirmation;
+    if (policy.git.commitStyle) config2.git.commitStyle = policy.git.commitStyle;
+  }
+  if (policy.budgets) {
+    if (policy.budgets.clarificationQuestions !== void 0) config2.budgets.clarificationQuestions = policy.budgets.clarificationQuestions;
+    if (policy.budgets.options !== void 0) config2.budgets.options = policy.budgets.options;
+    if (policy.budgets.reviewRounds !== void 0) config2.budgets.reviewRounds = policy.budgets.reviewRounds;
+    if (policy.budgets.repairRounds !== void 0) config2.budgets.repairRounds = policy.budgets.repairRounds;
+    if (policy.budgets.triageCalls !== void 0) config2.budgets.triageCalls = policy.budgets.triageCalls;
+  }
+  if (policy.routing) {
+    for (const key of Object.keys(policy.routing)) {
+      const val = policy.routing[key];
+      if (val !== void 0) {
+        config2.routing[key] = val;
+      }
+    }
+  }
+  return { config: config2, constraints };
+}
+function applyUserConfig(base, user) {
+  const config2 = structuredClone(base);
+  if (user.models?.claude?.small) config2.models.tiers.small.claude = user.models.claude.small;
+  if (user.models?.claude?.medium) config2.models.tiers.medium.claude = user.models.claude.medium;
+  if (user.models?.claude?.large) config2.models.tiers.large.claude = user.models.claude.large;
+  if (user.execution?.pollIntervalSeconds !== void 0)
+    config2.execution.pollIntervalSeconds = user.execution.pollIntervalSeconds;
+  if (user.execution?.workerTimeoutSeconds !== void 0)
+    config2.execution.workerTimeoutSeconds = user.execution.workerTimeoutSeconds;
+  if (user.execution?.heartbeatGraceSeconds !== void 0)
+    config2.execution.heartbeatGraceSeconds = user.execution.heartbeatGraceSeconds;
+  if (user.execution?.phaseLeaseTimeoutSeconds !== void 0)
+    config2.execution.phaseLeaseTimeoutSeconds = user.execution.phaseLeaseTimeoutSeconds;
+  if (user.execution?.workflowLockTimeoutSeconds !== void 0)
+    config2.execution.workflowLockTimeoutSeconds = user.execution.workflowLockTimeoutSeconds;
+  if (user.execution?.parallelism !== void 0)
+    config2.execution.maxParallelPhases = user.execution.parallelism;
+  if (user.paths?.workspaceRoot !== void 0)
+    config2.execution.workspaceRoot = user.paths.workspaceRoot;
+  return config2;
+}
+
+// src/config/provenance.ts
+function provenance(value, source, rawValue = value) {
+  return {
+    value,
+    source,
+    rawValue,
+    constrained: false,
+    warnings: []
+  };
+}
+function buildProvenanceMap(obj, source, prefix = "") {
+  const map2 = /* @__PURE__ */ new Map();
+  for (const [key, value] of Object.entries(obj)) {
+    const fullPath = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const nested = buildProvenanceMap(value, source, fullPath);
+      for (const [nestedPath, entry] of nested) {
+        map2.set(nestedPath, entry);
+      }
+    } else {
+      map2.set(fullPath, provenance(value, source));
+    }
+  }
+  return map2;
+}
+
+// src/config/resolver.ts
+init_config_scope();
+init_schema();
+async function loadLocalConfigRaw(root) {
+  const filePath = path7.join(root, ".leanrigor", "config.json");
+  try {
+    const raw = await readFile6(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch (error51) {
+    if (error51.code === "ENOENT") return null;
+    throw error51;
+  }
+}
+async function resolveEffectiveConfig(root) {
+  const warnings = [];
+  const sourcesFound = [ConfigScope.Builtin];
+  let config2 = structuredClone(BUILTIN_DEFAULTS);
+  let provenance2 = buildProvenanceMap(
+    config2,
+    ConfigScope.Builtin
+  );
+  sourcesFound.push(ConfigScope.Adapter);
+  for (const tier of ["small", "medium", "large"]) {
+    const key = `models.tiers.${tier}.claude`;
+    try {
+      const resolved = resolveModelTier(tier, "claude", config2);
+      const val = resolved.model;
+      if (val) {
+        provenance2.set(key, {
+          value: val,
+          source: ConfigScope.Adapter,
+          rawValue: val,
+          constrained: false,
+          warnings: [],
+          adapterResolution: resolved.source
+        });
+      }
+    } catch {
+    }
+  }
+  const userConfig = await loadUserConfig();
+  if (userConfig) {
+    sourcesFound.push(ConfigScope.User);
+    config2 = applyUserConfig(config2, userConfig);
+    const userProvenance = buildProvenanceMap(
+      userConfig,
+      ConfigScope.User
+    );
+    for (const [key, entry] of userProvenance) {
+      if (entry.value !== void 0) provenance2.set(key, entry);
+    }
+  }
+  const repoPolicy = await loadRepoPolicy(root);
+  const constraints = [];
+  if (repoPolicy) {
+    sourcesFound.push(ConfigScope.RepoPolicy);
+    const result = applyRepoPolicy(config2, repoPolicy);
+    config2 = result.config;
+    constraints.push(...result.constraints);
+    const repoProvenance = buildProvenanceMap(
+      repoPolicy,
+      ConfigScope.RepoPolicy
+    );
+    for (const [key, entry] of repoProvenance) {
+      if (entry.value !== void 0) provenance2.set(key, entry);
+    }
+  }
+  const localRaw = await loadLocalConfigRaw(root);
+  if (localRaw) {
+    sourcesFound.push(ConfigScope.Local);
+    config2 = leanRigorConfigSchema.parse(
+      deepMergeObjects(config2, localRaw)
+    );
+    const localProvenance = buildProvenanceMap(localRaw, ConfigScope.Local);
+    for (const [key, entry] of localProvenance) {
+      if (entry.value !== void 0) provenance2.set(key, entry);
+    }
+  }
+  if (repoPolicy) {
+    const reapplied = applyRepoPolicy(config2, repoPolicy);
+    config2 = reapplied.config;
+    for (const c of reapplied.constraints) {
+      if (!constraints.includes(c)) constraints.push(c);
+    }
+  }
+  const validated = leanRigorConfigSchema.parse(config2);
+  return {
+    values: validated,
+    provenance: provenance2,
+    constraints,
+    warnings,
+    sourcesFound
+  };
+}
+function deepMergeObjects(base, override) {
+  const out = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (isJsonObject2(value) && isJsonObject2(out[key])) {
+      out[key] = deepMergeObjects(out[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+function isJsonObject2(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function formatEffectiveConfig(effective) {
+  const lines = [];
+  lines.push("=== LeanRigor Effective Configuration ===");
+  lines.push("");
+  lines.push("Configuration sources found:");
+  for (const source of effective.sourcesFound) {
+    lines.push(`  [${source}] ${scopeLabel(source)}`);
+  }
+  if (effective.sourcesFound.length <= 2) {
+    lines.push("  (only built-in defaults are active; no files found)");
+  }
+  lines.push("");
+  lines.push("Model tier resolution:");
+  for (const tier of ["small", "medium", "large"]) {
+    try {
+      const resolved = resolveModelTier(tier, "claude", effective.values);
+      const provKey = `models.tiers.${tier}.claude`;
+      const prov = effective.provenance.get(provKey);
+      const source = prov ? scopeLabel(prov.source) : "unknown";
+      lines.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${source})`);
+    } catch (error51) {
+      lines.push(`  ${tier}: ERROR \u2014 ${error51.message}`);
+    }
+  }
+  lines.push("");
+  lines.push("Execution:");
+  const maxPhases = effective.values.execution.maxParallelPhases;
+  const maxPhasesProv = effective.provenance.get("execution.maxParallelPhases");
+  lines.push(`  Maximum parallel phases: ${maxPhases}${maxPhasesProv ? ` (source: ${scopeLabel(maxPhasesProv.source)})` : ""}`);
+  if (effective.constraints.length > 0) {
+    lines.push("");
+    lines.push("Constraints (repository policy):");
+    for (const constraint of effective.constraints) {
+      lines.push(`  ${constraint}`);
+    }
+  }
+  if (effective.warnings.length > 0) {
+    lines.push("");
+    lines.push("Warnings:");
+    for (const warning of effective.warnings) {
+      lines.push(`  \u26A0 ${warning}`);
+    }
+  }
+  return lines.join("\n");
+}
+function scopeLabel(source) {
+  switch (source) {
+    case ConfigScope.Cli:
+      return "CLI flag";
+    case ConfigScope.Env:
+      return "environment variable";
+    case ConfigScope.Local:
+      return "repository-local config (.leanrigor/config.json)";
+    case ConfigScope.RepoPolicy:
+      return "committed repository policy (leanrigor.config.json)";
+    case ConfigScope.User:
+      return "user config (~/.config/leanrigor/config.json)";
+    case ConfigScope.Adapter:
+      return "adapter-derived default";
+    case ConfigScope.Builtin:
+      return "built-in default";
+  }
+}
+
+// src/cli/index.ts
+init_config_scope();
+init_load();
+init_user();
+init_repo_policy();
+
 // src/core/flow.ts
 init_zod();
 init_defaults();
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir5, readFile as readFile8 } from "node:fs/promises";
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { mkdir as mkdir7, readFile as readFile10 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path9 from "node:path";
+import path12 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -19507,12 +20330,12 @@ function commitCommands(proposal) {
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access2, constants, lstat, mkdir as mkdir3, readFile as readFile5, readdir as readdir2, readlink, realpath, stat as stat2, writeFile as writeFile3 } from "node:fs/promises";
-import path6 from "node:path";
+import { access as access2, constants, lstat, mkdir as mkdir5, readFile as readFile7, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile5 } from "node:fs/promises";
+import path9 from "node:path";
 import { promisify } from "node:util";
 
 // src/core/ownership.ts
-import path5 from "node:path";
+import path8 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -19529,7 +20352,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path5.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path8.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -19807,7 +20630,7 @@ async function preflightGitRepository(root, config2) {
   if (workspaceRoot.length > config2.execution.maxWorkspacePathLength) {
     return { ok: false, code: "workspace_path_too_long", repositoryRoot, gitCommonDir, workspaceRoot };
   }
-  const writable = await mkdir3(workspaceRoot, { recursive: true }).then(() => access2(workspaceRoot, constants.W_OK)).then(() => true).catch(() => false);
+  const writable = await mkdir5(workspaceRoot, { recursive: true }).then(() => access2(workspaceRoot, constants.W_OK)).then(() => true).catch(() => false);
   if (!writable) return { ok: false, code: "workspace_root_not_writable", repositoryRoot, gitCommonDir, workspaceRoot };
   const dirty = (await git(repositoryRoot, ["status", "--porcelain=v1", "--untracked-files=all"])).trim();
   if (dirty) warnings.push("User working tree has local changes outside the LeanRigor workflow baseline.");
@@ -19830,13 +20653,13 @@ async function ensureIntegrationWorkspace(state, config2) {
   const existing = state.git;
   if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
   const names = workspaceNames(state.id, void 0, config2);
-  const workflowRoot = path6.join(preflight.workspaceRoot, state.id);
-  const integrationPath = path6.join(workflowRoot, "integration");
+  const workflowRoot = path9.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path9.join(workflowRoot, "integration");
   ensurePathLength(integrationPath, config2);
   await ensurePathAvailable(integrationPath, state.id, "integration");
   const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
   const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
-  await mkdir3(path6.dirname(integrationPath), { recursive: true });
+  await mkdir5(path9.dirname(integrationPath), { recursive: true });
   await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
   const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
   const now = timestamp();
@@ -19898,12 +20721,12 @@ async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
     throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
   const names = workspaceNames(state.id, phaseId, config2);
-  const workflowRoot = path6.join(gitState.context.workspaceRoot, state.id);
-  const phasePath = path6.join(workflowRoot, "phases", names.phasePathSegment);
+  const workflowRoot = path9.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path9.join(workflowRoot, "phases", names.phasePathSegment);
   ensurePathLength(phasePath, config2);
   await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
   const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
-  await mkdir3(path6.dirname(phasePath), { recursive: true });
+  await mkdir5(path9.dirname(phasePath), { recursive: true });
   await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
   const now = timestamp();
   await writeOwnershipMetadata(workflowRoot, {
@@ -20279,24 +21102,24 @@ function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
 function resolveWorkspaceRoot(repositoryRoot, config2) {
-  if (config2.execution.workspaceRoot) return path6.resolve(repositoryRoot, config2.execution.workspaceRoot);
-  return path6.join(path6.dirname(repositoryRoot), ".leanrigor-worktrees", path6.basename(repositoryRoot));
+  if (config2.execution.workspaceRoot) return path9.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  return path9.join(path9.dirname(repositoryRoot), ".leanrigor-worktrees", path9.basename(repositoryRoot));
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
-  const dir = path6.join(workflowRoot, ".leanrigor-owned-worktrees");
-  await mkdir3(dir, { recursive: true });
+  const dir = path9.join(workflowRoot, ".leanrigor-owned-worktrees");
+  await mkdir5(dir, { recursive: true });
   const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
-  await writeFile3(path6.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+  await writeFile5(path9.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
 }
 async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
-  const workflowRoot = workspaceType === "integration" ? path6.dirname(worktreePath) : path6.dirname(path6.dirname(worktreePath));
-  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path6.basename(worktreePath))}.json`;
-  const file2 = path6.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  const workflowRoot = workspaceType === "integration" ? path9.dirname(worktreePath) : path9.dirname(path9.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path9.basename(worktreePath))}.json`;
+  const file2 = path9.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
-    const parsed = JSON.parse(await readFile5(file2, "utf8"));
+    const parsed = JSON.parse(await readFile7(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
-    if (path6.resolve(parsed.path) !== path6.resolve(worktreePath)) return void 0;
+    if (path9.resolve(parsed.path) !== path9.resolve(worktreePath)) return void 0;
     return parsed;
   } catch {
     return void 0;
@@ -20325,14 +21148,14 @@ async function runShellCommand(command, cwd) {
 }
 async function gitOperationInProgress(commonDir, gitDir) {
   const checks = [
-    [path6.join(gitDir, "MERGE_HEAD"), "merge"],
-    [path6.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
-    [path6.join(gitDir, "REVERT_HEAD"), "revert"],
-    [path6.join(gitDir, "BISECT_LOG"), "bisect"],
-    [path6.join(gitDir, "rebase-merge"), "rebase"],
-    [path6.join(gitDir, "rebase-apply"), "rebase"],
-    [path6.join(commonDir, "rebase-merge"), "rebase"],
-    [path6.join(commonDir, "rebase-apply"), "rebase"]
+    [path9.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path9.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path9.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path9.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path9.join(gitDir, "rebase-merge"), "rebase"],
+    [path9.join(gitDir, "rebase-apply"), "rebase"],
+    [path9.join(commonDir, "rebase-merge"), "rebase"],
+    [path9.join(commonDir, "rebase-apply"), "rebase"]
   ];
   for (const [file2, operation] of checks) {
     if (await pathExists(file2)) return operation;
@@ -20340,10 +21163,10 @@ async function gitOperationInProgress(commonDir, gitDir) {
   return void 0;
 }
 async function resolveGitPath(cwd, gitPath) {
-  return path6.isAbsolute(gitPath) ? gitPath : path6.resolve(cwd, gitPath);
+  return path9.isAbsolute(gitPath) ? gitPath : path9.resolve(cwd, gitPath);
 }
 async function canonical(value) {
-  return realpath(path6.resolve(value));
+  return realpath(path9.resolve(value));
 }
 function gitVersionSupportsWorktree(versionText) {
   const match = versionText.match(/git version (\d+)\.(\d+)/);
@@ -20358,15 +21181,15 @@ async function findNestedRepositories(repositoryRoot) {
     if (depth > 5 || nested.length > 10) return;
     let entries;
     try {
-      entries = await readdir2(dir, { withFileTypes: true });
+      entries = await readdir3(dir, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
-      const child = path6.join(dir, entry.name);
-      if (await pathExists(path6.join(child, ".git"))) {
-        nested.push(path6.relative(repositoryRoot, child));
+      const child = path9.join(dir, entry.name);
+      if (await pathExists(path9.join(child, ".git"))) {
+        nested.push(path9.relative(repositoryRoot, child));
         continue;
       }
       await walk(child, depth + 1);
@@ -20403,7 +21226,7 @@ function parseModeChanges(raw) {
 }
 async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
   for (const file2 of changedFiles) {
-    const full = path6.join(worktreePath, file2);
+    const full = path9.join(worktreePath, file2);
     let info;
     try {
       info = await lstat(full);
@@ -20412,7 +21235,7 @@ async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
     }
     if (!info.isSymbolicLink()) continue;
     const target = await readlink(full);
-    if (path6.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+    if (path9.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
       throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
     }
   }
@@ -20430,22 +21253,22 @@ function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function isPathInside(child, parent) {
-  const relative = path6.relative(path6.resolve(parent), path6.resolve(child));
-  return relative === "" || !relative.startsWith("..") && !path6.isAbsolute(relative);
+  const relative = path9.relative(path9.resolve(parent), path9.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path9.isAbsolute(relative);
 }
 async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
 }
 
 // src/core/workflow-lock.ts
-import { open as open2, readFile as readFile7, mkdir as mkdir4, rm as rm2, writeFile as writeFile4 } from "node:fs/promises";
+import { open as open2, readFile as readFile9, mkdir as mkdir6, rm as rm2, writeFile as writeFile6 } from "node:fs/promises";
 import os from "node:os";
-import path8 from "node:path";
+import path11 from "node:path";
 
 // src/core/workflow-store.ts
-import { open, readFile as readFile6, rename, rm } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import path7 from "node:path";
+import { open, readFile as readFile8, rename as rename2, rm } from "node:fs/promises";
+import { randomUUID as randomUUID2 } from "node:crypto";
+import path10 from "node:path";
 var RevisionConflictError = class extends Error {
   constructor(expectedRevision, actualRevision) {
     super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
@@ -20456,9 +21279,9 @@ var RevisionConflictError = class extends Error {
   actualRevision;
   code = "revision_conflict";
 };
-async function atomicWriteJson(file2, value) {
-  const dir = path7.dirname(file2);
-  const temp = path7.join(dir, `.${path7.basename(file2)}.${process.pid}.${randomUUID()}.tmp`);
+async function atomicWriteJson2(file2, value) {
+  const dir = path10.dirname(file2);
+  const temp = path10.join(dir, `.${path10.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
   const handle = await open(temp, "wx");
   try {
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
@@ -20467,7 +21290,7 @@ async function atomicWriteJson(file2, value) {
     await handle.close();
   }
   try {
-    await rename(temp, file2);
+    await rename2(temp, file2);
     await fsyncDirectory(dir);
   } catch (error51) {
     await rm(temp, { force: true }).catch(() => void 0);
@@ -20499,13 +21322,13 @@ var WorkflowLockOwnershipError = class extends Error {
   code = "workflow_lock_owner_mismatch";
 };
 function lockPath(root, workflowId2) {
-  return path8.join(path8.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+  return path11.join(path11.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
 }
 async function acquireWorkflowLock(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const lock = buildLock(options, now);
   const file2 = lockPath(options.root, options.workflowId);
-  await mkdir4(path8.dirname(file2), { recursive: true });
+  await mkdir6(path11.dirname(file2), { recursive: true });
   try {
     const handle = await open2(file2, "wx");
     try {
@@ -20547,7 +21370,7 @@ async function releaseWorkflowLock(root, workflowId2, ownerId) {
 }
 async function readWorkflowLock(root, workflowId2) {
   try {
-    return JSON.parse(await readFile7(lockPath(root, workflowId2), "utf8"));
+    return JSON.parse(await readFile9(lockPath(root, workflowId2), "utf8"));
   } catch (error51) {
     if (error51.code === "ENOENT") return void 0;
     throw error51;
@@ -20568,7 +21391,7 @@ function buildLock(options, now) {
 }
 
 // src/core/flow.ts
-var WORKFLOW_DIR = path9.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path12.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -20903,7 +21726,7 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path9.resolve(options.root);
+  const root = path12.resolve(options.root);
   const now = timestamp2();
   let state = {
     version: STATE_VERSION,
@@ -21376,7 +22199,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path9.join(path9.resolve(root), WORKFLOW_DIR);
+  const dir = path12.join(path12.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -21400,7 +22223,7 @@ async function loadFlowState(root, workflowId2) {
   const file2 = workflowPath(root, workflowId2);
   let raw;
   try {
-    raw = await readFile8(file2, "utf8");
+    raw = await readFile10(file2, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") throw new WorkflowNotFoundError(`Workflow not found: ${workflowId2}`);
     throw error51;
@@ -21413,12 +22236,12 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path9.join(path9.resolve(root), WORKFLOW_DIR);
-  await mkdir5(dir, { recursive: true });
+  const dir = path12.join(path12.resolve(root), WORKFLOW_DIR);
+  await mkdir7(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
     try {
-      await readFile8(target, "utf8");
+      await readFile10(target, "utf8");
       throw new StaleWorkflowError(`Workflow already exists: ${parsed.id}`);
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -21430,7 +22253,7 @@ async function saveFlowState(root, state, options = {}) {
       throw new RevisionConflictError(options.expectedRevision, current.revision);
     }
   }
-  await atomicWriteJson(target, parsed);
+  await atomicWriteJson2(target, parsed);
 }
 async function updateFlowState(root, workflowId2, mutate, options = {}) {
   const ownerId = options.ownerId ?? DEFAULT_OWNER_ID;
@@ -21858,7 +22681,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path9.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path12.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -22064,7 +22887,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path9.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path12.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -22154,7 +22977,7 @@ function appendEvent(state, type, summary, phaseId, actorId = DEFAULT_OWNER_ID) 
 }
 function workflowEvent(args) {
   return {
-    eventId: `evt-${randomUUID2().slice(0, 12)}`,
+    eventId: `evt-${randomUUID3().slice(0, 12)}`,
     timestamp: args.at ?? timestamp2(),
     actorId: args.actorId,
     type: args.type,
@@ -22186,7 +23009,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path9.resolve(root),
+      root: path12.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -22202,7 +23025,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path9.resolve(root);
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path12.resolve(root);
   migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
@@ -22265,10 +23088,10 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path9.join(path9.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path12.join(path12.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
-  return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID2().slice(0, 8)}`;
+  return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID3().slice(0, 8)}`;
 }
 function label(mode2) {
   return mode2[0].toUpperCase() + mode2.slice(1);
@@ -22490,8 +23313,8 @@ function unique4(values) {
 
 // src/core/execution/claude-provider.ts
 import { execFile as execFile2, spawn as spawn2 } from "node:child_process";
-import { mkdir as mkdir6, open as open3, readFile as readFile9, rename as rename2, stat as stat3, writeFile as writeFile5 } from "node:fs/promises";
-import path10 from "node:path";
+import { mkdir as mkdir8, open as open3, readFile as readFile11, rename as rename3, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
+import path13 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/execution/errors.ts
@@ -22588,11 +23411,11 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
     ];
     if (this.options.model) args.push("--model", this.options.model);
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path10.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
-    await mkdir6(artifactDir, { recursive: true });
-    const statusPath = path10.join(artifactDir, "status.json");
-    const stdoutPath = path10.join(artifactDir, "stdout.json");
-    const stderrPath = path10.join(artifactDir, "stderr.txt");
+    const artifactDir = path13.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    await mkdir8(artifactDir, { recursive: true });
+    const statusPath = path13.join(artifactDir, "status.json");
+    const stdoutPath = path13.join(artifactDir, "stdout.json");
+    const stderrPath = path13.join(artifactDir, "stderr.txt");
     const providerMetadata = {
       command: this.options.command ?? "claude",
       args,
@@ -22688,8 +23511,8 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
       const status = await readCollectibleStatus(handle);
       if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
       if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
-      const stdout = await readFile9(metadata.stdoutPath, "utf8").catch(() => "");
-      const stderr = await readFile9(metadata.stderrPath, "utf8").catch(() => "");
+      const stdout = await readFile11(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile11(metadata.stderrPath, "utf8").catch(() => "");
       if (status?.status === "failed") {
         throw withArtifactDiagnostics(new ExecutionError("provider_process_exited", "Claude CLI exited before returning a successful provider result."), handle, metadata, stdout, stderr, status);
       }
@@ -22724,16 +23547,16 @@ ${stderr}`;
 };
 async function writeStatus(statusPath, status) {
   const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile5(tempPath, `${JSON.stringify(status, null, 2)}
+  await writeFile7(tempPath, `${JSON.stringify(status, null, 2)}
 `, "utf8");
-  await rename2(tempPath, statusPath);
+  await rename3(tempPath, statusPath);
 }
 async function readPersistedStatus(handle) {
   const metadata = claudeMetadata(handle);
   if (!metadata) return void 0;
   try {
     await stat3(metadata.statusPath);
-    return JSON.parse(await readFile9(metadata.statusPath, "utf8"));
+    return JSON.parse(await readFile11(metadata.statusPath, "utf8"));
   } catch {
     return void 0;
   }
@@ -23306,9 +24129,9 @@ function errorDetails(error51) {
 }
 
 // src/core/execution/scripted-provider.ts
-import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir7, rm as rm3, writeFile as writeFile6 } from "node:fs/promises";
-import path11 from "node:path";
+import { randomUUID as randomUUID4 } from "node:crypto";
+import { mkdir as mkdir9, rm as rm3, writeFile as writeFile8 } from "node:fs/promises";
+import path14 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -23333,7 +24156,7 @@ var ScriptedExecutionProvider = class {
       throw new ExecutionError("provider_unavailable", "Scripted provider is unavailable.");
     }
     await this.applyEdits(input.workspacePath, script.edits ?? []);
-    const id = `scripted-${input.workflowId}-${input.phaseId}-${randomUUID3().slice(0, 12)}`;
+    const id = `scripted-${input.workflowId}-${input.phaseId}-${randomUUID4().slice(0, 12)}`;
     const handle = {
       providerId: this.id,
       providerExecutionId: id,
@@ -23404,17 +24227,17 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path11.resolve(workspacePath, edit.path);
-      const relative = path11.relative(workspacePath, target);
-      if (relative.startsWith("..") || path11.isAbsolute(relative)) {
+      const target = path14.resolve(workspacePath, edit.path);
+      const relative = path14.relative(workspacePath, target);
+      if (relative.startsWith("..") || path14.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir7(path11.dirname(target), { recursive: true });
-      await writeFile6(target, edit.content ?? "", "utf8");
+      await mkdir9(path14.dirname(target), { recursive: true });
+      await writeFile8(target, edit.content ?? "", "utf8");
     }
   }
   executionFromHandle(handle) {
@@ -23481,14 +24304,17 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.0-draft");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-  const configDir = path12.join(root, ".leanrigor");
-  await mkdir8(configDir, { recursive: true });
-  const config2 = await initConfig(root);
+  const config2 = await ensureRepositoryConfig(root);
   const report = await new ClaudeAdapter().install(root, config2, forceOwnedFiles);
-  console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
+  console.log(`LeanRigor configured.`);
+  console.log("Configuration files:");
+  console.log(`  User config:          ~/.config/leanrigor/config.json`);
+  console.log(`  Repository policy:    leanrigor.config.json (committed)`);
+  console.log(`  Local config:         .leanrigor/config.json (private, never committed)`);
+  console.log(`  Claude defaults:      small=haiku, medium=sonnet, large=opus`);
   printInstallReport(report);
 });
 program2.command("uninstall").description("Remove LeanRigor-owned adapter files from a repository").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--remove-config", "also remove .leanrigor/config.json").action(async ({ root, adapter, removeConfig }) => {
@@ -23496,11 +24322,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path12.join(root, ".leanrigor", "config.json");
+    const configPath = path15.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path12.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path15.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -23522,6 +24348,101 @@ program2.command("models").description("Configure portable small, medium, and la
   if (!config2.models.tiers.small.opencode || !config2.models.tiers.medium.opencode || !config2.models.tiers.large.opencode) {
     console.log("OpenCode tiers are incomplete. Supply provider/model identifiers before enabling the OpenCode adapter.");
   }
+});
+var configCmd = program2.command("config").description("Inspect and update LeanRigor configuration");
+configCmd.command("show").description("Display the effective configuration with provenance").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured effective config with provenance").action(async ({ root, json: json2 }) => {
+  const effective = await resolveEffectiveConfig(root);
+  if (json2) {
+    const provenances = {};
+    for (const [key, entry] of effective.provenance) {
+      provenances[key] = { value: entry.value, source: entry.source, constrained: entry.constrained };
+    }
+    console.log(JSON.stringify({
+      values: effective.values,
+      provenance: provenances,
+      constraints: effective.constraints,
+      warnings: effective.warnings,
+      sourcesFound: effective.sourcesFound
+    }, null, 2));
+  } else {
+    console.log(formatEffectiveConfig(effective));
+  }
+});
+configCmd.command("get").description("Read a single configuration value with provenance").argument("<path>", "dotted path, e.g. execution.maxParallelPhases").option("--root <path>", "repository root", process.cwd()).action(async (configPath, { root }) => {
+  const effective = await resolveEffectiveConfig(root);
+  const entry = effective.provenance.get(configPath);
+  if (!entry) {
+    const value = getNestedValue(effective.values, configPath);
+    if (value === void 0) {
+      console.log(`No configuration found at path: ${configPath}`);
+      return;
+    }
+    console.log(`${configPath}: ${JSON.stringify(value)}`);
+    console.log(`  Source: built-in default`);
+    return;
+  }
+  console.log(`${configPath}: ${JSON.stringify(entry.value)}`);
+  console.log(`  Source: ${entry.source}`);
+  if (entry.adapterResolution) console.log(`  Adapter resolution: ${entry.adapterResolution}`);
+  if (entry.constrained) {
+    console.log(`  Requested: ${JSON.stringify(entry.requestedValue)}`);
+    console.log(`  Constrained by repository policy`);
+  }
+  for (const warning of entry.warnings) console.log(`  \u26A0 ${warning}`);
+});
+configCmd.command("set").description("Set a configuration value in the specified scope").argument("<path>", "dotted path, e.g. execution.maxParallelPhases").argument("<value>", `value to set (JSON-parsed; use quotes: '"string"' or 42)`).requiredOption("--scope <scope>", "target scope: user, repo, or local").option("--root <path>", "repository root", process.cwd()).action(async (configPath, rawValue, options) => {
+  const { scope: scopeName, root } = options;
+  if (!["user", "repo", "local"].includes(scopeName)) {
+    throw new Error(`Invalid scope: ${scopeName}. Must be one of: user, repo, local`);
+  }
+  const scope = scopeName === "user" ? ConfigScope.User : scopeName === "repo" ? ConfigScope.RepoPolicy : ConfigScope.Local;
+  if (scope === ConfigScope.RepoPolicy && REPO_POLICY_FORBIDDEN_KEYS.includes(configPath)) {
+    throw new Error(`Setting '${configPath}' is not allowed in committed repository policy. Use --scope local for this value.`);
+  }
+  const value = parseJsonValue(rawValue);
+  const filePath = scopePath(scope, root);
+  let config2;
+  if (scope === ConfigScope.User) {
+    config2 = await loadUserConfig() ?? { version: 1 };
+  } else if (scope === ConfigScope.RepoPolicy) {
+    config2 = await loadRepoPolicy(root) ?? { version: 1 };
+  } else {
+    config2 = await loadLocalConfig(root) ?? {};
+  }
+  setNestedValue(config2, configPath, value);
+  if (scope === ConfigScope.User) {
+    userConfigSchema.parse(config2);
+  } else if (scope === ConfigScope.RepoPolicy) {
+    repoPolicyConfigSchema.parse(config2);
+  } else {
+    leanRigorConfigSchema.parse(config2);
+  }
+  await atomicWriteJson(filePath, config2);
+  console.log(`Set ${configPath} = ${JSON.stringify(value)} (scope: ${scopeName})`);
+  console.log(`Written to: ${filePath}`);
+});
+configCmd.command("unset").description("Remove a configuration value from the specified scope").argument("<path>", "dotted path, e.g. models.tiers.small.claude").requiredOption("--scope <scope>", "target scope: user, repo, or local").option("--root <path>", "repository root", process.cwd()).action(async (configPath, options) => {
+  const { scope: scopeName, root } = options;
+  if (!["user", "repo", "local"].includes(scopeName)) {
+    throw new Error(`Invalid scope: ${scopeName}. Must be one of: user, repo, local`);
+  }
+  const scope = scopeName === "user" ? ConfigScope.User : scopeName === "repo" ? ConfigScope.RepoPolicy : ConfigScope.Local;
+  const filePath = scopePath(scope, root);
+  let config2;
+  if (scope === ConfigScope.User) {
+    config2 = await loadUserConfig();
+  } else if (scope === ConfigScope.RepoPolicy) {
+    config2 = await loadRepoPolicy(root);
+  } else {
+    config2 = await loadLocalConfig(root);
+  }
+  if (!config2) {
+    console.log(`No configuration file found at: ${filePath}`);
+    return;
+  }
+  unsetNestedValue(config2, configPath);
+  await atomicWriteJson(filePath, config2);
+  console.log(`Removed ${configPath} (scope: ${scopeName})`);
 });
 program2.command("triage").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, { root, provider }) => {
   const config2 = await loadConfig(root);
@@ -23554,6 +24475,10 @@ program2.command("doctor").option("--root <path>", "repository root", process.cw
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const config2 = await loadConfig(root);
   console.log((await new ClaudeAdapter().doctor(root, config2)).join("\n"));
+  console.log("");
+  console.log("To see effective config with provenance:");
+  console.log("  leanrigor config show");
+  console.log("  leanrigor config show --json");
 });
 var flow = program2.command("flow").description("Run the persisted sequential LeanRigor workflow");
 flow.command("start").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, options) => {
@@ -23928,7 +24853,7 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
 }
 async function executionProvider(providerName, scriptFile) {
   if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile10(path12.resolve(scriptFile), "utf8")) : {};
+    const scripts = scriptFile ? JSON.parse(await readFile12(path15.resolve(scriptFile), "utf8")) : {};
     return new ScriptedExecutionProvider(scripts);
   }
   if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
@@ -24027,7 +24952,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile10(path12.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile12(path15.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {
@@ -24056,27 +24981,46 @@ function splitCsv(value) {
 function uniqueCli(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
-async function initConfig(root) {
-  return ensureRepositoryConfig(root);
+function parseJsonValue(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
 }
-async function ensureRepositoryConfig(root) {
-  const configPath = path12.join(root, ".leanrigor", "config.json");
-  const existing = await readFile10(configPath, "utf8").catch(() => void 0);
-  if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));
-  const config2 = defaultConfig();
-  config2.instructions = await detectInstructions(root);
-  await writeConfig(root, config2);
-  return config2;
+function getNestedValue(obj, dottedPath) {
+  const keys = dottedPath.split(".");
+  let current = obj;
+  for (const key of keys) {
+    if (current === null || current === void 0) return void 0;
+    if (typeof current !== "object") return void 0;
+    current = current[key];
+  }
+  return current;
 }
-async function writeConfig(root, config2) {
-  const dir = path12.join(root, ".leanrigor");
-  await mkdir8(dir, { recursive: true });
-  await writeFile7(path12.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...config2 }, null, 2) + "\n");
+function setNestedValue(obj, dottedPath, value) {
+  const keys = dottedPath.split(".");
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (current[key] === void 0 || current[key] === null || typeof current[key] !== "object" || Array.isArray(current[key])) {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+  current[keys[keys.length - 1]] = value;
 }
-async function detectInstructions(root) {
-  const candidates = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
-  const topLevel = new Set(await readdir3(root).catch(() => []));
-  return candidates.filter((candidate) => topLevel.has(candidate));
+function unsetNestedValue(obj, dottedPath) {
+  const keys = dottedPath.split(".");
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (current[key] === void 0 || typeof current[key] !== "object" || Array.isArray(current[key])) {
+      return;
+    }
+    current = current[key];
+  }
+  delete current[keys[keys.length - 1]];
 }
 function capitalise(value) {
   return value[0].toUpperCase() + value.slice(1);

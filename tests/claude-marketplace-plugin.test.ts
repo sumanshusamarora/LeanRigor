@@ -13,6 +13,7 @@ import { defaultConfig } from "../src/config/defaults.js";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const expectedMarketplaceCommands = [
   "./commands/start.md",
+  "./commands/init.md",
   "./commands/plan.md",
   "./commands/status.md",
   "./commands/review.md",
@@ -68,7 +69,7 @@ describe("Claude marketplace plugin manifests", () => {
 
   it("exposes only the concise marketplace command names", async () => {
     const commandFiles = (await readdir(path.join(repoRoot, "commands"))).sort();
-    expect(commandFiles).toEqual(["commit.md", "plan.md", "review.md", "start.md", "status.md"]);
+    expect(commandFiles).toEqual(["commit.md", "init.md", "plan.md", "review.md", "start.md", "status.md"]);
     expect(commandFiles.some((name) => name.includes("leanrigor-"))).toBe(false);
     expect(plugin.commands).not.toContain("./commands/leanrigor.md");
     expect(plugin.commands).not.toContain("./commands/leanrigor-plan.md");
@@ -185,6 +186,7 @@ describe("Claude marketplace plugin package inclusion", () => {
     const commandFiles = files.filter((file) => file.startsWith("commands/"));
     expect(commandFiles).toEqual([
       "commands/commit.md",
+      "commands/init.md",
       "commands/plan.md",
       "commands/review.md",
       "commands/start.md",

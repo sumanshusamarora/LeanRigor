@@ -1,50 +1,107 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
-import { ModelConfigurationError, resolveModelTier } from "../src/config/models.js";
+import { ModelConfigurationError, resolveModelTier, isClaudeAlias } from "../src/config/models.js";
 
 const ENV_KEYS = [
   "LEANRIGOR_MODEL_SMALL",
   "LEANRIGOR_CLAUDE_MODEL_SMALL",
-  "LEANRIGOR_OPENCODE_MODEL_SMALL"
+  "LEANRIGOR_OPENCODE_MODEL_SMALL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_OPUS_MODEL"
 ] as const;
 
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    vi.stubEnv(key, undefined);
+  }
+});
+
 afterEach(() => {
-  for (const key of ENV_KEYS) delete process.env[key];
+  vi.unstubAllEnvs();
 });
 
 describe("portable model tiers", () => {
-  it("defaults Claude tiers to provider-resolved aliases", () => {
+  it("defaults Claude tiers to adapter-derived aliases (haiku/sonnet/opus)", () => {
     const config = defaultConfig();
-    expect(resolveModelTier("small", "claude", config).model).toBe("haiku");
-    expect(resolveModelTier("medium", "claude", config).model).toBe("sonnet");
-    expect(resolveModelTier("large", "claude", config).model).toBe("opus");
+    const small = resolveModelTier("small", "claude", config);
+    expect(small.model).toBe("haiku");
+    expect(small.source).toBe("adapter-default");
+
+    const medium = resolveModelTier("medium", "claude", config);
+    expect(medium.model).toBe("sonnet");
+    expect(medium.source).toBe("adapter-default");
+
+    const large = resolveModelTier("large", "claude", config);
+    expect(large.model).toBe("opus");
+    expect(large.source).toBe("adapter-default");
   });
 
-  it("prefers platform-specific environment overrides", () => {
+  it("prefers ANTHROPIC_DEFAULT_* env vars over Claude alias defaults", () => {
     const config = defaultConfig();
-    process.env.LEANRIGOR_MODEL_SMALL = "generic-small";
-    process.env.LEANRIGOR_CLAUDE_MODEL_SMALL = "company-haiku-deployment";
+    vi.stubEnv("ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-4-5-20251001");
     const resolved = resolveModelTier("small", "claude", config);
-    expect(resolved.model).toBe("company-haiku-deployment");
+    expect(resolved.model).toBe("claude-haiku-4-5-20251001");
+    expect(resolved.source).toBe("adapter-env");
+  });
+
+  it("prefers platform-specific LEANRIGOR_CLAUDE_MODEL_* over ANTHROPIC_DEFAULT_*", () => {
+    const config = defaultConfig();
+    vi.stubEnv("ANTHROPIC_DEFAULT_HAIKU_MODEL", "claude-haiku-4-5");
+    vi.stubEnv("LEANRIGOR_CLAUDE_MODEL_SMALL", "my-custom-haiku");
+    const resolved = resolveModelTier("small", "claude", config);
+    expect(resolved.model).toBe("my-custom-haiku");
     expect(resolved.source).toBe("platform-env");
   });
 
-  it("uses generic environment overrides before config", () => {
+  it("uses generic environment overrides before config values", () => {
     const config = defaultConfig();
-    process.env.LEANRIGOR_MODEL_SMALL = "generic-small";
+    config.models.tiers.small.claude = "config-haiku";
+    vi.stubEnv("LEANRIGOR_MODEL_SMALL", "generic-small");
     const resolved = resolveModelTier("small", "claude", config);
     expect(resolved.model).toBe("generic-small");
     expect(resolved.source).toBe("generic-env");
   });
 
-  it("omits a model for inherit", () => {
+  it("uses config values before adapter defaults", () => {
     const config = defaultConfig();
-    expect(resolveModelTier("inherit", "claude", config)).toEqual({ tier: "inherit", source: "inherit" });
+    config.models.tiers.small.claude = "configured-model";
+    const resolved = resolveModelTier("small", "claude", config);
+    expect(resolved.model).toBe("configured-model");
+    expect(resolved.source).toBe("config");
+  });
+
+  it("omits a model for inherit tier", () => {
+    const config = defaultConfig();
+    const resolved = resolveModelTier("inherit", "claude", config);
+    expect(resolved).toEqual({ tier: "inherit", source: "inherit" });
+    expect(resolved.model).toBeUndefined(); // --model should be omitted
   });
 
   it("fails clearly when OpenCode tier mappings are absent", () => {
     const config = defaultConfig();
     expect(() => resolveModelTier("small", "opencode", config)).toThrow(ModelConfigurationError);
     expect(() => resolveModelTier("small", "opencode", config)).toThrow(/leanrigor init models/i);
+  });
+
+  it("ANTHROPIC_DEFAULT_* only applies to Claude harness", () => {
+    const config = defaultConfig();
+    vi.stubEnv("ANTHROPIC_DEFAULT_HAIKU_MODEL", "some-claude-model");
+    // OpenCode should not see ANTHROPIC_DEFAULT_*
+    expect(() => resolveModelTier("small", "opencode", config)).toThrow(ModelConfigurationError);
+  });
+});
+
+describe("isClaudeAlias", () => {
+  it("recognises Claude aliases", () => {
+    expect(isClaudeAlias("haiku")).toBe(true);
+    expect(isClaudeAlias("sonnet")).toBe(true);
+    expect(isClaudeAlias("opus")).toBe(true);
+    expect(isClaudeAlias("default")).toBe(true);
+  });
+
+  it("returns false for concrete models", () => {
+    expect(isClaudeAlias("claude-sonnet-4-5-20251001")).toBe(false);
+    expect(isClaudeAlias("deepseek-v4-pro[1m]")).toBe(false);
   });
 });

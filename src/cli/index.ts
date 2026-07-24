@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "../config/load.js";
-import { defaultConfig } from "../config/defaults.js";
 import { saveWorkflow, loadWorkflow } from "../core/workflow.js";
 import { ClaudeAdapter } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
 import { runTriage } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
 import type { InstallReport, UninstallReport } from "../adapters/types.js";
+import { resolveEffectiveConfig, formatEffectiveConfig } from "../config/resolver.js";
+import { ensureRepositoryConfig, writeConfig } from "../config/bootstrap.js";
+import { atomicWriteJson } from "../config/atomic-write.js";
+import { ConfigScope, scopePath, REPO_POLICY_FORBIDDEN_KEYS } from "../config/config-scope.js";
+import { loadUserConfig, loadRepoPolicy, loadLocalConfig } from "../config/load.js";
+import { userConfigSchema } from "../config/schemas/user.js";
+import { repoPolicyConfigSchema } from "../config/schemas/repo-policy.js";
 import {
   activeWorkflowSelection,
   currentPhaseObject,
@@ -63,7 +69,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.2.0-draft");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.0-draft");
 
 program.command("setup")
   .alias("init")
@@ -73,11 +79,15 @@ program.command("setup")
   .option("--force-owned-files", "replace LeanRigor-owned files that have local changes")
   .action(async ({ root, adapter, forceOwnedFiles }) => {
     if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-    const configDir = path.join(root, ".leanrigor");
-    await mkdir(configDir, { recursive: true });
-    const config = await initConfig(root);
+    // Bootstrap .leanrigor/ with .gitignore and config
+    const config = await ensureRepositoryConfig(root);
     const report = await new ClaudeAdapter().install(root, config, forceOwnedFiles as boolean);
-    console.log(`LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.`);
+    console.log(`LeanRigor configured.`);
+    console.log("Configuration files:");
+    console.log(`  User config:          ~/.config/leanrigor/config.json`);
+    console.log(`  Repository policy:    leanrigor.config.json (committed)`);
+    console.log(`  Local config:         .leanrigor/config.json (private, never committed)`);
+    console.log(`  Claude defaults:      small=haiku, medium=sonnet, large=opus`);
     printInstallReport(report);
   });
 
@@ -128,6 +138,157 @@ program.command("models")
     }
   });
 
+// ---------------------------------------------------------------------------
+// Configuration management
+// ---------------------------------------------------------------------------
+
+const configCmd = program.command("config").description("Inspect and update LeanRigor configuration");
+
+configCmd.command("show")
+  .description("Display the effective configuration with provenance")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print structured effective config with provenance")
+  .action(async ({ root, json }) => {
+    const effective = await resolveEffectiveConfig(root);
+    if (json) {
+      const provenances: Record<string, unknown> = {};
+      for (const [key, entry] of effective.provenance) {
+        provenances[key] = { value: entry.value, source: entry.source, constrained: entry.constrained };
+      }
+      console.log(JSON.stringify({
+        values: effective.values,
+        provenance: provenances,
+        constraints: effective.constraints,
+        warnings: effective.warnings,
+        sourcesFound: effective.sourcesFound
+      }, null, 2));
+    } else {
+      console.log(formatEffectiveConfig(effective));
+    }
+  });
+
+configCmd.command("get")
+  .description("Read a single configuration value with provenance")
+  .argument("<path>", "dotted path, e.g. execution.maxParallelPhases")
+  .option("--root <path>", "repository root", process.cwd())
+  .action(async (configPath, { root }) => {
+    const effective = await resolveEffectiveConfig(root);
+    const entry = effective.provenance.get(configPath);
+    if (!entry) {
+      // Try to find the value in the config directly
+      const value = getNestedValue(effective.values as unknown as Record<string, unknown>, configPath);
+      if (value === undefined) {
+        console.log(`No configuration found at path: ${configPath}`);
+        return;
+      }
+      console.log(`${configPath}: ${JSON.stringify(value)}`);
+      console.log(`  Source: built-in default`);
+      return;
+    }
+    console.log(`${configPath}: ${JSON.stringify(entry.value)}`);
+    console.log(`  Source: ${entry.source}`);
+    if (entry.adapterResolution) console.log(`  Adapter resolution: ${entry.adapterResolution}`);
+    if (entry.constrained) {
+      console.log(`  Requested: ${JSON.stringify(entry.requestedValue)}`);
+      console.log(`  Constrained by repository policy`);
+    }
+    for (const warning of entry.warnings) console.log(`  ⚠ ${warning}`);
+  });
+
+configCmd.command("set")
+  .description("Set a configuration value in the specified scope")
+  .argument("<path>", "dotted path, e.g. execution.maxParallelPhases")
+  .argument("<value>", "value to set (JSON-parsed; use quotes: '\"string\"' or 42)")
+  .requiredOption("--scope <scope>", "target scope: user, repo, or local")
+  .option("--root <path>", "repository root", process.cwd())
+  .action(async (configPath, rawValue, options) => {
+    const { scope: scopeName, root } = options;
+
+    if (!["user", "repo", "local"].includes(scopeName)) {
+      throw new Error(`Invalid scope: ${scopeName}. Must be one of: user, repo, local`);
+    }
+
+    const scope = scopeName === "user" ? ConfigScope.User
+      : scopeName === "repo" ? ConfigScope.RepoPolicy
+      : ConfigScope.Local;
+
+    // Prevent forbidden keys in repo policy
+    if (scope === ConfigScope.RepoPolicy && REPO_POLICY_FORBIDDEN_KEYS.includes(configPath)) {
+      throw new Error(`Setting '${configPath}' is not allowed in committed repository policy. Use --scope local for this value.`);
+    }
+
+    const value = parseJsonValue(rawValue);
+    const filePath = scopePath(scope, root);
+
+    // Load existing config for this scope
+    let config: Record<string, unknown>;
+    if (scope === ConfigScope.User) {
+      config = (await loadUserConfig()) as unknown as Record<string, unknown> ?? { version: 1 };
+    } else if (scope === ConfigScope.RepoPolicy) {
+      config = (await loadRepoPolicy(root)) as unknown as Record<string, unknown> ?? { version: 1 };
+    } else {
+      config = (await loadLocalConfig(root)) as unknown as Record<string, unknown> ?? {};
+    }
+
+    // Set nested value
+    setNestedValue(config, configPath, value);
+
+    // Validate against the appropriate schema
+    if (scope === ConfigScope.User) {
+      userConfigSchema.parse(config);
+    } else if (scope === ConfigScope.RepoPolicy) {
+      repoPolicyConfigSchema.parse(config);
+    } else {
+      leanRigorConfigSchema.parse(config);
+    }
+
+    // Write atomically
+    await atomicWriteJson(filePath, config);
+    console.log(`Set ${configPath} = ${JSON.stringify(value)} (scope: ${scopeName})`);
+    console.log(`Written to: ${filePath}`);
+  });
+
+configCmd.command("unset")
+  .description("Remove a configuration value from the specified scope")
+  .argument("<path>", "dotted path, e.g. models.tiers.small.claude")
+  .requiredOption("--scope <scope>", "target scope: user, repo, or local")
+  .option("--root <path>", "repository root", process.cwd())
+  .action(async (configPath, options) => {
+    const { scope: scopeName, root } = options;
+
+    if (!["user", "repo", "local"].includes(scopeName)) {
+      throw new Error(`Invalid scope: ${scopeName}. Must be one of: user, repo, local`);
+    }
+
+    const scope = scopeName === "user" ? ConfigScope.User
+      : scopeName === "repo" ? ConfigScope.RepoPolicy
+      : ConfigScope.Local;
+
+    const filePath = scopePath(scope, root);
+
+    // Load existing config for this scope
+    let config: Record<string, unknown> | null;
+    if (scope === ConfigScope.User) {
+      config = await loadUserConfig() as unknown as Record<string, unknown> | null;
+    } else if (scope === ConfigScope.RepoPolicy) {
+      config = await loadRepoPolicy(root) as unknown as Record<string, unknown> | null;
+    } else {
+      config = await loadLocalConfig(root) as unknown as Record<string, unknown> | null;
+    }
+
+    if (!config) {
+      console.log(`No configuration file found at: ${filePath}`);
+      return;
+    }
+
+    // Remove nested value
+    unsetNestedValue(config, configPath);
+
+    // Write atomically
+    await atomicWriteJson(filePath, config);
+    console.log(`Removed ${configPath} (scope: ${scopeName})`);
+  });
+
 program.command("triage")
   .argument("<request>")
   .option("--root <path>", "repository root", process.cwd())
@@ -161,6 +322,11 @@ program.command("doctor")
     if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
     const config = await loadConfig(root);
     console.log((await new ClaudeAdapter().doctor(root, config)).join("\n"));
+    // Also show config management hints
+    console.log("");
+    console.log("To see effective config with provenance:");
+    console.log("  leanrigor config show");
+    console.log("  leanrigor config show --json");
   });
 
 const flow = program.command("flow").description("Run the persisted sequential LeanRigor workflow");
@@ -979,28 +1145,60 @@ function uniqueCli(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
-async function initConfig(root: string) {
-  return ensureRepositoryConfig(root);
+// ---------------------------------------------------------------------------
+// Config helpers
+// ---------------------------------------------------------------------------
+
+/** Parse a CLI string value into its JSON representation. */
+function parseJsonValue(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Treat as a plain string if not valid JSON
+    return raw;
+  }
 }
 
-async function ensureRepositoryConfig(root: string) {
-  const configPath = path.join(root, ".leanrigor", "config.json");
-  const existing = await readFile(configPath, "utf8").catch(() => undefined);
-  if (existing) return leanRigorConfigSchema.parse(JSON.parse(existing));
-  const config = defaultConfig();
-  config.instructions = await detectInstructions(root);
-  await writeConfig(root, config);
-  return config;
+/** Get a nested value from an object using a dotted path. */
+function getNestedValue(obj: Record<string, unknown>, dottedPath: string): unknown {
+  const keys = dottedPath.split(".");
+  let current: unknown = obj;
+  for (const key of keys) {
+    if (current === null || current === undefined) return undefined;
+    if (typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
 }
 
-async function writeConfig(root: string, config: unknown): Promise<void> {
-  const dir = path.join(root, ".leanrigor"); await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "config.json"), JSON.stringify({ $schema: "../node_modules/leanrigor/config.schema.json", ...(config as object) }, null, 2) + "\n");
+/** Set a nested value on an object using a dotted path. Creates intermediate objects as needed. */
+function setNestedValue(obj: Record<string, unknown>, dottedPath: string, value: unknown): void {
+  const keys = dottedPath.split(".");
+  let current: Record<string, unknown> = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (current[key] === undefined || current[key] === null || typeof current[key] !== "object" || Array.isArray(current[key])) {
+      current[key] = {};
+    }
+    current = current[key] as Record<string, unknown>;
+  }
+  current[keys[keys.length - 1]] = value;
 }
-async function detectInstructions(root: string): Promise<string[]> {
-  const candidates = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
-  const topLevel = new Set(await readdir(root).catch(() => [])); return candidates.filter((candidate) => topLevel.has(candidate));
+
+/** Remove a nested value from an object using a dotted path. */
+function unsetNestedValue(obj: Record<string, unknown>, dottedPath: string): void {
+  const keys = dottedPath.split(".");
+  let current: Record<string, unknown> = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (current[key] === undefined || typeof current[key] !== "object" || Array.isArray(current[key])) {
+      return; // Path doesn't exist
+    }
+    current = current[key] as Record<string, unknown>;
+  }
+  delete current[keys[keys.length - 1]];
 }
+
 function capitalise(value: string): string { return value[0].toUpperCase() + value.slice(1); }
 await program.parseAsync().catch((error: unknown) => {
   if (error instanceof RevisionConflictError) {
