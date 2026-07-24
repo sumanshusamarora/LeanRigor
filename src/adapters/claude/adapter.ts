@@ -58,6 +58,310 @@ export const ASSET_VERSION = 5;
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";
 const PROTECT_GIT_DEST = path.join(".claude", "leanrigor", "protect-git.sh");
 
+// ---------------------------------------------------------------------------
+// Installation mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Explicit installation mode.
+ *
+ * - `marketplace`: running from a Claude marketplace plugin; assets are served
+ *   from `${CLAUDE_PLUGIN_ROOT}`.
+ * - `project-local`: installed via `leanrigor init --adapter claude`; assets
+ *   live in the repository's `.claude/` tree.
+ * - `unknown`: cannot conclusively determine — neither env-var signal nor
+ *   owned project-local assets found.
+ */
+export type InstallationMode = "marketplace" | "project-local" | "unknown";
+
+/**
+ * Per-file classification used by shadowing detection.
+ */
+export type ShadowedAssetStatus = "stale_owned" | "modified_owned" | "adoptable_unowned" | "conflict";
+
+/** Single entry in a shadowing report. */
+export interface ShadowedAsset {
+  path: string;
+  status: ShadowedAssetStatus;
+}
+
+/** Full result of shadowing detection. */
+export interface ShadowingReport {
+  /** Whether any project-local assets that may shadow marketplace plugins were found. */
+  detected: boolean;
+  /** The individual assets classified. */
+  assets: ShadowedAsset[];
+  /** Human-readable summary of the recommended action. */
+  recommendation: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+/** Cleanup operation scope. */
+export type CleanupScope = "project-local" | "runtime-state" | "user-config" | "all";
+
+/** Options for the cleanup operation. */
+export interface CleanupOptions {
+  dryRun: boolean;
+  scope: CleanupScope;
+  force: boolean;
+}
+
+/** A single item that will be or was removed during cleanup. */
+export interface CleanupItem {
+  path: string;
+  action: "remove-file" | "remove-directory" | "remove-settings-entry" | "skip-modified" | "skip-unowned" | "skip-not-found";
+  reason?: string;
+}
+
+/** Result of a cleanup operation. */
+export interface CleanupReport {
+  /** Whether this was a dry run (true) or actual removal (false). */
+  dryRun: boolean;
+  /** The scope of the cleanup. */
+  scope: CleanupScope;
+  /** Items that would be or were acted upon. */
+  items: CleanupItem[];
+  /** Items that were skipped (modified, unowned, etc.). */
+  skipped: CleanupItem[];
+  /** Human-readable summary. */
+  summary: string;
+}
+
+/**
+ * Clean up LeanRigor-owned project-local assets, runtime state, or user config.
+ *
+ * Safety invariants:
+ * - Defaults to dry-run unless opts.dryRun is false.
+ * - Never deletes entire .claude/ or ~/.config/ directories — only specific owned files.
+ * - Modified owned files are skipped unless opts.force is true.
+ * - Unrelated settings.json entries are preserved.
+ * - .leanrigor/ is only removed when scope is runtime-state or all.
+ */
+export async function cleanupProjectLocalAssets(
+  root: string,
+  opts: CleanupOptions,
+): Promise<CleanupReport> {
+  const items: CleanupItem[] = [];
+  const skipped: CleanupItem[] = [];
+
+  // --- Project-local assets (.claude/ LeanRigor files) ---
+  if (opts.scope === "project-local" || opts.scope === "all") {
+    // Load config for asset manifest
+    let config: LeanRigorConfig;
+    try {
+      const { loadConfig } = await import("../../config/load.js");
+      config = await loadConfig(root);
+    } catch {
+      const { defaultConfig } = await import("../../config/defaults.js");
+      config = (await defaultConfig()) as unknown as LeanRigorConfig;
+    }
+
+    const { resolveModelTier } = await import("../../config/models.js");
+    const triageModel = resolveModelTier(config.routing.triage, "claude", config).model ?? "haiku";
+    const manifest = assetManifestWithoutSettings(triageModel);
+
+    for (const entry of manifest) {
+      const targetPath = path.join(root, entry.dest);
+      let existing: string | undefined;
+      try { existing = await readFile(targetPath, "utf8"); } catch { continue; }
+
+      if (!isLeanRigorOwned(existing)) {
+        // Check content equality for adoptable files
+        const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
+        if (expected !== undefined && sha256(existing) === sha256(expected)) {
+          // Adoptable: content matches but no ownership — safe to remove with --force
+          if (opts.force) {
+            items.push({ path: entry.dest, action: opts.dryRun ? "remove-file" : "remove-file" });
+            if (!opts.dryRun) {
+              await unlink(targetPath).catch(() => {});
+            }
+          } else {
+            skipped.push({ path: entry.dest, action: "skip-unowned", reason: "content matches but lacks ownership token — use --force to remove" });
+          }
+        } else {
+          skipped.push({ path: entry.dest, action: "skip-unowned", reason: "not LeanRigor-owned and content differs" });
+        }
+        continue;
+      }
+
+      // Owned — check if modified
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
+      if (expected !== undefined && sha256(existing) !== sha256(expected)) {
+        if (opts.force) {
+          items.push({ path: entry.dest, action: "remove-file" });
+          if (!opts.dryRun) {
+            await unlink(targetPath).catch(() => {});
+          }
+        } else {
+          skipped.push({ path: entry.dest, action: "skip-modified", reason: "modified — use --force to remove" });
+        }
+      } else {
+        items.push({ path: entry.dest, action: "remove-file" });
+        if (!opts.dryRun) {
+          await unlink(targetPath).catch(() => {});
+        }
+      }
+    }
+
+    // Clean empty directories up to .claude/
+    if (!opts.dryRun) {
+      // Remove any empty subdirectories
+      const dirsToCheck = [
+        path.join(root, ".claude", "commands"),
+        path.join(root, ".claude", "agents"),
+        path.join(root, ".claude", "leanrigor"),
+        path.join(root, ".claude", "leanrigor", "methodology", "modes"),
+        path.join(root, ".claude", "leanrigor", "methodology"),
+      ];
+      for (const dir of dirsToCheck) {
+        await removeIfEmpty(dir);
+      }
+    }
+
+    // Remove LeanRigor hook entries from settings.json
+    const settingsPath = path.join(root, ".claude", "settings.json");
+    try {
+      await readFile(settingsPath, "utf8");
+      items.push({ path: ".claude/settings.json", action: "remove-settings-entry" });
+      if (!opts.dryRun) {
+        await removeLeanRigorHooks(settingsPath);
+      }
+    } catch {
+      // settings.json doesn't exist — nothing to do
+    }
+  }
+
+  // --- Runtime state (.leanrigor/) ---
+  if (opts.scope === "runtime-state" || opts.scope === "all") {
+    const leanrigorDir = path.join(root, ".leanrigor");
+    try {
+      await stat(leanrigorDir);
+      items.push({ path: ".leanrigor/", action: "remove-directory" });
+      if (!opts.dryRun) {
+        const { rm } = await import("node:fs/promises");
+        await rm(leanrigorDir, { recursive: true, force: true });
+      }
+    } catch {
+      skipped.push({ path: ".leanrigor/", action: "skip-not-found", reason: "directory does not exist" });
+    }
+  }
+
+  // --- User config (~/.config/leanrigor/config.json) ---
+  if (opts.scope === "user-config" || opts.scope === "all") {
+    const { homedir } = await import("node:os");
+    const userConfigPath = path.join(homedir(), ".config", "leanrigor", "config.json");
+    try {
+      await stat(userConfigPath);
+      items.push({ path: userConfigPath, action: "remove-file" });
+      if (!opts.dryRun) {
+        await unlink(userConfigPath).catch(() => {});
+        await removeIfEmpty(path.dirname(userConfigPath));
+      }
+    } catch {
+      skipped.push({ path: userConfigPath, action: "skip-not-found", reason: "file does not exist" });
+    }
+  }
+
+  const summary = opts.dryRun
+    ? `Dry-run: ${items.length} item(s) would be removed, ${skipped.length} would be skipped (scope: ${opts.scope})`
+    : `Removed ${items.length} item(s), skipped ${skipped.length} (scope: ${opts.scope})`;
+
+  return { dryRun: opts.dryRun, scope: opts.scope, items, skipped, summary };
+}
+
+/** Detect the current installation mode from runtime signals and repo state. */
+export function detectInstallationMode(root: string): Promise<InstallationMode> {
+  return _detectInstallationMode(root);
+}
+
+async function _detectInstallationMode(root: string): Promise<InstallationMode> {
+  // 1. Marketplace signal: CLAUDE_PLUGIN_ROOT or LEANRIGOR_CLAUDE_PLUGIN_ROOT is set
+  if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
+    return "marketplace";
+  }
+
+  // 2. Check for owned project-local assets
+  const protectGitPath = path.join(root, PROTECT_GIT_DEST);
+  try {
+    const content = await readFile(protectGitPath, "utf8");
+    if (isLeanRigorOwned(content)) {
+      return "project-local";
+    }
+  } catch {
+    // File doesn't exist — not project-local
+  }
+
+  // 3. Neither signal is conclusive
+  return "unknown";
+}
+
+/**
+ * Detect project-local assets that may shadow marketplace plugin assets.
+ * Only meaningful when the installation mode is `marketplace`; returns
+ * an empty (non-detected) report otherwise.
+ */
+export async function detectShadowing(
+  root: string,
+  mode: InstallationMode,
+  config: LeanRigorConfig,
+): Promise<ShadowingReport> {
+  if (mode !== "marketplace") {
+    return { detected: false, assets: [], recommendation: "" };
+  }
+
+  const { resolveModelTier } = await import("../../config/models.js");
+  const triageModel = resolveModelTier(config.routing.triage, "claude", config).model ?? "haiku";
+  const manifest = assetManifestWithoutSettings(triageModel);
+  const assets: ShadowedAsset[] = [];
+
+  for (const entry of manifest) {
+    const targetPath = path.join(root, entry.dest);
+    let existing: string | undefined;
+    try { existing = await readFile(targetPath, "utf8"); } catch { continue; }
+
+    if (!isLeanRigorOwned(existing)) {
+      // Check content equality to distinguish adoptable from conflict
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
+      if (expected !== undefined && sha256(existing) === sha256(expected)) {
+        assets.push({ path: entry.dest, status: "adoptable_unowned" });
+      } else {
+        assets.push({ path: entry.dest, status: "conflict" });
+      }
+    } else {
+      // Owned — check if it matches the packaged version
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
+      if (expected !== undefined && sha256(existing) === sha256(expected)) {
+        assets.push({ path: entry.dest, status: "stale_owned" });
+      } else {
+        assets.push({ path: entry.dest, status: "modified_owned" });
+      }
+    }
+  }
+
+  if (assets.length === 0) {
+    return { detected: false, assets: [], recommendation: "" };
+  }
+
+  const recommendation = [
+    `${assets.length} project-local asset(s) detected that may shadow marketplace plugin assets.`,
+    `Run \`leanrigor cleanup --adapter claude --project-local-only --dry-run\` to preview removal,`,
+    `then \`leanrigor cleanup --adapter claude --project-local-only\` to remove them.`,
+    `Modified files will require --force.`,
+  ].join("\n");
+
+  return { detected: true, assets, recommendation };
+}
+
+/** Check whether the runtime was launched from the Claude marketplace plugin. */
+export function isMarketplaceRuntime(): boolean {
+  return process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin"
+    || Boolean(process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT)
+    || Boolean(process.env.CLAUDE_PLUGIN_ROOT);
+}
+
 /** Directory containing the Claude plugin source assets, resolved at runtime. */
 function pluginDir(): string {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
@@ -320,12 +624,16 @@ export class ClaudeAdapter implements HarnessAdapter {
   async doctor(root: string, config: LeanRigorConfig): Promise<string[]> {
     const output: string[] = [];
     const packageVersion = await readPackageVersion();
-    output.push(`LeanRigor CLI: ${packageVersion}`);
-    output.push(`Platform: Claude Code`);
-    output.push(`Claude assets available: ${ASSET_VERSION}`);
-    output.push(`Runtime source: ${runtimeSource()}`);
+    const mode = await detectInstallationMode(root);
 
-    // Configuration files found
+    // --- Header: installation mode, version, runtime source ---
+    output.push(`Installation mode: ${mode}`);
+    output.push(`Runtime source: ${runtimeSource()}`);
+    output.push(`Package version: ${packageVersion}`);
+    output.push(`Asset version: ${ASSET_VERSION}`);
+    output.push(`Platform: Claude Code`);
+
+    // --- Configuration files found ---
     output.push("");
     output.push("Configuration files:");
     const userConfig = await loadUserConfig();
@@ -335,23 +643,22 @@ export class ClaudeAdapter implements HarnessAdapter {
     const localExists = await configFileExists(ConfigScope.Local, root);
     output.push(`  Local config (.leanrigor/config.json): ${localExists ? "found" : "not found (using defaults)"}`);
 
-    // Use structured asset inspection
-    const inspection = await this.inspectAssets(root, config);
-
-    // .leanrigor/.gitignore status
+    // --- .leanrigor/.gitignore status ---
+    const gitignoreStatus = await ensureGitignore(path.join(root, ".leanrigor"));
     output.push("");
-    output.push(inspection.gitignoreStatus.message);
+    output.push(gitignoreStatus.message);
 
     // Check for tracked .leanrigor files
-    if (inspection.trackedLeanrigorFiles.length > 0) {
-      output.push(`⚠ WARNING: ${inspection.trackedLeanrigorFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
-      for (const file of inspection.trackedLeanrigorFiles) {
+    const trackedFiles = await checkTrackedLeanrigorFiles(root);
+    if (trackedFiles.length > 0) {
+      output.push(`⚠ WARNING: ${trackedFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
+      for (const file of trackedFiles) {
         output.push(`  .leanrigor/${file}`);
       }
       output.push("  These files contain private runtime state and should not be committed.");
     }
 
-    // Check Claude CLI availability — check PATH first, then common fallback location
+    // Check Claude CLI availability
     const claudeInPath = await which("claude");
     if (claudeInPath) {
       output.push(`Claude CLI: found (${claudeInPath})`);
@@ -364,7 +671,7 @@ export class ClaudeAdapter implements HarnessAdapter {
       }
     }
 
-    // Check model tier resolution with provenance
+    // --- Model tier resolution ---
     output.push("");
     output.push("Model tier resolution:");
     for (const tier of ["small", "medium", "large"] as const) {
@@ -373,67 +680,95 @@ export class ClaudeAdapter implements HarnessAdapter {
       } catch (error) { output.push(`  ${tier}: ERROR — ${(error as Error).message}`); }
     }
 
-    // Asset summary
-    output.push("");
-    output.push(`Claude assets installed: ${inspection.installedCount}/${inspection.totalAvailable}`);
-    const assetIssues = [...inspection.missing, ...inspection.conflicts, ...inspection.modified];
-    if (assetIssues.length === 0) {
-      output.push("Status: current");
+    // --- Asset inspection (mode-aware) ---
+    if (mode === "marketplace") {
+      // Marketplace: use plugin-root assets directly
+      output.push("");
+      output.push("Plugin assets: current (served from plugin root)");
+      output.push("Project-local fallback assets: not applicable");
+
+      // Shadowing detection
+      const shadowing = await detectShadowing(root, mode, config);
+      if (shadowing.detected) {
+        output.push("");
+        output.push("⚠ Legacy project-local fallback assets detected:");
+        output.push("Status: shadowing risk — these may shadow marketplace plugin commands/agents");
+        for (const asset of shadowing.assets) {
+          output.push(`  ${asset.path} (${asset.status})`);
+        }
+        output.push("Recommended: leanrigor cleanup --adapter claude --project-local-only --dry-run");
+      }
+
+      // Shared settings for marketplace mode
+      output.push("");
+      output.push("Shared configuration:");
+      output.push("  .claude/settings.json: not managed by marketplace installation");
     } else {
-      output.push("Status: incomplete or needs attention");
-    }
+      // Project-local or unknown: inspect fallback assets
+      const inspection = await this.inspectAssets(root, config);
 
-    if (inspection.current.length > 0) {
+      // Asset summary
       output.push("");
-      output.push("Current:");
-      for (const f of inspection.current) output.push(`  ${f}`);
-    }
+      output.push(`Fallback assets: ${inspection.installedCount}/${inspection.totalAvailable}`);
+      const assetIssues = [...inspection.missing, ...inspection.conflicts, ...inspection.modified];
+      if (assetIssues.length === 0) {
+        output.push("Status: current");
+      } else {
+        output.push("Status: incomplete or needs attention");
+      }
 
-    if (inspection.adoptable.length > 0) {
+      if (inspection.current.length > 0) {
+        output.push("");
+        output.push("Current:");
+        for (const f of inspection.current) output.push(`  ${f}`);
+      }
+
+      if (inspection.adoptable.length > 0) {
+        output.push("");
+        output.push("Adoptable (content matches packaged version, safe to adopt on next bootstrap):");
+        for (const f of inspection.adoptable) output.push(`  ${f}`);
+      }
+
+      // Git protection hook
       output.push("");
-      output.push("Adoptable (content matches packaged version, safe to adopt on next bootstrap):");
-      for (const f of inspection.adoptable) output.push(`  ${f}`);
-    }
+      output.push("Git protection hook:");
+      output.push(`  ${inspection.protectGitState}`);
 
-    // Git protection hook — reported individually
-    output.push("");
-    output.push("Git protection hook:");
-    output.push(`  ${inspection.protectGitState}`);
+      if (inspection.missing.length > 0) {
+        output.push("");
+        const cmd = isMarketplaceRuntime() ? "next LeanRigor command" : "`leanrigor init --adapter claude`";
+        output.push(`Missing (will be repaired automatically by ${cmd}):`);
+        for (const f of inspection.missing) output.push(`  ${f}`);
+      }
+      if (inspection.modified.length > 0) {
+        output.push("");
+        output.push("Modified (LeanRigor-owned files with local changes):");
+        for (const f of inspection.modified) output.push(`  ${f}`);
+        output.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+      }
+      if (inspection.conflicts.length > 0) {
+        output.push("");
+        output.push("Conflict (non-LeanRigor files in expected locations):");
+        for (const f of inspection.conflicts) output.push(`  ${f}`);
+      }
 
-    if (inspection.missing.length > 0) {
+      // Shared settings.json summary
       output.push("");
-      const cmd = isMarketplaceRuntime() ? "next LeanRigor command" : "`leanrigor init --adapter claude`";
-      output.push(`Missing (will be repaired automatically by ${cmd}):`);
-      for (const f of inspection.missing) output.push(`  ${f}`);
-    }
-    if (inspection.modified.length > 0) {
+      output.push("Shared configuration:");
+      output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
+
+      // Bootstrap health
       output.push("");
-      output.push("Modified (LeanRigor-owned files with local changes):");
-      for (const f of inspection.modified) output.push(`  ${f}`);
-      output.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
-    }
-    if (inspection.conflicts.length > 0) {
-      output.push("");
-      output.push("Conflict (non-LeanRigor files in expected locations):");
-      for (const f of inspection.conflicts) output.push(`  ${f}`);
+      const bootstrapped = inspection.missing.length === 0 && inspection.adoptable.length === 0
+        && (inspection.settingsState === "shared_current");
+      output.push(`Project bootstrap: ${bootstrapped ? "complete" : inspection.missing.length > 0 ? "incomplete" : "repairable"} (${isMarketplaceRuntime() ? "marketplace" : "project-local"} mode)`);
     }
 
-    // Shared settings.json summary
-    output.push("");
-    output.push("Shared configuration:");
-    output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
-
-    // Bootstrap health
-    output.push("");
-    const bootstrapped = inspection.missing.length === 0 && inspection.adoptable.length === 0
-      && (inspection.settingsState === "shared_current");
-    output.push(`Project bootstrap: ${bootstrapped ? "complete" : inspection.missing.length > 0 ? "incomplete" : "repairable"}`);
-
-    // Workflow settings
+    // --- Workflow settings ---
     output.push("");
     output.push(`Automatic triage: ${config.workflow.automaticTriage ? "enabled" : "disabled"}`);
 
-    // Config management hints
+    // --- Config management hints ---
     output.push("");
     output.push("Configuration management:");
     output.push("  Show effective config: leanrigor config show");
@@ -610,16 +945,11 @@ async function readPackageVersion(): Promise<string> {
 }
 
 function runtimeSource(): string {
-  if (isMarketplaceRuntime()) return "marketplace plugin runtime";
+  if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) return `\${CLAUDE_PLUGIN_ROOT}/bin/leanrigor (plugin runtime)`;
+  if (process.env.CLAUDE_PLUGIN_ROOT) return `\${CLAUDE_PLUGIN_ROOT}/bin/leanrigor (plugin runtime)`;
+  if (process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin") return "marketplace plugin runtime";
   if (process.argv[1]?.includes(`${path.sep}node_modules${path.sep}`)) return "npm package CLI";
   return "local development or global CLI";
-}
-
-/** Detect if the runtime was launched from the Claude marketplace plugin. */
-export function isMarketplaceRuntime(): boolean {
-  return process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin"
-    || Boolean(process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT)
-    || Boolean(process.env.CLAUDE_PLUGIN_ROOT);
 }
 
 /** Load config for uninstall without crashing if config is missing. */

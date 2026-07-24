@@ -52,7 +52,8 @@ The core never selects vendor-specific model names. It routes by **capability pr
 | `src/core/ux.ts` | Claude UX helpers — active workflow selection, next-gate summaries |
 | `src/core/assessment.ts` | Mode/routing assessment from risk and complexity |
 | `src/config/` | Configuration loading, defaults, Zod schema, model tier resolution |
-| `src/adapters/claude/adapter.ts` | Claude Code adapter — install/uninstall/doctor for `.claude/` assets |
+| `src/adapters/claude/adapter.ts` | Claude Code adapter — mode detection (marketplace/fallback), install/uninstall/bootstrap/cleanup/doctor for `.claude/` assets |
+| `src/adapters/claude/settings-merger.ts` | Safe merge/remove of LeanRigor hook entries in shared `.claude/settings.json` |
 | `src/adapters/claude/triage-provider.ts` | Claude CLI invocation for model-backed triage |
 
 ### Key types (from `src/core/types.ts`)
@@ -63,10 +64,31 @@ The core never selects vendor-specific model names. It routes by **capability pr
 - `CompletionGateDecision`: `completed | needs_repair | needs_review | needs_replan | blocked`
 - `ModelProfile`: `"small" | "medium" | "large" | "inherit"`
 
+### Installation modes
+
+LeanRigor supports two distinct installation modes:
+
+#### Marketplace plugin mode
+Claude loads LeanRigor assets directly from `${CLAUDE_PLUGIN_ROOT}`. No project-local `.claude/` assets are created. Detected when `CLAUDE_PLUGIN_ROOT` or `LEANRIGOR_CLAUDE_PLUGIN_ROOT` is set.
+
+- **Managed**: `.leanrigor/` state only (config, workflows, locks)
+- **Not managed**: `.claude/` project-local files
+- **Doctor reports**: "Plugin assets: current", "Fallback assets: not applicable"
+- **Commands**: `/leanrigor:start`, `/leanrigor:init`, etc. — no manual init required
+
+#### Project-local fallback mode
+Assets are installed into `.claude/` via `leanrigor init --adapter claude`. Used when the marketplace plugin is not installed (npm global install, etc.).
+
+- **Managed**: `.claude/commands/leanrigor*.md`, `.claude/agents/leanrigor-triage.md`, `.claude/leanrigor/*`, LeanRigor hook entries in `.claude/settings.json`
+- **Doctor reports**: "Fallback assets: N/N current"
+
+#### Mixed mode (shadowing risk)
+When marketplace mode is active but stale project-local fallback assets exist, LeanRigor reports a shadowing risk and recommends cleanup via `leanrigor cleanup --adapter claude --project-local-only`.
+
 ### Marketplace plugin structure
 
 The Claude Code marketplace plugin (`/plugin marketplace add sumanshusamarora/LeanRigor`) exposes:
-- **Slash commands**: `/leanrigor:start`, `/leanrigor:plan`, `/leanrigor:status`, `/leanrigor:review`, `/leanrigor:commit`
+- **Slash commands**: `/leanrigor:start`, `/leanrigor:init`, `/leanrigor:plan`, `/leanrigor:status`, `/leanrigor:review`, `/leanrigor:commit`
 - **Agent**: `leanrigor-triage` (read-only, small model)
 - **Hook**: `protect-git.sh` — blocks automatic `git commit`, `git push`, `git reset --hard`
 - **Bundled runtime**: `runtime/leanrigor-cli.js` (esbuild-bundled CLI)
@@ -98,9 +120,25 @@ Each workflow gets one integration worktree; each leased phase gets one phase wo
 - The methodology under `methodology/` is **adapter-agnostic** — new adapters follow the pattern in `src/adapters/claude/`
 - `npm run build` compiles only `src/**/*.ts` (not tests); `npm run typecheck` checks both
 
+## Smoke Tests
+
+```bash
+# Marketplace mode: verifies .leanrigor/ created, NO .claude/ created
+./scripts/smoke-marketplace.sh
+
+# Fallback mode: verifies all assets installed via init --adapter claude
+./scripts/smoke-fallback.sh
+
+# Mixed-mode cleanup: verifies shadowing detection and safe cleanup
+./scripts/smoke-mixed-cleanup.sh
+```
+
 ## Important Constraints
 
 - **Never commit or push automatically** — the `protect-git.sh` hook enforces this; commit proposals are always human-reviewed
+- **Installation modes are separate** — marketplace plugin users do NOT need project-local `.claude/` assets; npm users install them with `leanrigor init --adapter claude`
+- **Cleanup defaults to dry-run** — `leanrigor cleanup --adapter claude` previews changes; pass `--no-dry-run` to execute
+- **Cleanup preserves unrelated settings** — only LeanRigor-owned hook entries are removed from `.claude/settings.json`; never delete the file
 - Execution is **sequential by default** (`execution.maxParallelPhases` is `1`); the engine is parallel-ready but does not autonomously spawn agents
 - The Claude CLI execution provider is a **prototype**; run `scripts/smoke-claude-cli-execution.sh` manually to verify it (not in CI)
 - LeanRigor-owned branches follow the naming pattern `leanrigor/<short-id>/...` and must not be conflated with user branches

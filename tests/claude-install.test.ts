@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -347,10 +347,10 @@ describe("Claude plugin doctor", () => {
     expect(text).toContain("Status: current");
     expect(text).toContain("Git protection hook:");
     expect(text).toContain("current and executable");
-    expect(text).toContain(`LeanRigor CLI:`);
+    expect(text).toContain(`Package version:`);
     // settings.json is excluded from total (handled by settings-merger)
     const assetCount = EXPECTED_DEST_PATHS.filter(p => p !== path.join(".claude", "settings.json")).length;
-    expect(text).toContain(`Claude assets installed: ${assetCount}/${assetCount}`);
+    expect(text).toContain(`Fallback assets: ${assetCount}/${assetCount}`);
   });
 
   it("detects an installed but non-executable hook", async () => {
@@ -371,7 +371,7 @@ describe("Claude plugin doctor", () => {
     const output = await new ClaudeAdapter().doctor(root, defaultConfig());
     const text = output.join("\n");
 
-    expect(text).toContain("Claude assets installed: 0/");
+    expect(text).toContain("Fallback assets: 0/");
     expect(text).toContain("Missing");
     expect(text).not.toContain("Status: current");
   });
@@ -415,7 +415,7 @@ describe("Claude plugin doctor", () => {
     const output = await new ClaudeAdapter().doctor(root, defaultConfig());
     const text = output.join("\n");
 
-    expect(text).toContain(`Claude assets available: ${ASSET_VERSION}`);
+    expect(text).toContain(`Asset version: ${ASSET_VERSION}`);
   });
 });
 
@@ -517,3 +517,232 @@ async function runHook(file: string, input: unknown): Promise<{ exitCode: number
     child.stdin.end(JSON.stringify(input));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Cleanup tests
+// ---------------------------------------------------------------------------
+
+import { cleanupProjectLocalAssets, detectInstallationMode, type CleanupScope } from "../src/adapters/claude/adapter.js";
+
+describe("Cleanup — project-local assets", () => {
+  it("dry-run lists exact paths for removal without modifying", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: true,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+
+    expect(report.dryRun).toBe(true);
+    expect(report.items.length).toBeGreaterThan(0);
+    expect(report.items.some(i => i.path.includes("leanrigor.md"))).toBe(true);
+
+    // Files should still exist after dry-run
+    await expect(access(path.join(root, ".claude", "commands", "leanrigor.md"))).resolves.toBeUndefined();
+  });
+
+  it("removes owned files when not dry-run", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+
+    expect(report.dryRun).toBe(false);
+    expect(report.items.length).toBeGreaterThan(0);
+
+    // Owned assets should be gone
+    await expect(access(path.join(root, ".claude", "commands", "leanrigor.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(root, ".claude", "agents", "leanrigor-triage.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(root, ".claude", "leanrigor", "protect-git.sh"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves modified owned files without --force", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    // Modify an owned file
+    const target = path.join(root, ".claude", "commands", "leanrigor-plan.md");
+    const original = await readFile(target, "utf8");
+    await writeFile(target, original + "\n# My changes\n");
+
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+
+    // Modified file should be skipped
+    const skipped = report.skipped.filter(s => s.path.includes("leanrigor-plan.md"));
+    expect(skipped.length).toBeGreaterThan(0);
+    expect(skipped[0].action).toBe("skip-modified");
+
+    // File should still exist and contain our changes
+    const content = await readFile(target, "utf8");
+    expect(content).toContain("My changes");
+  });
+
+  it("removes modified owned files with --force", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    // Modify an owned file
+    const target = path.join(root, ".claude", "commands", "leanrigor-review.md");
+    const original = await readFile(target, "utf8");
+    await writeFile(target, original + "\n# My changes\n");
+
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: true,
+    });
+
+    // Modified file should be removed with force
+    expect(report.skipped.filter(s => s.path.includes("leanrigor-review.md")).length).toBe(0);
+    await expect(access(target)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves unrelated .claude/ files", async () => {
+    const root = await tempRepo();
+    await mkdir(path.join(root, ".claude", "commands"), { recursive: true });
+    await writeFile(path.join(root, ".claude", "commands", "my-custom-command.md"), "custom\n");
+    await writeFile(path.join(root, ".claude", "settings.local.json"), JSON.stringify({ permissions: { allow: ["Read"] } }), "utf8");
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+
+    // Unrelated files should be preserved
+    await expect(readFile(path.join(root, ".claude", "commands", "my-custom-command.md"), "utf8")).resolves.toBe("custom\n");
+    await expect(access(path.join(root, ".claude", "settings.local.json"))).resolves.toBeUndefined();
+  });
+
+  it("preserves unrelated settings.json entries", async () => {
+    const root = await tempRepo();
+    const settingsPath = path.join(root, ".claude", "settings.json");
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify({
+      permissions: { allow: ["Read", "Grep"] },
+      hooks: {
+        PreToolUse: [
+          { matcher: "Bash", hooks: [{ type: "command", command: "sh .claude/leanrigor/protect-git.sh" }] }
+        ]
+      }
+    }, null, 2), "utf8");
+
+    await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+
+    // settings.json should still exist but without LR hooks
+    const content = await readFile(settingsPath, "utf8");
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    expect(parsed).toHaveProperty("permissions");
+    expect(content).not.toContain("protect-git.sh");
+  });
+
+  it("runtime-state cleanup removes .leanrigor/", async () => {
+    const root = await tempRepo();
+    await new ClaudeAdapter().install(root, defaultConfig());
+    await mkdir(path.join(root, ".leanrigor"), { recursive: true });
+    await writeFile(path.join(root, ".leanrigor", "config.json"), "{}", "utf8");
+
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "runtime-state" as CleanupScope,
+      force: false,
+    });
+
+    expect(report.items.some(i => i.path === ".leanrigor/")).toBe(true);
+    await expect(access(path.join(root, ".leanrigor"))).rejects.toMatchObject({ code: "ENOENT" });
+    // .claude/ should still exist (runtime-state only removes .leanrigor/)
+    await expect(access(path.join(root, ".claude"))).resolves.toBeUndefined();
+  });
+
+  it("runtime-state dry-run shows what would be removed without touching", async () => {
+    const root = await tempRepo();
+    await mkdir(path.join(root, ".leanrigor"), { recursive: true });
+    await writeFile(path.join(root, ".leanrigor", "config.json"), "{}", "utf8");
+
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: true,
+      scope: "runtime-state" as CleanupScope,
+      force: false,
+    });
+
+    expect(report.dryRun).toBe(true);
+    expect(report.items.some(i => i.path === ".leanrigor/")).toBe(true);
+    // .leanrigor/ should still exist after dry-run
+    await expect(access(path.join(root, ".leanrigor"))).resolves.toBeUndefined();
+  });
+});
+
+describe("Migration — mixed to clean marketplace", () => {
+  it("removes fallback assets while preserving .leanrigor/ state", async () => {
+    const root = await tempRepo();
+    // Seed mixed state
+    await new ClaudeAdapter().install(root, defaultConfig());
+    await mkdir(path.join(root, ".leanrigor", "workflows"), { recursive: true });
+    await writeFile(path.join(root, ".leanrigor", ".gitignore"), "*\n!.gitignore\n", "utf8");
+
+    // Cleanup only project-local assets (not runtime state)
+    await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+
+    // .leanrigor/ should still exist
+    await expect(access(path.join(root, ".leanrigor", ".gitignore"))).resolves.toBeUndefined();
+
+    // .claude/ fallback assets should be gone
+    await expect(access(path.join(root, ".claude", "commands", "leanrigor.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(root, ".claude", "agents", "leanrigor-triage.md"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    // After migration, detect as unknown (no marketplace env, no project-local assets)
+    const mode = await detectInstallationMode(root);
+    expect(mode).toBe("unknown");
+  });
+
+  it("full migration path: seed mixed -> dry-run -> cleanup -> verify", async () => {
+    const root = await tempRepo();
+    // 1. Seed mixed installation
+    await new ClaudeAdapter().install(root, defaultConfig());
+    await mkdir(path.join(root, ".leanrigor", "workflows"), { recursive: true });
+    await writeFile(path.join(root, ".leanrigor", ".gitignore"), "*\n!.gitignore\n", "utf8");
+
+    // 2. Dry-run
+    const dryRun = await cleanupProjectLocalAssets(root, {
+      dryRun: true,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+    expect(dryRun.dryRun).toBe(true);
+    expect(dryRun.items.length).toBeGreaterThan(0);
+    // Verify .claude/ assets still exist after dry-run
+    await expect(access(path.join(root, ".claude", "commands", "leanrigor.md"))).resolves.toBeUndefined();
+
+    // 3. Execute cleanup
+    const live = await cleanupProjectLocalAssets(root, {
+      dryRun: false,
+      scope: "project-local" as CleanupScope,
+      force: false,
+    });
+    expect(live.dryRun).toBe(false);
+    expect(live.items.length).toBeGreaterThan(0);
+
+    // 4. Verify only .leanrigor/ remains
+    await expect(access(path.join(root, ".claude", "commands", "leanrigor.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(path.join(root, ".leanrigor", ".gitignore"))).resolves.toBeUndefined();
+  });
+});

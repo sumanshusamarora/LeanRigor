@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path18 = __require("node:path");
+    var path19 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path18.resolve(baseDir, baseName);
+          const localBin = path19.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path18.extname(baseName))) return void 0;
+          if (sourceExt.includes(path19.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path18.resolve(
-            path18.dirname(resolvedScriptPath),
+          executableDir = path19.resolve(
+            path19.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path18.basename(
+            const legacyName = path19.basename(
               this._scriptPath,
-              path18.extname(this._scriptPath)
+              path19.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path18.extname(executableFile));
+        launchWithNode = sourceExt.includes(path19.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path18.basename(filename, path18.extname(filename));
+        this._name = path19.basename(filename, path19.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path19) {
-        if (path19 === void 0) return this._executableDir;
-        this._executableDir = path19;
+      executableDir(path20) {
+        if (path20 === void 0) return this._executableDir;
+        this._executableDir = path20;
         return this;
       }
       /**
@@ -3722,10 +3722,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path18) {
-  if (!path18)
+function getElementAtPath(obj, path19) {
+  if (!path19)
     return obj;
-  return path18.reduce((acc, key) => acc?.[key], obj);
+  return path19.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4053,11 +4053,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path18, issues) {
+function prefixIssues(path19, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path18);
+    iss.path.unshift(path19);
     return iss;
   });
 }
@@ -4274,16 +4274,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path18 = []) => {
+  const processError = (error52, path19 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path18, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path19, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path19, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path19, ...issue2.path]);
       } else {
-        const fullpath = [...path18, ...issue2.path];
+        const fullpath = [...path19, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4310,17 +4310,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path18 = []) => {
+  const processError = (error52, path19 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path18, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path19, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path19, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path18, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path19, ...issue2.path]);
       } else {
-        const fullpath = [...path18, ...issue2.path];
+        const fullpath = [...path19, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4352,8 +4352,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path18 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path18) {
+  const path19 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path19) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17783,13 +17783,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path18 = ref.slice(1).split("/").filter(Boolean);
-  if (path18.length === 0) {
+  const path19 = ref.slice(1).split("/").filter(Boolean);
+  if (path19.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path18[0] === defsKey) {
-    const key = path18[1];
+  if (path19[0] === defsKey) {
+    const key = path19[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -19036,6 +19036,67 @@ var init_load = __esm({
   }
 });
 
+// src/config/models.ts
+var models_exports = {};
+__export(models_exports, {
+  ModelConfigurationError: () => ModelConfigurationError,
+  isClaudeAlias: () => isClaudeAlias,
+  resolveModelTier: () => resolveModelTier
+});
+function resolveModelTier(tier, harness, config2) {
+  if (tier === "inherit") return { tier, source: "inherit" };
+  const suffix = tier.toUpperCase();
+  const claudeAlias = harness === "claude" ? CLAUDE_ALIAS_DEFAULTS[suffix] : void 0;
+  const platform = process.env[`${ENV_PREFIX[harness]}${suffix}`]?.trim();
+  if (platform) return { tier, model: platform, resolvedModel: platform, adapterAlias: claudeAlias, source: "platform-env" };
+  const generic = process.env[`LEANRIGOR_MODEL_${suffix}`]?.trim();
+  if (generic) return { tier, model: generic, resolvedModel: generic, adapterAlias: claudeAlias, source: "generic-env" };
+  const configured = config2.models.tiers[tier][harness]?.trim();
+  if (configured) return { tier, model: configured, resolvedModel: configured, adapterAlias: claudeAlias, source: "config" };
+  if (harness === "claude") {
+    const adapterEnvKey = CLAUDE_ADAPTER_ENV[suffix];
+    if (adapterEnvKey) {
+      const adapterEnv = process.env[adapterEnvKey]?.trim();
+      if (adapterEnv) return { tier, model: adapterEnv, resolvedModel: adapterEnv, adapterAlias: claudeAlias, source: "adapter-env" };
+    }
+  }
+  if (harness === "claude") {
+    const adapterDefault = CLAUDE_ALIAS_DEFAULTS[suffix];
+    if (adapterDefault) return { tier, model: adapterDefault, resolvedModel: adapterDefault, adapterAlias: adapterDefault, source: "adapter-default" };
+  }
+  if (config2.models.failIfUnavailable) {
+    throw new ModelConfigurationError(
+      `No ${harness} model is configured for tier '${tier}'. Run 'leanrigor models' (or legacy 'leanrigor init models') or set LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}.`
+    );
+  }
+  return { tier, source: "inherit" };
+}
+function isClaudeAlias(model) {
+  return ["haiku", "sonnet", "opus", "default"].includes(model);
+}
+var CLAUDE_ADAPTER_ENV, CLAUDE_ALIAS_DEFAULTS, ENV_PREFIX, ModelConfigurationError;
+var init_models = __esm({
+  "src/config/models.ts"() {
+    "use strict";
+    CLAUDE_ADAPTER_ENV = {
+      SMALL: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      MEDIUM: "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      LARGE: "ANTHROPIC_DEFAULT_OPUS_MODEL"
+    };
+    CLAUDE_ALIAS_DEFAULTS = {
+      SMALL: "haiku",
+      MEDIUM: "sonnet",
+      LARGE: "opus"
+    };
+    ENV_PREFIX = {
+      claude: "LEANRIGOR_CLAUDE_MODEL_",
+      opencode: "LEANRIGOR_OPENCODE_MODEL_"
+    };
+    ModelConfigurationError = class extends Error {
+    };
+  }
+});
+
 // src/config/defaults.ts
 var defaults_exports = {};
 __export(defaults_exports, {
@@ -19074,7 +19135,7 @@ var {
 // src/cli/index.ts
 init_load();
 import { readFile as readFile13 } from "node:fs/promises";
-import path17 from "node:path";
+import path18 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile as readFile2, writeFile } from "node:fs/promises";
@@ -19097,58 +19158,14 @@ async function loadWorkflow(root) {
 }
 
 // src/adapters/claude/adapter.ts
+init_models();
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { access, chmod, mkdir as mkdir5, readFile as readFile5, readdir as readdir2, rmdir, stat, unlink, writeFile as writeFile5 } from "node:fs/promises";
 import path6 from "node:path";
 
-// src/config/models.ts
-var CLAUDE_ADAPTER_ENV = {
-  SMALL: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-  MEDIUM: "ANTHROPIC_DEFAULT_SONNET_MODEL",
-  LARGE: "ANTHROPIC_DEFAULT_OPUS_MODEL"
-};
-var CLAUDE_ALIAS_DEFAULTS = {
-  SMALL: "haiku",
-  MEDIUM: "sonnet",
-  LARGE: "opus"
-};
-var ENV_PREFIX = {
-  claude: "LEANRIGOR_CLAUDE_MODEL_",
-  opencode: "LEANRIGOR_OPENCODE_MODEL_"
-};
-var ModelConfigurationError = class extends Error {
-};
-function resolveModelTier(tier, harness, config2) {
-  if (tier === "inherit") return { tier, source: "inherit" };
-  const suffix = tier.toUpperCase();
-  const claudeAlias = harness === "claude" ? CLAUDE_ALIAS_DEFAULTS[suffix] : void 0;
-  const platform = process.env[`${ENV_PREFIX[harness]}${suffix}`]?.trim();
-  if (platform) return { tier, model: platform, resolvedModel: platform, adapterAlias: claudeAlias, source: "platform-env" };
-  const generic = process.env[`LEANRIGOR_MODEL_${suffix}`]?.trim();
-  if (generic) return { tier, model: generic, resolvedModel: generic, adapterAlias: claudeAlias, source: "generic-env" };
-  const configured = config2.models.tiers[tier][harness]?.trim();
-  if (configured) return { tier, model: configured, resolvedModel: configured, adapterAlias: claudeAlias, source: "config" };
-  if (harness === "claude") {
-    const adapterEnvKey = CLAUDE_ADAPTER_ENV[suffix];
-    if (adapterEnvKey) {
-      const adapterEnv = process.env[adapterEnvKey]?.trim();
-      if (adapterEnv) return { tier, model: adapterEnv, resolvedModel: adapterEnv, adapterAlias: claudeAlias, source: "adapter-env" };
-    }
-  }
-  if (harness === "claude") {
-    const adapterDefault = CLAUDE_ALIAS_DEFAULTS[suffix];
-    if (adapterDefault) return { tier, model: adapterDefault, resolvedModel: adapterDefault, adapterAlias: adapterDefault, source: "adapter-default" };
-  }
-  if (config2.models.failIfUnavailable) {
-    throw new ModelConfigurationError(
-      `No ${harness} model is configured for tier '${tier}'. Run 'leanrigor models' (or legacy 'leanrigor init models') or set LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}.`
-    );
-  }
-  return { tier, source: "inherit" };
-}
-
 // src/config/model-display.ts
+init_models();
 function modelSourceLabel(source, tier, harness) {
   const suffix = tier ? tier.toUpperCase() : "SMALL";
   switch (source) {
@@ -19533,6 +19550,181 @@ function deepEqual(a, b) {
 var ASSET_VERSION = 5;
 var OWNERSHIP_TOKEN = "generated_by: leanrigor";
 var PROTECT_GIT_DEST = path6.join(".claude", "leanrigor", "protect-git.sh");
+async function cleanupProjectLocalAssets(root, opts) {
+  const items = [];
+  const skipped = [];
+  if (opts.scope === "project-local" || opts.scope === "all") {
+    let config2;
+    try {
+      const { loadConfig: loadConfig2 } = await Promise.resolve().then(() => (init_load(), load_exports));
+      config2 = await loadConfig2(root);
+    } catch {
+      const { defaultConfig: defaultConfig2 } = await Promise.resolve().then(() => (init_defaults(), defaults_exports));
+      config2 = await defaultConfig2();
+    }
+    const { resolveModelTier: resolveModelTier2 } = await Promise.resolve().then(() => (init_models(), models_exports));
+    const triageModel = resolveModelTier2(config2.routing.triage, "claude", config2).model ?? "haiku";
+    const manifest = assetManifestWithoutSettings(triageModel);
+    for (const entry of manifest) {
+      const targetPath = path6.join(root, entry.dest);
+      let existing;
+      try {
+        existing = await readFile5(targetPath, "utf8");
+      } catch {
+        continue;
+      }
+      if (!isLeanRigorOwned(existing)) {
+        const expected2 = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
+        if (expected2 !== void 0 && sha256(existing) === sha256(expected2)) {
+          if (opts.force) {
+            items.push({ path: entry.dest, action: opts.dryRun ? "remove-file" : "remove-file" });
+            if (!opts.dryRun) {
+              await unlink(targetPath).catch(() => {
+              });
+            }
+          } else {
+            skipped.push({ path: entry.dest, action: "skip-unowned", reason: "content matches but lacks ownership token \u2014 use --force to remove" });
+          }
+        } else {
+          skipped.push({ path: entry.dest, action: "skip-unowned", reason: "not LeanRigor-owned and content differs" });
+        }
+        continue;
+      }
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
+      if (expected !== void 0 && sha256(existing) !== sha256(expected)) {
+        if (opts.force) {
+          items.push({ path: entry.dest, action: "remove-file" });
+          if (!opts.dryRun) {
+            await unlink(targetPath).catch(() => {
+            });
+          }
+        } else {
+          skipped.push({ path: entry.dest, action: "skip-modified", reason: "modified \u2014 use --force to remove" });
+        }
+      } else {
+        items.push({ path: entry.dest, action: "remove-file" });
+        if (!opts.dryRun) {
+          await unlink(targetPath).catch(() => {
+          });
+        }
+      }
+    }
+    if (!opts.dryRun) {
+      const dirsToCheck = [
+        path6.join(root, ".claude", "commands"),
+        path6.join(root, ".claude", "agents"),
+        path6.join(root, ".claude", "leanrigor"),
+        path6.join(root, ".claude", "leanrigor", "methodology", "modes"),
+        path6.join(root, ".claude", "leanrigor", "methodology")
+      ];
+      for (const dir of dirsToCheck) {
+        await removeIfEmpty(dir);
+      }
+    }
+    const settingsPath = path6.join(root, ".claude", "settings.json");
+    try {
+      await readFile5(settingsPath, "utf8");
+      items.push({ path: ".claude/settings.json", action: "remove-settings-entry" });
+      if (!opts.dryRun) {
+        await removeLeanRigorHooks(settingsPath);
+      }
+    } catch {
+    }
+  }
+  if (opts.scope === "runtime-state" || opts.scope === "all") {
+    const leanrigorDir = path6.join(root, ".leanrigor");
+    try {
+      await stat(leanrigorDir);
+      items.push({ path: ".leanrigor/", action: "remove-directory" });
+      if (!opts.dryRun) {
+        const { rm: rm4 } = await import("node:fs/promises");
+        await rm4(leanrigorDir, { recursive: true, force: true });
+      }
+    } catch {
+      skipped.push({ path: ".leanrigor/", action: "skip-not-found", reason: "directory does not exist" });
+    }
+  }
+  if (opts.scope === "user-config" || opts.scope === "all") {
+    const { homedir: homedir2 } = await import("node:os");
+    const userConfigPath = path6.join(homedir2(), ".config", "leanrigor", "config.json");
+    try {
+      await stat(userConfigPath);
+      items.push({ path: userConfigPath, action: "remove-file" });
+      if (!opts.dryRun) {
+        await unlink(userConfigPath).catch(() => {
+        });
+        await removeIfEmpty(path6.dirname(userConfigPath));
+      }
+    } catch {
+      skipped.push({ path: userConfigPath, action: "skip-not-found", reason: "file does not exist" });
+    }
+  }
+  const summary = opts.dryRun ? `Dry-run: ${items.length} item(s) would be removed, ${skipped.length} would be skipped (scope: ${opts.scope})` : `Removed ${items.length} item(s), skipped ${skipped.length} (scope: ${opts.scope})`;
+  return { dryRun: opts.dryRun, scope: opts.scope, items, skipped, summary };
+}
+function detectInstallationMode(root) {
+  return _detectInstallationMode(root);
+}
+async function _detectInstallationMode(root) {
+  if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
+    return "marketplace";
+  }
+  const protectGitPath = path6.join(root, PROTECT_GIT_DEST);
+  try {
+    const content = await readFile5(protectGitPath, "utf8");
+    if (isLeanRigorOwned(content)) {
+      return "project-local";
+    }
+  } catch {
+  }
+  return "unknown";
+}
+async function detectShadowing(root, mode2, config2) {
+  if (mode2 !== "marketplace") {
+    return { detected: false, assets: [], recommendation: "" };
+  }
+  const { resolveModelTier: resolveModelTier2 } = await Promise.resolve().then(() => (init_models(), models_exports));
+  const triageModel = resolveModelTier2(config2.routing.triage, "claude", config2).model ?? "haiku";
+  const manifest = assetManifestWithoutSettings(triageModel);
+  const assets = [];
+  for (const entry of manifest) {
+    const targetPath = path6.join(root, entry.dest);
+    let existing;
+    try {
+      existing = await readFile5(targetPath, "utf8");
+    } catch {
+      continue;
+    }
+    if (!isLeanRigorOwned(existing)) {
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
+      if (expected !== void 0 && sha256(existing) === sha256(expected)) {
+        assets.push({ path: entry.dest, status: "adoptable_unowned" });
+      } else {
+        assets.push({ path: entry.dest, status: "conflict" });
+      }
+    } else {
+      const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
+      if (expected !== void 0 && sha256(existing) === sha256(expected)) {
+        assets.push({ path: entry.dest, status: "stale_owned" });
+      } else {
+        assets.push({ path: entry.dest, status: "modified_owned" });
+      }
+    }
+  }
+  if (assets.length === 0) {
+    return { detected: false, assets: [], recommendation: "" };
+  }
+  const recommendation = [
+    `${assets.length} project-local asset(s) detected that may shadow marketplace plugin assets.`,
+    `Run \`leanrigor cleanup --adapter claude --project-local-only --dry-run\` to preview removal,`,
+    `then \`leanrigor cleanup --adapter claude --project-local-only\` to remove them.`,
+    `Modified files will require --force.`
+  ].join("\n");
+  return { detected: true, assets, recommendation };
+}
+function isMarketplaceRuntime() {
+  return process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || Boolean(process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) || Boolean(process.env.CLAUDE_PLUGIN_ROOT);
+}
 function pluginDir() {
   return fileURLToPath(new URL("./plugin/", import.meta.url));
 }
@@ -19739,10 +19931,12 @@ var ClaudeAdapter = class {
   async doctor(root, config2) {
     const output = [];
     const packageVersion = await readPackageVersion();
-    output.push(`LeanRigor CLI: ${packageVersion}`);
-    output.push(`Platform: Claude Code`);
-    output.push(`Claude assets available: ${ASSET_VERSION}`);
+    const mode2 = await detectInstallationMode(root);
+    output.push(`Installation mode: ${mode2}`);
     output.push(`Runtime source: ${runtimeSource()}`);
+    output.push(`Package version: ${packageVersion}`);
+    output.push(`Asset version: ${ASSET_VERSION}`);
+    output.push(`Platform: Claude Code`);
     output.push("");
     output.push("Configuration files:");
     const userConfig = await loadUserConfig();
@@ -19751,12 +19945,13 @@ var ClaudeAdapter = class {
     output.push(`  Repository policy (leanrigor.config.json): ${repoPolicy ? "found" : "not found"}`);
     const localExists = await configFileExists(ConfigScope.Local, root);
     output.push(`  Local config (.leanrigor/config.json): ${localExists ? "found" : "not found (using defaults)"}`);
-    const inspection = await this.inspectAssets(root, config2);
+    const gitignoreStatus = await ensureGitignore(path6.join(root, ".leanrigor"));
     output.push("");
-    output.push(inspection.gitignoreStatus.message);
-    if (inspection.trackedLeanrigorFiles.length > 0) {
-      output.push(`\u26A0 WARNING: ${inspection.trackedLeanrigorFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
-      for (const file2 of inspection.trackedLeanrigorFiles) {
+    output.push(gitignoreStatus.message);
+    const trackedFiles = await checkTrackedLeanrigorFiles(root);
+    if (trackedFiles.length > 0) {
+      output.push(`\u26A0 WARNING: ${trackedFiles.length} file(s) in .leanrigor/ may be tracked by Git:`);
+      for (const file2 of trackedFiles) {
         output.push(`  .leanrigor/${file2}`);
       }
       output.push("  These files contain private runtime state and should not be committed.");
@@ -19781,50 +19976,70 @@ var ClaudeAdapter = class {
         output.push(`  ${tier}: ERROR \u2014 ${error51.message}`);
       }
     }
-    output.push("");
-    output.push(`Claude assets installed: ${inspection.installedCount}/${inspection.totalAvailable}`);
-    const assetIssues = [...inspection.missing, ...inspection.conflicts, ...inspection.modified];
-    if (assetIssues.length === 0) {
-      output.push("Status: current");
+    if (mode2 === "marketplace") {
+      output.push("");
+      output.push("Plugin assets: current (served from plugin root)");
+      output.push("Project-local fallback assets: not applicable");
+      const shadowing = await detectShadowing(root, mode2, config2);
+      if (shadowing.detected) {
+        output.push("");
+        output.push("\u26A0 Legacy project-local fallback assets detected:");
+        output.push("Status: shadowing risk \u2014 these may shadow marketplace plugin commands/agents");
+        for (const asset of shadowing.assets) {
+          output.push(`  ${asset.path} (${asset.status})`);
+        }
+        output.push("Recommended: leanrigor cleanup --adapter claude --project-local-only --dry-run");
+      }
+      output.push("");
+      output.push("Shared configuration:");
+      output.push("  .claude/settings.json: not managed by marketplace installation");
     } else {
-      output.push("Status: incomplete or needs attention");
-    }
-    if (inspection.current.length > 0) {
+      const inspection = await this.inspectAssets(root, config2);
       output.push("");
-      output.push("Current:");
-      for (const f of inspection.current) output.push(`  ${f}`);
-    }
-    if (inspection.adoptable.length > 0) {
+      output.push(`Fallback assets: ${inspection.installedCount}/${inspection.totalAvailable}`);
+      const assetIssues = [...inspection.missing, ...inspection.conflicts, ...inspection.modified];
+      if (assetIssues.length === 0) {
+        output.push("Status: current");
+      } else {
+        output.push("Status: incomplete or needs attention");
+      }
+      if (inspection.current.length > 0) {
+        output.push("");
+        output.push("Current:");
+        for (const f of inspection.current) output.push(`  ${f}`);
+      }
+      if (inspection.adoptable.length > 0) {
+        output.push("");
+        output.push("Adoptable (content matches packaged version, safe to adopt on next bootstrap):");
+        for (const f of inspection.adoptable) output.push(`  ${f}`);
+      }
       output.push("");
-      output.push("Adoptable (content matches packaged version, safe to adopt on next bootstrap):");
-      for (const f of inspection.adoptable) output.push(`  ${f}`);
-    }
-    output.push("");
-    output.push("Git protection hook:");
-    output.push(`  ${inspection.protectGitState}`);
-    if (inspection.missing.length > 0) {
+      output.push("Git protection hook:");
+      output.push(`  ${inspection.protectGitState}`);
+      if (inspection.missing.length > 0) {
+        output.push("");
+        const cmd = isMarketplaceRuntime() ? "next LeanRigor command" : "`leanrigor init --adapter claude`";
+        output.push(`Missing (will be repaired automatically by ${cmd}):`);
+        for (const f of inspection.missing) output.push(`  ${f}`);
+      }
+      if (inspection.modified.length > 0) {
+        output.push("");
+        output.push("Modified (LeanRigor-owned files with local changes):");
+        for (const f of inspection.modified) output.push(`  ${f}`);
+        output.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+      }
+      if (inspection.conflicts.length > 0) {
+        output.push("");
+        output.push("Conflict (non-LeanRigor files in expected locations):");
+        for (const f of inspection.conflicts) output.push(`  ${f}`);
+      }
       output.push("");
-      const cmd = isMarketplaceRuntime() ? "next LeanRigor command" : "`leanrigor init --adapter claude`";
-      output.push(`Missing (will be repaired automatically by ${cmd}):`);
-      for (const f of inspection.missing) output.push(`  ${f}`);
-    }
-    if (inspection.modified.length > 0) {
+      output.push("Shared configuration:");
+      output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
       output.push("");
-      output.push("Modified (LeanRigor-owned files with local changes):");
-      for (const f of inspection.modified) output.push(`  ${f}`);
-      output.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
+      const bootstrapped = inspection.missing.length === 0 && inspection.adoptable.length === 0 && inspection.settingsState === "shared_current";
+      output.push(`Project bootstrap: ${bootstrapped ? "complete" : inspection.missing.length > 0 ? "incomplete" : "repairable"} (${isMarketplaceRuntime() ? "marketplace" : "project-local"} mode)`);
     }
-    if (inspection.conflicts.length > 0) {
-      output.push("");
-      output.push("Conflict (non-LeanRigor files in expected locations):");
-      for (const f of inspection.conflicts) output.push(`  ${f}`);
-    }
-    output.push("");
-    output.push("Shared configuration:");
-    output.push(`  .claude/settings.json: ${inspection.settingsDetail}`);
-    output.push("");
-    const bootstrapped = inspection.missing.length === 0 && inspection.adoptable.length === 0 && inspection.settingsState === "shared_current";
-    output.push(`Project bootstrap: ${bootstrapped ? "complete" : inspection.missing.length > 0 ? "incomplete" : "repairable"}`);
     output.push("");
     output.push(`Automatic triage: ${config2.workflow.automaticTriage ? "enabled" : "disabled"}`);
     output.push("");
@@ -19973,12 +20188,11 @@ async function readPackageVersion() {
   }
 }
 function runtimeSource() {
-  if (isMarketplaceRuntime()) return "marketplace plugin runtime";
+  if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) return `\${CLAUDE_PLUGIN_ROOT}/bin/leanrigor (plugin runtime)`;
+  if (process.env.CLAUDE_PLUGIN_ROOT) return `\${CLAUDE_PLUGIN_ROOT}/bin/leanrigor (plugin runtime)`;
+  if (process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin") return "marketplace plugin runtime";
   if (process.argv[1]?.includes(`${path6.sep}node_modules${path6.sep}`)) return "npm package CLI";
   return "local development or global CLI";
-}
-function isMarketplaceRuntime() {
-  return process.env.LEANRIGOR_RUNTIME_SOURCE === "claude-marketplace-plugin" || Boolean(process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) || Boolean(process.env.CLAUDE_PLUGIN_ROOT);
 }
 async function loadConfigForUninstall(root) {
   try {
@@ -19991,6 +20205,7 @@ async function loadConfigForUninstall(root) {
 }
 
 // src/adapters/claude/triage-provider.ts
+init_models();
 import { spawn } from "node:child_process";
 import { readFile as readFile6 } from "node:fs/promises";
 import path7 from "node:path";
@@ -20534,6 +20749,7 @@ function buildProvenanceMap(obj, source, prefix = "") {
 // src/config/resolver.ts
 init_config_scope();
 init_schema();
+init_models();
 async function loadLocalConfigRaw(root) {
   const filePath = path8.join(root, ".leanrigor", "config.json");
   try {
@@ -20699,6 +20915,7 @@ function scopeLabel(source) {
 init_config_scope();
 init_load();
 init_config_scope();
+import path9 from "node:path";
 var VALID_EXAMPLES = [
   // User-level (userConfigSchema)
   {
@@ -20809,6 +21026,32 @@ function buildExampleCommands() {
 }
 async function buildInitReport(root, bootstrapResult) {
   const effective = await resolveEffectiveConfig(root);
+  const mode2 = bootstrapResult?.installationMode ?? await detectInstallationMode(root);
+  const isMarketplace = mode2 === "marketplace";
+  let pluginVersion = "unknown";
+  try {
+    const { readFile: readFile14 } = await import("node:fs/promises");
+    const { fileURLToPath: fileURLToPath2 } = await import("node:url");
+    const pkg = JSON.parse(await readFile14(fileURLToPath2(new URL("../../../package.json", import.meta.url)), "utf8"));
+    pluginVersion = pkg.version ?? "unknown";
+  } catch {
+  }
+  let runtimeSource2 = "local development or global CLI";
+  if (isMarketplace) {
+    if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) {
+      runtimeSource2 = `${process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT}/bin/leanrigor`;
+    } else if (process.env.CLAUDE_PLUGIN_ROOT) {
+      runtimeSource2 = `${process.env.CLAUDE_PLUGIN_ROOT}/bin/leanrigor`;
+    } else {
+      runtimeSource2 = "marketplace plugin runtime";
+    }
+  } else if (process.argv[1]?.includes("/node_modules/")) {
+    runtimeSource2 = "npm package CLI";
+  }
+  let shadowing = null;
+  if (isMarketplace) {
+    shadowing = await detectShadowing(root, mode2, effective.values);
+  }
   const userConfig = await loadUserConfig();
   const repoPolicy = await loadRepoPolicy(root);
   const localExists = await configFileExists(ConfigScope.Local, root);
@@ -20843,13 +21086,26 @@ async function buildInitReport(root, bootstrapResult) {
       execution[key] = { value: entry.value, source: entry.source };
     }
   }
-  const inspection = await new ClaudeAdapter().inspectAssets(root, effective.values);
-  return {
-    configurationFiles,
-    gitignore: inspection.gitignoreStatus,
-    models,
-    execution,
-    assets: {
+  let assets;
+  let settings;
+  if (isMarketplace) {
+    assets = {
+      current: [],
+      modified: [],
+      missing: [],
+      conflicts: [],
+      adoptable: [],
+      totalAvailable: 0,
+      installedCount: 0
+    };
+    settings = {
+      path: ".claude/settings.json",
+      status: "shared_current",
+      detail: "not managed by marketplace installation"
+    };
+  } else {
+    const inspection = await new ClaudeAdapter().inspectAssets(root, effective.values);
+    assets = {
       current: inspection.current,
       modified: inspection.modified,
       missing: inspection.missing,
@@ -20857,13 +21113,26 @@ async function buildInitReport(root, bootstrapResult) {
       adoptable: inspection.adoptable,
       totalAvailable: inspection.totalAvailable,
       installedCount: inspection.installedCount
-    },
-    settings: {
+    };
+    settings = {
       path: ".claude/settings.json",
       status: inspection.settingsState,
       detail: inspection.settingsDetail
-    },
-    isMarketplace: isMarketplaceRuntime(),
+    };
+  }
+  return {
+    configurationFiles,
+    gitignore: await ensureGitignore(path9.join(root, ".leanrigor")),
+    models,
+    execution,
+    assets,
+    settings,
+    isMarketplace,
+    installationMode: mode2,
+    shadowing,
+    pluginVersion,
+    assetVersion: ASSET_VERSION,
+    runtimeSource: runtimeSource2,
     bootstrap: bootstrapResult ? {
       bootstrapped: bootstrapResult.bootstrapped,
       installed: bootstrapResult.report?.installed.length ?? 0,
@@ -20881,6 +21150,20 @@ function renderInitReport(report) {
   const lines = [];
   lines.push("=== LeanRigor Configuration ===");
   lines.push("");
+  lines.push(`Installation mode: ${report.installationMode}`);
+  lines.push(`Runtime source: ${report.runtimeSource}`);
+  lines.push(`Plug${report.isMarketplace ? "in" : "Package"} version: ${report.pluginVersion}`);
+  lines.push(`Asset version: ${report.assetVersion}`);
+  lines.push("");
+  if (report.shadowing?.detected) {
+    lines.push("\u26A0 Legacy project-local fallback assets detected:");
+    lines.push("Status: shadowing risk \u2014 these may shadow marketplace plugin commands/agents");
+    for (const asset of report.shadowing.assets) {
+      lines.push(`  ${asset.path} (${asset.status})`);
+    }
+    lines.push("Recommended: leanrigor cleanup --adapter claude --project-local-only --dry-run");
+    lines.push("");
+  }
   if (report.bootstrap?.bootstrapped) {
     lines.push("LeanRigor project bootstrap completed.");
     const parts = [];
@@ -20908,44 +21191,49 @@ function renderInitReport(report) {
   lines.push(renderSettingsState(report.settings, report.isMarketplace));
   lines.push("");
   lines.push("LeanRigor-managed assets:");
-  lines.push(`  total available: ${report.assets.totalAvailable}`);
-  lines.push(`  installed: ${report.assets.installedCount}`);
-  lines.push(`  current: ${report.assets.current.length}`);
-  lines.push(`  modified: ${report.assets.modified.length}`);
-  lines.push(`  missing: ${report.assets.missing.length}`);
-  lines.push(`  adoptable: ${report.assets.adoptable.length}`);
-  lines.push(`  conflicts: ${report.assets.conflicts.length}`);
-  if (report.assets.modified.length > 0) {
-    lines.push("");
-    lines.push("Modified assets (LeanRigor-owned files with local changes):");
-    for (const f of report.assets.modified) {
-      lines.push(`  ${f}`);
+  if (report.isMarketplace) {
+    lines.push("  Plugin assets: current (served from plugin root)");
+    lines.push("  Project-local fallback assets: not applicable");
+  } else {
+    lines.push(`  total available: ${report.assets.totalAvailable}`);
+    lines.push(`  installed: ${report.assets.installedCount}`);
+    lines.push(`  current: ${report.assets.current.length}`);
+    lines.push(`  modified: ${report.assets.modified.length}`);
+    lines.push(`  missing: ${report.assets.missing.length}`);
+    lines.push(`  adoptable: ${report.assets.adoptable.length}`);
+    lines.push(`  conflicts: ${report.assets.conflicts.length}`);
+    if (report.assets.modified.length > 0) {
+      lines.push("");
+      lines.push("Modified assets (LeanRigor-owned files with local changes):");
+      for (const f of report.assets.modified) {
+        lines.push(`  ${f}`);
+      }
+      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
     }
-    lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
-  }
-  if (report.assets.missing.length > 0) {
-    lines.push("");
-    if (report.isMarketplace) {
-      lines.push("Missing assets (will be repaired automatically on next command):");
-    } else {
-      lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    if (report.assets.missing.length > 0) {
+      lines.push("");
+      if (report.isMarketplace) {
+        lines.push("Missing assets (will be repaired automatically on next command):");
+      } else {
+        lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+      }
+      for (const f of report.assets.missing) {
+        lines.push(`  ${f}`);
+      }
     }
-    for (const f of report.assets.missing) {
-      lines.push(`  ${f}`);
+    if (report.assets.adoptable.length > 0) {
+      lines.push("");
+      lines.push("Adoptable assets (content matches packaged version, safe to adopt on next bootstrap):");
+      for (const f of report.assets.adoptable) {
+        lines.push(`  ${f}`);
+      }
     }
-  }
-  if (report.assets.adoptable.length > 0) {
-    lines.push("");
-    lines.push("Adoptable assets (content matches packaged version, safe to adopt on next bootstrap):");
-    for (const f of report.assets.adoptable) {
-      lines.push(`  ${f}`);
-    }
-  }
-  if (report.assets.conflicts.length > 0) {
-    lines.push("");
-    lines.push("Conflicting assets (non-LeanRigor files in expected locations):");
-    for (const f of report.assets.conflicts) {
-      lines.push(`  ${f}`);
+    if (report.assets.conflicts.length > 0) {
+      lines.push("");
+      lines.push("Conflicting assets (non-LeanRigor files in expected locations):");
+      for (const f of report.assets.conflicts) {
+        lines.push(`  ${f}`);
+      }
     }
   }
   if (report.constraints.length > 0) {
@@ -21010,6 +21298,11 @@ function renderModelTable(models) {
 }
 function renderSettingsState(settings, isMarketplace) {
   const lines = [];
+  if (isMarketplace) {
+    lines.push("  .claude/settings.json: not managed by marketplace installation");
+    lines.push("  Marketplace hooks are served from the plugin manifest (hooks/hooks.json).");
+    return lines.join("\n");
+  }
   lines.push(`  ${settings.path}: ${settings.detail}`);
   switch (settings.status) {
     case "shared_current":
@@ -21020,11 +21313,7 @@ function renderSettingsState(settings, isMarketplace) {
     case "shared_missing_leanrigor_entries":
       lines.push("  .claude/settings.json is shared Claude Code configuration.");
       lines.push("  The file exists but does not contain LeanRigor-owned hook entries.");
-      if (!isMarketplace) {
-        lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
-      } else {
-        lines.push("  LeanRigor hook entries will be merged on next bootstrap.");
-      }
+      lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
       break;
     case "shared_conflicting_leanrigor_entries":
       lines.push("  .claude/settings.json is shared Claude Code configuration.");
@@ -21033,11 +21322,7 @@ function renderSettingsState(settings, isMarketplace) {
       break;
     case "missing":
       lines.push("  .claude/settings.json is missing.");
-      if (!isMarketplace) {
-        lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
-      } else {
-        lines.push("  Will be created with LeanRigor hook entries on next bootstrap.");
-      }
+      lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
       break;
     case "shared_malformed":
       lines.push("  .claude/settings.json exists but is not valid JSON.");
@@ -21052,11 +21337,31 @@ function renderSettingsState(settings, isMarketplace) {
 }
 
 // src/core/bootstrap.ts
-import path9 from "node:path";
+import path10 from "node:path";
 async function ensureBootstrapped(root, opts = {}) {
   const warnings = [];
   const config2 = await ensureRepositoryConfig(root);
-  await ensureGitignore(path9.join(root, ".leanrigor"));
+  await ensureGitignore(path10.join(root, ".leanrigor"));
+  const installationMode = await detectInstallationMode(root);
+  let shadowing = null;
+  if (installationMode === "marketplace") {
+    shadowing = await detectShadowing(root, installationMode, config2);
+    if (shadowing.detected) {
+      for (const asset of shadowing.assets) {
+        warnings.push(`Shadowing risk: ${asset.path} (${asset.status}) \u2014 project-local asset may shadow marketplace plugin asset`);
+      }
+    }
+  }
+  if (installationMode === "marketplace") {
+    return {
+      bootstrapped: false,
+      report: null,
+      config: config2,
+      warnings,
+      installationMode,
+      shadowing
+    };
+  }
   const adapter = new ClaudeAdapter();
   const hasBootstrap = typeof adapter.bootstrap === "function";
   if (!hasBootstrap) {
@@ -21073,7 +21378,9 @@ async function ensureBootstrapped(root, opts = {}) {
         settingsState: "unknown"
       },
       config: config2,
-      warnings
+      warnings,
+      installationMode,
+      shadowing: null
     };
   }
   let report;
@@ -21085,7 +21392,9 @@ async function ensureBootstrapped(root, opts = {}) {
       bootstrapped: false,
       report: null,
       config: config2,
-      warnings
+      warnings,
+      installationMode,
+      shadowing: null
     };
   }
   const bootstrapped = report.installed.length > 0 || report.adopted.length > 0 || report.settingsModified;
@@ -21103,7 +21412,9 @@ async function ensureBootstrapped(root, opts = {}) {
     bootstrapped,
     report,
     config: config2,
-    warnings
+    warnings,
+    installationMode,
+    shadowing: null
   };
 }
 
@@ -21116,10 +21427,11 @@ init_repo_policy();
 // src/core/flow.ts
 init_zod();
 init_defaults();
+init_models();
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { mkdir as mkdir8, readFile as readFile11 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path14 from "node:path";
+import path15 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -21143,11 +21455,11 @@ function commitCommands(proposal) {
 import { createHash as createHash2 } from "node:crypto";
 import { execFile } from "node:child_process";
 import { access as access2, constants, lstat, mkdir as mkdir6, readFile as readFile8, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
-import path11 from "node:path";
+import path12 from "node:path";
 import { promisify } from "node:util";
 
 // src/core/ownership.ts
-import path10 from "node:path";
+import path11 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -21164,7 +21476,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path10.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path11.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -21465,13 +21777,13 @@ async function ensureIntegrationWorkspace(state, config2) {
   const existing = state.git;
   if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
   const names = workspaceNames(state.id, void 0, config2);
-  const workflowRoot = path11.join(preflight.workspaceRoot, state.id);
-  const integrationPath = path11.join(workflowRoot, "integration");
+  const workflowRoot = path12.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path12.join(workflowRoot, "integration");
   ensurePathLength(integrationPath, config2);
   await ensurePathAvailable(integrationPath, state.id, "integration");
   const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
   const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
-  await mkdir6(path11.dirname(integrationPath), { recursive: true });
+  await mkdir6(path12.dirname(integrationPath), { recursive: true });
   await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
   const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
   const now = timestamp();
@@ -21533,12 +21845,12 @@ async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
     throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
   const names = workspaceNames(state.id, phaseId, config2);
-  const workflowRoot = path11.join(gitState.context.workspaceRoot, state.id);
-  const phasePath = path11.join(workflowRoot, "phases", names.phasePathSegment);
+  const workflowRoot = path12.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path12.join(workflowRoot, "phases", names.phasePathSegment);
   ensurePathLength(phasePath, config2);
   await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
   const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
-  await mkdir6(path11.dirname(phasePath), { recursive: true });
+  await mkdir6(path12.dirname(phasePath), { recursive: true });
   await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
   const now = timestamp();
   await writeOwnershipMetadata(workflowRoot, {
@@ -21914,24 +22226,24 @@ function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
 function resolveWorkspaceRoot(repositoryRoot, config2) {
-  if (config2.execution.workspaceRoot) return path11.resolve(repositoryRoot, config2.execution.workspaceRoot);
-  return path11.join(path11.dirname(repositoryRoot), ".leanrigor-worktrees", path11.basename(repositoryRoot));
+  if (config2.execution.workspaceRoot) return path12.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  return path12.join(path12.dirname(repositoryRoot), ".leanrigor-worktrees", path12.basename(repositoryRoot));
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
-  const dir = path11.join(workflowRoot, ".leanrigor-owned-worktrees");
+  const dir = path12.join(workflowRoot, ".leanrigor-owned-worktrees");
   await mkdir6(dir, { recursive: true });
   const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
-  await writeFile6(path11.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+  await writeFile6(path12.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
 }
 async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
-  const workflowRoot = workspaceType === "integration" ? path11.dirname(worktreePath) : path11.dirname(path11.dirname(worktreePath));
-  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path11.basename(worktreePath))}.json`;
-  const file2 = path11.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  const workflowRoot = workspaceType === "integration" ? path12.dirname(worktreePath) : path12.dirname(path12.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path12.basename(worktreePath))}.json`;
+  const file2 = path12.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
     const parsed = JSON.parse(await readFile8(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
-    if (path11.resolve(parsed.path) !== path11.resolve(worktreePath)) return void 0;
+    if (path12.resolve(parsed.path) !== path12.resolve(worktreePath)) return void 0;
     return parsed;
   } catch {
     return void 0;
@@ -21960,14 +22272,14 @@ async function runShellCommand(command, cwd) {
 }
 async function gitOperationInProgress(commonDir, gitDir) {
   const checks = [
-    [path11.join(gitDir, "MERGE_HEAD"), "merge"],
-    [path11.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
-    [path11.join(gitDir, "REVERT_HEAD"), "revert"],
-    [path11.join(gitDir, "BISECT_LOG"), "bisect"],
-    [path11.join(gitDir, "rebase-merge"), "rebase"],
-    [path11.join(gitDir, "rebase-apply"), "rebase"],
-    [path11.join(commonDir, "rebase-merge"), "rebase"],
-    [path11.join(commonDir, "rebase-apply"), "rebase"]
+    [path12.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path12.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path12.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path12.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path12.join(gitDir, "rebase-merge"), "rebase"],
+    [path12.join(gitDir, "rebase-apply"), "rebase"],
+    [path12.join(commonDir, "rebase-merge"), "rebase"],
+    [path12.join(commonDir, "rebase-apply"), "rebase"]
   ];
   for (const [file2, operation] of checks) {
     if (await pathExists(file2)) return operation;
@@ -21975,10 +22287,10 @@ async function gitOperationInProgress(commonDir, gitDir) {
   return void 0;
 }
 async function resolveGitPath(cwd, gitPath) {
-  return path11.isAbsolute(gitPath) ? gitPath : path11.resolve(cwd, gitPath);
+  return path12.isAbsolute(gitPath) ? gitPath : path12.resolve(cwd, gitPath);
 }
 async function canonical(value) {
-  return realpath(path11.resolve(value));
+  return realpath(path12.resolve(value));
 }
 function gitVersionSupportsWorktree(versionText) {
   const match = versionText.match(/git version (\d+)\.(\d+)/);
@@ -21999,9 +22311,9 @@ async function findNestedRepositories(repositoryRoot) {
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
-      const child = path11.join(dir, entry.name);
-      if (await pathExists(path11.join(child, ".git"))) {
-        nested.push(path11.relative(repositoryRoot, child));
+      const child = path12.join(dir, entry.name);
+      if (await pathExists(path12.join(child, ".git"))) {
+        nested.push(path12.relative(repositoryRoot, child));
         continue;
       }
       await walk(child, depth + 1);
@@ -22038,7 +22350,7 @@ function parseModeChanges(raw) {
 }
 async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
   for (const file2 of changedFiles) {
-    const full = path11.join(worktreePath, file2);
+    const full = path12.join(worktreePath, file2);
     let info;
     try {
       info = await lstat(full);
@@ -22047,7 +22359,7 @@ async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
     }
     if (!info.isSymbolicLink()) continue;
     const target = await readlink(full);
-    if (path11.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+    if (path12.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
       throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
     }
   }
@@ -22065,8 +22377,8 @@ function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function isPathInside(child, parent) {
-  const relative = path11.relative(path11.resolve(parent), path11.resolve(child));
-  return relative === "" || !relative.startsWith("..") && !path11.isAbsolute(relative);
+  const relative = path12.relative(path12.resolve(parent), path12.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path12.isAbsolute(relative);
 }
 async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
@@ -22075,12 +22387,12 @@ async function pathExists(target) {
 // src/core/workflow-lock.ts
 import { open as open2, readFile as readFile10, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
 import os from "node:os";
-import path13 from "node:path";
+import path14 from "node:path";
 
 // src/core/workflow-store.ts
 import { open, readFile as readFile9, rename as rename2, rm } from "node:fs/promises";
 import { randomUUID as randomUUID2 } from "node:crypto";
-import path12 from "node:path";
+import path13 from "node:path";
 var RevisionConflictError = class extends Error {
   constructor(expectedRevision, actualRevision) {
     super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
@@ -22092,8 +22404,8 @@ var RevisionConflictError = class extends Error {
   code = "revision_conflict";
 };
 async function atomicWriteJson2(file2, value) {
-  const dir = path12.dirname(file2);
-  const temp = path12.join(dir, `.${path12.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
+  const dir = path13.dirname(file2);
+  const temp = path13.join(dir, `.${path13.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
   const handle = await open(temp, "wx");
   try {
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
@@ -22134,13 +22446,13 @@ var WorkflowLockOwnershipError = class extends Error {
   code = "workflow_lock_owner_mismatch";
 };
 function lockPath(root, workflowId2) {
-  return path13.join(path13.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+  return path14.join(path14.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
 }
 async function acquireWorkflowLock(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const lock = buildLock(options, now);
   const file2 = lockPath(options.root, options.workflowId);
-  await mkdir7(path13.dirname(file2), { recursive: true });
+  await mkdir7(path14.dirname(file2), { recursive: true });
   try {
     const handle = await open2(file2, "wx");
     try {
@@ -22203,7 +22515,7 @@ function buildLock(options, now) {
 }
 
 // src/core/flow.ts
-var WORKFLOW_DIR = path14.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path15.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -22538,7 +22850,7 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path14.resolve(options.root);
+  const root = path15.resolve(options.root);
   const now = timestamp2();
   let state = {
     version: STATE_VERSION,
@@ -23011,7 +23323,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path14.join(path14.resolve(root), WORKFLOW_DIR);
+  const dir = path15.join(path15.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -23048,7 +23360,7 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path14.join(path14.resolve(root), WORKFLOW_DIR);
+  const dir = path15.join(path15.resolve(root), WORKFLOW_DIR);
   await mkdir8(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
@@ -23493,7 +23805,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path14.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path15.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -23699,7 +24011,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path14.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path15.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -23821,7 +24133,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path14.resolve(root),
+      root: path15.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -23837,7 +24149,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path14.resolve(root);
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path15.resolve(root);
   migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
@@ -23900,7 +24212,7 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path14.join(path14.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path15.join(path15.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
   return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID3().slice(0, 8)}`;
@@ -24126,7 +24438,7 @@ function unique4(values) {
 // src/core/execution/claude-provider.ts
 import { execFile as execFile2, spawn as spawn2 } from "node:child_process";
 import { mkdir as mkdir9, open as open3, readFile as readFile12, rename as rename3, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
-import path15 from "node:path";
+import path16 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/execution/errors.ts
@@ -24223,11 +24535,11 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
     ];
     if (this.options.model) args.push("--model", this.options.model);
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path15.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    const artifactDir = path16.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
     await mkdir9(artifactDir, { recursive: true });
-    const statusPath = path15.join(artifactDir, "status.json");
-    const stdoutPath = path15.join(artifactDir, "stdout.json");
-    const stderrPath = path15.join(artifactDir, "stderr.txt");
+    const statusPath = path16.join(artifactDir, "status.json");
+    const stdoutPath = path16.join(artifactDir, "stdout.json");
+    const stderrPath = path16.join(artifactDir, "stderr.txt");
     const providerMetadata = {
       command: this.options.command ?? "claude",
       args,
@@ -24943,7 +25255,7 @@ function errorDetails(error51) {
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
 import { mkdir as mkdir10, rm as rm3, writeFile as writeFile9 } from "node:fs/promises";
-import path16 from "node:path";
+import path17 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -25039,16 +25351,16 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path16.resolve(workspacePath, edit.path);
-      const relative = path16.relative(workspacePath, target);
-      if (relative.startsWith("..") || path16.isAbsolute(relative)) {
+      const target = path17.resolve(workspacePath, edit.path);
+      const relative = path17.relative(workspacePath, target);
+      if (relative.startsWith("..") || path17.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir10(path16.dirname(target), { recursive: true });
+      await mkdir10(path17.dirname(target), { recursive: true });
       await writeFile9(target, edit.content ?? "", "utf8");
     }
   }
@@ -25133,17 +25445,32 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path17.join(root, ".leanrigor", "config.json");
+    const configPath = path18.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path17.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path18.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
       console.log(".leanrigor/config.json not found.");
     }
   }
+});
+program2.command("cleanup").description("Clean up LeanRigor-owned project-local assets, runtime state, or user config").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--project-local-only", "remove only project-local .claude/ assets and LeanRigor settings entries").option("--runtime-state", "remove .leanrigor/ state directory").option("--user-config", "remove ~/.config/leanrigor/config.json").option("--all", "remove project-local assets, runtime state, and user config").option("--no-dry-run", "execute cleanup (skip the default dry-run preview)").option("--force", "also remove modified owned files and adoptable unowned content").action(async ({ root, adapter, projectLocalOnly, runtimeState, userConfig, all, dryRun, force }) => {
+  if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
+  let scope = "all";
+  if (projectLocalOnly) scope = "project-local";
+  else if (runtimeState) scope = "runtime-state";
+  else if (userConfig) scope = "user-config";
+  else if (all) scope = "all";
+  const shouldDryRun = dryRun !== false;
+  const report = await cleanupProjectLocalAssets(root, {
+    dryRun: shouldDryRun,
+    scope,
+    force: force ?? false
+  });
+  printCleanupReport(report);
 });
 program2.command("models").description("Configure portable small, medium, and large model tiers").option("--root <path>", "repository root", process.cwd()).option("--claude-small <model>").option("--claude-medium <model>").option("--claude-large <model>").option("--opencode-small <model>").option("--opencode-medium <model>").option("--opencode-large <model>").action(async (options) => {
   const root = options.root;
@@ -25593,6 +25920,34 @@ function printUninstallReport(report) {
     console.log("No LeanRigor-owned files found.");
   }
 }
+function printCleanupReport(report) {
+  console.log(`
+Cleanup mode: ${report.dryRun ? "dry-run (no changes made)" : "live"}`);
+  console.log(`Scope: ${report.scope}`);
+  console.log("");
+  if (report.items.length > 0) {
+    console.log(report.dryRun ? "Would remove:" : "Removed:");
+    for (const item of report.items) {
+      console.log(`  ${item.path} (${item.action})`);
+    }
+  }
+  if (report.skipped.length > 0) {
+    console.log("");
+    console.log("Skipped:");
+    for (const item of report.skipped) {
+      console.log(`  ${item.path} (${item.reason ?? item.action})`);
+    }
+  }
+  if (report.items.length === 0 && report.skipped.length === 0) {
+    console.log("No LeanRigor-owned items found to clean up.");
+  }
+  console.log(`
+${report.summary}`);
+  if (report.dryRun) {
+    console.log("Run without --dry-run to execute cleanup.");
+    console.log("Use --force to also remove modified owned files.");
+  }
+}
 function triageProvider(provider) {
   if (!["auto", "claude", "deterministic"].includes(provider)) throw new Error(`Unsupported triage provider: ${provider}`);
   return provider === "deterministic" ? void 0 : new ClaudeCliTriageProvider();
@@ -25695,7 +26050,7 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
 }
 async function executionProvider(providerName, scriptFile) {
   if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile13(path17.resolve(scriptFile), "utf8")) : {};
+    const scripts = scriptFile ? JSON.parse(await readFile13(path18.resolve(scriptFile), "utf8")) : {};
     return new ScriptedExecutionProvider(scripts);
   }
   if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
@@ -25794,7 +26149,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile13(path17.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile13(path18.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {

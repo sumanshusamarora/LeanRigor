@@ -1,5 +1,5 @@
 import { ensureRepositoryConfig, ensureGitignore, findRepoRoot } from "../config/bootstrap.js";
-import { ClaudeAdapter, type BootstrapReport } from "../adapters/claude/adapter.js";
+import { ClaudeAdapter, type BootstrapReport, type InstallationMode, type ShadowingReport, detectInstallationMode, detectShadowing } from "../adapters/claude/adapter.js";
 import type { LeanRigorConfig } from "../config/schema.js";
 import path from "node:path";
 
@@ -13,6 +13,10 @@ export interface EnsureBootstrappedResult {
   config: LeanRigorConfig;
   /** Warnings that may need user attention. */
   warnings: string[];
+  /** The detected installation mode. */
+  installationMode: InstallationMode;
+  /** Shadowing report (only populated when marketplace mode detects stale fallback assets). */
+  shadowing: ShadowingReport | null;
 }
 
 /**
@@ -24,7 +28,10 @@ export interface EnsureBootstrappedResult {
  * - Doctor repair
  * - Marketplace plugin commands (via the runtime)
  *
- * In marketplace mode, the adapter is inferred as `claude`.
+ * In marketplace mode, only repository state (.leanrigor/) is created.
+ * Adapter bootstrap (project-local .claude/ assets) only runs in
+ * project-local or unknown modes.
+ *
  * The function is safe to call repeatedly — it only installs or repairs
  * missing items.
  */
@@ -34,13 +41,39 @@ export async function ensureBootstrapped(
 ): Promise<EnsureBootstrappedResult> {
   const warnings: string[] = [];
 
-  // 1. Ensure .leanrigor/ directory, .gitignore, and config.json
+  // 1. Always ensure .leanrigor/ directory, .gitignore, and config.json
   const config = await ensureRepositoryConfig(root);
 
-  // 2. Ensure .leanrigor/.gitignore is correct
+  // 2. Always ensure .leanrigor/.gitignore is correct
   await ensureGitignore(path.join(root, ".leanrigor"));
 
-  // 3. Bootstrap Claude adapter assets
+  // 3. Detect installation mode
+  const installationMode = await detectInstallationMode(root);
+
+  // 4. Detect shadowing if in marketplace mode
+  let shadowing: ShadowingReport | null = null;
+  if (installationMode === "marketplace") {
+    shadowing = await detectShadowing(root, installationMode, config);
+    if (shadowing.detected) {
+      for (const asset of shadowing.assets) {
+        warnings.push(`Shadowing risk: ${asset.path} (${asset.status}) — project-local asset may shadow marketplace plugin asset`);
+      }
+    }
+  }
+
+  // 5. In marketplace mode, skip adapter bootstrap entirely
+  if (installationMode === "marketplace") {
+    return {
+      bootstrapped: false,
+      report: null,
+      config,
+      warnings,
+      installationMode,
+      shadowing,
+    };
+  }
+
+  // 6. Bootstrap Claude adapter assets (project-local or unknown mode)
   const adapter = new ClaudeAdapter();
   const hasBootstrap = typeof adapter.bootstrap === "function";
 
@@ -60,6 +93,8 @@ export async function ensureBootstrapped(
       },
       config,
       warnings,
+      installationMode,
+      shadowing: null,
     };
   }
 
@@ -76,6 +111,8 @@ export async function ensureBootstrapped(
       report: null,
       config,
       warnings,
+      installationMode,
+      shadowing: null,
     };
   }
 
@@ -101,6 +138,28 @@ export async function ensureBootstrapped(
     report,
     config,
     warnings,
+    installationMode,
+    shadowing: null,
+  };
+}
+
+/**
+ * Minimal bootstrap for marketplace mode: ensure .leanrigor/ state only.
+ * Does NOT install project-local .claude/ assets.
+ *
+ * Use this when you know the runtime is in marketplace mode and want to
+ * avoid the full adapter bootstrap overhead.
+ */
+export async function ensureStateBootstrapped(root: string): Promise<EnsureBootstrappedResult> {
+  const config = await ensureRepositoryConfig(root);
+  await ensureGitignore(path.join(root, ".leanrigor"));
+  return {
+    bootstrapped: false,
+    report: null,
+    config,
+    warnings: [],
+    installationMode: "marketplace",
+    shadowing: null,
   };
 }
 

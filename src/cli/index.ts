@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "../config/load.js";
 import { saveWorkflow, loadWorkflow } from "../core/workflow.js";
-import { ClaudeAdapter } from "../adapters/claude/adapter.js";
+import { ClaudeAdapter, cleanupProjectLocalAssets, type CleanupScope } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
 import { runTriage } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
@@ -113,6 +113,37 @@ program.command("uninstall")
         console.log(".leanrigor/config.json not found.");
       }
     }
+  });
+
+program.command("cleanup")
+  .description("Clean up LeanRigor-owned project-local assets, runtime state, or user config")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--adapter <adapter>", "harness adapter: claude", "claude")
+  .option("--project-local-only", "remove only project-local .claude/ assets and LeanRigor settings entries")
+  .option("--runtime-state", "remove .leanrigor/ state directory")
+  .option("--user-config", "remove ~/.config/leanrigor/config.json")
+  .option("--all", "remove project-local assets, runtime state, and user config")
+  .option("--no-dry-run", "execute cleanup (skip the default dry-run preview)")
+  .option("--force", "also remove modified owned files and adoptable unowned content")
+  .action(async ({ root, adapter, projectLocalOnly, runtimeState, userConfig, all, dryRun, force }) => {
+    if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
+
+    // Determine scope
+    let scope: CleanupScope = "all";
+    if (projectLocalOnly) scope = "project-local";
+    else if (runtimeState) scope = "runtime-state";
+    else if (userConfig) scope = "user-config";
+    else if (all) scope = "all";
+
+    // Safety-first: default to dry-run unless --no-dry-run is passed
+    const shouldDryRun = dryRun !== false;
+    const report = await cleanupProjectLocalAssets(root, {
+      dryRun: shouldDryRun,
+      scope,
+      force: force ?? false,
+    });
+
+    printCleanupReport(report);
   });
 
 program.command("models")
@@ -921,6 +952,38 @@ function printUninstallReport(report: UninstallReport): void {
   }
   if (report.removed.length === 0 && report.skipped.length === 0) {
     console.log("No LeanRigor-owned files found.");
+  }
+}
+
+function printCleanupReport(report: { dryRun: boolean; scope: string; items: Array<{ path: string; action: string }>; skipped: Array<{ path: string; action: string; reason?: string }>; summary: string }): void {
+  console.log(`\nCleanup mode: ${report.dryRun ? "dry-run (no changes made)" : "live"}`);
+  console.log(`Scope: ${report.scope}`);
+  console.log("");
+
+  if (report.items.length > 0) {
+    console.log(report.dryRun ? "Would remove:" : "Removed:");
+    for (const item of report.items) {
+      console.log(`  ${item.path} (${item.action})`);
+    }
+  }
+
+  if (report.skipped.length > 0) {
+    console.log("");
+    console.log("Skipped:");
+    for (const item of report.skipped) {
+      console.log(`  ${item.path} (${item.reason ?? item.action})`);
+    }
+  }
+
+  if (report.items.length === 0 && report.skipped.length === 0) {
+    console.log("No LeanRigor-owned items found to clean up.");
+  }
+
+  console.log(`\n${report.summary}`);
+
+  if (report.dryRun) {
+    console.log("Run without --dry-run to execute cleanup.");
+    console.log("Use --force to also remove modified owned files.");
   }
 }
 

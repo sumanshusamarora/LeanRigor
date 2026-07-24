@@ -16,6 +16,24 @@ export function renderInitReport(report: InitReport): string {
   lines.push("=== LeanRigor Configuration ===");
   lines.push("");
 
+  // --- Installation mode header ---
+  lines.push(`Installation mode: ${report.installationMode}`);
+  lines.push(`Runtime source: ${report.runtimeSource}`);
+  lines.push(`Plug${report.isMarketplace ? "in" : "Package"} version: ${report.pluginVersion}`);
+  lines.push(`Asset version: ${report.assetVersion}`);
+  lines.push("");
+
+  // --- Shadowing warning (marketplace mode only) ---
+  if (report.shadowing?.detected) {
+    lines.push("⚠ Legacy project-local fallback assets detected:");
+    lines.push("Status: shadowing risk — these may shadow marketplace plugin commands/agents");
+    for (const asset of report.shadowing.assets) {
+      lines.push(`  ${asset.path} (${asset.status})`);
+    }
+    lines.push("Recommended: leanrigor cleanup --adapter claude --project-local-only --dry-run");
+    lines.push("");
+  }
+
   // --- Bootstrap summary (if bootstrapping ran before this report) ---
   if (report.bootstrap?.bootstrapped) {
     lines.push("LeanRigor project bootstrap completed.");
@@ -56,48 +74,53 @@ export function renderInitReport(report: InitReport): string {
   // --- Asset drift ---
   lines.push("");
   lines.push("LeanRigor-managed assets:");
-  lines.push(`  total available: ${report.assets.totalAvailable}`);
-  lines.push(`  installed: ${report.assets.installedCount}`);
-  lines.push(`  current: ${report.assets.current.length}`);
-  lines.push(`  modified: ${report.assets.modified.length}`);
-  lines.push(`  missing: ${report.assets.missing.length}`);
-  lines.push(`  adoptable: ${report.assets.adoptable.length}`);
-  lines.push(`  conflicts: ${report.assets.conflicts.length}`);
+  if (report.isMarketplace) {
+    lines.push("  Plugin assets: current (served from plugin root)");
+    lines.push("  Project-local fallback assets: not applicable");
+  } else {
+    lines.push(`  total available: ${report.assets.totalAvailable}`);
+    lines.push(`  installed: ${report.assets.installedCount}`);
+    lines.push(`  current: ${report.assets.current.length}`);
+    lines.push(`  modified: ${report.assets.modified.length}`);
+    lines.push(`  missing: ${report.assets.missing.length}`);
+    lines.push(`  adoptable: ${report.assets.adoptable.length}`);
+    lines.push(`  conflicts: ${report.assets.conflicts.length}`);
 
-  if (report.assets.modified.length > 0) {
-    lines.push("");
-    lines.push("Modified assets (LeanRigor-owned files with local changes):");
-    for (const f of report.assets.modified) {
-      lines.push(`  ${f}`);
+    if (report.assets.modified.length > 0) {
+      lines.push("");
+      lines.push("Modified assets (LeanRigor-owned files with local changes):");
+      for (const f of report.assets.modified) {
+        lines.push(`  ${f}`);
+      }
+      lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
     }
-    lines.push("  Use `leanrigor init --adapter claude --force-owned-files` to restore.");
-  }
 
-  if (report.assets.missing.length > 0) {
-    lines.push("");
-    if (report.isMarketplace) {
-      lines.push("Missing assets (will be repaired automatically on next command):");
-    } else {
-      lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+    if (report.assets.missing.length > 0) {
+      lines.push("");
+      if (report.isMarketplace) {
+        lines.push("Missing assets (will be repaired automatically on next command):");
+      } else {
+        lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
+      }
+      for (const f of report.assets.missing) {
+        lines.push(`  ${f}`);
+      }
     }
-    for (const f of report.assets.missing) {
-      lines.push(`  ${f}`);
-    }
-  }
 
-  if (report.assets.adoptable.length > 0) {
-    lines.push("");
-    lines.push("Adoptable assets (content matches packaged version, safe to adopt on next bootstrap):");
-    for (const f of report.assets.adoptable) {
-      lines.push(`  ${f}`);
+    if (report.assets.adoptable.length > 0) {
+      lines.push("");
+      lines.push("Adoptable assets (content matches packaged version, safe to adopt on next bootstrap):");
+      for (const f of report.assets.adoptable) {
+        lines.push(`  ${f}`);
+      }
     }
-  }
 
-  if (report.assets.conflicts.length > 0) {
-    lines.push("");
-    lines.push("Conflicting assets (non-LeanRigor files in expected locations):");
-    for (const f of report.assets.conflicts) {
-      lines.push(`  ${f}`);
+    if (report.assets.conflicts.length > 0) {
+      lines.push("");
+      lines.push("Conflicting assets (non-LeanRigor files in expected locations):");
+      for (const f of report.assets.conflicts) {
+        lines.push(`  ${f}`);
+      }
     }
   }
 
@@ -192,6 +215,13 @@ function renderModelTable(
 
 function renderSettingsState(settings: InitReport["settings"], isMarketplace: boolean): string {
   const lines: string[] = [];
+
+  if (isMarketplace) {
+    lines.push("  .claude/settings.json: not managed by marketplace installation");
+    lines.push("  Marketplace hooks are served from the plugin manifest (hooks/hooks.json).");
+    return lines.join("\n");
+  }
+
   lines.push(`  ${settings.path}: ${settings.detail}`);
 
   switch (settings.status) {
@@ -203,11 +233,7 @@ function renderSettingsState(settings: InitReport["settings"], isMarketplace: bo
     case "shared_missing_leanrigor_entries":
       lines.push("  .claude/settings.json is shared Claude Code configuration.");
       lines.push("  The file exists but does not contain LeanRigor-owned hook entries.");
-      if (!isMarketplace) {
-        lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
-      } else {
-        lines.push("  LeanRigor hook entries will be merged on next bootstrap.");
-      }
+      lines.push("  Run `leanrigor init --adapter claude` to install LeanRigor settings.");
       break;
     case "shared_conflicting_leanrigor_entries":
       lines.push("  .claude/settings.json is shared Claude Code configuration.");
@@ -216,11 +242,7 @@ function renderSettingsState(settings: InitReport["settings"], isMarketplace: bo
       break;
     case "missing":
       lines.push("  .claude/settings.json is missing.");
-      if (!isMarketplace) {
-        lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
-      } else {
-        lines.push("  Will be created with LeanRigor hook entries on next bootstrap.");
-      }
+      lines.push("  Run `leanrigor init --adapter claude` to create it with LeanRigor hook entries.");
       break;
     case "shared_malformed":
       lines.push("  .claude/settings.json exists but is not valid JSON.");

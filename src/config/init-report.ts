@@ -3,8 +3,10 @@ import { loadUserConfig, loadRepoPolicy, configFileExists } from "./load.js";
 import { ConfigScope } from "./config-scope.js";
 import { resolveEffectiveConfig } from "./resolver.js";
 import { formatModelTierJson } from "./model-display.js";
-import { ClaudeAdapter, isMarketplaceRuntime, type AssetInspectionResult } from "../adapters/claude/adapter.js";
+import { ClaudeAdapter, detectInstallationMode, detectShadowing, ASSET_VERSION, type AssetInspectionResult, type InstallationMode, type ShadowingReport } from "../adapters/claude/adapter.js";
 import type { EnsureBootstrappedResult } from "../core/bootstrap.js";
+import { ensureGitignore } from "./bootstrap.js";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +44,16 @@ export interface InitReport {
   };
   /** Whether the runtime is running from the marketplace plugin. */
   isMarketplace: boolean;
+  /** The detected installation mode. */
+  installationMode: InstallationMode;
+  /** Shadowing report (only populated when marketplace mode detects stale fallback assets). */
+  shadowing: ShadowingReport | null;
+  /** CLI/plugin version from package.json. */
+  pluginVersion: string;
+  /** Asset version stamp from the adapter. */
+  assetVersion: number;
+  /** Human-readable runtime source description. */
+  runtimeSource: string;
   /** Bootstrap result if bootstrapping ran before this report. */
   bootstrap: {
     bootstrapped: boolean;
@@ -193,6 +205,39 @@ export async function buildInitReport(
   // --- Resolve effective config ---
   const effective = await resolveEffectiveConfig(root);
 
+  // --- Installation mode ---
+  const mode = bootstrapResult?.installationMode ?? await detectInstallationMode(root);
+  const isMarketplace = mode === "marketplace";
+
+  // --- Read package version ---
+  let pluginVersion = "unknown";
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const { fileURLToPath } = await import("node:url");
+    const pkg = JSON.parse(await readFile(fileURLToPath(new URL("../../../package.json", import.meta.url)), "utf8")) as { version?: string };
+    pluginVersion = pkg.version ?? "unknown";
+  } catch { /* keep unknown */ }
+
+  // --- Runtime source ---
+  let runtimeSource = "local development or global CLI";
+  if (isMarketplace) {
+    if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) {
+      runtimeSource = `${process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT}/bin/leanrigor`;
+    } else if (process.env.CLAUDE_PLUGIN_ROOT) {
+      runtimeSource = `${process.env.CLAUDE_PLUGIN_ROOT}/bin/leanrigor`;
+    } else {
+      runtimeSource = "marketplace plugin runtime";
+    }
+  } else if (process.argv[1]?.includes("/node_modules/")) {
+    runtimeSource = "npm package CLI";
+  }
+
+  // --- Shadowing detection (marketplace mode only) ---
+  let shadowing: ShadowingReport | null = null;
+  if (isMarketplace) {
+    shadowing = await detectShadowing(root, mode, effective.values);
+  }
+
   // --- Configuration files ---
   const userConfig = await loadUserConfig();
   const repoPolicy = await loadRepoPolicy(root);
@@ -234,16 +279,29 @@ export async function buildInitReport(
     }
   }
 
-  // --- Assets and settings ---
-  const inspection = await new ClaudeAdapter().inspectAssets(root, effective.values);
+  // --- Assets and settings (mode-aware) ---
+  let assets: InitReport["assets"];
+  let settings: InitReport["settings"];
 
-  // --- Build report ---
-  return {
-    configurationFiles,
-    gitignore: inspection.gitignoreStatus,
-    models,
-    execution,
-    assets: {
+  if (isMarketplace) {
+    // Marketplace mode: no fallback asset inspection
+    assets = {
+      current: [],
+      modified: [],
+      missing: [],
+      conflicts: [],
+      adoptable: [],
+      totalAvailable: 0,
+      installedCount: 0,
+    };
+    settings = {
+      path: ".claude/settings.json",
+      status: "shared_current",
+      detail: "not managed by marketplace installation",
+    };
+  } else {
+    const inspection = await new ClaudeAdapter().inspectAssets(root, effective.values);
+    assets = {
       current: inspection.current,
       modified: inspection.modified,
       missing: inspection.missing,
@@ -251,13 +309,28 @@ export async function buildInitReport(
       adoptable: inspection.adoptable,
       totalAvailable: inspection.totalAvailable,
       installedCount: inspection.installedCount,
-    },
-    settings: {
+    };
+    settings = {
       path: ".claude/settings.json",
       status: inspection.settingsState,
       detail: inspection.settingsDetail,
-    },
-    isMarketplace: isMarketplaceRuntime(),
+    };
+  }
+
+  // --- Build report ---
+  return {
+    configurationFiles,
+    gitignore: await ensureGitignore(path.join(root, ".leanrigor")),
+    models,
+    execution,
+    assets,
+    settings,
+    isMarketplace,
+    installationMode: mode,
+    shadowing,
+    pluginVersion,
+    assetVersion: ASSET_VERSION,
+    runtimeSource,
     bootstrap: bootstrapResult
       ? {
           bootstrapped: bootstrapResult.bootstrapped,

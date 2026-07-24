@@ -198,3 +198,191 @@ describe("Claude marketplace plugin package inclusion", () => {
     expect(files).toContain("methodology/modes/rigorous.md");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mode detection and marketplace behaviour tests
+// ---------------------------------------------------------------------------
+
+import { detectInstallationMode, detectShadowing, type InstallationMode } from "../src/adapters/claude/adapter.js";
+import { ensureBootstrapped } from "../src/core/bootstrap.js";
+import { writeFile } from "node:fs/promises";
+
+async function withEnv(env: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
+  const saved: Record<string, string | undefined> = {};
+  for (const key of Object.keys(env)) {
+    saved[key] = process.env[key];
+  }
+  try {
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    await fn();
+  } finally {
+    for (const [key] of Object.entries(env)) {
+      if (saved[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = saved[key];
+      }
+    }
+  }
+}
+
+describe("Installation mode detection", () => {
+  it("detects marketplace when CLAUDE_PLUGIN_ROOT is set", async () => {
+    await withEnv({ CLAUDE_PLUGIN_ROOT: "/tmp/fake-plugin" }, async () => {
+      const mode = await detectInstallationMode(await tempDir("lr-mode-"));
+      expect(mode).toBe("marketplace");
+    });
+  });
+
+  it("detects marketplace when LEANRIGOR_CLAUDE_PLUGIN_ROOT is set", async () => {
+    await withEnv({ LEANRIGOR_CLAUDE_PLUGIN_ROOT: "/tmp/fake-plugin" }, async () => {
+      const mode = await detectInstallationMode(await tempDir("lr-mode-"));
+      expect(mode).toBe("marketplace");
+    });
+  });
+
+  it("detects project-local when owned protect-git.sh exists", async () => {
+    const root = await tempDir("lr-mode-");
+    await mkdir(path.join(root, ".claude", "leanrigor"), { recursive: true });
+    await writeFile(
+      path.join(root, ".claude", "leanrigor", "protect-git.sh"),
+      "#!/bin/sh\n# generated_by: leanrigor\nexit 0\n",
+      "utf8"
+    );
+    const mode = await detectInstallationMode(root);
+    expect(mode).toBe("project-local");
+  });
+
+  it("returns unknown when no signals are present", async () => {
+    const mode = await detectInstallationMode(await tempDir("lr-mode-"));
+    expect(mode).toBe("unknown");
+  });
+});
+
+describe("Marketplace mode bootstrap behaviour", () => {
+  it("creates .leanrigor/ but NOT .claude/ in marketplace mode", async () => {
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const root = await tempDir("lr-mkt-");
+      const result = await ensureBootstrapped(root);
+
+      expect(result.installationMode).toBe("marketplace");
+      expect(result.bootstrapped).toBe(false);
+      expect(result.report).toBeNull();
+
+      // .leanrigor/ should exist
+      await expect(access(path.join(root, ".leanrigor", "config.json"))).resolves.toBeUndefined();
+      await expect(access(path.join(root, ".leanrigor", ".gitignore"))).resolves.toBeUndefined();
+
+      // .claude/ should NOT be created
+      await expect(access(path.join(root, ".claude"))).rejects.toMatchObject({ code: "ENOENT" });
+    });
+  });
+
+  it("does not install fallback assets in marketplace mode", async () => {
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const root = await tempDir("lr-mkt-");
+      await ensureBootstrapped(root);
+
+      // Verify no project-local commands, agents, or methodology
+      await expect(access(path.join(root, ".claude", "commands", "leanrigor.md"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(access(path.join(root, ".claude", "agents", "leanrigor-triage.md"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(access(path.join(root, ".claude", "leanrigor", "protect-git.sh"))).rejects.toMatchObject({ code: "ENOENT" });
+    });
+  });
+});
+
+describe("Marketplace mode doctor output", () => {
+  it("shows marketplace installation mode", async () => {
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const root = await tempDir("lr-mkt-");
+      await ensureBootstrapped(root);
+      const output = await new ClaudeAdapter().doctor(root, defaultConfig());
+      const text = output.join("\n");
+
+      expect(text).toContain("Installation mode: marketplace");
+      expect(text).toContain("Plugin assets: current (served from plugin root)");
+      expect(text).toContain("Project-local fallback assets: not applicable");
+      expect(text).not.toContain("Fallback assets:");
+      expect(text).toContain(`Asset version: 5`);
+    });
+  });
+
+  it("shows runtime source and package version", async () => {
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const root = await tempDir("lr-mkt-");
+      await ensureBootstrapped(root);
+      const output = await new ClaudeAdapter().doctor(root, defaultConfig());
+      const text = output.join("\n");
+
+      expect(text).toContain("Runtime source:");
+      expect(text).toContain("Package version:");
+    });
+  });
+
+  it("does not suggest leanrigor init --adapter claude in marketplace mode", async () => {
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const root = await tempDir("lr-mkt-");
+      await ensureBootstrapped(root);
+      const output = await new ClaudeAdapter().doctor(root, defaultConfig());
+      const text = output.join("\n");
+
+      expect(text).not.toContain("leanrigor init --adapter claude");
+    });
+  });
+});
+
+describe("Mixed mode shadowing detection", () => {
+  it("detects shadowing when marketplace mode + stale project-local assets exist", async () => {
+    const root = await tempDir("lr-mixed-");
+    // Seed project-local fallback assets
+    await new ClaudeAdapter().install(root, defaultConfig());
+
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const mode = "marketplace" as InstallationMode;
+      const shadowing = await detectShadowing(root, mode, defaultConfig());
+      expect(shadowing.detected).toBe(true);
+      expect(shadowing.assets.length).toBeGreaterThan(0);
+      // At least some assets should be stale_owned (just installed, should match)
+      const staleOwned = shadowing.assets.filter(a => a.status === "stale_owned");
+      expect(staleOwned.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("reports shadowing in doctor output for mixed installations", async () => {
+    const root = await tempDir("lr-mixed-");
+    await new ClaudeAdapter().install(root, defaultConfig());
+    // Add a project-local hook entry in settings.json too
+    const settingsPath = path.join(root, ".claude", "settings.json");
+    await writeFile(settingsPath, JSON.stringify({
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "sh .claude/leanrigor/protect-git.sh" }] }]
+      }
+    }, null, 2), "utf8");
+
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const output = await new ClaudeAdapter().doctor(root, defaultConfig());
+      const text = output.join("\n");
+
+      expect(text).toContain("shadowing risk");
+      expect(text).toContain("cleanup --adapter claude --project-local-only --dry-run");
+    });
+  });
+
+  it("does not report shadowing when only .leanrigor/ exists (no .claude/ fallback assets)", async () => {
+    const root = await tempDir("lr-mixed-");
+    await mkdir(path.join(root, ".leanrigor"), { recursive: true });
+    await writeFile(path.join(root, ".leanrigor", "config.json"), "{}", "utf8");
+
+    await withEnv({ CLAUDE_PLUGIN_ROOT: repoRoot }, async () => {
+      const mode = "marketplace" as InstallationMode;
+      const shadowing = await detectShadowing(root, mode, defaultConfig());
+      expect(shadowing.detected).toBe(false);
+    });
+  });
+});
