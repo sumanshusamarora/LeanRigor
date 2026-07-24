@@ -1,0 +1,74 @@
+name: Provider or workspace issue
+description: Report execution-provider, worktree, integration, lease, or recovery problems
+title: "[Integration]: "
+labels:
+  - "status:needs-triage"
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Claude CLI provider
+        - Future provider or adapter request
+        - Execution coordinator
+        - Phase worktree
+        - Integration worktree
+        - Lease or heartbeat
+        - Revision or workflow recovery
+        - Conflict handling
+        - User-working-tree safety
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: LeanRigor version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node.js, Git, and provider or coding-agent versions
+    validations:
+      required: true
+  - type: textarea
+    id: state
+    attributes:
+      label: Workflow and execution state
+      description: Include sanitised workflow status, phase status, and next action where available.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: git
+    attributes:
+      label: Git and workspace observations
+      description: State whether the original working tree, phase workspace, or integration workspace changed unexpectedly.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed repository secrets and sensitive provider output.
+          required: true
+        - label: I did not attempt destructive recovery commands before capturing the state.
+          required: true

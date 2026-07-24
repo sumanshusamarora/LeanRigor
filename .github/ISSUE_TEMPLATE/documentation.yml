@@ -1,0 +1,43 @@
+name: Documentation issue
+description: Report unclear, missing, or inaccurate documentation
+title: "[Docs]: "
+labels:
+  - "type:documentation"
+  - "status:needs-triage"
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Page or section
+      placeholder: README.md — Current limitations
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is unclear, missing, or inaccurate?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Suggested improvement
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks installation or first use
+        - Could cause incorrect or unsafe use
+        - Misstates implementation status
+        - Contributor guidance problem
+        - General clarity or polish
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I checked the latest `main` branch rather than an old copy of the documentation.
+          required: true
