@@ -82,13 +82,30 @@ node <<NODE
 const fs = require("fs");
 const p = ".leanrigor/workflows/$WF.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
-const writes = [["src/math.js"], ["test/math.test.js"]];
-s.plan.phases.forEach((phase, index) => {
-  phase.expectedReadAreas = ["src/math.js", "test/math.test.js", "package.json"];
-  phase.expectedWriteAreas = writes[index] ?? writes[writes.length - 1];
-  phase.expectedFilesOrAreas = phase.expectedWriteAreas;
-  phase.ownershipUncertain = false;
-});
+const phase = s.plan.phases[0];
+s.plan.phases = [{
+  ...phase,
+  id: "phase-1",
+  objective: "Implement the math addition smoke change.",
+  rationale: "The smoke task is intentionally small and cohesive, so implementation and test evidence belong in one isolated phase workspace.",
+  dependencies: [],
+  dependsOn: [],
+  expectedReadAreas: ["src/math.js", "test/math.test.js", "package.json"],
+  expectedWriteAreas: ["src/math.js", "test/math.test.js"],
+  expectedFilesOrAreas: ["src/math.js", "test/math.test.js"],
+  acceptanceCriteria: [
+    "src/math.js exports add(a, b) and preserves subtract(a, b).",
+    "test/math.test.js includes one passing add() test and keeps the subtract() test."
+  ],
+  validationCommands: ["npm test"],
+  ownershipUncertain: false,
+  status: "planned",
+  filesChanged: [],
+  commandsRun: [],
+  validationResults: [],
+  scopeDeviations: [],
+  repairAttempts: []
+}];
 fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\\n");
 NODE
 npx leanrigor flow approve-plan "$WF" >/dev/null
@@ -118,6 +135,32 @@ while :; do
   BLOCKED=$(printf '%s\n' "$OUT" | run_json_field "j.blocked.length")
   if [ "$BLOCKED" != "0" ] || [ "$ACTION" = "repair" ] || [ "$ACTION" = "review" ] || [ "$ACTION" = "resolve_conflict" ] || [ "$ACTION" = "replan" ] || [ "$ACTION" = "await_user" ]; then
     log "Smoke stopped before final review at action=$ACTION state=$STATE."
+    WF="$WF" node <<'NODE'
+const fs = require("fs");
+const cp = require("child_process");
+const state = JSON.parse(fs.readFileSync(`.leanrigor/workflows/${process.env.WF}.json`, "utf8"));
+const records = Object.values(state.execution.records);
+const record = records[records.length - 1];
+const meta = record?.providerMetadata ?? {};
+let status;
+try { status = meta.statusPath ? JSON.parse(fs.readFileSync(meta.statusPath, "utf8")) : undefined; } catch {}
+console.log(JSON.stringify({
+  workflowId: state.id,
+  executionId: record?.providerExecutionId,
+  phaseWorkspacePath: record?.workspacePath,
+  integrationWorkspacePath: state.git?.integration?.path,
+  executionArtifactDirectory: meta.artifactDir ?? (meta.statusPath ? require("path").dirname(meta.statusPath) : undefined),
+  providerExitStatus: status ? { status: status.status, exitCode: status.exitCode, signal: status.signal } : undefined,
+  parserFailureReason: record?.resultSummary,
+  diagnostics: record?.diagnostics ? {
+    stdoutExcerpt: record.diagnostics.stdoutExcerpt,
+    stderrExcerpt: record.diagnostics.stderrExcerpt,
+    nextStep: record.diagnostics.nextStep
+  } : undefined,
+  nextValidRecoveryCommand: `npx leanrigor flow execution-poll ${state.id} --provider claude-cli --root ${JSON.stringify(process.cwd())}`,
+  originalStatus: cp.execFileSync("git", ["status", "--porcelain=v1", "--", "src", "test"], { encoding: "utf8" }).trim()
+}, null, 2));
+NODE
     exit 1
   fi
   sleep 5

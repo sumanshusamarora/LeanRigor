@@ -38,7 +38,13 @@
 - Claude CLI execution provider prototype:
   - Dispatches Claude Code CLI print mode with `cwd` set to the assigned phase workspace.
   - Persists bounded status/stdout/stderr artifacts under `.leanrigor/executions/` so a later CLI `execution-poll` can collect results after restart.
+  - Uses Claude CLI `--json-schema` structured output and `bypassPermissions`
+    for non-interactive execution in the assigned phase workspace.
+  - Parses the documented Claude CLI result envelope, including
+    `structured_output`, JSON-string `result`, and stream-json result events.
   - Requires structured provider output; process exit alone does not mark a phase complete.
+  - Parser failures persist execution ID, artifact directory, bounded
+    stdout/stderr excerpts, provider exit status, and a recovery command.
 - Native Claude Code marketplace plugin packaging:
   - `.claude-plugin/marketplace.json` for `/plugin marketplace add sumanshusamarora/LeanRigor`.
   - `.claude-plugin/plugin.json` for `/plugin install leanrigor@leanrigor`.
@@ -70,7 +76,7 @@
 - Enhanced `leanrigor doctor --adapter claude` reports CLI version, Claude CLI availability, model tier resolution, per-asset status, hook permission state, and overall health.
 - Plugin command/agent/hook source lives in `src/adapters/claude/plugin/`; shared methodology source lives in `methodology/`.
 - Plugin assets are included in `npm pack` via `dist/` and verified present in the tarball.
-- Regression tests cover: clean install, packed-install hook mode restoration, repeat-safe hook permission repair, conflict detection, force-replace, uninstall, doctor output including non-executable hook detection, shell hook invocation, blocked/allowed hook decisions, asset structure, model tier substitution, JSON validity, restartable Claude CLI result collection, malformed provider output, and coordinator execution-to-final-review progression.
+- Regression tests cover: clean install, packed-install hook mode restoration, repeat-safe hook permission repair, conflict detection, force-replace, uninstall, doctor output including non-executable hook detection, shell hook invocation, blocked/allowed hook decisions, asset structure, model tier substitution, JSON validity, current Claude CLI result-envelope fixtures, stream-json result events, Markdown-wrapped results, malformed/prose-only provider output, non-zero provider exits, restartable Claude CLI result collection, parser diagnostics, and coordinator execution-to-final-review progression.
 
 ## Verification commands executed
 

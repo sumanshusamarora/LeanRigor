@@ -114,7 +114,7 @@ export class ExecutionCoordinator {
         status = await this.provider.getStatus(handle);
       } catch (error) {
         const message = `Provider status failed: ${error instanceof Error ? error.message : String(error)}`;
-        await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", message);
+        await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", message, errorDetails(error));
         blocked.push({ phaseId: record.phaseId, reason: message });
         continue;
       }
@@ -141,7 +141,7 @@ export class ExecutionCoordinator {
         result = await this.provider.collectResult(handle);
       } catch (error) {
         const message = `Provider result collection failed: ${error instanceof Error ? error.message : String(error)}`;
-        await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", message);
+        await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", message, errorDetails(error));
         blocked.push({ phaseId: record.phaseId, reason: message });
         continue;
       }
@@ -414,4 +414,10 @@ export class ExecutionCoordinator {
   private now(): string {
     return this.clock().toISOString();
   }
+}
+
+function errorDetails(error: unknown): Record<string, unknown> | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const details = (error as { details?: unknown }).details;
+  return details && typeof details === "object" ? details as Record<string, unknown> : undefined;
 }

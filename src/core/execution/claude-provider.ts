@@ -24,6 +24,7 @@ interface PersistedClaudeMetadata {
   maxTurns: number;
   permissionMode: string;
   pid?: number;
+  artifactDir: string;
   statusPath: string;
   stdoutPath: string;
   stderrPath: string;
@@ -43,7 +44,7 @@ export interface ClaudeCliExecutionProviderOptions {
   command?: string;
   maxTurns?: number;
   model?: string;
-  permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "manual";
+  permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "manual" | "bypassPermissions";
 }
 
 export class ClaudeCliExecutionProvider implements ExecutionProvider {
@@ -70,16 +71,18 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
 
   async dispatch(input: PhaseExecutionInput): Promise<ExecutionHandle> {
     const executionId = `claude-${input.workflowId}-${input.phaseId}-${Date.now()}`;
-    const prompt = `${phaseWorkerPrompt(input)}\n\nReturn this JSON shape exactly:\n${JSON.stringify(exampleResult(input), null, 2)}`;
+    const prompt = `${phaseWorkerPrompt(input)}\n\nReturn exactly one machine-readable final JSON object matching this schema. Do not include prose outside the final JSON object. Do not include hidden reasoning. Use the validation array for command evidence only:\n${JSON.stringify(exampleResult(input), null, 2)}`;
     const args = [
       "-p",
       prompt,
       "--output-format",
       "json",
+      "--json-schema",
+      JSON.stringify(phaseExecutionResultJsonSchema()),
       "--max-turns",
       String(this.options.maxTurns ?? 12),
       "--permission-mode",
-      this.options.permissionMode ?? "acceptEdits",
+      this.options.permissionMode ?? "bypassPermissions",
       "--no-session-persistence"
     ];
     if (this.options.model) args.push("--model", this.options.model);
@@ -93,7 +96,8 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       command: this.options.command ?? "claude",
       args,
       maxTurns: this.options.maxTurns ?? 12,
-      permissionMode: this.options.permissionMode ?? "acceptEdits",
+      permissionMode: this.options.permissionMode ?? "bypassPermissions",
+      artifactDir,
       statusPath,
       stdoutPath,
       stderrPath
@@ -167,7 +171,8 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       if (persisted.status === "running" && persisted.pid && !pidIsRunning(persisted.pid)) {
         return { status: "completed", heartbeatAt: new Date().toISOString(), diagnostics: { ...persisted.diagnostics, pid: persisted.pid, statusInferredFromPid: true } };
       }
-      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? new Date().toISOString() : persisted.completedAt, diagnostics: persisted.diagnostics };
+      const metadata = claudeMetadata(handle);
+      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? new Date().toISOString() : persisted.completedAt, diagnostics: { ...persisted.diagnostics, artifactDir: metadata?.artifactDir } };
     }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
@@ -181,16 +186,20 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
   async collectResult(handle: ExecutionHandle): Promise<PhaseExecutionResult> {
     const metadata = claudeMetadata(handle);
     if (metadata) {
-      const status = await readPersistedStatus(handle);
+      const status = await readCollectibleStatus(handle);
       if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
+      if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
       const stdout = await readFile(metadata.stdoutPath, "utf8").catch(() => "");
       const stderr = await readFile(metadata.stderrPath, "utf8").catch(() => "");
+      if (status?.status === "failed") {
+        throw withArtifactDiagnostics(new ExecutionError("provider_process_exited", "Claude CLI exited before returning a successful provider result."), handle, metadata, stdout, stderr, status);
+      }
       try {
         return parseClaudeResult(stdout, stderr);
       } catch (error) {
         const message = `${error instanceof Error ? error.message : String(error)}\n${stdout}\n${stderr}`;
         if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
-        throw error;
+        throw withArtifactDiagnostics(error, handle, metadata, stdout, stderr, status);
       }
     }
     const execution = this.executions.get(handle.providerExecutionId);
@@ -231,6 +240,15 @@ async function readPersistedStatus(handle: ExecutionHandle): Promise<PersistedCl
   }
 }
 
+async function readCollectibleStatus(handle: ExecutionHandle): Promise<PersistedClaudeStatus | undefined> {
+  let status = await readPersistedStatus(handle);
+  if (status?.status === "running" && status.pid && !pidIsRunning(status.pid)) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    status = await readPersistedStatus(handle);
+  }
+  return status;
+}
+
 function claudeMetadata(handle: ExecutionHandle): PersistedClaudeMetadata | undefined {
   const metadata = handle.providerMetadata as Partial<PersistedClaudeMetadata> | undefined;
   if (!metadata || typeof metadata.statusPath !== "string" || typeof metadata.stdoutPath !== "string" || typeof metadata.stderrPath !== "string") return undefined;
@@ -258,34 +276,73 @@ function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-function parseClaudeResult(stdout: string, stderr: string): PhaseExecutionResult {
-  let outer: unknown;
-  try {
-    outer = JSON.parse(stdout);
-  } catch {
-    throw new ExecutionError("provider_protocol_error", "Claude CLI did not return JSON.", { stderr: redact(stderr).slice(0, 1000) });
+export function parseClaudeResult(stdout: string, stderr: string): PhaseExecutionResult {
+  const envelopes = parseClaudeOutput(stdout, stderr);
+  for (const envelope of envelopes) {
+    const candidate = extractPhaseResultCandidate(envelope);
+    if (candidate === undefined) continue;
+    if (!isPhaseExecutionResult(candidate)) throw new ExecutionError("result_malformed", "Claude result did not match the phase execution result contract.");
+    return candidate;
   }
-  const text = typeof outer === "object" && outer !== null && "result" in outer
-    ? String((outer as { result?: unknown }).result ?? "")
-    : JSON.stringify(outer);
-  if (typeof outer === "object" && outer !== null && (outer as { is_error?: unknown }).is_error && /login|auth|api key|unauthorized/i.test(text)) {
-    throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(text) });
-  }
-  const parsed = extractJson(text);
-  if (!isPhaseExecutionResult(parsed)) throw new ExecutionError("result_malformed", "Claude result did not match the phase execution result contract.");
-  return parsed;
+  throw new ExecutionError("result_malformed", "No structured phase result was found in Claude's result envelope.");
 }
 
-function extractJson(text: string): unknown {
-  const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+function parseClaudeOutput(stdout: string, stderr: string): unknown[] {
+  const trimmed = stdout.trim();
+  if (trimmed.length === 0) throw new ExecutionError("provider_protocol_error", "Claude CLI returned empty stdout.", { stderr: redact(stderr).slice(0, 1000) });
+  try {
+    return [JSON.parse(trimmed)];
+  } catch {
+    const envelopes: unknown[] = [];
+    for (const line of trimmed.split(/\r?\n/)) {
+      const candidate = line.trim();
+      if (!candidate.startsWith("{")) continue;
+      try {
+        const parsed = JSON.parse(candidate);
+        if (isClaudeResultEnvelope(parsed)) envelopes.push(parsed);
+      } catch {
+        // Ignore non-JSON metadata lines; malformed JSON result lines are handled below.
+      }
+    }
+    if (envelopes.length > 0) return envelopes;
+    throw new ExecutionError("provider_protocol_error", "Claude CLI did not return a documented JSON result envelope.", { stdout: redact(trimmed).slice(0, 1000), stderr: redact(stderr).slice(0, 1000) });
+  }
+}
+
+function extractPhaseResultCandidate(envelope: unknown): unknown {
+  if (!envelope || typeof envelope !== "object") return envelope;
+  const record = envelope as Record<string, unknown>;
+  if (record.is_error && /login|auth|api key|unauthorized/i.test(String(record.result ?? ""))) {
+    throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(String(record.result ?? "")) });
+  }
+  if (isPhaseExecutionResult(record.structured_output)) return record.structured_output;
+  if (record.structured_output !== undefined) return record.structured_output;
+  if (record.type === "result" && "result" in record) return parseResultField(record.result);
+  return envelope;
+}
+
+function parseResultField(value: unknown): unknown {
+  if (typeof value === "object" && value !== null) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
   try {
     return JSON.parse(trimmed);
   } catch {
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
-    throw new ExecutionError("result_malformed", "No JSON object was found in Claude's result.");
+    const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/i.exec(trimmed);
+    if (fenced) {
+      try {
+        return JSON.parse(fenced[1] ?? "");
+      } catch {
+        throw new ExecutionError("result_malformed", "Claude result contained malformed fenced JSON.");
+      }
+    }
+    return undefined;
   }
+}
+
+function isClaudeResultEnvelope(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && (value as { type?: unknown }).type === "result");
 }
 
 function isPhaseExecutionResult(value: unknown): value is PhaseExecutionResult {
@@ -300,6 +357,77 @@ function isPhaseExecutionResult(value: unknown): value is PhaseExecutionResult {
     && Array.isArray(result.scopeDeviations)
     && Array.isArray(result.remainingRisks);
 }
+
+function phaseExecutionResultJsonSchema(): Record<string, unknown> {
+  const validation = {
+    type: "object",
+    properties: {
+      command: { type: "string" },
+      exitCode: { type: ["number", "null"] },
+      status: { enum: ["passed", "failed", "skipped"] },
+      result: { type: "string" },
+      skipped: { type: "boolean" },
+      skippedReason: { type: "string" },
+      timestamp: { type: "string" }
+    },
+    required: ["command", "status", "result"],
+    additionalProperties: false
+  };
+  const criterion = {
+    type: "object",
+    properties: {
+      criterion: { type: "string" },
+      status: { enum: ["met", "not_met", "uncertain", "not_applicable"] },
+      evidence: { type: "array", items: { type: "string" } }
+    },
+    required: ["criterion", "status", "evidence"],
+    additionalProperties: false
+  };
+  const deviation = {
+    type: "object",
+    properties: {
+      path: { type: "string" },
+      reason: { type: "string" }
+    },
+    required: ["reason"],
+    additionalProperties: false
+  };
+  return {
+    type: "object",
+    properties: {
+      status: { enum: ["completed", "failed", "cancelled", "timed_out", "blocked"] },
+      summary: { type: "string" },
+      changedFiles: { type: "array", items: { type: "string" } },
+      validation: { type: "array", items: validation },
+      criterionEvidence: { type: "array", items: criterion },
+      assumptions: { type: "array", items: { type: "string" } },
+      scopeDeviations: { type: "array", items: deviation },
+      remainingRisks: { type: "array", items: { type: "string" } }
+    },
+    required: ["status", "summary", "changedFiles", "validation", "criterionEvidence", "assumptions", "scopeDeviations", "remainingRisks"],
+    additionalProperties: false
+  };
+}
+
+function withArtifactDiagnostics(error: unknown, handle: ExecutionHandle, metadata: PersistedClaudeMetadata, stdout: string, stderr: string, status: PersistedClaudeStatus | undefined): ExecutionError {
+  const base = error instanceof ExecutionError
+    ? error
+    : new ExecutionError("result_malformed", error instanceof Error ? error.message : String(error));
+  return new ExecutionError(base.code, base.message, {
+    ...base.details,
+    providerExecutionId: handle.providerExecutionId,
+    artifactDir: metadata.artifactDir,
+    statusPath: metadata.statusPath,
+    stdoutPath: metadata.stdoutPath,
+    stderrPath: metadata.stderrPath,
+    exitCode: status?.exitCode,
+    signal: status?.signal,
+    stdoutExcerpt: redact(stdout).slice(0, 1000),
+    stderrExcerpt: redact(stderr).slice(0, 1000),
+    nextStep: `Inspect ${metadata.artifactDir} and rerun leanrigor flow execution-poll ${handle.workflowId} --provider claude-cli after repairing provider output.`
+  });
+}
+
 
 function exampleResult(input: PhaseExecutionInput): PhaseExecutionResult {
   return {
