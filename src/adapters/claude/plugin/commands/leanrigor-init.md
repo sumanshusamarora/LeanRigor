@@ -14,7 +14,11 @@ Read `.claude/leanrigor/sequential-workflow.md` first.
    - Repository policy (`leanrigor.config.json` — may be committed)
    - Local config (`.leanrigor/config.json` — private, never committed)
 3. Report `.leanrigor/.gitignore` status.
-4. Report resolved model tiers with provenance.
+4. Report resolved model tiers with provenance. Distinguish:
+   - portable tier (`small`/`medium`/`large`/`inherit`)
+   - adapter alias (Claude: `haiku`/`sonnet`/`opus`)
+   - resolved model (the concrete model string)
+   - source (where the effective value came from)
 5. Report any configuration warnings or constraints.
 6. If `$ARGUMENTS` is empty, present the current state and suggest available
    configuration commands.

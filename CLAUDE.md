@@ -105,5 +105,5 @@ Each workflow gets one integration worktree; each leased phase gets one phase wo
 - The Claude CLI execution provider is a **prototype**; run `scripts/smoke-claude-cli-execution.sh` manually to verify it (not in CI)
 - LeanRigor-owned branches follow the naming pattern `leanrigor/<short-id>/...` and must not be conflated with user branches
 - The triage agent is **read-only** and bounded to at most two calls (initial + one context enrichment); if still uncertain, the safer mode wins
-- `small`/`medium`/`large` model profiles are resolved by the adapter, not hardcoded — Claude defaults: haiku/sonnet/opus
+- Portable model tiers (`small`/`medium`/`large`/`inherit`) are resolved by the adapter, not hardcoded — Claude adapter defaults: small → haiku, medium → sonnet, large → opus
 - If you are asked to perform a PR - use skill `.skills/pr-review` to run a PR review and provide feedback. This is a specialized skill for reviewing code changes in pull requests.

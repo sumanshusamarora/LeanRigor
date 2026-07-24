@@ -8,6 +8,7 @@ import { buildProvenanceMap } from "./provenance.js";
 import { ConfigScope } from "./config-scope.js";
 import { leanRigorConfigSchema, type LeanRigorConfig } from "./schema.js";
 import { resolveModelTier } from "./models.js";
+import { formatAllModelTiers } from "./model-display.js";
 
 /**
  * The fully resolved effective configuration with provenance tracking.
@@ -73,7 +74,7 @@ export async function resolveEffectiveConfig(root: string): Promise<EffectiveCon
     const key = `models.tiers.${tier}.claude`;
     try {
       const resolved = resolveModelTier(tier, "claude", config);
-      const val = resolved.model;
+      const val = resolved.resolvedModel ?? resolved.model;
       if (val) {
         provenance.set(key, {
           value: val,
@@ -81,7 +82,9 @@ export async function resolveEffectiveConfig(root: string): Promise<EffectiveCon
           rawValue: val,
           constrained: false,
           warnings: [],
-          adapterResolution: resolved.source
+          adapterResolution: resolved.source,
+          adapterAlias: resolved.adapterAlias,
+          isClaudeAlias: resolved.adapterAlias !== undefined && resolved.adapterAlias === val,
         });
       }
     } catch {
@@ -196,23 +199,14 @@ export function formatEffectiveConfig(effective: EffectiveConfig): string {
     lines.push(`  [${source}] ${scopeLabel(source)}`);
   }
   if (effective.sourcesFound.length <= 2) {
-    lines.push("  (only built-in defaults are active; no files found)");
+    // Only Builtin + Adapter present — no User, RepoPolicy, or Local config files
+    lines.push("  (no configuration files found; effective values are from adapter-derived and built-in defaults)");
   }
 
   // Model tier resolution
   lines.push("");
   lines.push("Model tier resolution:");
-  for (const tier of ["small", "medium", "large"] as const) {
-    try {
-      const resolved = resolveModelTier(tier, "claude", effective.values);
-      const provKey = `models.tiers.${tier}.claude`;
-      const prov = effective.provenance.get(provKey);
-      const source = prov ? scopeLabel(prov.source) : "unknown";
-      lines.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${source})`);
-    } catch (error) {
-      lines.push(`  ${tier}: ERROR — ${(error as Error).message}`);
-    }
-  }
+  lines.push(...formatAllModelTiers("claude", effective.values));
 
   // Key execution settings
   lines.push("");

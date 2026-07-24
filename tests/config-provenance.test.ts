@@ -42,4 +42,24 @@ describe("provenance", () => {
     expect(formatted).toContain("large");
     expect(formatted).toContain("repo");
   });
+
+  it("formats provenance with adapterAlias field", () => {
+    const entry = provenance("deepseek-v4-pro[1m]", ConfigScope.Adapter);
+    entry.adapterResolution = "adapter-env";
+    entry.adapterAlias = "opus";
+    entry.isClaudeAlias = false;
+    const formatted = formatProvenance("models.tiers.large.claude", entry);
+    expect(formatted).toContain("deepseek-v4-pro[1m]");
+    expect(formatted).toContain("Adapter alias: opus");
+    expect(formatted).toContain("Is Claude alias: false");
+    expect(formatted).toContain("Adapter resolution: adapter-env");
+  });
+
+  it("formats provenance with isClaudeAlias true", () => {
+    const entry = provenance("haiku", ConfigScope.Adapter);
+    entry.adapterAlias = "haiku";
+    entry.isClaudeAlias = true;
+    const formatted = formatProvenance("models.tiers.small.claude", entry);
+    expect(formatted).toContain("Is Claude alias: true");
+  });
 });

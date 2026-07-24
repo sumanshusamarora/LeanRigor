@@ -1,6 +1,6 @@
 # Triage Task
 
-Use the configured `small` model profile. For Claude Code, the default resolves to `haiku`.
+Use the configured `small` model tier. The adapter resolves this to a concrete model at runtime (for Claude Code, the small tier maps to the `haiku` alias by default).
 
 ## Purpose
 

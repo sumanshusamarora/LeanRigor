@@ -11,9 +11,20 @@ Claude mappings default to the official aliases:
 - `small` → `haiku`
 - `medium` → `sonnet`
 - `large` → `opus`
-- `inherit` → no `--model` argument
+- `inherit` → no `--model` argument (harness uses its active/default model)
 
-These are aliases, not pinned version IDs. Claude Code remains responsible for resolving aliases through the user's provider, organisation policy, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_OPUS_MODEL` settings.
+These are Claude aliases, not pinned version IDs. Claude Code resolves aliases to concrete models through the user's provider, organisation policy, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_OPUS_MODEL` settings. When `ANTHROPIC_DEFAULT_*` maps to a non-Anthropic model (e.g., DeepSeek), LeanRigor displays both the alias and the resolved model.
+
+### Terminology
+
+LeanRigor distinguishes four concepts in all output:
+
+| Concept | Example | Description |
+|---|---|---|
+| Portable tier | `small`, `medium`, `large`, `inherit` | Provider-neutral policy value |
+| Adapter alias | `haiku`, `sonnet`, `opus` | Claude-specific resolution key |
+| Resolved model | `deepseek-v4-pro[1m]`, `claude-opus-4-1` | Concrete model passed to the CLI |
+| Provenance | `ANTHROPIC_DEFAULT_OPUS_MODEL`, `local config` | Source of the effective value |
 
 ## OpenCode
 

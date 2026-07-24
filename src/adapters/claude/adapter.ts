@@ -4,7 +4,8 @@ import { access, chmod, mkdir, readFile, readdir, rmdir, stat, unlink, writeFile
 import path from "node:path";
 import type { HarnessAdapter, InstallReport, UninstallReport } from "../types.js";
 import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
-import { isClaudeAlias, resolveModelTier } from "../../config/models.js";
+import { resolveModelTier } from "../../config/models.js";
+import { formatModelTierLine } from "../../config/model-display.js";
 import { ensureGitignore, checkTrackedLeanrigorFiles } from "../../config/bootstrap.js";
 import { configFileExists, loadUserConfig, loadRepoPolicy } from "../../config/load.js";
 import { ConfigScope } from "../../config/config-scope.js";
@@ -237,10 +238,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     output.push("Model tier resolution:");
     for (const tier of ["small", "medium", "large"] as const) {
       try {
-        const resolved = resolveModelTier(tier, "claude", config);
-        const detail = resolved.model && isClaudeAlias(resolved.model) ? "Claude alias" : "custom identifier";
-        const sourceLabel = modelSourceLabel(resolved.source);
-        output.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${sourceLabel}${resolved.model ? `, ${detail}` : ""})`);
+        output.push(formatModelTierLine(tier, "claude", config));
       } catch (error) { output.push(`  ${tier}: ERROR — ${(error as Error).message}`); }
     }
 
@@ -252,7 +250,7 @@ export class ClaudeAdapter implements HarnessAdapter {
     const currentAssets: string[] = [];
     const conflictAssets: string[] = [];
     const modifiedOwnedAssets: string[] = [];
-    let protectGitState = "protect-git.sh: missing";
+    let protectGitState = "missing";
 
     for (const entry of manifest) {
       const targetPath = path.join(root, entry.dest);
@@ -261,7 +259,7 @@ export class ClaudeAdapter implements HarnessAdapter {
 
       if (existing === undefined) {
         missingAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: missing";
+        if (isProtectGit(entry.dest)) protectGitState = "missing";
         continue;
       }
 
@@ -269,17 +267,17 @@ export class ClaudeAdapter implements HarnessAdapter {
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => undefined);
       if (!isLeanRigorOwned(existing)) {
         conflictAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
       } else if (expected !== undefined && sha256(existing) === sha256(expected)) {
         currentAssets.push(entry.dest);
         if (isProtectGit(entry.dest)) {
           protectGitState = await isExecutable(targetPath)
-            ? "protect-git.sh: current and executable"
-            : "protect-git.sh: installed but not executable";
+            ? "current and executable"
+            : "installed but not executable";
         }
       } else {
         modifiedOwnedAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
       }
     }
 
@@ -295,10 +293,17 @@ export class ClaudeAdapter implements HarnessAdapter {
     if (currentAssets.length > 0) {
       output.push("");
       output.push("Current:");
-      for (const f of currentAssets) output.push(`  ${f}`);
+      for (const f of currentAssets) {
+        const suffix = isSettingsJson(f) ? " (LeanRigor-managed; coexists with user settings)" : "";
+        output.push(`  ${f}${suffix}`);
+      }
     }
+
+    // Git protection hook — reported individually
     output.push("");
-    output.push(protectGitState);
+    output.push("Git protection hook:");
+    output.push(`  ${protectGitState}`);
+
     if (missingAssets.length > 0) {
       output.push("");
       output.push("Missing (run `leanrigor init --adapter claude` to install):");
@@ -315,6 +320,11 @@ export class ClaudeAdapter implements HarnessAdapter {
       output.push("Conflict (non-LeanRigor files in expected locations):");
       for (const f of conflictAssets) output.push(`  ${f}`);
     }
+
+    // Shared settings.json summary
+    output.push("");
+    output.push("Shared configuration:");
+    output.push(`  .claude/settings.json: ${describeSettingsState(missingAssets, conflictAssets, modifiedOwnedAssets)}`);
 
     // Workflow settings
     output.push("");
@@ -335,6 +345,22 @@ export class ClaudeAdapter implements HarnessAdapter {
 
 function isProtectGit(dest: string): boolean {
   return dest === PROTECT_GIT_DEST;
+}
+
+function isSettingsJson(dest: string): boolean {
+  return dest === ".claude/settings.json";
+}
+
+function describeSettingsState(
+  missing: string[],
+  conflicts: string[],
+  modified: string[],
+): string {
+  const settingsPath = ".claude/settings.json";
+  if (missing.includes(settingsPath)) return "missing";
+  if (conflicts.includes(settingsPath)) return "present but not LeanRigor-owned (shared configuration)";
+  if (modified.includes(settingsPath)) return "modified (LeanRigor hook entries may have local changes)";
+  return "current (LeanRigor hook entries present; coexists with user settings)";
 }
 
 async function ensureExecutableIfHook(dest: string, targetPath: string): Promise<void> {
@@ -407,18 +433,5 @@ async function loadConfigForUninstall(root: string): Promise<LeanRigorConfig> {
   } catch {
     const { defaultConfig } = await import("../../config/defaults.js");
     return defaultConfig();
-  }
-}
-
-/** Human-readable label for model resolution sources. */
-function modelSourceLabel(source: string): string {
-  switch (source) {
-    case "adapter-env": return "ANTHROPIC_DEFAULT_* environment variable";
-    case "platform-env": return "LEANRIGOR_CLAUDE_MODEL_* environment variable";
-    case "generic-env": return "LEANRIGOR_MODEL_* environment variable";
-    case "config": return "LeanRigor configuration file";
-    case "adapter-default": return "Claude alias default (haiku/sonnet/opus)";
-    case "inherit": return "inherited (no model specified)";
-    default: return source;
   }
 }

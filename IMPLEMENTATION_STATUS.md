@@ -4,7 +4,7 @@
 
 - Provisional project identity renamed to **LeanRigor**.
 - Portable model tiers: `small`, `medium`, `large`, and `inherit`.
-- Claude Code defaults use provider-resolved aliases: `haiku`, `sonnet`, and `opus`.
+- Claude Code adapter maps portable tiers to aliases: `small` → `haiku`, `medium` → `sonnet`, `large` → `opus`. Aliases are resolved to concrete models through `ANTHROPIC_DEFAULT_*` environment variables or Claude Code's provider configuration.
 - OpenCode mappings are intentionally unset until the user configures provider-qualified model IDs.
 - Model routing is independent from workflow mode.
 - Platform-specific and generic environment-variable overrides.

@@ -1,6 +1,8 @@
 ---
 name: leanrigor-triage
 description: Classify a coding request and recommend the LeanRigor workflow mode.
+# model below is a Claude alias — resolved at runtime by Claude Code
+# when installed via leanrigor init, {{TRIAGE_MODEL}} is substituted from config
 model: haiku
 tools: Read, Glob, Grep
 ---

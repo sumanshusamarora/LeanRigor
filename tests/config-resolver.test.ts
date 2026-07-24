@@ -93,15 +93,19 @@ describe("resolveEffectiveConfig", () => {
     }
   });
 
-  it("adapter-derived defaults show in provenance", async () => {
+  it("adapter-derived defaults show in provenance with alias fields", async () => {
     tempDir = await mkdtemp(path.join(tmpdir(), "leanrigor-resolve-"));
     const effective = await resolveEffectiveConfig(tempDir);
 
-    // Model tiers should have adapter provenance
+    // Model tiers should have adapter provenance with alias fields
     const smallProv = effective.provenance.get("models.tiers.small.claude");
     expect(smallProv).toBeDefined();
     if (smallProv) {
       expect(smallProv.source).toBe("adapter");
+      // adapterAlias is always present for Claude tiers
+      expect(smallProv.adapterAlias).toBeDefined();
+      // isClaudeAlias is present (may be true or false depending on env)
+      expect(typeof smallProv.isClaudeAlias).toBe("boolean");
     }
   });
 });

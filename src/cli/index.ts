@@ -10,6 +10,7 @@ import { runTriage } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
 import type { InstallReport, UninstallReport } from "../adapters/types.js";
 import { resolveEffectiveConfig, formatEffectiveConfig } from "../config/resolver.js";
+import { claudeDefaultsBlurb } from "../config/model-display.js";
 import { ensureRepositoryConfig, writeConfig } from "../config/bootstrap.js";
 import { atomicWriteJson } from "../config/atomic-write.js";
 import { ConfigScope, scopePath, REPO_POLICY_FORBIDDEN_KEYS } from "../config/config-scope.js";
@@ -87,7 +88,7 @@ program.command("setup")
     console.log(`  User config:          ~/.config/leanrigor/config.json`);
     console.log(`  Repository policy:    leanrigor.config.json (committed)`);
     console.log(`  Local config:         .leanrigor/config.json (private, never committed)`);
-    console.log(`  Claude defaults:      small=haiku, medium=sonnet, large=opus`);
+    console.log(`  ${claudeDefaultsBlurb()}`);
     printInstallReport(report);
   });
 
@@ -153,7 +154,14 @@ configCmd.command("show")
     if (json) {
       const provenances: Record<string, unknown> = {};
       for (const [key, entry] of effective.provenance) {
-        provenances[key] = { value: entry.value, source: entry.source, constrained: entry.constrained };
+        provenances[key] = {
+          value: entry.value,
+          source: entry.source,
+          constrained: entry.constrained,
+          ...(entry.adapterResolution !== undefined && { adapterResolution: entry.adapterResolution }),
+          ...(entry.adapterAlias !== undefined && { adapterAlias: entry.adapterAlias }),
+          ...(entry.isClaudeAlias !== undefined && { isClaudeAlias: entry.isClaudeAlias }),
+        };
       }
       console.log(JSON.stringify({
         values: effective.values,
@@ -188,6 +196,8 @@ configCmd.command("get")
     console.log(`${configPath}: ${JSON.stringify(entry.value)}`);
     console.log(`  Source: ${entry.source}`);
     if (entry.adapterResolution) console.log(`  Adapter resolution: ${entry.adapterResolution}`);
+    if (entry.adapterAlias) console.log(`  Adapter alias: ${entry.adapterAlias}`);
+    if (entry.isClaudeAlias !== undefined) console.log(`  Is Claude alias: ${entry.isClaudeAlias}`);
     if (entry.constrained) {
       console.log(`  Requested: ${JSON.stringify(entry.requestedValue)}`);
       console.log(`  Constrained by repository policy`);

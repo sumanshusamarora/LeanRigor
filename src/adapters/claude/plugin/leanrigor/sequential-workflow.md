@@ -24,7 +24,7 @@ LeanRigor uses a layered configuration hierarchy (highest precedence first):
 3. Private local config: `.leanrigor/config.json` (never committed)
 4. Committed repository policy: `leanrigor.config.json`
 5. User config: `~/.config/leanrigor/config.json`
-6. Adapter-derived defaults (Claude: haiku/sonnet/opus)
+6. Adapter-derived defaults (Claude: small → haiku, medium → sonnet, large → opus)
 7. Built-in defaults
 
 Use `/leanrigor:init` to inspect configuration, change settings, or see

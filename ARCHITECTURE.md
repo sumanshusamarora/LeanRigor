@@ -86,7 +86,7 @@ so Claude marketplace installs do not expose it as user-facing slash commands.
 
 ## Model routing
 
-Automatic triage is enabled by default. For Claude Code, the default `small` profile resolves to `haiku`. The triage agent is isolated and read-only; it does not replace the model selected for the main session.
+Automatic triage is enabled by default. For Claude Code, the `small` tier resolves through the `haiku` alias to a concrete model (determined by `ANTHROPIC_DEFAULT_HAIKU_MODEL` or the user's Claude provider). The triage agent is isolated and read-only; it does not replace the model selected for the main session.
 
 Default stage routing:
 

@@ -12,6 +12,10 @@ export interface ConfigProvenance {
   rawValue: unknown;
   /** If an adapter resolved this value from its own env/defaults. */
   adapterResolution?: string;
+  /** Well-known Claude alias for the tier (haiku/sonnet/opus), if applicable. */
+  adapterAlias?: string;
+  /** Whether the value is a known Claude alias rather than a concrete model ID. */
+  isClaudeAlias?: boolean;
   /** Whether a repository policy constraint modified this value. */
   constrained: boolean;
   /** If constrained, what was the originally requested value. */
@@ -98,6 +102,14 @@ export function formatProvenance(path: string, entry: ConfigProvenance): string 
 
   if (entry.adapterResolution) {
     lines.push(`  Adapter resolution: ${entry.adapterResolution}`);
+  }
+
+  if (entry.adapterAlias) {
+    lines.push(`  Adapter alias: ${entry.adapterAlias}`);
+  }
+
+  if (entry.isClaudeAlias !== undefined) {
+    lines.push(`  Is Claude alias: ${entry.isClaudeAlias}`);
   }
 
   if (entry.constrained && entry.requestedValue !== undefined) {

@@ -43,7 +43,7 @@ leanrigor init --adapter claude --force-owned-files --root /path/to/repository
 ### Install output
 
 ```
-LeanRigor configured. Claude defaults: small=haiku, medium=sonnet, large=opus.
+LeanRigor configured. Claude adapter defaults: small → haiku, medium → sonnet, large → opus.
 
 Installed:
   .claude/commands/leanrigor.md
@@ -256,7 +256,7 @@ leanrigor flow cancel <workflow-id> --root /path/to/repository
 
 The `leanrigor-triage` subagent:
 
-- Uses the configured `small` model tier (default: Claude `haiku` alias)
+- Uses the configured `small` model tier (resolved through the `haiku` alias by default)
 - Has only read-only tools: `Read`, `Glob`, `Grep`
 - Returns exactly one `TriageOutput` JSON object — no prose or markdown
 - Never asks user-facing questions (uses the `clarification` field instead)

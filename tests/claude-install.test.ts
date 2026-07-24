@@ -341,7 +341,8 @@ describe("Claude plugin doctor", () => {
     const text = output.join("\n");
 
     expect(text).toContain("Status: current");
-    expect(text).toContain("protect-git.sh: current and executable");
+    expect(text).toContain("Git protection hook:");
+    expect(text).toContain("current and executable");
     expect(text).toContain(`LeanRigor CLI:`);
     expect(text).toContain(`Claude assets installed: ${EXPECTED_DEST_PATHS.length}/${EXPECTED_DEST_PATHS.length}`);
   });
@@ -355,7 +356,8 @@ describe("Claude plugin doctor", () => {
 
     const text = (await new ClaudeAdapter().doctor(root, defaultConfig())).join("\n");
 
-    expect(text).toContain("protect-git.sh: installed but not executable");
+    expect(text).toContain("Git protection hook:");
+    expect(text).toContain("installed but not executable");
   });
 
   it("reports missing assets when nothing is installed", async () => {
@@ -393,9 +395,12 @@ describe("Claude plugin doctor", () => {
     const output = await new ClaudeAdapter().doctor(root, config);
     const text = output.join("\n");
 
-    expect(text).toContain("small: haiku");
-    expect(text).toContain("medium: sonnet");
-    expect(text).toContain("large: opus");
+    expect(text).toContain("small:");
+    expect(text).toContain("haiku");
+    expect(text).toContain("medium:");
+    expect(text).toContain("sonnet");
+    expect(text).toContain("large:");
+    expect(text).toContain("opus");
   });
 
   it("includes asset version in doctor output", async () => {

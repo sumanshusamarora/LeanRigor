@@ -19122,22 +19122,23 @@ var ModelConfigurationError = class extends Error {
 function resolveModelTier(tier, harness, config2) {
   if (tier === "inherit") return { tier, source: "inherit" };
   const suffix = tier.toUpperCase();
+  const claudeAlias = harness === "claude" ? CLAUDE_ALIAS_DEFAULTS[suffix] : void 0;
   const platform = process.env[`${ENV_PREFIX[harness]}${suffix}`]?.trim();
-  if (platform) return { tier, model: platform, source: "platform-env" };
+  if (platform) return { tier, model: platform, resolvedModel: platform, adapterAlias: claudeAlias, source: "platform-env" };
   const generic = process.env[`LEANRIGOR_MODEL_${suffix}`]?.trim();
-  if (generic) return { tier, model: generic, source: "generic-env" };
+  if (generic) return { tier, model: generic, resolvedModel: generic, adapterAlias: claudeAlias, source: "generic-env" };
   const configured = config2.models.tiers[tier][harness]?.trim();
-  if (configured) return { tier, model: configured, source: "config" };
+  if (configured) return { tier, model: configured, resolvedModel: configured, adapterAlias: claudeAlias, source: "config" };
   if (harness === "claude") {
     const adapterEnvKey = CLAUDE_ADAPTER_ENV[suffix];
     if (adapterEnvKey) {
       const adapterEnv = process.env[adapterEnvKey]?.trim();
-      if (adapterEnv) return { tier, model: adapterEnv, source: "adapter-env" };
+      if (adapterEnv) return { tier, model: adapterEnv, resolvedModel: adapterEnv, adapterAlias: claudeAlias, source: "adapter-env" };
     }
   }
   if (harness === "claude") {
     const adapterDefault = CLAUDE_ALIAS_DEFAULTS[suffix];
-    if (adapterDefault) return { tier, model: adapterDefault, source: "adapter-default" };
+    if (adapterDefault) return { tier, model: adapterDefault, resolvedModel: adapterDefault, adapterAlias: adapterDefault, source: "adapter-default" };
   }
   if (config2.models.failIfUnavailable) {
     throw new ModelConfigurationError(
@@ -19146,8 +19147,61 @@ function resolveModelTier(tier, harness, config2) {
   }
   return { tier, source: "inherit" };
 }
-function isClaudeAlias(model) {
-  return ["haiku", "sonnet", "opus", "default"].includes(model);
+
+// src/config/model-display.ts
+function modelSourceLabel(source, tier, harness) {
+  const suffix = tier ? tier.toUpperCase() : "SMALL";
+  switch (source) {
+    case "adapter-env": {
+      if (harness === "claude") {
+        const aliasName = suffix === "SMALL" ? "HAIKU" : suffix === "MEDIUM" ? "SONNET" : "OPUS";
+        return `ANTHROPIC_DEFAULT_${aliasName}_MODEL`;
+      }
+      return "adapter environment variable";
+    }
+    case "platform-env": {
+      const envVar = harness ? `LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}` : `LEANRIGOR_*_MODEL_${suffix}`;
+      return harness ? envVar : `platform environment variable`;
+    }
+    case "generic-env":
+      return tier ? `LEANRIGOR_MODEL_${suffix}` : "LEANRIGOR_MODEL_* environment variable";
+    case "config":
+      return "LeanRigor configuration file";
+    case "adapter-default":
+      return "Claude alias fallback";
+    case "inherit":
+      return "inherited (no model specified)";
+    default:
+      return source;
+  }
+}
+function formatModelTierLine(tier, harness, config2) {
+  const resolved = resolveModelTier(tier, harness, config2);
+  if (resolved.source === "inherit") {
+    return `  ${tier}: inherit (no model assigned)`;
+  }
+  const model = resolved.resolvedModel ?? resolved.model;
+  const alias = resolved.adapterAlias;
+  const sourceLabel = modelSourceLabel(resolved.source, tier, harness);
+  if (alias && model === alias) {
+    return `  ${tier}: ${model} (source: ${sourceLabel})`;
+  }
+  if (alias && model && model !== alias) {
+    return `  ${tier}: ${alias} \u2192 ${model} (source: ${sourceLabel})`;
+  }
+  return `  ${tier}: ${model ?? "unknown"} (source: ${sourceLabel})`;
+}
+function formatAllModelTiers(harness, config2) {
+  return ["small", "medium", "large"].map((tier) => {
+    try {
+      return formatModelTierLine(tier, harness, config2);
+    } catch (error51) {
+      return `  ${tier}: ERROR \u2014 ${error51.message}`;
+    }
+  });
+}
+function claudeDefaultsBlurb() {
+  return "Claude adapter defaults: small \u2192 haiku, medium \u2192 sonnet, large \u2192 opus";
 }
 
 // src/config/bootstrap.ts
@@ -19410,10 +19464,7 @@ var ClaudeAdapter = class {
     output.push("Model tier resolution:");
     for (const tier of ["small", "medium", "large"]) {
       try {
-        const resolved = resolveModelTier(tier, "claude", config2);
-        const detail = resolved.model && isClaudeAlias(resolved.model) ? "Claude alias" : "custom identifier";
-        const sourceLabel = modelSourceLabel(resolved.source);
-        output.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${sourceLabel}${resolved.model ? `, ${detail}` : ""})`);
+        output.push(formatModelTierLine(tier, "claude", config2));
       } catch (error51) {
         output.push(`  ${tier}: ERROR \u2014 ${error51.message}`);
       }
@@ -19425,7 +19476,7 @@ var ClaudeAdapter = class {
     const currentAssets = [];
     const conflictAssets = [];
     const modifiedOwnedAssets = [];
-    let protectGitState = "protect-git.sh: missing";
+    let protectGitState = "missing";
     for (const entry of manifest) {
       const targetPath = path5.join(root, entry.dest);
       let existing;
@@ -19435,22 +19486,22 @@ var ClaudeAdapter = class {
       }
       if (existing === void 0) {
         missingAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: missing";
+        if (isProtectGit(entry.dest)) protectGitState = "missing";
         continue;
       }
       installedCount += 1;
       const expected = await readPackagedAsset(entry.src, entry.vars).catch(() => void 0);
       if (!isLeanRigorOwned(existing)) {
         conflictAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
       } else if (expected !== void 0 && sha256(existing) === sha256(expected)) {
         currentAssets.push(entry.dest);
         if (isProtectGit(entry.dest)) {
-          protectGitState = await isExecutable(targetPath) ? "protect-git.sh: current and executable" : "protect-git.sh: installed but not executable";
+          protectGitState = await isExecutable(targetPath) ? "current and executable" : "installed but not executable";
         }
       } else {
         modifiedOwnedAssets.push(entry.dest);
-        if (isProtectGit(entry.dest)) protectGitState = "protect-git.sh: modified";
+        if (isProtectGit(entry.dest)) protectGitState = "modified (content differs from packaged version)";
       }
     }
     const totalAvailable = manifest.length;
@@ -19464,10 +19515,14 @@ var ClaudeAdapter = class {
     if (currentAssets.length > 0) {
       output.push("");
       output.push("Current:");
-      for (const f of currentAssets) output.push(`  ${f}`);
+      for (const f of currentAssets) {
+        const suffix = isSettingsJson(f) ? " (LeanRigor-managed; coexists with user settings)" : "";
+        output.push(`  ${f}${suffix}`);
+      }
     }
     output.push("");
-    output.push(protectGitState);
+    output.push("Git protection hook:");
+    output.push(`  ${protectGitState}`);
     if (missingAssets.length > 0) {
       output.push("");
       output.push("Missing (run `leanrigor init --adapter claude` to install):");
@@ -19485,6 +19540,9 @@ var ClaudeAdapter = class {
       for (const f of conflictAssets) output.push(`  ${f}`);
     }
     output.push("");
+    output.push("Shared configuration:");
+    output.push(`  .claude/settings.json: ${describeSettingsState(missingAssets, conflictAssets, modifiedOwnedAssets)}`);
+    output.push("");
     output.push(`Automatic triage: ${config2.workflow.automaticTriage ? "enabled" : "disabled"}`);
     output.push("");
     output.push("Configuration management:");
@@ -19498,6 +19556,16 @@ var ClaudeAdapter = class {
 };
 function isProtectGit(dest) {
   return dest === PROTECT_GIT_DEST;
+}
+function isSettingsJson(dest) {
+  return dest === ".claude/settings.json";
+}
+function describeSettingsState(missing, conflicts, modified) {
+  const settingsPath = ".claude/settings.json";
+  if (missing.includes(settingsPath)) return "missing";
+  if (conflicts.includes(settingsPath)) return "present but not LeanRigor-owned (shared configuration)";
+  if (modified.includes(settingsPath)) return "modified (LeanRigor hook entries may have local changes)";
+  return "current (LeanRigor hook entries present; coexists with user settings)";
 }
 async function ensureExecutableIfHook(dest, targetPath) {
   if (isProtectGit(dest)) await chmod(targetPath, 493);
@@ -19561,24 +19629,6 @@ async function loadConfigForUninstall(root) {
   } catch {
     const { defaultConfig: defaultConfig2 } = await Promise.resolve().then(() => (init_defaults(), defaults_exports));
     return defaultConfig2();
-  }
-}
-function modelSourceLabel(source) {
-  switch (source) {
-    case "adapter-env":
-      return "ANTHROPIC_DEFAULT_* environment variable";
-    case "platform-env":
-      return "LEANRIGOR_CLAUDE_MODEL_* environment variable";
-    case "generic-env":
-      return "LEANRIGOR_MODEL_* environment variable";
-    case "config":
-      return "LeanRigor configuration file";
-    case "adapter-default":
-      return "Claude alias default (haiku/sonnet/opus)";
-    case "inherit":
-      return "inherited (no model specified)";
-    default:
-      return source;
   }
 }
 
@@ -20140,7 +20190,7 @@ async function resolveEffectiveConfig(root) {
   const warnings = [];
   const sourcesFound = [ConfigScope.Builtin];
   let config2 = structuredClone(BUILTIN_DEFAULTS);
-  let provenance2 = buildProvenanceMap(
+  const provenance2 = buildProvenanceMap(
     config2,
     ConfigScope.Builtin
   );
@@ -20149,7 +20199,7 @@ async function resolveEffectiveConfig(root) {
     const key = `models.tiers.${tier}.claude`;
     try {
       const resolved = resolveModelTier(tier, "claude", config2);
-      const val = resolved.model;
+      const val = resolved.resolvedModel ?? resolved.model;
       if (val) {
         provenance2.set(key, {
           value: val,
@@ -20157,7 +20207,9 @@ async function resolveEffectiveConfig(root) {
           rawValue: val,
           constrained: false,
           warnings: [],
-          adapterResolution: resolved.source
+          adapterResolution: resolved.source,
+          adapterAlias: resolved.adapterAlias,
+          isClaudeAlias: resolved.adapterAlias !== void 0 && resolved.adapterAlias === val
         });
       }
     } catch {
@@ -20240,21 +20292,11 @@ function formatEffectiveConfig(effective) {
     lines.push(`  [${source}] ${scopeLabel(source)}`);
   }
   if (effective.sourcesFound.length <= 2) {
-    lines.push("  (only built-in defaults are active; no files found)");
+    lines.push("  (no configuration files found; effective values are from adapter-derived and built-in defaults)");
   }
   lines.push("");
   lines.push("Model tier resolution:");
-  for (const tier of ["small", "medium", "large"]) {
-    try {
-      const resolved = resolveModelTier(tier, "claude", effective.values);
-      const provKey = `models.tiers.${tier}.claude`;
-      const prov = effective.provenance.get(provKey);
-      const source = prov ? scopeLabel(prov.source) : "unknown";
-      lines.push(`  ${tier}: ${resolved.model ?? "inherit"} (source: ${source})`);
-    } catch (error51) {
-      lines.push(`  ${tier}: ERROR \u2014 ${error51.message}`);
-    }
-  }
+  lines.push(...formatAllModelTiers("claude", effective.values));
   lines.push("");
   lines.push("Execution:");
   const maxPhases = effective.values.execution.maxParallelPhases;
@@ -24314,7 +24356,7 @@ program2.command("setup").alias("init").description("Create repository configura
   console.log(`  User config:          ~/.config/leanrigor/config.json`);
   console.log(`  Repository policy:    leanrigor.config.json (committed)`);
   console.log(`  Local config:         .leanrigor/config.json (private, never committed)`);
-  console.log(`  Claude defaults:      small=haiku, medium=sonnet, large=opus`);
+  console.log(`  ${claudeDefaultsBlurb()}`);
   printInstallReport(report);
 });
 program2.command("uninstall").description("Remove LeanRigor-owned adapter files from a repository").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--remove-config", "also remove .leanrigor/config.json").action(async ({ root, adapter, removeConfig }) => {
@@ -24355,7 +24397,14 @@ configCmd.command("show").description("Display the effective configuration with 
   if (json2) {
     const provenances = {};
     for (const [key, entry] of effective.provenance) {
-      provenances[key] = { value: entry.value, source: entry.source, constrained: entry.constrained };
+      provenances[key] = {
+        value: entry.value,
+        source: entry.source,
+        constrained: entry.constrained,
+        ...entry.adapterResolution !== void 0 && { adapterResolution: entry.adapterResolution },
+        ...entry.adapterAlias !== void 0 && { adapterAlias: entry.adapterAlias },
+        ...entry.isClaudeAlias !== void 0 && { isClaudeAlias: entry.isClaudeAlias }
+      };
     }
     console.log(JSON.stringify({
       values: effective.values,
@@ -24384,6 +24433,8 @@ configCmd.command("get").description("Read a single configuration value with pro
   console.log(`${configPath}: ${JSON.stringify(entry.value)}`);
   console.log(`  Source: ${entry.source}`);
   if (entry.adapterResolution) console.log(`  Adapter resolution: ${entry.adapterResolution}`);
+  if (entry.adapterAlias) console.log(`  Adapter alias: ${entry.adapterAlias}`);
+  if (entry.isClaudeAlias !== void 0) console.log(`  Is Claude alias: ${entry.isClaudeAlias}`);
   if (entry.constrained) {
     console.log(`  Requested: ${JSON.stringify(entry.requestedValue)}`);
     console.log(`  Constrained by repository policy`);

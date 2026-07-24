@@ -190,9 +190,9 @@ Claude assets available: 2
 Claude CLI: not found on PATH
 
 Model tier resolution:
-  small: haiku (source: config, Claude alias)
-  medium: sonnet (source: config, Claude alias)
-  large: opus (source: config, Claude alias)
+  small: haiku (source: Claude alias fallback)
+  medium: sonnet (source: Claude alias fallback)
+  large: opus (source: Claude alias fallback)
 
 Claude assets installed: 21/21
 Status: current
