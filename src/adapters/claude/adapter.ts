@@ -949,68 +949,68 @@ async function readPackageVersion(): Promise<string> {
   } catch {
     return "unknown";
   }
+}
 
-  async function readPluginManifestVersion(): Promise<string> {
-    try {
-      const pluginManifestPath = fileURLToPath(new URL("../../../.claude-plugin/plugin.json", import.meta.url));
-      const manifest = JSON.parse(await readFile(pluginManifestPath, "utf8")) as { version?: string };
-      return manifest.version ?? "unknown";
-    } catch {
-      return "unknown";
-    }
+async function readPluginManifestVersion(): Promise<string> {
+  try {
+    const pluginManifestPath = fileURLToPath(new URL("../../../.claude-plugin/plugin.json", import.meta.url));
+    const manifest = JSON.parse(await readFile(pluginManifestPath, "utf8")) as { version?: string };
+    return manifest.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function readGitCommit(): Promise<string> {
+  if (process.env.LEANRIGOR_GIT_COMMIT) {
+    return process.env.LEANRIGOR_GIT_COMMIT;
   }
 
-  async function readGitCommit(): Promise<string> {
-    if (process.env.LEANRIGOR_GIT_COMMIT) {
-      return process.env.LEANRIGOR_GIT_COMMIT;
+  try {
+    const { spawnSync } = await import("node:child_process");
+    const result = spawnSync("git", ["-C", packageRoot(), "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
+    if (result.status === 0) {
+      const commit = result.stdout.trim();
+      if (commit.length > 0) return commit;
     }
-
-    try {
-      const { spawnSync } = await import("node:child_process");
-      const result = spawnSync("git", ["-C", packageRoot(), "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
-      if (result.status === 0) {
-        const commit = result.stdout.trim();
-        if (commit.length > 0) return commit;
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      const buildInfoPath = fileURLToPath(new URL("../../../.claude-plugin/build-info.json", import.meta.url));
-      const buildInfo = JSON.parse(await readFile(buildInfoPath, "utf8")) as { gitCommit?: string };
-      return buildInfo.gitCommit ?? "unknown";
-    } catch {
-      return "unknown";
-    }
+  } catch {
+    // ignore
   }
 
-  async function readInstalledPluginInfo(): Promise<{ commit: string; version: string; status: "current" | "version-mismatch" | "unknown" }> {
-    const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
-    if (!pluginRoot) {
-      return { commit: "n/a", version: "n/a", status: "unknown" };
-    }
-
-    let installedVersion = "unknown";
-    let installedCommit = "unknown";
-    try {
-      const manifest = JSON.parse(await readFile(path.join(pluginRoot, "plugin.json"), "utf8")) as { version?: string };
-      installedVersion = manifest.version ?? "unknown";
-    } catch {
-      // ignore
-    }
-
-    try {
-      const buildInfo = JSON.parse(await readFile(path.join(pluginRoot, "build-info.json"), "utf8")) as { gitCommit?: string };
-      installedCommit = buildInfo.gitCommit ?? "unknown";
-    } catch {
-      // ignore
-    }
-
-    const packageVersion = await readPackageVersion();
-    const status = installedVersion === packageVersion ? "current" : "version-mismatch";
-    return { commit: installedCommit, version: installedVersion, status };
+  try {
+    const buildInfoPath = fileURLToPath(new URL("../../../.claude-plugin/build-info.json", import.meta.url));
+    const buildInfo = JSON.parse(await readFile(buildInfoPath, "utf8")) as { gitCommit?: string };
+    return buildInfo.gitCommit ?? "unknown";
+  } catch {
+    return "unknown";
   }
+}
+
+async function readInstalledPluginInfo(): Promise<{ commit: string; version: string; status: "current" | "version-mismatch" | "unknown" }> {
+  const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+  if (!pluginRoot) {
+    return { commit: "n/a", version: "n/a", status: "unknown" };
+  }
+
+  let installedVersion = "unknown";
+  let installedCommit = "unknown";
+  try {
+    const manifest = JSON.parse(await readFile(path.join(pluginRoot, "plugin.json"), "utf8")) as { version?: string };
+    installedVersion = manifest.version ?? "unknown";
+  } catch {
+    // ignore
+  }
+
+  try {
+    const buildInfo = JSON.parse(await readFile(path.join(pluginRoot, "build-info.json"), "utf8")) as { gitCommit?: string };
+    installedCommit = buildInfo.gitCommit ?? "unknown";
+  } catch {
+    // ignore
+  }
+
+  const packageVersion = await readPackageVersion();
+  const status = installedVersion === packageVersion ? "current" : "version-mismatch";
+  return { commit: installedCommit, version: installedVersion, status };
 }
 
 function runtimeSource(): string {

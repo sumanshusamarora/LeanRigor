@@ -69,6 +69,11 @@ collect_cache_paths() {
 
   for base in "${candidates[@]}"; do
     [ -d "$base" ] || continue
+    find "$base" -maxdepth 6 -type f -name "plugin.json" -print 2>/dev/null | while IFS= read -r plugin_manifest; do
+      if grep -Eq '"name"[[:space:]]*:[[:space:]]*"leanrigor"' "$plugin_manifest"; then
+        dirname "$plugin_manifest"
+      fi
+    done
     find "$base" -maxdepth 4 \( -iname '*leanrigor*' -o -iname '*sumanshusamarora*' \) -print 2>/dev/null || true
   done
 }

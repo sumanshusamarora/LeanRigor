@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../package.json" with { type: "json" };
 import marketplace from "../.claude-plugin/marketplace.json" with { type: "json" };
 import plugin from "../.claude-plugin/plugin.json" with { type: "json" };
+import buildInfo from "../.claude-plugin/build-info.json" with { type: "json" };
 import { ClaudeAdapter } from "../src/adapters/claude/adapter.js";
 import { defaultConfig } from "../src/config/defaults.js";
 
@@ -65,6 +66,13 @@ describe("Claude marketplace plugin manifests", () => {
       }
     }
     expect(plugin).not.toHaveProperty("hooks");
+  });
+
+  it("tracks synchronized build metadata for package and plugin versions", () => {
+    expect(buildInfo.packageVersion).toBe(packageJson.version);
+    expect(buildInfo.pluginVersion).toBe(packageJson.version);
+    expect(typeof buildInfo.gitCommit).toBe("string");
+    expect(buildInfo.gitCommit.length).toBeGreaterThan(0);
   });
 
   it("exposes only the concise marketplace command names", async () => {
@@ -321,7 +329,11 @@ describe("Marketplace mode doctor output", () => {
       const text = output.join("\n");
 
       expect(text).toContain("Runtime source:");
+      expect(text).toContain("Git commit:");
       expect(text).toContain("Package version:");
+      expect(text).toContain("Plugin version:");
+      expect(text).toContain("Installed commit/version:");
+      expect(text).toContain("Installed status:");
     });
   });
 

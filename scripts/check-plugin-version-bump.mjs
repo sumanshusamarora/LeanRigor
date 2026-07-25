@@ -29,9 +29,17 @@ function git(args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
 
+function gitSafe(args) {
+  try {
+    return git(args);
+  } catch {
+    return "";
+  }
+}
+
 function listChangedFiles() {
   if (staged) {
-    const out = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]);
+    const out = gitSafe(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
@@ -42,11 +50,11 @@ function listChangedFiles() {
     } catch {
       // best effort; continue with local refs
     }
-    const out = git(["diff", "--name-only", `origin/${baseRef}...HEAD`, "--diff-filter=ACMR"]);
+    const out = gitSafe(["diff", "--name-only", `origin/${baseRef}...HEAD`, "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
-  const out = git(["diff", "--name-only", "HEAD~1..HEAD", "--diff-filter=ACMR"]);
+  const out = gitSafe(["diff", "--name-only", "HEAD~1..HEAD", "--diff-filter=ACMR"]);
   return out ? out.split("\n").filter(Boolean) : [];
 }
 

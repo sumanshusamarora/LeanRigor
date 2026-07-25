@@ -57,7 +57,6 @@ async function main() {
     packageVersion: version,
     pluginVersion: plugin.version,
     gitCommit: gitCommit(),
-    generatedAt: new Date().toISOString(),
   };
 
   const nextPlugin = stableJson(plugin);

@@ -22,7 +22,12 @@ Before tagging or publishing:
 
 1. Confirm the README feature inventory matches the latest `main` branch.
 2. Update `CHANGELOG.md`.
-3. Run:
+3. Ensure versioned plugin metadata is synchronized:
+
+   ```bash
+   npm run version:check
+   ```
+4. Run:
 
    ```bash
    npm ci
@@ -34,22 +39,22 @@ Before tagging or publishing:
    git diff --check
    ```
 
-4. Create and inspect the package:
+5. Create and inspect the package:
 
    ```bash
    npm pack
    tar -tf leanrigor-*.tgz
    ```
 
-5. Install the tarball in a clean environment and verify:
+6. Install the tarball in a clean environment and verify:
    - `leanrigor --help`;
    - project-local Claude initialisation and doctor;
    - marketplace/plugin packaging validation;
    - a disposable-repository workflow smoke;
    - no automatic final commit or push.
-6. Confirm package, plugin manifest, and documentation versions agree.
-7. Record live-provider or platform verification honestly; mark unverified paths as limitations.
-8. Create a signed or otherwise attributable GitHub release with release notes derived from the changelog.
+7. Confirm package, plugin manifest, and documentation versions agree.
+8. Record live-provider or platform verification honestly; mark unverified paths as limitations.
+9. Create a signed or otherwise attributable GitHub release with release notes derived from the changelog.
 
 ## Release blockers
 

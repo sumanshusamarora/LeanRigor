@@ -19931,11 +19931,18 @@ var ClaudeAdapter = class {
   async doctor(root, config2) {
     const output = [];
     const packageVersion = await readPackageVersion();
+    const pluginVersion = await readPluginManifestVersion();
+    const gitCommit = await readGitCommit();
+    const installed = await readInstalledPluginInfo();
     const mode2 = await detectInstallationMode(root);
     output.push(`Installation mode: ${mode2}`);
+    output.push(`Git commit: ${gitCommit}`);
     output.push(`Runtime source: ${runtimeSource()}`);
     output.push(`Package version: ${packageVersion}`);
+    output.push(`Plugin version: ${pluginVersion}`);
     output.push(`Asset version: ${ASSET_VERSION}`);
+    output.push(`Installed commit/version: ${installed.commit}/${installed.version}`);
+    output.push(`Installed status: ${installed.status}`);
     output.push(`Platform: Claude Code`);
     output.push("");
     output.push("Configuration files:");
@@ -20186,6 +20193,57 @@ async function readPackageVersion() {
   } catch {
     return "unknown";
   }
+}
+async function readPluginManifestVersion() {
+  try {
+    const pluginManifestPath = fileURLToPath(new URL("../../../.claude-plugin/plugin.json", import.meta.url));
+    const manifest = JSON.parse(await readFile5(pluginManifestPath, "utf8"));
+    return manifest.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+async function readGitCommit() {
+  if (process.env.LEANRIGOR_GIT_COMMIT) {
+    return process.env.LEANRIGOR_GIT_COMMIT;
+  }
+  try {
+    const { spawnSync } = await import("node:child_process");
+    const result = spawnSync("git", ["-C", packageRoot(), "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
+    if (result.status === 0) {
+      const commit = result.stdout.trim();
+      if (commit.length > 0) return commit;
+    }
+  } catch {
+  }
+  try {
+    const buildInfoPath = fileURLToPath(new URL("../../../.claude-plugin/build-info.json", import.meta.url));
+    const buildInfo = JSON.parse(await readFile5(buildInfoPath, "utf8"));
+    return buildInfo.gitCommit ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+async function readInstalledPluginInfo() {
+  const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+  if (!pluginRoot) {
+    return { commit: "n/a", version: "n/a", status: "unknown" };
+  }
+  let installedVersion = "unknown";
+  let installedCommit = "unknown";
+  try {
+    const manifest = JSON.parse(await readFile5(path6.join(pluginRoot, "plugin.json"), "utf8"));
+    installedVersion = manifest.version ?? "unknown";
+  } catch {
+  }
+  try {
+    const buildInfo = JSON.parse(await readFile5(path6.join(pluginRoot, "build-info.json"), "utf8"));
+    installedCommit = buildInfo.gitCommit ?? "unknown";
+  } catch {
+  }
+  const packageVersion = await readPackageVersion();
+  const status = installedVersion === packageVersion ? "current" : "version-mismatch";
+  return { commit: installedCommit, version: installedVersion, status };
 }
 function runtimeSource() {
   if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) return `\${CLAUDE_PLUGIN_ROOT}/bin/leanrigor (plugin runtime)`;

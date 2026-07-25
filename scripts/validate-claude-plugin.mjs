@@ -125,7 +125,7 @@ if (plugin) {
   }
 
   const cliSource = await readFile(path.join(root, "src", "cli", "index.ts"), "utf8");
-  const cliVersionMatch = cliSource.match(/program\\.name\\("leanrigor"\\)\\.description\\("Adaptive rigor and model routing for AI coding agents"\\)\\.version\\("([^"]+)"\\);/);
+  const cliVersionMatch = cliSource.match(/program\.name\("leanrigor"\)\.description\("Adaptive rigor and model routing for AI coding agents"\)\.version\("([^"]+)"\);/);
   if (!cliVersionMatch) fail("src/cli/index.ts: could not find CLI version declaration");
   if (cliVersionMatch && cliVersionMatch[1] !== packageJson.version) fail("CLI version must match package.json");
   for (const key of ["commands", "agents", "skills", "hooks"]) {

@@ -25,6 +25,12 @@ expose namespaced commands such as `/leanrigor:start` and
 `.leanrigor/config.json` and later `.leanrigor/workflows/`; it does not create
 `.claude/`.
 
+For a full developer reinstall from GitHub main, use:
+
+```bash
+./scripts/dev-refresh-claude-plugin.sh
+```
+
 ## CLI commands
 
 ```bash
@@ -176,7 +182,8 @@ project-local installs. Mode and risk policy select which guidance applies.
 
 `leanrigor doctor --adapter claude` reports:
 
-- LeanRigor CLI version
+- Git commit, package version, plugin version, and asset version
+- Installed commit/version and install status (when running in marketplace mode)
 - Claude CLI availability on PATH
 - Resolved Claude model for each tier (small / medium / large)
 - Each installed asset's status (current / missing / modified / conflict)

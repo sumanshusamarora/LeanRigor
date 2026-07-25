@@ -38,6 +38,7 @@ Prerequisites: Node.js 20 or later, npm, and Git.
 
 ```bash
 npm install
+npm run hooks:install
 npm run typecheck
 npm test
 npm run lint
@@ -79,7 +80,8 @@ For substantial features or architectural changes, open an issue before implemen
 3. Add or update tests.
 4. Update user-facing documentation and the README feature inventory when capability changes.
 5. Keep planned or unverified functionality under Roadmap or Current Limitations.
-6. Run the full local verification set:
+6. If you changed distributable plugin assets, run `npm run version:dev`.
+7. Run the full local verification set:
 
    ```bash
    npm run typecheck
@@ -90,7 +92,7 @@ For substantial features or architectural changes, open an issue before implemen
    git diff --check
    ```
 
-7. Use clear, present-tense commit messages, for example:
+8. Use clear, present-tense commit messages, for example:
 
    ```text
    fix: handle missing config file gracefully
