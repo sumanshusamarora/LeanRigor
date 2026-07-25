@@ -1,36 +1,44 @@
-# Claude Marketplace Plugin
+# Claude Code marketplace plugin
 
-LeanRigor's recommended Claude Code installation path is the native plugin
-marketplace:
+LeanRigor's recommended user installation path is the native Claude Code marketplace plugin.
 
 ```text
 /plugin marketplace add sumanshusamarora/LeanRigor
 /plugin install leanrigor@leanrigor
 ```
 
-The marketplace file is `.claude-plugin/marketplace.json`; the plugin manifest
-is `.claude-plugin/plugin.json`.
+## What gets installed
 
-## Verified Conventions
+The marketplace definition is `.claude-plugin/marketplace.json`; the plugin manifest is `.claude-plugin/plugin.json`.
 
-Current Claude Code documentation says:
+The current manifest exposes:
 
-- `.claude-plugin/marketplace.json` at the repository root defines a marketplace
-  with `name`, `owner`, and `plugins`.
-- `.claude-plugin/plugin.json` defines plugin metadata and component paths.
-- Plugin components live at plugin-root paths, not inside `.claude-plugin/`.
-- Marketplace-installed plugins are copied into Claude's plugin cache and cannot
-  depend on paths outside the plugin root.
-- `${CLAUDE_PLUGIN_ROOT}` resolves to the installed plugin directory.
-- `bin/` executables are added to the Bash tool `PATH` while the plugin is
-  enabled.
-- Hook commands may reference `${CLAUDE_PLUGIN_ROOT}`.
-- User-scope plugin installation is global across projects by default.
-- Root `commands/` and `skills/` entries are user-facing. LeanRigor therefore
-  keeps internal workflow reference skills under `internal-skills/` and shared
-  methodology under `methodology/`.
+```text
+/leanrigor:start
+/leanrigor:init
+/leanrigor:plan
+/leanrigor:status
+/leanrigor:review
+/leanrigor:commit
+```
 
-## Runtime Strategy
+Claude Code namespaces marketplace commands as `/plugin-name:command`, so LeanRigor keeps command segments concise.
+
+Plugin components live at plugin-root paths:
+
+```text
+.claude-plugin/   marketplace and plugin manifests
+commands/         namespaced slash commands
+agents/           read-only triage agent
+plugin-skills/    shared workflow instruction
+methodology/      adaptive engineering methodology
+internal-skills/  internal, non-discovered workflow references
+hooks/            plugin hook configuration and Git protection
+bin/              launcher
+runtime/          bundled CLI runtime
+```
+
+## Runtime strategy
 
 LeanRigor bundles the compiled CLI and dependencies into:
 
@@ -38,158 +46,122 @@ LeanRigor bundles the compiled CLI and dependencies into:
 runtime/leanrigor-cli.js
 ```
 
-Claude commands invoke:
+Commands invoke the launcher through `${CLAUDE_PLUGIN_ROOT}`. The launcher:
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/leanrigor" flow ...
-```
-
-The launcher:
-
-- resolves `${CLAUDE_PLUGIN_ROOT}`;
-- checks that Node is available;
+- resolves the installed plugin root;
+- requires Node.js 20 or later on `PATH`;
 - invokes the bundled runtime;
 - preserves arguments and exit codes;
 - works with paths containing spaces;
-- never loads code from the target repository.
+- does not load executable code from the target repository.
 
-Node.js 20 or newer is required.
+## Global plugin, repository-local state
 
-Current Claude Code marketplace installs expose plugin slash commands with the
-plugin namespace:
-
-```text
-/leanrigor:start
-/leanrigor:plan
-/leanrigor:status
-/leanrigor:review
-/leanrigor:commit
-```
-
-Claude Code namespaces marketplace plugin commands as `/plugin-name:command`.
-LeanRigor therefore keeps the command segment concise. The primary entry point
-is `/leanrigor:start`.
-
-`/leanrigor:start` owns the conversational workflow. Claude starts or resumes
-the active repository workflow, asks for approach/plan approval in plain
-language, advances deterministic transitions internally after approval, and
-renders phase gates, final review, and commit proposal without asking users to
-copy-paste shell commands. `/leanrigor:plan`, `/leanrigor:status`,
-`/leanrigor:review`, and `/leanrigor:commit` inspect or resume the same
-persisted workflow instead of creating duplicates.
-
-The npm/project-local fallback still exposes unqualified commands such as
-`/leanrigor` because it installs command files into the target repository's
-`.claude/commands/` directory.
-
-## Global Versus Local State
-
-Marketplace mode:
+Marketplace installation is global to Claude Code. Workflow state remains local to each repository:
 
 ```text
-Global plugin:
-  commands
-  agents
-  plugin skill
-  methodology
-  hook
-  bundled runtime
-
-Per repository:
-  .leanrigor/config.json
-  .leanrigor/workflows/
+.leanrigor/.gitignore
+.leanrigor/config.json
+.leanrigor/workflows/
+.leanrigor/executions/
 ```
 
-Marketplace mode does not create `.claude/` in the target repository.
+Directories are created only when needed. Marketplace mode does not install LeanRigor command files into the target repository's `.claude/` directory.
 
-Manual/project-local fallback:
+On first use, LeanRigor auto-bootstraps its repository-local state and reports installation/configuration health. No separate CLI init command is required for ordinary marketplace use.
 
-```bash
-npm install -g leanrigor
-leanrigor init --adapter claude
-```
+## Conversational workflow
 
-This fallback installs `.claude/` assets into a specific repository and remains
-supported for users who cannot use Claude's plugin marketplace.
+`/leanrigor:start` is the primary entry point. It starts or resumes the active workflow, presents mode and risk, asks only blocking clarifications, manages approvals, coordinates execution, reports persisted phase gates, advances through integration and final review, and presents a commit proposal without creating the final commit or pushing.
 
-## First Use
-
-On first `/leanrigor:start` use in a repository, the bundled runtime
-creates `.leanrigor/config.json` if it is missing, records safe defaults, and
-detects top-level `AGENTS.md`, `CLAUDE.md`, and `CONTRIBUTING.md` references.
-Workflow files are created under `.leanrigor/workflows/` as needed.
+The other commands inspect or resume the same persisted workflow rather than creating duplicates.
 
 ## Validation
 
-Run:
+From a source checkout:
 
 ```bash
 npm run build
 npm run validate:claude-plugin
 ```
 
-The validator checks manifests, referenced assets, command and agent
-frontmatter, hook paths, methodology references, executable bits, bundled
-runtime presence, path containment, version consistency, and runs
-`claude plugin validate . --strict` when the Claude CLI is available.
+The validator checks:
+
+- marketplace and plugin manifests;
+- component paths and path containment;
+- command and agent frontmatter;
+- workflow and methodology references;
+- hook paths and executable bits;
+- bundled runtime presence;
+- package, plugin, marketplace, CLI, and build-info version consistency;
+- `claude plugin validate . --strict` when Claude CLI is available.
 
 ## Developer refresh
 
-Use the safe refresh helper to fully reinstall from GitHub main without broad
-directory deletion:
+Use the safe refresh helper to reinstall the current GitHub `main` plugin without deleting unrelated Claude configuration:
 
 ```bash
-# Preserve .leanrigor state
+# Preserve repository .leanrigor state
 ./scripts/dev-refresh-claude-plugin.sh
 
-# Also reset this repository runtime state
+# Also reset this repository's LeanRigor runtime state
 ./scripts/dev-refresh-claude-plugin.sh --reset-state
 
-# Preview all actions
+# Preview actions
 ./scripts/dev-refresh-claude-plugin.sh --dry-run
 ```
 
-The script only removes LeanRigor-specific cache entries and LeanRigor-owned
-project-local fallback assets; it never deletes whole `~/.config`, `~/.claude`,
-or repository `.claude/` trees.
+The script removes only LeanRigor-specific cache entries and LeanRigor-owned project-local fallback assets. It never deletes entire `~/.config`, `~/.claude`, or repository `.claude/` trees.
 
-After refresh, run `/leanrigor:init` inside Claude Code.
+After refresh, run `/leanrigor:init` inside Claude Code and restart or reload Claude Code if autocomplete still shows an older command surface.
 
-## Release Procedure
+## Versioning and release preparation
 
-Update the package version once in `package.json`, then run:
+The npm package is currently private and pre-release. Package and plugin versions are synchronized from `package.json`.
 
-```bash
-npm run version:sync
-npm run build
-npm run validate:claude-plugin
-npm test
-npm pack
-```
-
-Keep `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json`, and
-`runtime/leanrigor-cli.js` in sync with that version before publishing a
-marketplace release. Do not publish from a tree where `npm run
-validate:claude-plugin` fails.
-
-For prerelease iteration, use:
+For development iteration:
 
 ```bash
 npm run version:dev
 ```
 
-This bumps `x.y.z-dev.N` to `x.y.z-dev.N+1` and synchronizes all versioned
-plugin manifests.
+For explicit synchronization and verification:
+
+```bash
+npm run version:sync
+npm run version:check
+```
+
+Before any marketplace release:
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run lint
+npm run build
+npm run validate:claude-plugin
+npm pack
+```
+
+Do not promote a release when manifests, runtime, documentation, implementation, and verification evidence disagree.
+
+## Project-local fallback
+
+The npm package is not yet published as a stable public package. Development and pre-release users may build from source, install the generated tarball, and run:
+
+```bash
+leanrigor init --adapter claude --root /path/to/repository
+```
+
+This creates LeanRigor-owned project-local `.claude/` assets and unqualified commands such as `/leanrigor` while preserving unrelated files and shared settings.
 
 ## Limitations
 
-- After marketplace updates, Claude Code may need a plugin refresh, reinstall,
-  or restart before autocomplete drops older command names.
-- Current Claude Code marketplace commands are plugin-namespaced. Use
-  `/leanrigor:start`; use the npm/project-local fallback for unqualified
-  `/leanrigor`.
-- The plugin requires Node on PATH.
-- The plugin remains sequential; parallel agents, worktrees, OpenCode, Codex,
-  and CodeGraph are future work.
-- Per-phase completion gates are implemented in the bundled runtime and exposed
-  through `flow phase-complete`, `flow phase-status`, and `flow repair`.
+- Claude Code may require a plugin refresh, reinstall, or restart after marketplace updates.
+- Commands are plugin-namespaced in marketplace mode.
+- Node.js 20 or later is required.
+- The Claude CLI execution provider is a prototype and live provider smoke testing requires local authentication.
+- Native Claude subagent orchestration is not implemented.
+- Higher coordinator parallelism is not yet promoted as a stable autonomous multi-agent user experience.
+- OpenCode, Codex, and other coding-agent adapters remain roadmap items.

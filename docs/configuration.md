@@ -1,84 +1,233 @@
-# Configuration Reference
+# Configuration reference
 
-Configuration lives in `.leanrigor/config.json`. This document summarizes the
-settings most relevant to methodology and safety. The schema source of truth is
-`config.schema.json`.
+LeanRigor separates **personal provider preferences**, **committed repository policy**, and **private repository-local settings**. The runtime resolves them into one effective configuration and reports the source of important values.
 
-## Workflow
+The TypeScript schemas are authoritative. The generated local-config schema is [`config.schema.json`](../config.schema.json).
 
-- `workflow.defaultMode`: `adaptive`, `fast`, `standard`, or `rigorous`.
-  `adaptive` lets triage and deterministic policy select mode.
-- `workflow.allowUserOverride`: allows user-requested mode changes when they do
-  not bypass mandatory safety escalation.
-- `workflow.automaticTriage`: enables model-backed triage with deterministic
-  fallback.
+## Configuration layers
 
-## Review And Testing
+| Layer | Location | Commit? | Intended contents |
+|---|---|---:|---|
+| Built-in defaults | Runtime | No | Safe defaults for workflow, routing, gates, testing, review, and workspaces |
+| Adapter-derived defaults | Runtime/provider environment | No | Claude aliases and provider-specific model resolution |
+| User preferences | `~/.config/leanrigor/config.json` | No | Personal model mappings, execution preferences, and machine-specific paths |
+| Repository policy | `leanrigor.config.json` | Yes | Team safety policy, minimum tiers, risk paths, validation requirements, and caps |
+| Local configuration | `.leanrigor/config.json` | No | Private full-schema overrides for one repository |
 
-- `review.fast`: default `sanity`.
-- `review.standard`: default `integrated`.
-- `review.rigorous`: default `deep`.
-- `review.highRiskPaths`: default `deep`; may be `specialist`.
-- `testing.bugFixes`: default `regression-required`.
-- `testing.publicApi`: default `contract-required`.
+The central resolver applies files in this order:
 
-## Completion Gate
+```text
+built-in defaults
+→ adapter-derived defaults
+→ user preferences
+→ committed repository policy
+→ local configuration
+→ repository policy constraints re-applied
+```
 
-- `completionGate.requireEvidence`: default `true`.
-- `completionGate.requireValidation`: default `true`.
-- `completionGate.allowSkippedValidation.fast`: default `true`.
-- `completionGate.allowSkippedValidation.standard`: default `false`.
-- `completionGate.allowSkippedValidation.rigorous`: default `false`.
-- `completionGate.maxRepairAttempts`: mode-specific bounded repair budget.
+Repository policy is not a normal last-writer-wins file. It can require stronger minimum tiers, force evidence or validation, and cap parallelism or repair budgets. Local and personal settings cannot weaken those constraints.
 
-## Risk
+Claude model aliases may also be resolved through `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_OPUS_MODEL`. Individual CLI commands may have command-specific flags, but those are not a replacement for the persisted configuration layers above.
 
-- `risk.rigorousPaths`: paths that should escalate review or mode when touched.
-- `risk.protectedPaths`: paths such as `.git/**`, `.env`, and `secrets/**`.
+## Inspect and change configuration
 
-## Execution And Concurrency
+Marketplace users can run:
 
-- `execution.maxParallelPhases`: default `1`. Values above `1` allow the
-  execution coordinator to dispatch multiple scheduler-approved phases when
-  there are no blocking ownership conflicts.
-- `execution.pollIntervalSeconds`: default `5`. Recommended provider polling
-  interval for headless execution loops.
-- `execution.workerTimeoutSeconds`: default `1800`. Maximum worker duration
-  before the coordinator requests cancellation and preserves the workspace for
-  review.
-- `execution.heartbeatGraceSeconds`: default `30`. Grace window for missing
-  provider heartbeats before the coordinator stops refreshing the lease and
-  escalates safely.
-- `execution.workflowLockTimeoutSeconds`: default `30`. Short-lived persistent
-  lock timeout for state mutations.
-- `execution.phaseLeaseTimeoutSeconds`: default `900`. Durable phase lease
-  timeout for future long-running owners.
-- `execution.writeReadConflictsBlock`: default `true`. Treat write/read path
-  overlap as a blocking scheduling conflict.
-- `execution.sensitivePaths`: additional repository-relative path patterns that
-  should conflict broadly during scheduling.
-- `execution.workspaceStrategy`: default `git-worktree`. Use `none` only for
-  explicitly sequential legacy operation.
-- `execution.workspaceRoot`: default `null`, which resolves to
-  `<repository-parent>/.leanrigor-worktrees/<repository-name>/`.
-- `execution.retainCompletedPhaseWorktrees`: default `true`; safe cleanup is
-  conservative and keeps recoverability by default.
-- `execution.retainIntegrationWorktree`: default `true`; the integration
-  workspace is preserved until explicit cleanup.
-- `execution.integrationTransferStrategy`: default and currently only
-  supported value `internal-commit`.
-- `execution.workspaceBranchPrefix`: default `leanrigor`; branch names are
-  sanitized and persisted.
-- `execution.maxWorkspacePathLength`: default `220`.
-- `execution.internalCommitSigning`: default `disabled`; set `git-config` in
-  repositories that require signed internal workflow commits.
+```text
+/leanrigor:init
+```
 
-Built-in sensitive paths include package manifests and lockfiles,
-`tsconfig*.json`, `.git/**`, `.github/**`, `migrations/**`, `schema/**`, and
-`infra/**`.
+CLI users can inspect effective values and provenance:
 
-## Methodology Relationship
+```bash
+leanrigor config show
+leanrigor config show --json
+leanrigor config get execution.maxParallelPhases
+```
 
-Configuration and deterministic policy decide what is required. The shared
-methodology under `methodology/` guides how Claude plans, implements, tests,
-reviews, and records evidence for those requirements.
+Use an explicit scope for mutations:
+
+```bash
+leanrigor config set models.claude.small '"your-model-id"' --scope user
+leanrigor config set execution.maxParallelPhases 2 --scope local
+leanrigor config set safety.requireValidation true --scope repo
+leanrigor config unset models.claude.small --scope user
+```
+
+Repository-policy changes affect every contributor and should be reviewed like code.
+
+## User preferences
+
+`~/.config/leanrigor/config.json` supports personal and machine-specific values such as:
+
+```json
+{
+  "version": 1,
+  "adapter": "claude",
+  "models": {
+    "claude": {
+      "small": "custom-small-model",
+      "medium": "custom-medium-model",
+      "large": "custom-large-model"
+    }
+  },
+  "execution": {
+    "defaultProvider": "claude-cli",
+    "defaultMode": "coordinator",
+    "pollIntervalSeconds": 5,
+    "workerTimeoutSeconds": 1800,
+    "parallelism": 1,
+    "verbosity": "normal"
+  },
+  "paths": {
+    "claudeExecutable": "/path/to/claude",
+    "workspaceRoot": "/path/to/workspaces"
+  }
+}
+```
+
+These values are preferences. A repository policy may impose stronger safety requirements or lower caps.
+
+## Repository policy
+
+`leanrigor.config.json` is the shareable team policy. It must not contain credentials, machine-specific paths, or concrete vendor model IDs.
+
+Example:
+
+```json
+{
+  "version": 1,
+  "workflow": {
+    "defaultMode": "adaptive",
+    "allowUserOverride": true,
+    "automaticTriage": true
+  },
+  "minimumTiers": {
+    "review": "medium"
+  },
+  "safety": {
+    "rigorousPaths": [
+      "auth/**",
+      "migrations/**",
+      "infrastructure/production/**"
+    ],
+    "protectedPaths": [
+      ".git/**",
+      ".env",
+      "secrets/**"
+    ],
+    "requireEvidence": true,
+    "requireValidation": true
+  },
+  "parallelism": {
+    "maxPhases": 2
+  }
+}
+```
+
+Repository policy can govern workflow defaults, portable minimum tiers, routing, risk paths, validation and completion requirements, review depth, testing expectations, task sizing, introspection, triage, Git confirmation, budgets, and maximum parallelism.
+
+## Portable model tiers
+
+LeanRigor policy selects capabilities rather than hard-coded vendor model IDs:
+
+- `small`
+- `medium`
+- `large`
+- `inherit`
+
+Default routing includes:
+
+| Stage | Tier |
+|---|---|
+| Triage and narrow inspection | `small` |
+| Fast implementation | `inherit` |
+| Standard planning and implementation | `medium` |
+| Rigorous planning and implementation | `large` |
+| Integrated review | `medium` |
+| High-risk review | `large` |
+| Commit planning | `small` |
+
+For Claude Code, aliases default to `haiku`, `sonnet`, and `opus`, then resolve through Claude/provider configuration. `inherit` omits an explicit model selection.
+
+## Workflow and triage
+
+Important settings include:
+
+- `workflow.defaultMode`: `adaptive`, `fast`, `standard`, or `rigorous`;
+- `workflow.allowUserOverride`: permits user requests that do not bypass mandatory escalation;
+- `workflow.automaticTriage`: enables model-backed triage with deterministic fallback;
+- `triage.chooseLowestSafeMode`: prefer the least costly safe mode;
+- `triage.requireExplicitRigorousTrigger`: require a defined high-risk reason for Rigorous;
+- `triage.fastRequiresPositiveEvidence`: Fast is not selected merely because no risk was noticed;
+- `triage.fallbackMode`: `standard` or `rigorous` when triage cannot safely resolve.
+
+Model output recommends a mode. Deterministic policy applies the final decision.
+
+## Review, testing, and completion gates
+
+Default review levels:
+
+- `review.fast`: `sanity`;
+- `review.standard`: `integrated`;
+- `review.rigorous`: `deep`;
+- `review.highRiskPaths`: `deep`, optionally `specialist`.
+
+Default testing policy:
+
+- `testing.bugFixes`: `regression-required`;
+- `testing.publicApi`: `contract-required`;
+- `testing.uiCopy`: `optional`.
+
+Completion-gate settings include:
+
+- `completionGate.enabled`;
+- `completionGate.requireEvidence`;
+- `completionGate.requireValidation`;
+- `completionGate.allowSkippedValidation.fast|standard|rigorous`;
+- `completionGate.maxRepairAttempts.fast|standard|rigorous`.
+
+Standard and Rigorous reject skipped validation by default. Fast may accept a documented skipped-validation reason when policy allows it.
+
+## Execution, leases, and workspaces
+
+Important execution settings:
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `execution.maxParallelPhases` | `1` | Maximum scheduler-approved concurrent phases |
+| `execution.pollIntervalSeconds` | `5` | Recommended provider polling interval |
+| `execution.workerTimeoutSeconds` | `1800` | Worker timeout before cancellation/recovery |
+| `execution.heartbeatGraceSeconds` | `30` | Grace window for missing provider heartbeat |
+| `execution.workflowLockTimeoutSeconds` | `30` | Short-lived state mutation lock timeout |
+| `execution.phaseLeaseTimeoutSeconds` | `900` | Durable phase lease timeout |
+| `execution.writeReadConflictsBlock` | `true` | Block write/read ownership overlap |
+| `execution.workspaceStrategy` | `git-worktree` | Isolated workspace strategy |
+| `execution.workspaceRoot` | `null` | Resolve the default external workspace root |
+| `execution.retainCompletedPhaseWorktrees` | `true` | Preserve completed phase worktrees by default |
+| `execution.retainIntegrationWorktree` | `true` | Preserve integration workspace by default |
+| `execution.integrationTransferStrategy` | `internal-commit` | Current controlled transfer strategy |
+| `execution.internalCommitSigning` | `disabled` | Use `git-config` when internal commits must be signed |
+
+Built-in scheduling-sensitive paths include package manifests and lockfiles, `tsconfig*.json`, `.git/**`, `.github/**`, `migrations/**`, `schema/**`, and `infra/**`.
+
+A value above `1` permits the coordinator to dispatch multiple eligible phases only when dependencies, leases, ownership, provider capability, and repository policy allow it. This should not be confused with stable native Claude subagent orchestration, which remains roadmap work.
+
+## Git policy
+
+- `git.autoCommit` defaults to `false` and repository policy only accepts `false`.
+- `git.requireConfirmation` defaults to `true`.
+- `git.commitStyle` may be `conventional` or `plain`.
+
+LeanRigor may create internal mechanical commits on LeanRigor-owned phase and integration branches after completion gates pass. It does not automatically create the final user commit or push.
+
+## Validation and troubleshooting
+
+Use:
+
+```bash
+leanrigor config show --json
+leanrigor doctor --adapter claude --root /path/to/repository
+```
+
+The reports include loaded sources, effective values, provenance where available, active policy constraints, model-tier resolution, and installation warnings. Invalid configuration is rejected through schema validation rather than silently ignored.

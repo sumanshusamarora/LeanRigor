@@ -1,236 +1,221 @@
 # Architecture
 
+## Core boundary
+
+LeanRigor is the workflow and policy control plane for AI coding sessions.
+
+It owns:
+
+- triage, task complexity, workflow risk, and final mode selection;
+- planning and phase DAG generation;
+- approvals and dispatch eligibility;
+- ownership and path-conflict policy;
+- evidence requirements and completion gates;
+- integration ordering and validation requirements;
+- final review, resumability, and audit state.
+
+Execution providers own provider-specific worker launch, process lifecycle, status, heartbeat, timeout, cancellation, and structured results.
+
+Workspace providers may eventually own reusable Git mechanics. LeanRigor retains the LeanRigor-specific coupling between workspace identity, phase ownership, evidence, integration order, combined validation, and user-working-tree safety.
+
 ## Layering
 
-The project is split into three layers:
+The implementation is split into four conceptual layers:
 
-1. **Workflow specification** — methodology, skills, policies, prompts, and schemas.
-2. **Orchestration core** — workflow state, assessment, DAG scheduling, file ownership, validation, Git and commit planning.
-3. **Harness adapters** — Claude Code first; OpenCode later.
+1. **Workflow and methodology** — policies, prompts, schemas, engineering guidance, and mode overlays.
+2. **Deterministic orchestration core** — workflow state, triage policy, approvals, DAG scheduling, leases, evidence gates, persistence, validation, review, and commit planning.
+3. **Workspace and integration substrate** — Git preflight, phase and integration worktrees, internal transfer commits, conflict state, combined validation, recovery, and cleanup.
+4. **Adapters and execution providers** — Claude Code integration first, provider-specific worker launch, status, result collection, and cancellation.
 
-The core never selects vendor-specific model names. It selects capability profiles:
+The core does not depend on hard-coded vendor model IDs. It selects portable capability tiers:
 
 - `small`
 - `medium`
 - `large`
 - `inherit`
 
-Adapters resolve these profiles to actual models.
+Adapters resolve these tiers to provider-specific aliases or concrete models.
 
-## Claude Code plugin installation boundary
+## Deterministic versus prompt-owned responsibilities
 
-The Claude adapter ships two integrations.
+Deterministic code owns:
 
-Marketplace plugin:
+- workflow states and transitions;
+- repository-policy minimums and mandatory escalation;
+- approach and plan approval gates;
+- revision checks, workflow locks, leases, and dependency status;
+- validation records and exit codes;
+- evidence presence and required criterion status;
+- scope/path checks and sensitive-path escalation;
+- repair budgets and final eligibility;
+- integration order and combined-validation identity;
+- no automatic final commit, push, deployment, or destructive production write.
 
-```
-Repository root
-  ├── .claude-plugin/     ← marketplace.json and plugin.json
-  ├── commands/           ← global /leanrigor:start-style commands
-  ├── agents/             ← triage agent
-  ├── plugin-skills/      ← shared workflow skill
-  ├── methodology/        ← shared engineering methodology and mode overlays
-  ├── internal-skills/    ← non-discovered workflow reference skills
-  ├── hooks/              ← hooks.json and protect-git.sh
-  ├── bin/                ← launcher added to Bash PATH
-  └── runtime/            ← bundled CLI runtime
-```
+Prompts and models may help:
 
-Project-local fallback:
+- assess semantics within a bounded contract;
+- propose approaches and plans;
+- implement work through an execution provider or approved manual path;
+- select useful tests;
+- review code and summarise evidence;
+- explain trade-offs and uncertainty.
 
-```
-npm package (dist/adapters/claude/plugin/)
-  ├── commands/          ← installed to .claude/commands/
-  ├── agents/            ← installed to .claude/agents/
-  ├── hooks/             ← installed to .claude/leanrigor/
-  └── leanrigor/          ← shared command reference and methodology copy
+Prompt output cannot override deterministic blockers or narrate a workflow into a state that was not persisted.
 
-Target repository (.claude/)
-  ├── commands/          ← five /leanrigor-* commands
-  ├── agents/            ← leanrigor-triage subagent
-  ├── leanrigor/         ← protect-git.sh, sequential-workflow.md, methodology/
-  └── settings.json      ← hooks configuration
-```
+## Adaptive triage and mode selection
 
-Plugin command, agent, hook, and workflow-reference assets live under
-`src/adapters/claude/plugin/`. Shared engineering methodology lives at the
-repository/package root under `methodology/`. The build step copies
-non-TypeScript plugin assets alongside compiled output; packaged installs also
-include the root methodology directory.
+Automatic triage is enabled by default. The triage path:
 
-Every installed file is tagged with `generated_by: leanrigor | asset_version: N`
-so the installer can safely detect ownership, report conflicts, and determine
-whether a file has been user-modified before removing it during uninstall.
+1. gathers the request, repository policy, repository metadata, detected instruction files, and bounded inspection results;
+2. asks the configured triage provider for a fixed `TriageOutput`;
+3. schema-validates the result;
+4. retries malformed output once;
+5. applies deterministic repository-policy overrides;
+6. falls back to deterministic local triage when provider triage is unavailable or invalid;
+7. persists the model recommendation, final mode, override reason, provider, attempts, warnings, assumptions, and blocking clarification.
 
-Marketplace mode does not copy `.claude/` into target repositories. It keeps
-state in `.leanrigor/` and executes the bundled runtime through
-`${CLAUDE_PLUGIN_ROOT}`.
+Complexity and risk are independent. Fast requires positive evidence of low risk. Rigorous requires an explicit policy trigger such as security, migrations, public contracts, production infrastructure, data integrity, concurrency, destructive operations, or high blast radius.
 
-## Engineering methodology layer
+Default mode intent:
 
-Shared methodology assets live at `methodology/`:
-
-- `core.md` defines universal engineering principles and the deterministic
-  versus prompt-enforcement boundary.
-- `planning.md`, `design.md`, `implementation.md`, `debugging.md`,
-  `testing.md`, `review.md`, `evidence.md`, and `safeguards.md` provide
-  composable step guidance.
-- `modes/fast.md`, `modes/standard.md`, and `modes/rigorous.md` overlay depth
-  expectations without duplicating the full methodology.
-
-Marketplace commands reference the root methodology through
-`plugin-skills/sequential-workflow`. Project-local installs copy the same files
-from the package root into `.claude/leanrigor/methodology/` and reference that
-installed copy. The methodology directory is deliberately not named `skills/`
-so Claude marketplace installs do not expose it as user-facing slash commands.
-
-## Model routing
-
-Automatic triage is enabled by default. For Claude Code, the `small` tier resolves through the `haiku` alias to a concrete model (determined by `ANTHROPIC_DEFAULT_HAIKU_MODEL` or the user's Claude provider). The triage agent is isolated and read-only; it does not replace the model selected for the main session.
-
-Default stage routing:
-
-| Stage | Profile |
+| Mode | Intent |
 |---|---|
-| Triage | small |
-| Narrow repository inspection | small |
-| Blocking-question identification | small |
-| Fast implementation | inherit |
-| Standard planning | medium |
-| Standard implementation | medium |
-| Rigorous planning | large |
-| Rigorous implementation | large |
-| Integrated review | medium |
-| High-risk review | large |
-| Commit planning | small |
+| Fast | Brief inspection, compact plan, targeted validation, diff sanity review. |
+| Standard | Inspected approach, cohesive phased plan, explicit approval, targeted validation, integrated review. |
+| Rigorous | Explicit approach gate, isolated risk boundaries, stronger evidence, broader validation, deep or specialist review where triggered. |
 
-Task complexity does not directly determine workflow rigor. A small authentication change may be rigorous; a difficult read-only investigation may remain standard.
+## Persisted workflow state
 
-## Configuration hierarchy
+Each workflow is stored under:
 
-Configuration precedence is intended to be:
+```text
+.leanrigor/workflows/<workflow-id>.json
+```
 
-1. Built-in defaults.
-2. User-global configuration.
-3. Repository `.leanrigor/config.json`.
-4. Session or command override.
+State is schema-validated, revisioned, and written atomically. State-changing operations:
 
-The first draft implements repository configuration and an environment-variable override path. Global configuration and full merge semantics are planned.
+1. acquire a persistent workflow lock;
+2. reload current state;
+3. verify the expected revision when supplied;
+4. apply one valid transition;
+5. increment the revision once;
+6. write through a temporary file and atomic rename;
+7. release the lock after ownership verification.
 
-Repository configuration should primarily hold team policy. Personal model/provider choices should eventually live in global user configuration.
+The primary lifecycle is:
 
-## Bounded triage
-
-The classifier receives the request, risk policy, repository metadata, changed files, detected instruction documents, and narrow search results where required. It must not scan the entire repository.
-
-The default budget is two triage calls:
-
-1. Initial classification.
-2. One context-enrichment call if required.
-
-If uncertainty remains, the safer adjacent workflow mode is selected.
-
-## Workflow modes
-
-- **Fast** — inspect, implement, targeted validation, diff review, commit proposal.
-- **Standard** — blocking clarification, recommendation, concise plan, implementation, targeted/package validation, integrated review.
-- **Rigorous** — explicit approach gate, risk boundary confirmation, stronger validation, deep or specialist review when triggered.
-
-
-## Triage contract and policy enforcement
-
-The small-model triage agent returns a fixed, schema-validated `TriageOutput`. It recommends but does not execute. Complexity and risk are independent dimensions. Fast mode requires positive evidence of low risk; Rigorous mode requires an explicit high-risk trigger. The orchestrator applies deterministic repository policy after model output and retains both `modelRecommendation` and `finalMode` with an override reason.
-
-Triage output is bounded to one summary, one blocking question, five inspection targets, three escalation reasons, and three assumptions. Inspection requests describe objectives rather than hallucinated filenames. Invalid model output is retried once and then falls back safely.
-
-## Introspection and review policy
-
-A cheap structured preflight is enabled by default for every task. Deep reflection is triggered by material scope expansion, architectural change, repeated failed repairs, integration conflicts, or explicit user request. Reflections are decision records, not exposed chain-of-thought.
-
-Default review policy:
-
-- Fast: final diff sanity check.
-- Standard: one integrated review.
-- Rigorous: deep review, with specialist review where configured.
-- Multi-agent: at least integrated review.
-
-Users may request additional review manually, but configured mandatory safety checks survive a lower-review override.
-
-## Execution graph and ownership
-
-Each phase declares stable IDs, explicit dependency IDs, expected read areas,
-expected write areas, validation commands, and an explicit DAG status. The
-scheduler derives readiness from dependency completion, workflow state, active
-phase leases, ownership conflicts, and `execution.maxParallelPhases`.
-
-This iteration makes the engine parallel-ready but does not launch multiple
-agents. Default `execution.maxParallelPhases` is `1`, so normal execution
-remains sequential.
-
-## Persisted sequential flow
-
-The `leanrigor flow` command group is the first complete end-to-end workflow for
-Claude Code. It stores each workflow at `.leanrigor/workflows/<id>.json` using a
-versioned schema with monotonic `revision` and `updatedAt`. State-changing
-operations acquire a persistent workflow lock, reload current state, verify an
-optional expected revision, apply one transition, increment revision once, and
-persist by temp-file write, fsync where practical, and atomic rename.
-
-The persisted lifecycle is:
-
-`created -> triaging -> awaiting_clarification? -> awaiting_approach_approval? -> planning -> awaiting_plan_approval -> executing -> validating -> reviewing -> awaiting_commit_approval -> completed`
+```text
+created
+→ triaging
+→ awaiting_clarification?
+→ awaiting_approach_approval?
+→ planning
+→ awaiting_plan_approval
+→ executing
+→ validating
+→ reviewing
+→ awaiting_commit_approval
+→ completed
+```
 
 `blocked` and `cancelled` are explicit escape states.
 
-The CLI/state contract is deliberately narrow: LeanRigor records the original
-request, repository root, triage result, approach recommendation, phase plan,
-approvals, phase timestamps, changed files, commands run, validation evidence,
-per-phase completion records, repair attempts, blockers, integrated review
-result, and commit proposal.
-Claude Code performs the actual edits and command execution in the active
-session, then records concise evidence back into state.
+Persisted workflow state includes the original request, repository root, mode, risk, complexity, approvals, plan, phase state, leases, execution records, validation, completion evidence, scope deviations, internal Git evidence, integration state, final review, and commit proposal.
 
-Phases are generated as small functional outcomes rather than file lists. The
-planner validates one primary objective, acyclic dependencies, inspectable
-acceptance criteria, validation expectations, bounded expected areas, and broad
-container phases before presenting the plan for approval.
+## Planning, DAGs, and ownership
 
-During execution, a ready phase is leased to an explicit owner before work
-starts. Each leased/running phase must pass targeted validation and an
-evidence-based completion gate before dependents unlock:
+Plans are explicit DAGs of small functional outcomes rather than file lists. Each phase has:
 
-`planned -> ready -> leased/running -> completion_pending -> completed | needs_repair | needs_review | needs_replan | blocked`
+- a stable ID;
+- one primary objective;
+- explicit dependency IDs;
+- inspectable acceptance criteria;
+- expected read and write areas;
+- validation expectations;
+- mode and risk context.
 
-Completion records persist objective, criterion statuses and evidence, changed
-files, validation outcomes and skipped reasons, scope deviations, assumptions,
-remaining risks, dependent readiness, timestamp, and workflow revision. The
-gate uses deterministic policy for the final decision: missing evidence,
-missing or failed validation, criteria not met, disallowed skipped validation,
-changed files outside expected scope, high-risk path triggers, migration or new
-dependency detection, public contract changes, repair budgets, and dependency
-status override optimistic agent or model judgement.
+The scheduler derives readiness from dependency completion, workflow state, active leases, ownership conflicts, sensitive paths, and `execution.maxParallelPhases`.
 
-Workflow locks protect short state transitions only. Phase leases are durable
-records for future long-running owners and include owner ID, acquisition and
-heartbeat timestamps, expiry, revision at acquisition, and allowed write areas.
-Expired leases are recovered idempotently: no evidence returns to `ready` when
-dependencies remain valid; partial evidence moves to `needs_review`; invalidated
-workflow/dependency state moves to `needs_replan`.
+Path ownership is a conservative scheduling safeguard, not semantic proof. Write/write overlap blocks. Write/read overlap blocks by default. Sensitive shared files conflict broadly. Standard and Rigorous phases without explicit ownership are not parallel eligible.
 
-Ownership conflict detection is conservative. Write/write overlap blocks,
-write/read overlap blocks by default, sensitive shared files block, and missing
-ownership prevents Standard/Rigorous parallel eligibility. Path matching uses
-normalized repository-relative paths and simple `*`/`**` patterns; it is a
-scheduling safeguard, not semantic isolation.
+## Execution coordinator and provider contract
 
-## Git workspace isolation
+The provider-neutral contract is defined by `ExecutionProvider`:
 
-LeanRigor now has a Git substrate for future parallel execution while keeping
-orchestration sequential by default. Workspace setup runs a real Git preflight:
-valid worktree, non-bare repository, readable worktree metadata, current HEAD,
-canonical repository root, original branch or detached-HEAD state, frozen base
-commit, writable LeanRigor workspace root, supported Git worktree operations,
-and no active merge, rebase, cherry-pick, revert, or bisect.
+- `capabilities()`;
+- `dispatch(input)`;
+- `getStatus(handle)`;
+- `collectResult(handle)`;
+- `cancel(handle, reason)`.
+
+The `ExecutionCoordinator` is the single deterministic control layer for provider-driven phase work. It:
+
+1. reads current workflow state;
+2. asks the scheduler for dispatchable phases;
+3. honours `execution.maxParallelPhases` and ownership conflicts;
+4. acquires phase leases;
+5. creates assigned phase worktrees;
+6. dispatches workers through a provider;
+7. persists execution handles and status;
+8. polls workers and refreshes healthy leases;
+9. applies timeout, heartbeat, cancellation, and recovery policy;
+10. collects structured results;
+11. persists validation and completion evidence;
+12. invokes the deterministic completion gate;
+13. creates an internal transfer commit only after the gate passes;
+14. integrates accepted phases in dependency order;
+15. runs combined validation against the current integration head;
+16. advances to final integrated review only when all required conditions pass.
+
+Provider results are evidence, not authority. Process exit alone cannot complete a phase.
+
+Current providers:
+
+- `scripted` — deterministic provider used by disposable real-Git tests; supports success, failure, malformed evidence, timeout, heartbeat loss, unexpected file changes, and other recovery scenarios.
+- `claude-cli` — prototype provider using authenticated Claude Code CLI print mode inside the assigned phase worktree. It requests structured output, persists bounded diagnostic artifacts, supports polling and cancellation, and never commits, pushes, merges, or deploys.
+
+Manual execution remains an explicit fallback. In manual mode, the active coding session may edit only inside the assigned phase workspace and must submit persisted completion evidence.
+
+## Completion gates
+
+A phase lifecycle is:
+
+```text
+planned
+→ ready
+→ leased / running
+→ completion_pending
+→ completed | needs_repair | needs_review | needs_replan | blocked
+```
+
+The completion gate checks:
+
+- required criterion evidence;
+- validation presence, exit status, and permitted skip reasons;
+- dependency state;
+- changed files and Git evidence;
+- scope deviations and expected areas;
+- high-risk paths and newly detected risk triggers;
+- public contracts, migrations, and new dependencies;
+- remaining risks;
+- repair budgets;
+- active lease and workspace identity.
+
+The gate returns one of:
+
+| Decision | Meaning |
+|---|---|
+| `completed` | Evidence and validation satisfy the approved phase contract. |
+| `needs_repair` | A bounded repair can address incomplete or failed work. |
+| `needs_review` | Evidence is ambiguous or specialist judgement is required. |
+| `needs_replan` | Scope, assumptions, contracts, or dependencies materially changed. |
+| `blocked` | Safe progress requires external action or a repair budget is exhausted. |
+
+Dependent phases unlock only after the prerequisite gate returns `completed`.
+
+## Git workspace and integration architecture
+
+Workspace setup runs a real Git preflight and records the canonical repository root, frozen base commit, original branch or detached-HEAD state, worktree support, active Git operations, and workspace-root safety.
 
 The default workspace root is outside the source tree:
 
@@ -238,61 +223,118 @@ The default workspace root is outside the source tree:
 <repository-parent>/.leanrigor-worktrees/<repository-name>/<workflow-id>/
 ```
 
-Each workflow gets one integration worktree from the frozen base commit and one
-dedicated integration branch:
+Each workflow has one integration worktree and branch:
 
 ```text
 leanrigor/<workflow-short-id>/integration
 ```
 
-Each leased phase may get one isolated phase worktree and phase branch:
+Each active phase may have one isolated phase worktree and branch:
 
 ```text
 leanrigor/<workflow-short-id>/<phase-id>
 ```
 
-Names are sanitized, bounded, persisted, and collision-checked. LeanRigor
-stores sidecar ownership metadata and never deletes a worktree only because its
-name looks familiar.
+Names are sanitized, bounded, persisted, collision-checked, and coupled to ownership metadata. LeanRigor never deletes a worktree merely because its path or branch resembles a LeanRigor name.
 
-Transfer strategy is `internal-commit`. After the phase completion gate passes,
-LeanRigor stages relevant tracked and untracked changes in the phase worktree,
-excludes ignored files by default, rejects unsafe symlink escapes, records a
-stable diff hash, and creates an internal commit on the LeanRigor-owned phase
-branch. Internal commits are not pushed and are not presented as the final user
-commit. Integration cherry-picks approved internal commits into the integration
-worktree. Textual conflicts are detected, persisted, and left inspectable; no
-semantic merge or ours/theirs policy is attempted.
+After a completion gate passes, LeanRigor records changed and relevant untracked files, diff hash, binary and file-mode indicators, workspace identity, base commit, and workspace head. It then creates an internal mechanical commit on the LeanRigor-owned phase branch.
 
-Combined validation runs with the integration worktree as `cwd`. Final
-integrated review is eligible only when all completed phases are integrated and
-the current integration head has passing combined validation.
+Integration cherry-picks accepted phase commits into the integration worktree in dependency order. Textual conflicts are persisted and left for explicit repair. LeanRigor does not choose `ours` or `theirs`, rebase the user's branch, touch the user's index or stash, or push any branch.
 
-This implementation does not add parallel agents, OpenCode, Codex, or
-CodeGraph.
+Combined validation runs with the integration worktree as `cwd` and is valid only for the recorded integration head. Final integrated review requires all completed phases to be integrated and the current integration head to have passing combined validation.
+
+## Configuration hierarchy
+
+LeanRigor separates committed team policy from personal and local provider choices:
+
+| Layer | Location | Purpose |
+|---|---|---|
+| User preferences | `~/.config/leanrigor/config.json` | Personal defaults and concrete model choices. |
+| Repository policy | `leanrigor.config.json` | Committed safety policy, minimum tiers, and team constraints. |
+| Local overrides | `.leanrigor/config.json` | Private repository-specific settings and concrete provider values. |
+| Runtime state | `.leanrigor/workflows/` | Persisted workflows and audit evidence. |
+
+The central resolver applies:
+
+```text
+built-in defaults
+→ adapter-derived defaults
+→ user preferences
+→ committed repository policy
+→ local configuration
+→ repository-policy constraints re-applied
+```
+
+Repository policy minimums, mandatory gates, and caps cannot be weakened by personal or local settings. Repository policy uses portable model tiers; adapters and personal configuration resolve them to provider-specific models. Claude aliases may also resolve through the standard `ANTHROPIC_DEFAULT_*` environment variables.
+
+## Claude Code integration boundary
+
+LeanRigor ships two Claude Code integration paths.
+
+### Marketplace plugin
+
+```text
+Repository root
+  ├── .claude-plugin/     marketplace and plugin manifests
+  ├── commands/           namespaced marketplace commands
+  ├── agents/             read-only triage agent
+  ├── plugin-skills/      shared workflow skill
+  ├── methodology/        engineering methodology and mode overlays
+  ├── internal-skills/    non-discovered workflow references
+  ├── hooks/              plugin hooks and Git protection
+  ├── bin/                launcher
+  └── runtime/            bundled CLI runtime
+```
+
+Marketplace installation is global to Claude Code. The plugin runtime auto-bootstraps repository-local LeanRigor state on first use. It does not install project-local command files into the target repository.
+
+### Project-local fallback
+
+Source or future npm installation can run:
+
+```bash
+leanrigor init --adapter claude --root /path/to/repository
+```
+
+This installs LeanRigor-owned `.claude/` commands, agent, methodology references, hook script, and shared settings entries. Installation is repeat-safe, preserves unrelated files and settings, and replaces modified LeanRigor-owned files only when explicitly requested.
+
+## Engineering methodology
+
+Shared methodology lives under `methodology/`:
+
+- `core.md` — universal principles and deterministic/prompt boundary;
+- `planning.md`, `design.md`, `implementation.md`, `debugging.md`, `testing.md`, `review.md`, `evidence.md`, and `safeguards.md` — composable step guidance;
+- `modes/fast.md`, `modes/standard.md`, and `modes/rigorous.md` — proportional depth overlays.
+
+The workflow loads the core methodology, the selected mode overlay, and only the domain files relevant to the current step. Methodology improves semantic quality; deterministic state and gates remain authoritative.
 
 ## Safety boundaries
 
-The framework prepares but does not automatically execute commits. Pushes, deployments, production writes, destructive commands, secret handling, and history rewriting require explicit external approval and adapter enforcement.
+LeanRigor does not automatically:
 
-## Backlog
+- create the final user commit;
+- push;
+- deploy;
+- perform destructive production writes;
+- resolve textual conflicts through `ours` or `theirs`;
+- persist hidden chain of thought.
 
-1. Parallel phase agent orchestration
-2. Integrated conflict-repair and semantic merge workflow
-3. Optional CodeGraph inspection provider
-4. OpenCode adapter
-5. Codex adapter
+Internal commits are allowed only on LeanRigor-owned branches for controlled transfer and validation. User approvals remain explicit where required.
 
-## Model-backed triage runtime
+## Current limitations and roadmap
 
-The CLI triage path now uses the following sequence:
+Implemented but experimental or not yet stable as a broad user-facing capability:
 
-1. Resolve the configured `routing.triage` capability profile through the active adapter.
-2. Invoke the Claude CLI in bounded non-interactive mode (`--max-turns 1`) with write and shell tools disabled.
-3. Parse either direct JSON or the Claude JSON result envelope.
-4. Validate the result against `TriageOutput`.
-5. Apply deterministic repository-policy overrides.
-6. Retry once when output is malformed or schema-invalid.
-7. Fall back to the local deterministic classifier when both attempts fail or automatic triage is disabled.
+- Claude CLI provider execution;
+- provider-driven higher parallelism;
+- marketplace hook behaviour across all Claude Code versions and operating systems.
 
-The model recommendation is never the final safety authority. The persisted workflow records the provider, resolved model, number of attempts, fallback source, and warnings for auditability.
+Planned:
+
+1. native Claude phase-worker/subagent orchestration;
+2. semantic conflict-repair workflow;
+3. additional provider and coding-agent adapters, including OpenCode and Codex;
+4. cross-platform CI and release automation;
+5. reproducible workflow-quality, latency, and token-use benchmarks.
+
+Roadmap items must remain labelled as planned until verified in implementation and tests.
