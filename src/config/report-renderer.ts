@@ -16,25 +16,22 @@ export function renderInitReport(report: InitReport): string {
   lines.push("=== LeanRigor Configuration ===");
   lines.push("");
 
-  // --- Installation mode header ---
   lines.push(`Installation mode: ${report.installationMode}`);
   lines.push(`Runtime source: ${report.runtimeSource}`);
   lines.push(`Plug${report.isMarketplace ? "in" : "Package"} version: ${report.pluginVersion}`);
   lines.push(`Asset version: ${report.assetVersion}`);
   lines.push("");
 
-  // --- Shadowing warning (marketplace mode only) ---
   if (report.shadowing?.detected) {
     lines.push("⚠ Legacy project-local fallback assets detected:");
     lines.push("Status: shadowing risk — these may shadow marketplace plugin commands/agents");
     for (const asset of report.shadowing.assets) {
       lines.push(`  ${asset.path} (${asset.status})`);
     }
-    lines.push("Recommended: leanrigor cleanup --adapter claude --project-local-only --dry-run");
+    lines.push("Recommended: leanrigor cleanup --adapter claude --project-local-only");
     lines.push("");
   }
 
-  // --- Bootstrap summary (if bootstrapping ran before this report) ---
   if (report.bootstrap?.bootstrapped) {
     lines.push("LeanRigor project bootstrap completed.");
     const parts: string[] = [];
@@ -45,18 +42,13 @@ export function renderInitReport(report: InitReport): string {
     lines.push("");
   }
 
-  // --- Configuration files ---
   renderConfigFiles(report, lines);
+  lines.push(report.gitignore.message);
 
-  // --- Gitignore ---
-  lines.push(`.leanrigor/.gitignore: ${report.gitignore.message}`);
-
-  // --- Model tiers ---
   lines.push("");
   lines.push("Model tier resolution:");
   lines.push(renderModelTable(report.models));
 
-  // --- Execution ---
   if (Object.keys(report.execution).length > 0) {
     lines.push("");
     lines.push("Execution:");
@@ -66,12 +58,10 @@ export function renderInitReport(report: InitReport): string {
     }
   }
 
-  // --- Shared settings ---
   lines.push("");
   lines.push("Shared configuration:");
   lines.push(renderSettingsState(report.settings, report.isMarketplace));
 
-  // --- Asset drift ---
   lines.push("");
   lines.push("LeanRigor-managed assets:");
   if (report.isMarketplace) {
@@ -97,11 +87,7 @@ export function renderInitReport(report: InitReport): string {
 
     if (report.assets.missing.length > 0) {
       lines.push("");
-      if (report.isMarketplace) {
-        lines.push("Missing assets (will be repaired automatically on next command):");
-      } else {
-        lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
-      }
+      lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
       for (const f of report.assets.missing) {
         lines.push(`  ${f}`);
       }
@@ -124,7 +110,6 @@ export function renderInitReport(report: InitReport): string {
     }
   }
 
-  // --- Constraints ---
   if (report.constraints.length > 0) {
     lines.push("");
     lines.push("Constraints (repository policy):");
@@ -133,7 +118,6 @@ export function renderInitReport(report: InitReport): string {
     }
   }
 
-  // --- Warnings ---
   if (report.warnings.length > 0) {
     lines.push("");
     lines.push("Warnings:");
@@ -142,7 +126,6 @@ export function renderInitReport(report: InitReport): string {
     }
   }
 
-  // --- Valid examples ---
   lines.push("");
   lines.push("Configuration commands:");
   lines.push("  Show effective config: leanrigor config show");
@@ -156,10 +139,6 @@ export function renderInitReport(report: InitReport): string {
 
   return lines.join("\n");
 }
-
-// ---------------------------------------------------------------------------
-// Section renderers
-// ---------------------------------------------------------------------------
 
 function renderConfigFiles(report: InitReport, lines: string[]): void {
   lines.push("Configuration files:");
@@ -182,9 +161,7 @@ function renderConfigFiles(report: InitReport, lines: string[]): void {
   }
 }
 
-function renderModelTable(
-  models: InitReport["models"],
-): string {
+function renderModelTable(models: InitReport["models"]): string {
   const rows = models.map((m) => ({
     tier: m.tier,
     alias: m.adapterAlias ?? "—",
@@ -198,16 +175,10 @@ function renderModelTable(
   const sourceWidth = Math.max(6, ...rows.map((r) => r.source.length));
 
   const pad = (s: string, w: number) => s.padEnd(w);
-
-  const header =
-    `${pad("Tier", tierWidth)} | ${pad("Claude alias", aliasWidth)} | ${pad("Resolved model", modelWidth)} | Source`;
+  const header = `${pad("Tier", tierWidth)} | ${pad("Claude alias", aliasWidth)} | ${pad("Resolved model", modelWidth)} | Source`;
   const sep = `${"—".repeat(tierWidth)}—|—${"—".repeat(aliasWidth)}—|—${"—".repeat(modelWidth)}—|—${"—".repeat(sourceWidth)}`;
-
   const body = rows
-    .map(
-      (r) =>
-        `${pad(r.tier, tierWidth)} | ${pad(r.alias, aliasWidth)} | ${pad(r.model, modelWidth)} | ${r.source}`,
-    )
+    .map((r) => `${pad(r.tier, tierWidth)} | ${pad(r.alias, aliasWidth)} | ${pad(r.model, modelWidth)} | ${r.source}`)
     .join("\n");
 
   return [header, sep, body].join("\n");
