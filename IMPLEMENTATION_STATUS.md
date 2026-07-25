@@ -14,7 +14,7 @@ This document describes the current `main` branch. It distinguishes implemented 
 - At most one blocking clarification at a time.
 - Explicit approach and plan approval where required.
 - Portable model tiers: `small`, `medium`, `large`, and `inherit`.
-- User preferences, committed repository policy, local configuration, provenance reporting, and policy constraints that cannot be weakened by personal or local settings.
+- User model mappings and selected execution preferences, committed repository policy, local configuration, provenance reporting, and enforced policy constraints that cannot be weakened by personal or local settings.
 
 ### Persisted workflow state
 
@@ -115,6 +115,8 @@ Higher parallelism is not yet promoted as a stable autonomous multi-agent Claude
 
 ## Current limitations
 
+- The user-config schema currently accepts `execution.defaultProvider`, `execution.defaultMode`, `execution.verbosity`, and `paths.claudeExecutable`, but the central effective-config resolver does not yet apply those fields. Use explicit provider/command options until that wiring is implemented.
+- Repository-policy `minimumTiers` enforcement currently applies to triage. Other workflow stages should use committed `routing` requirements; `minimumTiers.planning`, `minimumTiers.implementation`, `minimumTiers.review`, and `modelFallback` are schema-valid but not yet applied by the central merger.
 - Claude Code is the only supported coding-agent adapter.
 - The npm package is private and unpublished; source installation is for development and pre-release testing.
 - Native Claude subagent orchestration is not implemented.

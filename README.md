@@ -51,7 +51,7 @@ Then, from any repository:
 /leanrigor:start Add an optional API field and update its consumer
 ```
 
-LeanRigor creates repository-local state under `.leanrigor/`, presents the selected mode and approvals conversationally, coordinates phased work, requires completion evidence, runs final integrated review, and proposes commits without creating the final user commit or pushing.
+LeanRigor creates repository-local state under `.leanrigor/`, presents the selected mode and approvals conversationally, coordinates phased work, requires completion evidence, runs final integrated review, and proposes commits without creating the final user comit or pushing.
 
 Other useful commands:
 
@@ -68,7 +68,7 @@ Other useful commands:
 
 ## Why LeanRigor exists
 
-[Superpowers](https://github.com/obra/superpowers) shows how much better coding agents can perform with disciplined brainstorming, planning, testing, verification, and review.
+[Superpowers](https://github.com/obra/superpowers) shows how much better coding agents can perform with disciplined brainstorming, planning, testing,verification, and review.
 
 In my own use, however, applying a comprehensive workflow to every task could make small changes take roughly **5â€“20Ã— longer than working with the coding agent directly**. That is a personal observation from my workflows, not a controlled benchmark.
 
@@ -82,7 +82,7 @@ A documentation typo should not be treated like a production migration. A produc
 
 ### LeanRigor and Superpowers
 
-Both projects value planning, testing, verification, and review. They make different product choices about **when** those practices apply, **how deeply** they apply, and **who decides that work is complete**.
+Both projects value planning, testing,verification, and review. They make different product choices about **when** those practices apply, **how deeply** they apply, and **who decides that work is complete**.
 
 | Area | Superpowers | LeanRigor |
 |---|---|---|
@@ -170,117 +170,4 @@ A provider process exiting successfully does **not** complete a phase. LeanRigor
 - Native marketplace commands and auto-bootstrap on first use.
 - Project-local fallback for development and repositories that need local `.claude/` assets.
 - Read-only triage agent.
-- Git-protection hook blocking automatic `git commit`, `git push`, and `git reset --hard` in Claude-controlled execution paths.
-- Installation and version diagnostics through `/leanrigor:init` and `leanrigor doctor`.
-
-See [Implementation status](IMPLEMENTATION_STATUS.md) for the detailed verification inventory.
-
-## Safety boundaries
-
-LeanRigor deliberately does **not** automatically:
-
-- create the final user commit;
-- push to a remote;
-- deploy;
-- perform destructive production writes;
-- resolve integration conflicts by choosing `ours` or `theirs`;
-- persist hidden chain of thought.
-
-Internal mechanical commits may be created only on LeanRigor-owned phase and integration branches to support controlled transfer and validation. They are not the final user commit and are never pushed automatically.
-
-## Project status
-
-> [!IMPORTANT]
-> **LeanRigor is early-stage and actively evolving.**
->
-> Claude Code is the first supported coding-agent integration. The workflow engine, deterministic policy, evidence gates, isolated Git workspaces, and provider boundary are implemented, but several capabilities remain experimental or planned.
-
-Known limitations:
-
-- Claude Code is the only supported coding-agent integration today.
-- The Claude CLI execution provider is a prototype and requires an authenticated local Claude CLI for live smoke testing.
-- Native Claude subagent orchestration is not yet integrated.
-- Scheduling and the coordinator are parallel-capable, but autonomous multi-agent execution is not yet presented as a stable user-facing capability.
-- Textual integration conflicts are detected and preserved; semantic conflict repair is not implemented.
-- OpenCode, Codex, Cursor, Copilot, and other adapters remain roadmap items.
-- The npm package remains private and unpublished; source installation is for development and pre-release testing.
-
-## Configuration
-
-LeanRigor separates team policy from personal provider choices:
-
-| Layer | Location | Intended use |
-|---|---|---|
-| User preferences | `~/.config/leanrigor/config.json` | Personal defaults and concrete model choices |
-| Repository policy | `leanrigor.config.json` | Committed team safety policy and minimum capability tiers |
-| Local overrides | `.leanrigor/config.json` | Private repository-specific values and runtime state references |
-| Runtime state | `.leanrigor/workflows/` | Persisted workflows, evidence, gates, and resumability |
-
-The central resolver applies built-in and adapter defaults, then user preferences, repository policy, and local configuration before re-applying repository-policy constraints. Personal and local settings cannot weaken committed safety minimums or caps. Claude model aliases may also resolve through the standard `ANTHROPIC_DEFAULT_*` environment variables.
-
-See the [configuration reference](docs/configuration.md).
-
-<details>
-<summary><strong>Install from source or create project-local Claude assets</strong></summary>
-
-Node.js 20 or later is required.
-
-```bash
-npm install
-npm run build
-npm pack
-npm install -g ./leanrigor-$(node -p "require('./package.json').version").tgz
-
-leanrigor init --adapter claude --root /path/to/repository
-leanrigor doctor --adapter claude --root /path/to/repository
-```
-
-This path is intended for development and pre-release testing. It creates LeanRigor-owned project-local `.claude/` assets while preserving unrelated user files.
-
-</details>
-
-## Documentation
-
-| Start here | Deep dives |
-|---|---|
-| [Product rationale](PRODUCT.md) | [Architecture](ARCHITECTURE.md) |
-| [Setup](docs/setup.md) | [Workflow and completion gates](docs/workflow.md) |
-| [Claude Code adapter](docs/claude-code.md) | [Engineering methodology](docs/methodology.md) |
-| [Claude marketplace plugin](docs/claude-marketplace.md) | [Configuration reference](docs/configuration.md) |
-| [Current implementation status](IMPLEMENTATION_STATUS.md) | [Contributor architecture](docs/contributor-architecture.md) |
-| [Support](SUPPORT.md) | [Security](SECURITY.md) |
-| [Contributing](CONTRIBUTING.md) | [Governance](GOVERNANCE.md) and [releasing](RELEASING.md) |
-
-## Contributing
-
-This is only the beginning. Pull requests, issue reports, architecture critiques, and improvement ideas are welcomeâ€”not only code.
-
-Useful contributions include:
-
-- real-world Fast, Standard, and Rigorous classification examples;
-- onboarding, README, examples, and documentation improvements;
-- provider and coding-agent adapters;
-- Windows and cross-platform testing;
-- workflow benchmarks and reproducible performance evidence;
-- execution, workspace, and integration safety tests;
-- simpler reusable alternatives to custom infrastructure.
-
-Found a weak assumption or unnecessary piece of complexity? Please open an issue. **LeanRigor should improve through evidence, not founder conviction.**
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [contributor architecture guide](docs/contributor-architecture.md) before changing workflow state, policy, execution, or Git integration.
-
-## Roadmap
-
-Near-term themes include:
-
-- native Claude phase-worker orchestration;
-- integrated semantic conflict repair;
-- additional coding-agent and execution-provider adapters;
-- cross-platform CI and release automation;
-- reproducible workflow-quality, latency, and token-use benchmarks.
-
-Roadmap items are not presented as implemented capabilities. Track and discuss them through GitHub issues.
-
-## License
-
-LeanRigor is released under the [MIT License](LICENSE).
+- Git-protection hook blocking automatic `git commit`, `git push`, and `git reset --hard` Šr6ÆVFRÖ6öçG&öÆÆVBW†V7WF–öâF‡2à¢Ò–ç7FÆÆF–öâæBfW'6–öâF–væ÷7F–72F‡&÷Vv‚öÆVç&–v÷#¦–æ—FæBÆVç&–v÷"Fö7F÷&à ¥6VR´–×ÆVÖVçFF–öâ7FGW5Ò„”ÕÄTÔTåDD”ôåõ5DEU2æÖB’f÷"F†RFWF–ÆVBfW&–f–6F–öâ–çfVçF÷'’à ¢226fWG’&÷VæF&–W0 ¤ÆVå&–v÷"FVÆ–&W&FVÇ’FöW2¢¦æ÷B¢¢WFöÖF–6ÆÇ“  ¢Ò7&VFRF†Rf–æÂW6W"6öÖÖ—C°¢ÒW6‚Fò&VÖ÷FS°¢ÒFWÆ÷“°¢ÒW&f÷&ÒFW7G'V7F—fR&öGV7F–öâw&—FW3°¢Ò&W6öÇfR–çFVw&F–öâ6öæfÆ–7G2'’6†ö÷6–ær÷W'6÷"F†V—'6°¢ÒW'6—7B†–FFVâ6†–âöbF†÷Vv‡Bà ¤–çFW&æÂÖV6†æ–6Â6öÖÖ—G2Ö’&R7&VFVBöæÇ’öâÆVå&–v÷"Ö÷væVB†6RæB–çFVw&F–öâ'&æ6†W2Fò7W÷'B6öçG&öÆÆVBG&ç6fW"æBfÆ–FF–öââF†W’&Ræ÷BF†Rf–æÂW6W"6öÖÖ—BæB&RæWfW"W6†VBWFöÖF–6ÆÇ’à ¢22&ö¦V7B7FGW0 £â²”Õõ%DåEĞ£â¢¤ÆVå&–v÷"—2V&Ç’×7FvRæB7F—fVÇ’WföÇf–ærâ¢ £à£â6ÆVFR6öFR—2F†Rf—'7B7W÷'FVB6öF–ærÖvVçB–çFVw&F–öââF†Rv÷&¶fÆ÷rVæv–æRÂFWFW&Ö–æ—7F–2öÆ–7’ÂWf–FVæ6RvFW2Â—6öÆFVBv—Bv÷&·76W2ÂæB&÷f–FW"&÷VæF'’&R–×ÆVÖVçFVBÂ'WB6WfW&Â6&–Æ—F–W2&VÖ–âW‡W&–ÖVçFÂ÷"ÆææVBà ¤¶æ÷vâÆ–Ö—FF–öç3  ¢Ò6ÆVFR6öFR—2F†RöæÇ’7W÷'FVB6öF–ærÖvVçB–çFVw&F–öâFöF’à¢ÒF†R6ÆVFR4Ä’W†V7WF–öâ&÷f–FW"—2&÷F÷G—RæB&WV—&W2âWF†VçF–6FVBÆö6Â6ÆVFR4Ä’f÷"Æ—fR6Öö¶RFW7F–ærà¢ÒæF—fR6ÆVFR7V&vVçB÷&6†W7G&F–öâ—2æ÷B–WB–çFVw&FVBà¢Ò66†VGVÆ–æræBF†R6ö÷&F–æF÷"&R&ÆÆVÂÖ6&ÆRÂ'WBWFöæöÖ÷W2×VÇF’ÖvVçBW†V7WF–öâ—2æ÷B–WB&W6VçFVB27F&ÆRW6W"Öf6–ær6&–Æ—G’à¢ÒFW‡GVÂ–çFVw&F–öâ6öæfÆ–7G2&RFWFV7FVBæB&W6W'fVC²6VÖçF–26öæfÆ–7B&W—"—2æ÷B–×ÆVÖVçFVBà¢Ò÷Vä6öFRÂ6öFW‚Â7W'6÷"Â6÷–Æ÷BÂæB÷F†W"FFW'2&VÖ–â&öFÖ—FV×2à¢ÒF†RçÒ6¶vR&VÖ–ç2&—fFRæBVçV&Æ—6†VC²6÷W&6R–ç7FÆÆF–öâ—2f÷"FWfVÆ÷ÖVçBæB&R×&VÆV6RFW7F–ærà ¢226öæf–wW&F–öà ¤ÆVå&–v÷"6W&FW2FVÒöÆ–7’g&öÒW'6öæÂ&÷f–FW"6†ö–6W3  §ÂÆ–W"ÂÆö6F–öâÂ–çFVæFVBW6RÀ§ÂÒÒ×ÂÒÒ×ÂÒÒ×À§ÂW6W"&VfW&Væ6W2Ââòæ6öæf–röÆVç&–v÷"ö6öæf–ræ§6öæÂW'6öæÂFVfVÇG2æB6öæ7&WFRÖöFVÂ6†ö–6W2À§Â&W÷6—F÷'’öÆ–7’ÂÆVç&–v÷"æ6öæf–ræ§6öæÂ6öÖÖ—GFVBFVÒ6fWG’öÆ–7’Â÷'F&ÆR&÷WF–ær&WV—&VÖVçG2ÂæB62À§ÂÆö6Â÷fW'&–FW2ÂæÆVç&–v÷"ö6öæf–ræ§6öæÂ&—fFR&W÷6—F÷'’×7V6–f–2fÇVW2æB'VçF–ÖR7FFR&VfW&Væ6W2À§Â'VçF–ÖR7FFRÂæÆVç&–v÷"÷v÷&¶fÆ÷w2öÂW'6—7FVBv÷&¶fÆ÷w2ÂWf–FVæ6RÂvFW2ÂæB&W7VÖ&–Æ—G’À ¥F†R6VçG&Â&W6öÇfW"Æ–W2'V–ÇBÖ–âæBFFW"FVfVÇG2ÂF†VâW6W"&VfW&Væ6W2Â&W÷6—F÷'’öÆ–7’ÂæBÆö6Â6öæf–wW&F–öâ&Vf÷&R&RÖÇ––ær&W÷6—F÷'’×öÆ–7’6öç7G&–çG2âW'6öæÂæBÆö6Â6WGF–æw26ææ÷BvV¶Vâ6öÖÖ—GFVB6fWG’Ö–æ–×V×2÷"62â6ÆVFRÖöFVÂÆ–6W2Ö’Ç6ò&W6öÇfRF‡&÷Vv‚F†R7FæF&BåD…$õ”5ôDTdTÅEò¦Vçf—&öæÖVçBf&–&ÆW2à ¥6VRF†R¶6öæf–wW&F–öâ&VfW&Væ6UÒ†Fö72ö6öæf–wW&F–öâæÖB’à £ÆFWF–Ç3à£Ç7VÖÖ'“ãÇ7G&öæsä–ç7FÆÂg&öÒ6÷W&6R÷"7&VFR&ö¦V7BÖÆö6Â6ÆVFR76WG3Â÷7G&öæsãÂ÷7VÖÖ'“à ¤æöFRæ§2#÷"ÆFW"—2&WV—&VBà ¦&6€¦çÒ–ç7FÆÀ¦çÒ'Vâ'V–Æ@¦çÒ6°¦çÒ–ç7FÆÂÖrâöÆVç&–v÷"ÒB†æöFR×'&WV—&R‚râ÷6¶vRæ§6öâr’çfW'6–öâ"’çFw  ¦ÆVç&–v÷"–æ—BÒÖFFW"6ÆVFRÒ×&ö÷B÷F‚÷Fò÷&W÷6—F÷'¦ÆVç&–v÷"Fö7F÷"ÒÖFFW"6ÆVFRÒ×&ö÷B÷F‚÷Fò÷&W÷6—F÷'¦  ¥F†—2F‚—2–çFVæFVBf÷"FWfVÆ÷ÖVçBæB&R×&VÆV6RFW7F–ærâ—B7&VFW2ÆVå&–v÷"Ö÷væVB&ö¦V7BÖÆö6Âæ6ÆVFRö76WG2v†–ÆR&W6W'f–ærVç&VÆFVBW6W"f–ÆW2à £ÂöFWF–Ç3à ¢22Fö7VÖVçFF–öà §Â7F'B†W&RÂFVWF—fW2À§ÂÒÒ×ÂÒÒ×À§Âµ&öGV7B&F–öæÆUÒ…$ôET5BæÖB’Â´&6†—FV7GW&UÒ„$4„•DT5EU$RæÖB’À§Âµ6WGWÒ†Fö72÷6WGWæÖB’Âµv÷&¶fÆ÷ræB6ö×ÆWF–öâvFW5Ò†Fö72÷v÷&¶fÆ÷ræÖB’À§Â´6ÆVFR6öFRFFW%Ò†Fö72ö6ÆVFRÖ6öFRæÖB’Â´Væv–æVW&–ærÖWF†öFöÆöw•Ò†Fö72öÖWF†öFöÆöw’æÖB’À§Â´6ÆVFRÖ&¶WGÆ6RÇVv–åÒ†Fö72ö6ÆVFRÖÖ&¶WGÆ6RæÖB’Â´6öæf–wW&F–öâ&VfW&Væ6UÒ†Fö72ö6öæf–wW&F–öâæÖB’À§Â´7W'&VçB–×ÆVÖVçFF–öâ7FGW5Ò„”ÕÄTÔTåDD”ôåõ5DEU2æÖB’Â´6öçG&–'WF÷"&6†—FV7GW&UÒ†Fö72ö6öçG&–'WF÷"Ö&6†—FV7GW&RæÖB’À§Âµ7W÷'EÒ…5Uõ%BæÖB’Âµ6V7W&—G•Ò…4T5U$•E’æÖB’À§Â´6öçG&–'WF–æuÒ„4ôåE$”%UD”äræÖB’Â´v÷fW&ææ6UÒ„tõdU$ää4RæÖB’æB·&VÆV6–æuÒ…$TÄT4”äræÖB’À ¢226öçG&–'WF–æp ¥F†—2—2öæÇ’F†R&Vv–ææ–ærâVÆÂ&WVW7G2Â—77VR&W÷'G2Â&6†—FV7GW&R7&—F—VW2ÂæB–×&÷fVÖVçB–FV2&RvVÆ6öÖ^(	Fæ÷BöæÇ’6öFRà ¥W6VgVÂ6öçG&–'WF–öç2–æ6ÇVFS  ¢Ò&VÂ×v÷&ÆBf7BÂ7FæF&BÂæB&–v÷&÷W26Æ76–f–6F–öâW†×ÆW3°¢Òöæ&ö&F–ærÂ$TDÔRÂW†×ÆW2ÂæBFö7VÖVçFF–öâ–×&÷fVÖVçG3°¢Ò&÷f–FW"æB6öF–ærÖvVçBFFW'3°¢Òv–æF÷w2æB7&÷72×ÆFf÷&ÒFW7F–æs°¢Òv÷&¶fÆ÷r&Væ6†Ö&·2æB&W&öGV6–&ÆRW&f÷&Öæ6RWf–FVæ6S°¢ÒW†V7WF–öâÂv÷&·76RÂæB–çFVw&F–öâ6fWG’FW7G3°¢Ò6–×ÆW"&WW6&ÆRÇFW&æF—fW2Fò7W7FöÒ–æg&7G'V7GW&Rà ¤f÷VæBvV²77V×F–öâ÷"VææV6W76'’–V6Röb6ö×ÆW†—G“òÆV6R÷Vââ—77VRâ¢¤ÆVå&–v÷"6†÷VÆB–×&÷fRF‡&÷Vv‚Wf–FVæ6RÂæ÷Bf÷VæFW"6öçf–7F–öââ¢  ¥&VB´4ôåE$”%UD”äræÖEÒ„4ôåE$”%UD”äræÖB’æBF†R¶6öçG&–'WF÷"&6†—FV7GW&RwV–FUÒ†Fö72ö6öçG&–'WF÷"Ö&6†—FV7GW&RæÖB’&Vf÷&R6†æv–ærv÷&¶fÆ÷r7FFRÂöÆ–7’ÂW†V7WF–öâÂ÷"v—B–çFVw&F–öâà ¢22&öFÖ  ¤æV"×FW&ÒF†VÖW2–æ6ÇVFS  ¢ÒæF—fR6ÆVFR†6R×v÷&¶W"÷&6†W7G&F–öã°¢Ò–çFVw&FVB6VÖçF–26öæfÆ–7B&W—#°¢ÒFF—F–öæÂ6öF–ærÖvVçBæBW†V7WF–öâ×&÷f–FW"FFW'3°¢Ò7&÷72×ÆFf÷&Ò4’æB&VÆV6RWFöÖF–öã°¢Ò&W&öGV6–&ÆRv÷&¶fÆ÷r×VÆ—G’ÂÆFVæ7’ÂæBFö¶Vâ×W6R&Væ6†Ö&·2à ¥&öFÖ—FV×2&Ræ÷B&W6VçFVB2–×ÆVÖVçFVB6&–Æ—F–W2âG&6²æBF—67W72F†VÒF‡&÷Vv‚v—D‡V"—77VW2à ¢22Æ–6Vç6P ¤ÆVå&–v÷"—2&VÆV6VBVæFW"F†R´Ô•BÆ–6Vç6UÒ„Ä”4Tå4R’à

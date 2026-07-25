@@ -10,8 +10,8 @@ The TypeScript schemas are authoritative. The generated local-config schema is [
 |---|---|---:|---|
 | Built-in defaults | Runtime | No | Safe defaults for workflow, routing, gates, testing, review, and workspaces |
 | Adapter-derived defaults | Runtime/provider environment | No | Claude aliases and provider-specific model resolution |
-| User preferences | `~/.config/leanrigor/config.json` | No | Personal model mappings, execution preferences, and machine-specific paths |
-| Repository policy | `leanrigor.config.json` | Yes | Team safety policy, minimum tiers, risk paths, validation requirements, and caps |
+| User preferences | `~/.config/leanrigor/config.json` | No | Personal model mappings, selected execution preferences, and workspace root |
+| Repository policy | `leanrigor.config.json` | Yes | Team safety policy, portable routing requirements, risk paths, validation requirements, and caps |
 | Local configuration | `.leanrigor/config.json` | No | Private full-schema overrides for one repository |
 
 The central resolver applies files in this order:
@@ -25,7 +25,7 @@ built-in defaults
 → repository policy constraints re-applied
 ```
 
-Repository policy is not a normal last-writer-wins file. It can require stronger minimum tiers, force evidence or validation, and cap parallelism or repair budgets. Local and personal settings cannot weaken those constraints.
+Repository policy is not a normal last-writer-wins file. It can enforce a minimum triage tier or committed routing, force evidence or validation, and cap parallelism or repair budgets. Local and personal settings cannot weaken the constraints currently enforced by the merger.
 
 Claude model aliases may also be resolved through `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_OPUS_MODEL`. Individual CLI commands may have command-specific flags, but those are not a replacement for the persisted configuration layers above.
 
@@ -58,7 +58,7 @@ Repository-policy changes affect every contributor and should be reviewed like c
 
 ## User preferences
 
-`~/.config/leanrigor/config.json` supports personal and machine-specific values such as:
+`~/.config/leanrigor/config.json` currently contributes concrete model mappings, provider polling and timeout preferences, parallelism, lease/lock timings, and an optional workspace root:
 
 ```json
 {
@@ -72,15 +72,14 @@ Repository-policy changes affect every contributor and should be reviewed like c
     }
   },
   "execution": {
-    "defaultProvider": "claude-cli",
-    "defaultMode": "coordinator",
     "pollIntervalSeconds": 5,
     "workerTimeoutSeconds": 1800,
-    "parallelism": 1,
-    "verbosity": "normal"
+    "heartbeatGraceSeconds": 30,
+    "phaseLeaseTimeoutSeconds": 900,
+    "workflowLockTimeoutSeconds": 30,
+    "parallelism": 1
   },
   "paths": {
-    "claudeExecutable": "/path/to/claude",
     "workspaceRoot": "/path/to/workspaces"
   }
 }
@@ -103,7 +102,11 @@ Example:
     "automaticTriage": true
   },
   "minimumTiers": {
-    "review": "medium"
+    "triage": "small"
+  },
+  "routing": {
+    "integratedReview": "medium",
+    "highRiskReview": "large"
   },
   "safety": {
     "rigorousPaths": [
@@ -125,7 +128,10 @@ Example:
 }
 ```
 
-Repository policy can govern workflow defaults, portable minimum tiers, routing, risk paths, validation and completion requirements, review depth, testing expectations, task sizing, introspection, triage, Git confirmation, budgets, and maximum parallelism.
+Repository policy can govern workflow defaults, committed routing, risk paths, validation and completion requirements, review depth, testing expectations, task sizing, introspection, triage, Git confirmation, budgets, and maximum parallelism. The central merger currently enforces `minimumTiers.triage`; use `routing` for other workflow-stage requirements.
+
+> [!NOTE]
+> The user schema currently accepts `execution.defaultProvider`, `execution.defaultMode`, `execution.verbosity`, and `paths.claudeExecutable`, but the central effective-config resolver does not yet apply those fields. Repository-policy `minimumTiers.planning`, `minimumTiers.implementation`, `minimumTiers.review`, and `modelFallback` are also schema-valid but not yet applied by the central merger. Use explicit provider/command options and committed `routing` requirements for those cases.
 
 ## Portable model tiers
 
@@ -197,7 +203,7 @@ Important execution settings:
 |---|---:|---|
 | `execution.maxParallelPhases` | `1` | Maximum scheduler-approved concurrent phases |
 | `execution.pollIntervalSeconds` | `5` | Recommended provider polling interval |
-| `execution.workerTimeoutSeconds` | `1800` | Worker timeout before cancellation/recovery |
+| `execution.workerTimeoutSeconds` | `1800` | Worker timeout befor cancellation/recovery |
 | `execution.heartbeatGraceSeconds` | `30` | Grace window for missing provider heartbeat |
 | `execution.workflowLockTimeoutSeconds` | `30` | Short-lived state mutation lock timeout |
 | `execution.phaseLeaseTimeoutSeconds` | `900` | Durable phase lease timeout |

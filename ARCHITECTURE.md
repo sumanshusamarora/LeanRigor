@@ -250,7 +250,7 @@ LeanRigor separates committed team policy from personal and local provider choic
 | Layer | Location | Purpose |
 |---|---|---|
 | User preferences | `~/.config/leanrigor/config.json` | Personal defaults and concrete model choices. |
-| Repository policy | `leanrigor.config.json` | Committed safety policy, minimum tiers, and team constraints. |
+| Repository policy | `leanrigor.config.json` | Committed safety policy, portable routing requirements, and team constraints. |
 | Local overrides | `.leanrigor/config.json` | Private repository-specific settings and concrete provider values. |
 | Runtime state | `.leanrigor/workflows/` | Persisted workflows and audit evidence. |
 
