@@ -93,6 +93,40 @@ collect_installed_versions() {
 step "Developer refresh for LeanRigor Claude marketplace plugin"
 printf "Repository root: %s\n" "$REPO_ROOT"
 
+step "Prepare current LeanRigor CLI"
+LOCAL_VERSION=$(json_version "$REPO_ROOT/package.json" version)
+LEANRIGOR_CLI=(node "$REPO_ROOT/dist/cli/index.js")
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[dry-run] npm install"
+  echo "[dry-run] npm run build"
+  if [ ! -f "$REPO_ROOT/dist/cli/index.js" ]; then
+    echo "WARN: built CLI is absent; cleanup details requiring the CLI will be skipped during dry-run." >&2
+    LEANRIGOR_CLI=()
+  else
+    BUILT_VERSION=$(node "$REPO_ROOT/dist/cli/index.js" --version 2>/dev/null || true)
+    if [ "$BUILT_VERSION" != "$LOCAL_VERSION" ]; then
+      echo "WARN: built CLI is stale ($BUILT_VERSION; expected $LOCAL_VERSION); cleanup details requiring the CLI will be skipped during dry-run." >&2
+      LEANRIGOR_CLI=()
+    fi
+  fi
+else
+  run npm --prefix "$REPO_ROOT" install
+  run npm --prefix "$REPO_ROOT" run build
+
+  if [ ! -x "$REPO_ROOT/dist/cli/index.js" ]; then
+    echo "ERROR: build completed but dist/cli/index.js is not executable." >&2
+    exit 1
+  fi
+
+  BUILT_VERSION=$(node "$REPO_ROOT/dist/cli/index.js" --version)
+  if [ "$BUILT_VERSION" != "$LOCAL_VERSION" ]; then
+    echo "ERROR: built CLI version mismatch: package.json=$LOCAL_VERSION, CLI=$BUILT_VERSION" >&2
+    exit 1
+  fi
+  echo "Built CLI verified: $BUILT_VERSION"
+fi
+
 step "Detecting LeanRigor runtime and cache locations"
 mapfile -t cache_paths < <(collect_cache_paths | sort -u)
 if [ "${#cache_paths[@]}" -eq 0 ]; then
@@ -107,7 +141,6 @@ echo "Repo fallback assets: $REPO_ROOT/.claude"
 echo "User config: $HOME/.config/leanrigor"
 
 step "Resolving local and remote versions"
-LOCAL_VERSION=$(json_version "$REPO_ROOT/package.json" version)
 REMOTE_VERSION="$LOCAL_VERSION"
 if git -C "$REPO_ROOT" fetch origin main:refs/remotes/origin/main >/dev/null 2>&1; then
   REMOTE_VERSION=$(git -C "$REPO_ROOT" show origin/main:package.json | json_version - version)
@@ -154,12 +187,6 @@ else
 fi
 
 step "Remove LeanRigor-owned project-local fallback assets and hook entries"
-LEANRIGOR_CLI=(node "$REPO_ROOT/dist/cli/index.js")
-if [ ! -f "$REPO_ROOT/dist/cli/index.js" ]; then
-  echo "WARN: dist/cli/index.js not found; run npm run build first for cleanup/doctor verification."
-  LEANRIGOR_CLI=()
-fi
-
 if [ "${#LEANRIGOR_CLI[@]}" -gt 0 ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
     "${LEANRIGOR_CLI[@]}" cleanup --adapter claude --project-local-only --root "$REPO_ROOT" || true
@@ -191,14 +218,12 @@ else
 fi
 
 step "Verification"
-if command -v claude >/dev/null 2>&1; then
-  run claude plugin list
-fi
+run claude plugin list
 
 if [ "${#LEANRIGOR_CLI[@]}" -gt 0 ]; then
   run node "$REPO_ROOT/dist/cli/index.js" doctor --adapter claude --root "$REPO_ROOT"
-else
-  echo "ERROR: dist/cli/index.js not found; run npm run build then rerun this refresh script." >&2
+elif [ "$DRY_RUN" -ne 1 ]; then
+  echo "ERROR: verified built CLI is unavailable after refresh." >&2
   exit 1
 fi
 
