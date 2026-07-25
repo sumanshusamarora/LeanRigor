@@ -5,7 +5,10 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = process.env.LEANRIGOR_VERIFY_ROOT
+  ? path.resolve(process.env.LEANRIGOR_VERIFY_ROOT)
+  : defaultRoot;
 const cliPath = path.join(root, "dist", "cli", "index.js");
 const packagePath = path.join(root, "package.json");
 
