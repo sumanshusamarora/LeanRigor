@@ -34,28 +34,30 @@ function gitSafe(args) {
   }
 }
 
+function ensureBaseRef(baseRef) {
+  try {
+    git(["fetch", "origin", `${baseRef}:refs/remotes/origin/${baseRef}`]);
+  } catch {
+    console.warn(`WARN: failed to fetch origin/${baseRef}; using existing local refs for version bump check.`);
+  }
+}
+
 function listChangedFiles() {
-  const hasWorkingTreeChanges = gitSafe(["status", "--porcelain"]).length > 0;
   if (staged) {
     const out = gitSafe(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
-  if (hasWorkingTreeChanges) {
-    const out = gitSafe(["diff", "--name-only", "HEAD", "--diff-filter=ACMR"]);
+  const baseRef = process.env.GITHUB_BASE_REF;
+  if (baseRef) {
+    ensureBaseRef(baseRef);
+    const out = gitSafe(["diff", "--name-only", `origin/${baseRef}...HEAD`, "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
-  const baseRef = process.env.GITHUB_BASE_REF;
-  if (baseRef) {
-    let fetched = true;
-    try {
-      git(["fetch", "origin", `${baseRef}:refs/remotes/origin/${baseRef}`]);
-    } catch {
-      fetched = false;
-    }
-    if (!fetched) console.warn(`WARN: failed to fetch origin/${baseRef}; using existing local refs for version bump check.`);
-    const out = gitSafe(["diff", "--name-only", `origin/${baseRef}...HEAD`, "--diff-filter=ACMR"]);
+  const hasWorkingTreeChanges = gitSafe(["status", "--porcelain"]).length > 0;
+  if (hasWorkingTreeChanges) {
+    const out = gitSafe(["diff", "--name-only", "HEAD", "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
@@ -75,7 +77,7 @@ function readPackageVersionFromContent(content, sourceLabel = "package.json") {
 
 function readPackageVersionFromGitRef(ref) {
   try {
-    const content = git([ "show", `${ref}:package.json` ]);
+    const content = git(["show", `${ref}:package.json`]);
     return readPackageVersionFromContent(content, `${ref}:package.json`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -84,7 +86,7 @@ function readPackageVersionFromGitRef(ref) {
 }
 
 function readStagedPackageVersion() {
-  const content = git([ "show", ":package.json" ]);
+  const content = git(["show", ":package.json"]);
   return readPackageVersionFromContent(content, "staged package.json");
 }
 
@@ -104,9 +106,10 @@ function resolveVersionPair() {
 
   const baseRef = process.env.GITHUB_BASE_REF;
   if (baseRef) {
+    ensureBaseRef(baseRef);
     let mergeBase;
     try {
-      mergeBase = git([ "merge-base", "HEAD", `origin/${baseRef}` ]);
+      mergeBase = git(["merge-base", "HEAD", `origin/${baseRef}`]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to resolve merge-base with origin/${baseRef}: ${message}`, { cause: error });
