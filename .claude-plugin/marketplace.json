@@ -16,7 +16,12 @@
       },
       "repository": "https://github.com/sumanshusamarora/LeanRigor",
       "license": "MIT",
-      "keywords": ["claude-code", "workflow", "validation", "review"],
+      "keywords": [
+        "claude-code",
+        "workflow",
+        "validation",
+        "review"
+      ],
       "category": "development"
     }
   ]

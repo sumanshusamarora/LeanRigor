@@ -10,7 +10,13 @@
   "homepage": "https://github.com/sumanshusamarora/LeanRigor",
   "repository": "https://github.com/sumanshusamarora/LeanRigor",
   "license": "MIT",
-  "keywords": ["claude-code", "workflow", "triage", "validation", "review"],
+  "keywords": [
+    "claude-code",
+    "workflow",
+    "triage",
+    "validation",
+    "review"
+  ],
   "commands": [
     "./commands/start.md",
     "./commands/init.md",

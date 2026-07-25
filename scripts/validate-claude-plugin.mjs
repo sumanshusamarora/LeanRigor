@@ -76,6 +76,7 @@ function commandFilesFrom(manifest) {
 
 const marketplace = await readJson(".claude-plugin/marketplace.json");
 const plugin = await readJson(".claude-plugin/plugin.json");
+const buildInfo = await readJson(".claude-plugin/build-info.json");
 const expectedCommands = [
   "./commands/start.md",
   "./commands/init.md",
@@ -116,6 +117,17 @@ if (plugin) {
   if (JSON.stringify(plugin.commands) !== JSON.stringify(expectedCommands)) {
     fail(`plugin commands must be exactly ${expectedCommands.join(", ")}`);
   }
+
+  if (buildInfo) {
+    if (buildInfo.packageVersion !== packageJson.version) fail("build-info packageVersion must match package.json");
+    if (buildInfo.pluginVersion !== packageJson.version) fail("build-info pluginVersion must match package.json");
+    if (!buildInfo.gitCommit || typeof buildInfo.gitCommit !== "string") fail("build-info gitCommit is required");
+  }
+
+  const cliSource = await readFile(path.join(root, "src", "cli", "index.ts"), "utf8");
+  const cliVersionMatch = cliSource.match(/program\\.name\\("leanrigor"\\)\\.description\\("Adaptive rigor and model routing for AI coding agents"\\)\\.version\\("([^"]+)"\\);/);
+  if (!cliVersionMatch) fail("src/cli/index.ts: could not find CLI version declaration");
+  if (cliVersionMatch && cliVersionMatch[1] !== packageJson.version) fail("CLI version must match package.json");
   for (const key of ["commands", "agents", "skills", "hooks"]) {
     if (plugin[key]) assertRelativeInside(plugin[key], `plugin.${key}`);
   }
