@@ -14,7 +14,7 @@ const distributablePrefixes = [
   "bin/",
   "plugin-skills/",
   "methodology/",
-  "src/adapters/claude/plugin/",
+  "src/",
   ".claude-plugin/",
   "runtime/",
 ];
