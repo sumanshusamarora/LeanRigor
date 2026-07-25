@@ -23,6 +23,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run lint
+      - run: npm run check:stale-runtime
       - run: npm run build
       - run: npm run check:plugin-version-bump
       - run: npm run validate:claude-plugin

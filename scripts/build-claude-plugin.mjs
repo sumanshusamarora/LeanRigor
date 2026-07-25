@@ -18,9 +18,24 @@ await build({
   legalComments: "none"
 });
 
+const pkg = JSON.parse(await readFile("package.json", "utf8"));
+const expectedVersion = pkg.version;
+if (typeof expectedVersion !== "string" || expectedVersion.length === 0) {
+  throw new Error("package.json must contain a non-empty version");
+}
+
+// Stamp the package version into the bundled runtime so it agrees with
+// package.json — mirroring what verify-built-cli.mjs does for dist/cli/index.js.
+let bundleSource = await readFile("runtime/leanrigor-cli.js", "utf8");
+const versionPattern = /(\.version\(")([^"]+)("\))/;
+if (!versionPattern.test(bundleSource)) {
+  throw new Error("Could not locate the bundled CLI version declaration");
+}
+bundleSource = bundleSource.replace(versionPattern, `$1${expectedVersion}$3`);
+await writeFile("runtime/leanrigor-cli.js", bundleSource, "utf8");
+
 await writeFile("runtime/package.json", JSON.stringify({ type: "module" }, null, 2) + "\n");
 
-const pkg = JSON.parse(await readFile("package.json", "utf8"));
 const plugin = JSON.parse(await readFile(".claude-plugin/plugin.json", "utf8"));
 const commitFromEnv = process.env.LEANRIGOR_GIT_COMMIT || process.env.GITHUB_SHA;
 const normalizedCommit = commitFromEnv?.trim();

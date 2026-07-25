@@ -19134,7 +19134,7 @@ var {
 
 // src/cli/index.ts
 init_load();
-import { readFile as readFile13 } from "node:fs/promises";
+import { readFile as readFile14 } from "node:fs/promises";
 import path18 from "node:path";
 
 // src/core/workflow.ts
@@ -21002,9 +21002,10 @@ function scopeLabel(source) {
 init_config_scope();
 init_load();
 init_config_scope();
+import { readFile as readFile8 } from "node:fs/promises";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
 import path9 from "node:path";
 var VALID_EXAMPLES = [
-  // User-level (userConfigSchema)
   {
     description: "Set personal small-tier model for all repos",
     path: "models.claude.small",
@@ -21035,7 +21036,6 @@ var VALID_EXAMPLES = [
     example: '"verbose"',
     scope: "user"
   },
-  // Repo policy (repoPolicyConfigSchema — no concrete model IDs)
   {
     description: "Set project default workflow mode",
     path: "workflow.defaultMode",
@@ -21078,7 +21078,6 @@ var VALID_EXAMPLES = [
     example: '"contract-required"',
     scope: "repo"
   },
-  // Local (leanRigorConfigSchema — full schema)
   {
     description: "Set local max parallel phases (this repo only)",
     path: "execution.maxParallelPhases",
@@ -21111,18 +21110,37 @@ function buildExampleCommands() {
     scope: entry.scope
   }));
 }
+async function readVersion(filePath) {
+  try {
+    const parsed = JSON.parse(await readFile8(filePath, "utf8"));
+    return typeof parsed.version === "string" && parsed.version.length > 0 ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+async function resolvePluginVersion(mode2) {
+  const candidates = [];
+  if (mode2 === "marketplace") {
+    const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+    if (pluginRoot) {
+      candidates.push(
+        path9.join(pluginRoot, ".claude-plugin", "plugin.json"),
+        path9.join(pluginRoot, "package.json")
+      );
+    }
+  }
+  candidates.push(fileURLToPath2(new URL("../../../package.json", import.meta.url)));
+  for (const candidate of new Set(candidates)) {
+    const version2 = await readVersion(candidate);
+    if (version2) return version2;
+  }
+  return "unknown";
+}
 async function buildInitReport(root, bootstrapResult) {
   const effective = await resolveEffectiveConfig(root);
   const mode2 = bootstrapResult?.installationMode ?? await detectInstallationMode(root);
   const isMarketplace = mode2 === "marketplace";
-  let pluginVersion = "unknown";
-  try {
-    const { readFile: readFile14 } = await import("node:fs/promises");
-    const { fileURLToPath: fileURLToPath2 } = await import("node:url");
-    const pkg = JSON.parse(await readFile14(fileURLToPath2(new URL("../../../package.json", import.meta.url)), "utf8"));
-    pluginVersion = pkg.version ?? "unknown";
-  } catch {
-  }
+  const pluginVersion = await resolvePluginVersion(mode2);
   let runtimeSource2 = "local development or global CLI";
   if (isMarketplace) {
     if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) {
@@ -21248,7 +21266,7 @@ function renderInitReport(report) {
     for (const asset of report.shadowing.assets) {
       lines.push(`  ${asset.path} (${asset.status})`);
     }
-    lines.push("Recommended: leanrigor cleanup --adapter claude --project-local-only --dry-run");
+    lines.push("Recommended: leanrigor cleanup --adapter claude --project-local-only");
     lines.push("");
   }
   if (report.bootstrap?.bootstrapped) {
@@ -21261,7 +21279,7 @@ function renderInitReport(report) {
     lines.push("");
   }
   renderConfigFiles(report, lines);
-  lines.push(`.leanrigor/.gitignore: ${report.gitignore.message}`);
+  lines.push(report.gitignore.message);
   lines.push("");
   lines.push("Model tier resolution:");
   lines.push(renderModelTable(report.models));
@@ -21299,11 +21317,7 @@ function renderInitReport(report) {
     }
     if (report.assets.missing.length > 0) {
       lines.push("");
-      if (report.isMarketplace) {
-        lines.push("Missing assets (will be repaired automatically on next command):");
-      } else {
-        lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
-      }
+      lines.push("Missing assets (run `leanrigor init --adapter claude` to install):");
       for (const f of report.assets.missing) {
         lines.push(`  ${f}`);
       }
@@ -21378,9 +21392,7 @@ function renderModelTable(models) {
   const pad = (s, w) => s.padEnd(w);
   const header = `${pad("Tier", tierWidth)} | ${pad("Claude alias", aliasWidth)} | ${pad("Resolved model", modelWidth)} | Source`;
   const sep = `${"\u2014".repeat(tierWidth)}\u2014|\u2014${"\u2014".repeat(aliasWidth)}\u2014|\u2014${"\u2014".repeat(modelWidth)}\u2014|\u2014${"\u2014".repeat(sourceWidth)}`;
-  const body = rows.map(
-    (r) => `${pad(r.tier, tierWidth)} | ${pad(r.alias, aliasWidth)} | ${pad(r.model, modelWidth)} | ${r.source}`
-  ).join("\n");
+  const body = rows.map((r) => `${pad(r.tier, tierWidth)} | ${pad(r.alias, aliasWidth)} | ${pad(r.model, modelWidth)} | ${r.source}`).join("\n");
   return [header, sep, body].join("\n");
 }
 function renderSettingsState(settings, isMarketplace) {
@@ -21516,7 +21528,7 @@ init_zod();
 init_defaults();
 init_models();
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir8, readFile as readFile11 } from "node:fs/promises";
+import { mkdir as mkdir8, readFile as readFile12 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path15 from "node:path";
 
@@ -21541,7 +21553,7 @@ function commitCommands(proposal) {
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access2, constants, lstat, mkdir as mkdir6, readFile as readFile8, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
+import { access as access2, constants, lstat, mkdir as mkdir6, readFile as readFile9, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
 import path12 from "node:path";
 import { promisify } from "node:util";
 
@@ -22327,7 +22339,7 @@ async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, p
   const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path12.basename(worktreePath))}.json`;
   const file2 = path12.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
-    const parsed = JSON.parse(await readFile8(file2, "utf8"));
+    const parsed = JSON.parse(await readFile9(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
     if (path12.resolve(parsed.path) !== path12.resolve(worktreePath)) return void 0;
@@ -22472,12 +22484,12 @@ async function pathExists(target) {
 }
 
 // src/core/workflow-lock.ts
-import { open as open2, readFile as readFile10, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
+import { open as open2, readFile as readFile11, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
 import os from "node:os";
 import path14 from "node:path";
 
 // src/core/workflow-store.ts
-import { open, readFile as readFile9, rename as rename2, rm } from "node:fs/promises";
+import { open, readFile as readFile10, rename as rename2, rm } from "node:fs/promises";
 import { randomUUID as randomUUID2 } from "node:crypto";
 import path13 from "node:path";
 var RevisionConflictError = class extends Error {
@@ -22581,7 +22593,7 @@ async function releaseWorkflowLock(root, workflowId2, ownerId) {
 }
 async function readWorkflowLock(root, workflowId2) {
   try {
-    return JSON.parse(await readFile10(lockPath(root, workflowId2), "utf8"));
+    return JSON.parse(await readFile11(lockPath(root, workflowId2), "utf8"));
   } catch (error51) {
     if (error51.code === "ENOENT") return void 0;
     throw error51;
@@ -23434,7 +23446,7 @@ async function loadFlowState(root, workflowId2) {
   const file2 = workflowPath(root, workflowId2);
   let raw;
   try {
-    raw = await readFile11(file2, "utf8");
+    raw = await readFile12(file2, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") throw new WorkflowNotFoundError(`Workflow not found: ${workflowId2}`);
     throw error51;
@@ -23452,7 +23464,7 @@ async function saveFlowState(root, state, options = {}) {
   const target = workflowPath(root, parsed.id);
   if (options.create) {
     try {
-      await readFile11(target, "utf8");
+      await readFile12(target, "utf8");
       throw new StaleWorkflowError(`Workflow already exists: ${parsed.id}`);
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -24524,7 +24536,7 @@ function unique4(values) {
 
 // src/core/execution/claude-provider.ts
 import { execFile as execFile2, spawn as spawn2 } from "node:child_process";
-import { mkdir as mkdir9, open as open3, readFile as readFile12, rename as rename3, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
+import { mkdir as mkdir9, open as open3, readFile as readFile13, rename as rename3, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
 import path16 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
@@ -24722,8 +24734,8 @@ ${JSON.stringify(exampleResult(input), null, 2)}`;
       const status = await readCollectibleStatus(handle);
       if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
       if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
-      const stdout = await readFile12(metadata.stdoutPath, "utf8").catch(() => "");
-      const stderr = await readFile12(metadata.stderrPath, "utf8").catch(() => "");
+      const stdout = await readFile13(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile13(metadata.stderrPath, "utf8").catch(() => "");
       if (status?.status === "failed") {
         throw withArtifactDiagnostics(new ExecutionError("provider_process_exited", "Claude CLI exited before returning a successful provider result."), handle, metadata, stdout, stderr, status);
       }
@@ -24767,7 +24779,7 @@ async function readPersistedStatus(handle) {
   if (!metadata) return void 0;
   try {
     await stat3(metadata.statusPath);
-    return JSON.parse(await readFile12(metadata.statusPath, "utf8"));
+    return JSON.parse(await readFile13(metadata.statusPath, "utf8"));
   } catch {
     return void 0;
   }
@@ -25515,7 +25527,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.1");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.3");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -26137,7 +26149,7 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
 }
 async function executionProvider(providerName, scriptFile) {
   if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile13(path18.resolve(scriptFile), "utf8")) : {};
+    const scripts = scriptFile ? JSON.parse(await readFile14(path18.resolve(scriptFile), "utf8")) : {};
     return new ScriptedExecutionProvider(scripts);
   }
   if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
@@ -26236,7 +26248,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile13(path18.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile14(path18.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {

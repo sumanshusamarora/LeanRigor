@@ -1,6 +1,6 @@
 {
   "generatedBy": "scripts/build-claude-plugin.mjs",
-  "packageVersion": "0.3.1-dev.1",
-  "pluginVersion": "0.3.1-dev.1",
-  "gitCommit": "b8ddf9448f23"
+  "packageVersion": "0.3.1-dev.3",
+  "pluginVersion": "0.3.1-dev.3",
+  "gitCommit": "unknown"
 }
