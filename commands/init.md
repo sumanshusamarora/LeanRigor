@@ -16,13 +16,13 @@ Behaviour:
    configuration report. The runtime automatically bootstraps missing
    project assets before generating the report — no separate init step
    is needed.
-2. Display the returned report substantially as-is.
+2. Display the returned report **verbatim inside one plain-text fenced code
+   block**. Do not convert it into Markdown tables, bullets, HTML entities,
+   summaries, or a redesigned layout.
 3. **Invariant: Never reconstruct configuration diagnostics from memory or
-   prose.** Render the structured LeanRigor report and preserve exact
-   provenance, paths, statuses, warnings, and schema-valid commands.
-   Do not invent environment-variable names, config paths, ownership
-   conflicts, or explanations for asset drift.
-4. After presenting the report, offer to help with configuration changes.
+   prose.** Preserve exact provenance, paths, statuses, warnings, spacing,
+   and schema-valid commands returned by the runtime.
+4. After the verbatim report, briefly offer to help with configuration changes.
 5. If `$ARGUMENTS` requests a change, translate it into the appropriate
    `leanrigor config set` or `leanrigor config unset` command with the correct
    `--scope` option.
