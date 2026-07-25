@@ -20185,64 +20185,93 @@ async function which(command) {
     child.on("error", () => resolve(void 0));
   });
 }
-async function readPackageVersion() {
-  try {
-    const packageJsonPath = fileURLToPath(new URL("../../../package.json", import.meta.url));
-    const pkg = JSON.parse(await readFile5(packageJsonPath, "utf8"));
-    return pkg.version ?? "unknown";
-  } catch {
-    return "unknown";
+function runtimeRootCandidates() {
+  const roots = /* @__PURE__ */ new Set();
+  const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+  if (pluginRoot) roots.add(pluginRoot);
+  roots.add(path6.resolve(path6.dirname(fileURLToPath(import.meta.url)), ".."));
+  roots.add(packageRoot());
+  return [...roots];
+}
+function metadataCandidates(fileName) {
+  const candidates = [];
+  for (const root of runtimeRootCandidates()) {
+    candidates.push(path6.join(root, ".claude-plugin", fileName));
+    candidates.push(path6.join(root, fileName));
   }
+  return candidates;
+}
+async function readJsonFromCandidates(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(await readFile5(candidate, "utf8"));
+    } catch {
+    }
+  }
+  return void 0;
+}
+async function readPackageVersion() {
+  const pkg = await readJsonFromCandidates(
+    runtimeRootCandidates().map((root) => path6.join(root, "package.json"))
+  );
+  return pkg?.version ?? "unknown";
 }
 async function readPluginManifestVersion() {
-  try {
-    const pluginManifestPath = fileURLToPath(new URL("../../../.claude-plugin/plugin.json", import.meta.url));
-    const manifest = JSON.parse(await readFile5(pluginManifestPath, "utf8"));
-    return manifest.version ?? "unknown";
-  } catch {
-    return "unknown";
-  }
+  const manifest = await readJsonFromCandidates(metadataCandidates("plugin.json"));
+  return manifest?.version ?? "unknown";
+}
+async function readBuildInfo() {
+  return await readJsonFromCandidates(
+    metadataCandidates("build-info.json")
+  ) ?? {};
 }
 async function readGitCommit() {
   if (process.env.LEANRIGOR_GIT_COMMIT) {
     return process.env.LEANRIGOR_GIT_COMMIT;
   }
-  try {
-    const { spawnSync } = await import("node:child_process");
-    const result = spawnSync("git", ["-C", packageRoot(), "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
-    if (result.status === 0) {
-      const commit = result.stdout.trim();
-      if (commit.length > 0) return commit;
-    }
-  } catch {
+  const buildInfo = await readBuildInfo();
+  if (buildInfo.gitCommit) {
+    return buildInfo.gitCommit;
   }
-  try {
-    const buildInfoPath = fileURLToPath(new URL("../../../.claude-plugin/build-info.json", import.meta.url));
-    const buildInfo = JSON.parse(await readFile5(buildInfoPath, "utf8"));
-    return buildInfo.gitCommit ?? "unknown";
-  } catch {
+  for (const root of runtimeRootCandidates()) {
+    try {
+      const { spawnSync } = await import("node:child_process");
+      const result = spawnSync("git", ["-C", root, "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
+      if (result.status === 0) {
+        const commit = result.stdout.trim();
+        if (commit.length > 0) return commit;
+      }
+    } catch {
+    }
+  }
+  return "unknown";
+}
+function determineInstalledStatus(installedVersion, packageVersion) {
+  if (installedVersion === "unknown" || packageVersion === "unknown") {
     return "unknown";
   }
+  if (installedVersion === packageVersion) {
+    return "current";
+  }
+  return "version-mismatch";
 }
 async function readInstalledPluginInfo() {
   const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
   if (!pluginRoot) {
     return { commit: "n/a", version: "n/a", status: "unknown" };
   }
-  let installedVersion = "unknown";
-  let installedCommit = "unknown";
-  try {
-    const manifest = JSON.parse(await readFile5(path6.join(pluginRoot, "plugin.json"), "utf8"));
-    installedVersion = manifest.version ?? "unknown";
-  } catch {
-  }
-  try {
-    const buildInfo = JSON.parse(await readFile5(path6.join(pluginRoot, "build-info.json"), "utf8"));
-    installedCommit = buildInfo.gitCommit ?? "unknown";
-  } catch {
-  }
+  const installedManifest = await readJsonFromCandidates([
+    path6.join(pluginRoot, ".claude-plugin", "plugin.json"),
+    path6.join(pluginRoot, "plugin.json")
+  ]);
+  const installedBuildInfo = await readJsonFromCandidates([
+    path6.join(pluginRoot, ".claude-plugin", "build-info.json"),
+    path6.join(pluginRoot, "build-info.json")
+  ]);
+  const installedVersion = installedManifest?.version ?? "unknown";
+  const installedCommit = installedBuildInfo?.gitCommit ?? "unknown";
   const packageVersion = await readPackageVersion();
-  const status = installedVersion === packageVersion ? "current" : "version-mismatch";
+  const status = determineInstalledStatus(installedVersion, packageVersion);
   return { commit: installedCommit, version: installedVersion, status };
 }
 function runtimeSource() {
@@ -25486,7 +25515,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.0");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.1");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

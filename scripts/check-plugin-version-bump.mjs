@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,12 +18,8 @@ const distributablePrefixes = [
   ".claude-plugin/",
   "runtime/",
 ];
-
-const versionFiles = new Set([
-  "package.json",
-  ".claude-plugin/plugin.json",
-  ".claude-plugin/marketplace.json",
-  "src/cli/index.ts",
+const distributableIgnore = new Set([
+  ".claude-plugin/build-info.json",
 ]);
 
 function git(args) {
@@ -68,20 +65,95 @@ function listChangedFiles() {
   return out ? out.split("\n").filter(Boolean) : [];
 }
 
+function readPackageVersionFromContent(content, sourceLabel = "package.json") {
+  const parsed = JSON.parse(content);
+  if (typeof parsed.version !== "string" || parsed.version.length === 0) {
+    throw new Error(`${sourceLabel} must contain a non-empty 'version' string`);
+  }
+  return parsed.version;
+}
+
+function readPackageVersionFromGitRef(ref) {
+  try {
+    const content = git([ "show", `${ref}:package.json` ]);
+    return readPackageVersionFromContent(content, `${ref}:package.json`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read package.json from git ref '${ref}': ${message}`, { cause: error });
+  }
+}
+
+function readStagedPackageVersion() {
+  const content = git([ "show", ":package.json" ]);
+  return readPackageVersionFromContent(content, "staged package.json");
+}
+
+function readWorkingTreePackageVersion() {
+  const content = readFileSync(path.join(root, "package.json"), "utf8");
+  return readPackageVersionFromContent(content, "working tree package.json");
+}
+
+function resolveVersionPair() {
+  if (staged) {
+    return {
+      previous: readPackageVersionFromGitRef("HEAD"),
+      current: readStagedPackageVersion(),
+      baselineLabel: "HEAD",
+    };
+  }
+
+  const baseRef = process.env.GITHUB_BASE_REF;
+  if (baseRef) {
+    let mergeBase;
+    try {
+      mergeBase = git([ "merge-base", "HEAD", `origin/${baseRef}` ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to resolve merge-base with origin/${baseRef}: ${message}`, { cause: error });
+    }
+    if (!mergeBase) {
+      throw new Error(`Failed to resolve merge-base for origin/${baseRef}: empty result`);
+    }
+    return {
+      previous: readPackageVersionFromGitRef(mergeBase),
+      current: readPackageVersionFromGitRef("HEAD"),
+      baselineLabel: `${baseRef} merge-base (${mergeBase.slice(0, 12)})`,
+    };
+  }
+
+  const hasWorkingTreeChanges = gitSafe(["status", "--porcelain"]).length > 0;
+  if (hasWorkingTreeChanges) {
+    return {
+      previous: readPackageVersionFromGitRef("HEAD"),
+      current: readWorkingTreePackageVersion(),
+      baselineLabel: "HEAD",
+    };
+  }
+
+  return {
+    previous: readPackageVersionFromGitRef("HEAD~1"),
+    current: readPackageVersionFromGitRef("HEAD"),
+    baselineLabel: "HEAD~1",
+  };
+}
+
 const changed = listChangedFiles();
-const distributableChanged = changed.filter((file) => distributablePrefixes.some((prefix) => file.startsWith(prefix)));
+const distributableChanged = changed.filter((file) =>
+  distributablePrefixes.some((prefix) => file.startsWith(prefix))
+  && !distributableIgnore.has(file),
+);
 if (distributableChanged.length === 0) {
   console.log("No distributable plugin asset changes detected.");
   process.exit(0);
 }
 
-const versionFileChanged = changed.some((file) => versionFiles.has(file));
-if (versionFileChanged) {
-  console.log("Distributable plugin assets changed and version files were updated.");
+const { previous, current, baselineLabel } = resolveVersionPair();
+if (previous !== current) {
+  console.log(`Distributable plugin assets changed and package version was bumped (${baselineLabel}: ${previous} -> current: ${current}).`);
   process.exit(0);
 }
 
-console.error("Distributable plugin assets changed without a version update.");
+console.error("Distributable plugin assets changed without a package version bump. Run `npm run version:dev` before committing.");
 console.error("Changed assets:");
 for (const file of distributableChanged) {
   console.error(`- ${file}`);

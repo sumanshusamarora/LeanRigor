@@ -946,25 +946,51 @@ async function which(command: string): Promise<string | undefined> {
   });
 }
 
-async function readPackageVersion(): Promise<string> {
-  try {
-    // Walk up from plugin dir to find package.json
-    const packageJsonPath = fileURLToPath(new URL("../../../package.json", import.meta.url));
-    const pkg = JSON.parse(await readFile(packageJsonPath, "utf8")) as { version?: string };
-    return pkg.version ?? "unknown";
-  } catch {
-    return "unknown";
+function runtimeRootCandidates(): string[] {
+  const roots = new Set<string>();
+  const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+  if (pluginRoot) roots.add(pluginRoot);
+  roots.add(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
+  roots.add(packageRoot());
+  return [...roots];
+}
+
+function metadataCandidates(fileName: string): string[] {
+  const candidates: string[] = [];
+  for (const root of runtimeRootCandidates()) {
+    candidates.push(path.join(root, ".claude-plugin", fileName));
+    candidates.push(path.join(root, fileName));
   }
+  return candidates;
+}
+
+async function readJsonFromCandidates<T>(candidates: string[]): Promise<T | undefined> {
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(await readFile(candidate, "utf8")) as T;
+    } catch {
+      // ignore and keep searching
+    }
+  }
+  return undefined;
+}
+
+async function readPackageVersion(): Promise<string> {
+  const pkg = await readJsonFromCandidates<{ version?: string }>(
+    runtimeRootCandidates().map((root) => path.join(root, "package.json")),
+  );
+  return pkg?.version ?? "unknown";
 }
 
 async function readPluginManifestVersion(): Promise<string> {
-  try {
-    const pluginManifestPath = fileURLToPath(new URL("../../../.claude-plugin/plugin.json", import.meta.url));
-    const manifest = JSON.parse(await readFile(pluginManifestPath, "utf8")) as { version?: string };
-    return manifest.version ?? "unknown";
-  } catch {
-    return "unknown";
-  }
+  const manifest = await readJsonFromCandidates<{ version?: string }>(metadataCandidates("plugin.json"));
+  return manifest?.version ?? "unknown";
+}
+
+async function readBuildInfo(): Promise<{ gitCommit?: string; packageVersion?: string; pluginVersion?: string }> {
+  return (await readJsonFromCandidates<{ gitCommit?: string; packageVersion?: string; pluginVersion?: string }>(
+    metadataCandidates("build-info.json"),
+  )) ?? {};
 }
 
 async function readGitCommit(): Promise<string> {
@@ -972,24 +998,35 @@ async function readGitCommit(): Promise<string> {
     return process.env.LEANRIGOR_GIT_COMMIT;
   }
 
-  try {
-    const { spawnSync } = await import("node:child_process");
-    const result = spawnSync("git", ["-C", packageRoot(), "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
-    if (result.status === 0) {
-      const commit = result.stdout.trim();
-      if (commit.length > 0) return commit;
-    }
-  } catch {
-    // ignore
+  const buildInfo = await readBuildInfo();
+  if (buildInfo.gitCommit) {
+    return buildInfo.gitCommit;
   }
 
-  try {
-    const buildInfoPath = fileURLToPath(new URL("../../../.claude-plugin/build-info.json", import.meta.url));
-    const buildInfo = JSON.parse(await readFile(buildInfoPath, "utf8")) as { gitCommit?: string };
-    return buildInfo.gitCommit ?? "unknown";
-  } catch {
+  for (const root of runtimeRootCandidates()) {
+    try {
+      const { spawnSync } = await import("node:child_process");
+      const result = spawnSync("git", ["-C", root, "rev-parse", "--short=12", "HEAD"], { encoding: "utf8" });
+      if (result.status === 0) {
+        const commit = result.stdout.trim();
+        if (commit.length > 0) return commit;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return "unknown";
+}
+
+function determineInstalledStatus(installedVersion: string, packageVersion: string): InstalledPluginInfo["status"] {
+  if (installedVersion === "unknown" || packageVersion === "unknown") {
     return "unknown";
   }
+  if (installedVersion === packageVersion) {
+    return "current";
+  }
+  return "version-mismatch";
 }
 
 async function readInstalledPluginInfo(): Promise<InstalledPluginInfo> {
@@ -998,24 +1035,20 @@ async function readInstalledPluginInfo(): Promise<InstalledPluginInfo> {
     return { commit: "n/a", version: "n/a", status: "unknown" };
   }
 
-  let installedVersion = "unknown";
-  let installedCommit = "unknown";
-  try {
-    const manifest = JSON.parse(await readFile(path.join(pluginRoot, "plugin.json"), "utf8")) as { version?: string };
-    installedVersion = manifest.version ?? "unknown";
-  } catch {
-    // ignore
-  }
+  const installedManifest = await readJsonFromCandidates<{ version?: string }>([
+    path.join(pluginRoot, ".claude-plugin", "plugin.json"),
+    path.join(pluginRoot, "plugin.json"),
+  ]);
+  const installedBuildInfo = await readJsonFromCandidates<{ gitCommit?: string }>([
+    path.join(pluginRoot, ".claude-plugin", "build-info.json"),
+    path.join(pluginRoot, "build-info.json"),
+  ]);
 
-  try {
-    const buildInfo = JSON.parse(await readFile(path.join(pluginRoot, "build-info.json"), "utf8")) as { gitCommit?: string };
-    installedCommit = buildInfo.gitCommit ?? "unknown";
-  } catch {
-    // ignore
-  }
-
+  const installedVersion = installedManifest?.version ?? "unknown";
+  const installedCommit = installedBuildInfo?.gitCommit ?? "unknown";
   const packageVersion = await readPackageVersion();
-  const status = installedVersion === packageVersion ? "current" : "version-mismatch";
+  const status = determineInstalledStatus(installedVersion, packageVersion);
+
   return { commit: installedCommit, version: installedVersion, status };
 }
 

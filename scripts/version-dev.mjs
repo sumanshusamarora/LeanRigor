@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,8 +31,13 @@ async function main() {
   const previousVersion = pkg.version;
   const nextVersion = bumpDevVersion(previousVersion);
 
-  pkg.version = nextVersion;
-  await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+  const bump = spawnSync("npm", ["version", nextVersion, "--no-git-tag-version", "--allow-same-version"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  if (bump.status !== 0) {
+    process.exit(bump.status ?? 1);
+  }
 
   const sync = spawnSync("node", ["scripts/sync-versions.mjs"], { cwd: root, stdio: "inherit" });
   if (sync.status !== 0) {

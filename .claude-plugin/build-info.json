@@ -1,6 +1,6 @@
 {
-  "generatedBy": "scripts/sync-versions.mjs",
-  "packageVersion": "0.3.1-dev.0",
-  "pluginVersion": "0.3.1-dev.0",
-  "gitCommit": "67ae0127fab8"
+  "generatedBy": "scripts/build-claude-plugin.mjs",
+  "packageVersion": "0.3.1-dev.1",
+  "pluginVersion": "0.3.1-dev.1",
+  "gitCommit": "b8ddf9448f23"
 }

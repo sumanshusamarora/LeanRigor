@@ -74,18 +74,20 @@ collect_cache_paths() {
         dirname "$plugin_manifest"
       fi
     done
-    find "$base" -maxdepth 4 \( -iname '*leanrigor*' -o -iname '*sumanshusamarora*' \) -print 2>/dev/null || true
   done
 }
 
 collect_installed_versions() {
   while IFS= read -r path; do
+    if [ -f "$path" ]; then
+      path="$(dirname "$path")"
+    fi
     [ -f "$path/plugin.json" ] || continue
     local version
     version=$(json_version "$path/plugin.json" version 2>/dev/null || true)
     [ -n "$version" ] || continue
     printf "%s|%s\n" "$path" "$version"
-  done < <(collect_cache_paths | sed -E 's#/(plugin\.json)$##' | sort -u)
+  done < <(collect_cache_paths | sort -u)
 }
 
 step "Developer refresh for LeanRigor Claude marketplace plugin"
@@ -181,21 +183,23 @@ fi
 
 step "Update marketplace and reinstall plugin"
 if command -v claude >/dev/null 2>&1; then
-  run_allow_fail claude plugin marketplace add sumanshusamarora/LeanRigor
-  run_allow_fail claude plugin install leanrigor@leanrigor -s user
+  run claude plugin marketplace add sumanshusamarora/LeanRigor
+  run claude plugin install leanrigor@leanrigor -s user
 else
-  echo "WARN: claude CLI not found; cannot reinstall plugin automatically."
+  echo "ERROR: claude CLI not found; cannot reinstall plugin automatically." >&2
+  exit 1
 fi
 
 step "Verification"
 if command -v claude >/dev/null 2>&1; then
-  run_allow_fail claude plugin list
+  run claude plugin list
 fi
 
 if [ "${#LEANRIGOR_CLI[@]}" -gt 0 ]; then
-  run_allow_fail node "$REPO_ROOT/dist/cli/index.js" doctor --adapter claude --root "$REPO_ROOT"
+  run node "$REPO_ROOT/dist/cli/index.js" doctor --adapter claude --root "$REPO_ROOT"
 else
-  echo "WARN: dist/cli/index.js not found; run npm run build then leanrigor doctor for full verification."
+  echo "ERROR: dist/cli/index.js not found; run npm run build then rerun this refresh script." >&2
+  exit 1
 fi
 
 step "Next action"
