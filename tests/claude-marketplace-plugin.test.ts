@@ -321,8 +321,25 @@ describe("Marketplace mode doctor output", () => {
       const text = output.join("\n");
 
       expect(text).toContain("Runtime source:");
+      expect(text).toContain("Git commit:");
       expect(text).toContain("Package version:");
+      expect(text).toContain("Plugin version:");
+      expect(text).toContain("Installed commit/version:");
+      expect(text).toContain("Installed status:");
     });
+  });
+
+  it("resolves installed plugin metadata from bundled runtime layout", async () => {
+    const root = await tempDir("lr-mkt-");
+    const result = await run(path.join(repoRoot, "bin", "leanrigor"), ["doctor", "--adapter", "claude", "--root", root], {
+      env: { CLAUDE_PLUGIN_ROOT: repoRoot }
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(`Package version: ${packageJson.version}`);
+    expect(result.stdout).toContain(`Plugin version: ${packageJson.version}`);
+    expect(result.stdout).toContain(`Installed commit/version:`);
+    expect(result.stdout).toContain("Installed status: current");
   });
 
   it("does not suggest leanrigor init --adapter claude in marketplace mode", async () => {

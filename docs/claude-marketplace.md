@@ -133,11 +133,34 @@ frontmatter, hook paths, methodology references, executable bits, bundled
 runtime presence, path containment, version consistency, and runs
 `claude plugin validate . --strict` when the Claude CLI is available.
 
+## Developer refresh
+
+Use the safe refresh helper to fully reinstall from GitHub main without broad
+directory deletion:
+
+```bash
+# Preserve .leanrigor state
+./scripts/dev-refresh-claude-plugin.sh
+
+# Also reset this repository runtime state
+./scripts/dev-refresh-claude-plugin.sh --reset-state
+
+# Preview all actions
+./scripts/dev-refresh-claude-plugin.sh --dry-run
+```
+
+The script only removes LeanRigor-specific cache entries and LeanRigor-owned
+project-local fallback assets; it never deletes whole `~/.config`, `~/.claude`,
+or repository `.claude/` trees.
+
+After refresh, run `/leanrigor:init` inside Claude Code.
+
 ## Release Procedure
 
 Update the package version once in `package.json`, then run:
 
 ```bash
+npm run version:sync
 npm run build
 npm run validate:claude-plugin
 npm test
@@ -148,6 +171,15 @@ Keep `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json`, and
 `runtime/leanrigor-cli.js` in sync with that version before publishing a
 marketplace release. Do not publish from a tree where `npm run
 validate:claude-plugin` fails.
+
+For prerelease iteration, use:
+
+```bash
+npm run version:dev
+```
+
+This bumps `x.y.z-dev.N` to `x.y.z-dev.N+1` and synchronizes all versioned
+plugin manifests.
 
 ## Limitations
 

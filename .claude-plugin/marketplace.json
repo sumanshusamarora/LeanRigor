@@ -10,13 +10,18 @@
       "name": "leanrigor",
       "source": "./",
       "description": "Persisted sequential Fast, Standard, and Rigorous coding workflows for Claude Code.",
-      "version": "0.3.1-draft",
+      "version": "0.3.1-dev.1",
       "author": {
         "name": "Sam Arora"
       },
       "repository": "https://github.com/sumanshusamarora/LeanRigor",
       "license": "MIT",
-      "keywords": ["claude-code", "workflow", "validation", "review"],
+      "keywords": [
+        "claude-code",
+        "workflow",
+        "validation",
+        "review"
+      ],
       "category": "development"
     }
   ]

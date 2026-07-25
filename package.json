@@ -1,6 +1,6 @@
 {
   "name": "leanrigor",
-  "version": "0.3.1-draft",
+  "version": "0.3.1-dev.1",
   "private": true,
   "description": "Adaptive rigor and portable model routing for AI coding agents.",
   "type": "module",
@@ -8,9 +8,14 @@
     "leanrigor": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -r src/adapters/claude/plugin dist/adapters/claude/plugin && npm run build:claude-plugin",
+    "build": "npm run version:check && rm -rf dist && tsc -p tsconfig.build.json && cp -r src/adapters/claude/plugin dist/adapters/claude/plugin && npm run build:claude-plugin",
     "build:claude-plugin": "node scripts/build-claude-plugin.mjs",
     "validate:claude-plugin": "node scripts/validate-claude-plugin.mjs",
+    "version:sync": "node scripts/sync-versions.mjs",
+    "version:check": "node scripts/sync-versions.mjs --check",
+    "version:dev": "node scripts/version-dev.mjs",
+    "check:plugin-version-bump": "node scripts/check-plugin-version-bump.mjs",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",

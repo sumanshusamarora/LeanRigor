@@ -134,6 +134,19 @@ leanrigor doctor --adapter claude --root /path/to/repository
 
 Node.js 20 or later is required.
 
+### Developer refresh and versioning
+
+```bash
+# Install repository hooks (pre-commit version checks)
+npm run hooks:install
+
+# Bump prerelease version and sync plugin manifests
+npm run version:dev
+
+# Fully refresh Claude marketplace plugin install from GitHub main
+./scripts/dev-refresh-claude-plugin.sh
+```
+
 Project-local installation explicitly sets
 `.claude/leanrigor/protect-git.sh` to mode `0755` on clean install, repeat-safe
 repair, and `--force-owned-files` repair. `leanrigor doctor --adapter claude`
