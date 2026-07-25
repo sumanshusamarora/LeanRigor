@@ -6,6 +6,8 @@ import { formatModelTierJson } from "./model-display.js";
 import { ClaudeAdapter, detectInstallationMode, detectShadowing, ASSET_VERSION, type AssetInspectionResult, type InstallationMode, type ShadowingReport } from "../adapters/claude/adapter.js";
 import type { EnsureBootstrappedResult } from "../core/bootstrap.js";
 import { ensureGitignore } from "./bootstrap.js";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -48,7 +50,7 @@ export interface InitReport {
   installationMode: InstallationMode;
   /** Shadowing report (only populated when marketplace mode detects stale fallback assets). */
   shadowing: ShadowingReport | null;
-  /** CLI/plugin version from package.json. */
+  /** CLI/plugin version from package.json or the installed marketplace manifest. */
   pluginVersion: string;
   /** Asset version stamp from the adapter. */
   assetVersion: number;
@@ -78,7 +80,6 @@ interface ExampleEntry {
 }
 
 const VALID_EXAMPLES: ExampleEntry[] = [
-  // User-level (userConfigSchema)
   {
     description: "Set personal small-tier model for all repos",
     path: "models.claude.small",
@@ -109,7 +110,6 @@ const VALID_EXAMPLES: ExampleEntry[] = [
     example: '"verbose"',
     scope: "user",
   },
-  // Repo policy (repoPolicyConfigSchema — no concrete model IDs)
   {
     description: "Set project default workflow mode",
     path: "workflow.defaultMode",
@@ -152,7 +152,6 @@ const VALID_EXAMPLES: ExampleEntry[] = [
     example: '"contract-required"',
     scope: "repo",
   },
-  // Local (leanRigorConfigSchema — full schema)
   {
     description: "Set local max parallel phases (this repo only)",
     path: "execution.maxParallelPhases",
@@ -188,6 +187,43 @@ function buildExampleCommands(): InitReport["validExamples"] {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime metadata
+// ---------------------------------------------------------------------------
+
+async function readVersion(filePath: string): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await readFile(filePath, "utf8")) as { version?: unknown };
+    return typeof parsed.version === "string" && parsed.version.length > 0 ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve version from the installed marketplace manifest before package fallback. */
+export async function resolvePluginVersion(mode: InstallationMode): Promise<string> {
+  const candidates: string[] = [];
+
+  if (mode === "marketplace") {
+    const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+    if (pluginRoot) {
+      candidates.push(
+        path.join(pluginRoot, ".claude-plugin", "plugin.json"),
+        path.join(pluginRoot, "package.json"),
+      );
+    }
+  }
+
+  candidates.push(fileURLToPath(new URL("../../../package.json", import.meta.url)));
+
+  for (const candidate of new Set(candidates)) {
+    const version = await readVersion(candidate);
+    if (version) return version;
+  }
+
+  return "unknown";
+}
+
+// ---------------------------------------------------------------------------
 // Builder
 // ---------------------------------------------------------------------------
 
@@ -202,23 +238,12 @@ export async function buildInitReport(
   root: string,
   bootstrapResult?: EnsureBootstrappedResult | null,
 ): Promise<InitReport> {
-  // --- Resolve effective config ---
   const effective = await resolveEffectiveConfig(root);
 
-  // --- Installation mode ---
   const mode = bootstrapResult?.installationMode ?? await detectInstallationMode(root);
   const isMarketplace = mode === "marketplace";
+  const pluginVersion = await resolvePluginVersion(mode);
 
-  // --- Read package version ---
-  let pluginVersion = "unknown";
-  try {
-    const { readFile } = await import("node:fs/promises");
-    const { fileURLToPath } = await import("node:url");
-    const pkg = JSON.parse(await readFile(fileURLToPath(new URL("../../../package.json", import.meta.url)), "utf8")) as { version?: string };
-    pluginVersion = pkg.version ?? "unknown";
-  } catch { /* keep unknown */ }
-
-  // --- Runtime source ---
   let runtimeSource = "local development or global CLI";
   if (isMarketplace) {
     if (process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT) {
@@ -232,13 +257,11 @@ export async function buildInitReport(
     runtimeSource = "npm package CLI";
   }
 
-  // --- Shadowing detection (marketplace mode only) ---
   let shadowing: ShadowingReport | null = null;
   if (isMarketplace) {
     shadowing = await detectShadowing(root, mode, effective.values);
   }
 
-  // --- Configuration files ---
   const userConfig = await loadUserConfig();
   const repoPolicy = await loadRepoPolicy(root);
   const localExists = await configFileExists(ConfigScope.Local, root);
@@ -258,7 +281,6 @@ export async function buildInitReport(
     },
   };
 
-  // --- Model tiers ---
   const models = (["small", "medium", "large"] as const).map((tier) => {
     const json = formatModelTierJson(tier, "claude", effective.values);
     return {
@@ -271,7 +293,6 @@ export async function buildInitReport(
     };
   });
 
-  // --- Execution settings ---
   const execution: InitReport["execution"] = {};
   for (const [key, entry] of effective.provenance) {
     if (key.startsWith("execution.")) {
@@ -279,12 +300,10 @@ export async function buildInitReport(
     }
   }
 
-  // --- Assets and settings (mode-aware) ---
   let assets: InitReport["assets"];
   let settings: InitReport["settings"];
 
   if (isMarketplace) {
-    // Marketplace mode: no fallback asset inspection
     assets = {
       current: [],
       modified: [],
@@ -317,7 +336,6 @@ export async function buildInitReport(
     };
   }
 
-  // --- Build report ---
   return {
     configurationFiles,
     gitignore: await ensureGitignore(path.join(root, ".leanrigor")),
