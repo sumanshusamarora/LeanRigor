@@ -8,7 +8,7 @@
     "leanrigor": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "npm run version:check && rm -rf dist && tsc -p tsconfig.build.json && cp -r src/adapters/claude/plugin dist/adapters/claude/plugin && npm run build:claude-plugin",
+    "build": "npm run version:check && rm -rf dist && tsc -p tsconfig.build.json && node scripts/verify-built-cli.mjs && cp -r src/adapters/claude/plugin dist/adapters/claude/plugin && npm run build:claude-plugin",
     "build:claude-plugin": "node scripts/build-claude-plugin.mjs",
     "validate:claude-plugin": "node scripts/validate-claude-plugin.mjs",
     "version:sync": "node scripts/sync-versions.mjs",
