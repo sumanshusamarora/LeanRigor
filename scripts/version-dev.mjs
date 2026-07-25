@@ -8,13 +8,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(root, "package.json");
 
 function bumpDevVersion(version) {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/);
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
   if (!match) {
-    throw new Error(`Version '${version}' is not in supported dev format x.y.z-dev.n or x.y.z`);
+    throw new Error(`Version '${version}' is not in a supported semver format`); 
   }
 
-  const [, major, minor, patch, prerelease] = match;
-  const next = prerelease === undefined ? 0 : Number(prerelease) + 1;
+  const major = match[1];
+  const minor = match[2];
+  const patch = match[3];
+  const prerelease = match[4];
+  if (!prerelease) {
+    return `${major}.${minor}.${patch}-dev.0`;
+  }
+
+  const devMatch = prerelease.match(/^dev\.(\d+)$/);
+  const next = devMatch ? Number(devMatch[1]) + 1 : 0;
   return `${major}.${minor}.${patch}-dev.${next}`;
 }
 

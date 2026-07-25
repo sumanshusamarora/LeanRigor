@@ -18,7 +18,7 @@ function stableJson(value) {
 }
 
 function replaceCliVersion(source, version) {
-  const pattern = /(program\.name\("leanrigor"\)\.description\("Adaptive rigor and model routing for AI coding agents"\)\.version\(")([^"]+)("\);)/;
+  const pattern = /(program\.name\("leanrigor"\)\.description\([^)]*\)\.version\(")([^"]+)("\);)/;
   if (!pattern.test(source)) {
     throw new Error("Could not locate CLI version declaration in src/cli/index.ts");
   }

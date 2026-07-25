@@ -38,23 +38,33 @@ function gitSafe(args) {
 }
 
 function listChangedFiles() {
+  const hasWorkingTreeChanges = gitSafe(["status", "--porcelain"]).length > 0;
   if (staged) {
     const out = gitSafe(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
+  if (hasWorkingTreeChanges) {
+    const out = gitSafe(["diff", "--name-only", "HEAD", "--diff-filter=ACMR"]);
+    return out ? out.split("\n").filter(Boolean) : [];
+  }
+
   const baseRef = process.env.GITHUB_BASE_REF;
   if (baseRef) {
+    let fetched = true;
     try {
       git(["fetch", "origin", `${baseRef}:refs/remotes/origin/${baseRef}`]);
     } catch {
-      // best effort; continue with local refs
+      fetched = false;
     }
+    if (!fetched) console.warn(`WARN: failed to fetch origin/${baseRef}; using existing local refs for version bump check.`);
     const out = gitSafe(["diff", "--name-only", `origin/${baseRef}...HEAD`, "--diff-filter=ACMR"]);
     return out ? out.split("\n").filter(Boolean) : [];
   }
 
-  const out = gitSafe(["diff", "--name-only", "HEAD~1..HEAD", "--diff-filter=ACMR"]);
+  const out = process.env.GITHUB_ACTIONS
+    ? gitSafe(["diff", "--name-only", "HEAD~1..HEAD", "--diff-filter=ACMR"])
+    : gitSafe(["diff", "--name-only", "HEAD", "--diff-filter=ACMR"]);
   return out ? out.split("\n").filter(Boolean) : [];
 }
 

@@ -95,6 +95,12 @@ export interface ShadowingReport {
   recommendation: string;
 }
 
+interface InstalledPluginInfo {
+  commit: string;
+  version: string;
+  status: "current" | "version-mismatch" | "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
@@ -986,7 +992,7 @@ async function readGitCommit(): Promise<string> {
   }
 }
 
-async function readInstalledPluginInfo(): Promise<{ commit: string; version: string; status: "current" | "version-mismatch" | "unknown" }> {
+async function readInstalledPluginInfo(): Promise<InstalledPluginInfo> {
   const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
   if (!pluginRoot) {
     return { commit: "n/a", version: "n/a", status: "unknown" };

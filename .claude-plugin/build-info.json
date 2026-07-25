@@ -1,6 +1,6 @@
 {
   "generatedBy": "scripts/sync-versions.mjs",
-  "packageVersion": "0.3.1-draft",
-  "pluginVersion": "0.3.1-draft",
-  "gitCommit": "5cb0cc7c5c7d"
+  "packageVersion": "0.3.1-dev.0",
+  "pluginVersion": "0.3.1-dev.0",
+  "gitCommit": "67ae0127fab8"
 }

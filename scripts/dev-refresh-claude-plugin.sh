@@ -51,7 +51,7 @@ run_allow_fail() {
 }
 
 json_version() {
-  node -e 'const fs=require("fs");const f=process.argv[1];const k=process.argv[2];const j=JSON.parse(fs.readFileSync(f,"utf8"));console.log(j[k]??"")' "$1" "$2"
+  node "$REPO_ROOT/scripts/json-get.mjs" "$1" "$2"
 }
 
 collect_cache_paths() {
@@ -108,7 +108,7 @@ step "Resolving local and remote versions"
 LOCAL_VERSION=$(json_version "$REPO_ROOT/package.json" version)
 REMOTE_VERSION="$LOCAL_VERSION"
 if git -C "$REPO_ROOT" fetch origin main:refs/remotes/origin/main >/dev/null 2>&1; then
-  REMOTE_VERSION=$(git -C "$REPO_ROOT" show origin/main:package.json | node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(0,"utf8"));console.log(j.version)')
+  REMOTE_VERSION=$(git -C "$REPO_ROOT" show origin/main:package.json | json_version - version)
 else
   echo "WARN: could not fetch origin/main; using local package version for refresh checks."
 fi
