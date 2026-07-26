@@ -68,8 +68,9 @@ Rules:
 
 - One active workflow: resume it.
 - No active workflow: start only when the user supplied a request.
-- Multiple active workflows: show ID, request, state, mode, updated time, and ask the user to choose.
-- Interpret `approve`, `looks good`, and `continue` according to the current gate.
+- Multiple active workflows: use AskUserQuestion to let the user choose among them (header: "Workflow"). Show ID, request, state, mode, and updated time in each option description. Fall back to a plain list only when AskUserQuestion is unavailable.
+- When `flow next --json` returns `approvalActions`, prefer using the `AskUserQuestion` tool to present a structured selector. Map each action's `label` to the option label and `description` to the option description. Use a short header (max 12 chars) derived from the current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for multi-workflow selection. Fall back to a numbered list only when `AskUserQuestion` is unavailable. Each action has a deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response.
+- Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
 - Approval at approach immediately generates and renders the actual phased plan.
 - Approval at plan derives ready phases. When execution providers/workspaces are
   configured, use `execution.mode = coordinator`: invoke `flow execute-next` or

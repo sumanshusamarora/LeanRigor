@@ -192,6 +192,23 @@ describe("Claude conversational workflow UX support", () => {
       expect(content).toMatch(/Raw commands belong only|Do not print raw JSON or CLI commands/);
     }
   });
+
+  it("shared guidance prefers AskUserQuestion over plain text for approval gates", async () => {
+    const marketplace = await readFile(path.join(repoRoot, "plugin-skills", "sequential-workflow", "SKILL.md"), "utf8");
+    const local = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
+
+    for (const content of [marketplace, local]) {
+      // Must prefer AskUserQuestion for approval gates
+      expect(content).toContain("AskUserQuestion");
+      // Must have fallback language
+      expect(content).toMatch(/Fall back to a numbered list|numbered list.*when.*AskUserQuestion.*unavailable/);
+      // Must keep deterministic commands as authority
+      expect(content).toContain("deterministic");
+      expect(content).toMatch(/remains the[\s]*authority/);
+      // Must never infer approval
+      expect(content).toContain("Do not infer approval from conversational tone");
+    }
+  });
 });
 
 describe("approval actions", () => {
