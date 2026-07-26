@@ -46,6 +46,7 @@ function run(command: string, args: string[], options: { cwd?: string; env?: Nod
 async function fakeClaudePath(): Promise<string> {
   const binDir = await tempDir("leanrigor-fake-claude-");
   const triageOutput = assessTask("Change authentication migration handling for production credentials", defaultConfig());
+  const standardTriageOutput = assessTask("Fix the broken assignment API regression", defaultConfig());
   const planningOutput = {
     version: 1,
     summary: "Model-generated marketplace planning result.",
@@ -66,13 +67,25 @@ async function fakeClaudePath(): Promise<string> {
     revisionRequests: []
   };
   const triageEnvelope = JSON.stringify({ result: JSON.stringify(triageOutput) });
+  const standardTriageEnvelope = JSON.stringify({ result: JSON.stringify(standardTriageOutput) });
   const planningEnvelope = JSON.stringify({ result: JSON.stringify(planningOutput) });
   await writeFile(
     path.join(binDir, "claude"),
-    `#!/usr/bin/env node\nconst prompt = process.argv.join("\\n");\nprocess.stdout.write(prompt.includes("bounded sequential planner") ? ${JSON.stringify(`${planningEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)});\n`,
+    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst prompt = args.join("\\n");\nconst stage = prompt.includes("bounded sequential planner") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
     { mode: 0o755 }
   );
   return `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+async function homeWithUserModelConfig(models: { small: string; medium: string; large: string }): Promise<string> {
+  const home = await tempDir("leanrigor-home-");
+  const configDir = path.join(home, ".config", "leanrigor");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(path.join(configDir, "config.json"), JSON.stringify({
+    version: 1,
+    models: { claude: models }
+  }), "utf8");
+  return home;
 }
 
 async function pathWithoutClaude(): Promise<string> {
@@ -283,6 +296,53 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.planning).toMatchObject({ source: "model", provider: "claude-cli", attempts: 1 });
     expect(state.planning.fallbackReason).toBeUndefined();
     expect(state.phaseProgress[0]?.objective).toBe("Implement model-backed planning for issue-specific obligations.");
+  });
+
+  it("uses effective user model config for marketplace first triage and approval planning", async () => {
+    const repo = path.join(await tempDir("leanrigor marketplace effective models repo "), "repo");
+    await mkdir(repo, { recursive: true });
+    const logFile = path.join(await tempDir("leanrigor-model-log-"), "models.log");
+    const home = await homeWithUserModelConfig({
+      small: "deepseek-user-small",
+      medium: "deepseek-user-medium",
+      large: "deepseek-user-large"
+    });
+    const env = {
+      CLAUDE_PLUGIN_ROOT: repoRoot,
+      HOME: home,
+      PATH: await fakeClaudePath(),
+      LEANRIGOR_TEST_MODEL_LOG: logFile
+    };
+
+    const initReport = await run(path.join(repoRoot, "bin", "leanrigor"), ["init-report", "--json", "--no-bootstrap", "--root", repo], {
+      cwd: repo,
+      env
+    });
+    expect(initReport.code).toBe(0);
+    const report = JSON.parse(initReport.stdout) as { models: Array<{ tier: string; resolvedModel: string | null }> };
+    expect(Object.fromEntries(report.models.map((model) => [model.tier, model.resolvedModel]))).toMatchObject({
+      small: "deepseek-user-small",
+      medium: "deepseek-user-medium",
+      large: "deepseek-user-large"
+    });
+
+    const started = await run(path.join(repoRoot, "bin", "leanrigor"), ["flow", "start", "Fix the broken assignment API regression", "--root", repo], {
+      cwd: repo,
+      env
+    });
+    expect(started.code).toBe(0);
+    const startState = JSON.parse(started.stdout) as { id: string; mode: string; triage: { model?: string } };
+    expect(startState.mode).toBe("standard");
+    expect(startState.triage.model).toBe("deepseek-user-small");
+
+    const planned = await run(path.join(repoRoot, "bin", "leanrigor"), ["flow", "approve-approach", startState.id, "--root", repo], {
+      cwd: repo,
+      env
+    });
+    expect(planned.code).toBe(0);
+    const plannedState = JSON.parse(planned.stdout) as { planning: { source: string; model?: string } };
+    expect(plannedState.planning).toMatchObject({ source: "model", model: "deepseek-user-medium" });
+    await expect(readFile(logFile, "utf8")).resolves.toContain("triage:deepseek-user-small\nplanning:deepseek-user-medium");
   });
 
   it("prints a clear error when Node is unavailable", async () => {

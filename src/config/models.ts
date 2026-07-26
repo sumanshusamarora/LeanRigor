@@ -3,8 +3,9 @@ import type { LeanRigorConfig, ModelTier } from "./schema.js";
 export type Harness = "claude" | "opencode";
 
 /**
- * Adapter-specific environment variables checked before generic env vars.
- * Claude adapter uses the official ANTHROPIC_DEFAULT_* aliases.
+ * Adapter-specific default environment variables. For Claude, these are the
+ * official alias defaults and are used after LeanRigor-specific env/config
+ * values but before built-in alias defaults.
  */
 const CLAUDE_ADAPTER_ENV: Record<string, string> = {
   SMALL: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
@@ -42,15 +43,21 @@ export interface ResolvedModel {
 
 export class ModelConfigurationError extends Error {}
 
+export function resolveModelTierFallbacks(tier: ModelTier, harness: Harness, config: LeanRigorConfig): ResolvedModel[] {
+  const tiers = [tier, ...(tier === "inherit" ? [] : config.models.fallback[tier] ?? [])];
+  const unique = [...new Set(tiers)];
+  return unique.map((candidate) => resolveModelTier(candidate, harness, config));
+}
+
 /**
  * Resolve a portable model tier to a concrete model name for a given harness.
  *
  * Resolution order (first match wins):
  *   1. If tier is "inherit" → omit model (undefined)
- *   2. Adapter-specific environment (ANTHROPIC_DEFAULT_* for Claude)
- *   3. Platform-specific environment (LEANRIGOR_CLAUDE_MODEL_*, etc.)
- *   4. Generic LEANRIGOR_MODEL_* environment
- *   5. Configured model in LeanRigor config
+ *   2. Platform-specific environment (LEANRIGOR_CLAUDE_MODEL_*, etc.)
+ *   3. Generic LEANRIGOR_MODEL_* environment
+ *   4. Configured model in LeanRigor config
+ *   5. Adapter-specific default environment (ANTHROPIC_DEFAULT_* for Claude)
  *   6. Adapter-derived default (haiku/sonnet/opus for Claude)
  *   7. If failIfUnavailable → throw; otherwise → inherit
  */

@@ -138,6 +138,12 @@ export function applyRepoPolicy(
   if (policy.safety?.rigorousPaths) config.risk.rigorousPaths = policy.safety.rigorousPaths;
   if (policy.safety?.protectedPaths) config.risk.protectedPaths = policy.safety.protectedPaths;
 
+  if (policy.modelFallback) {
+    config.models.fallback.small = policy.modelFallback.small;
+    config.models.fallback.medium = policy.modelFallback.medium;
+    config.models.fallback.large = policy.modelFallback.large;
+  }
+
   if (policy.completionGate?.allowSkippedValidation) {
     if (policy.completionGate.allowSkippedValidation.fast !== undefined)
       config.completionGate.allowSkippedValidation.fast = policy.completionGate.allowSkippedValidation.fast;

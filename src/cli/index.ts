@@ -2,7 +2,6 @@
 import { Command } from "commander";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { loadConfig } from "../config/load.js";
 import { saveWorkflow, loadWorkflow } from "../core/workflow.js";
 import { ClaudeAdapter, cleanupProjectLocalAssets, type CleanupScope } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
@@ -75,7 +74,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.8");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.10");
 
 program.command("setup")
   .alias("init")
@@ -159,7 +158,7 @@ program.command("models")
   .option("--opencode-large <model>")
   .action(async (options) => {
     const root = options.root;
-    const config = await loadConfig(root);
+    const config = await ensureRepositoryConfig(root);
     for (const tier of ["small", "medium", "large"] as const) {
       const claude = options[`claude${capitalise(tier)}`];
       const opencode = options[`opencode${capitalise(tier)}`];
@@ -167,7 +166,7 @@ program.command("models")
       if (opencode) config.models.tiers[tier].opencode = opencode;
     }
     await writeConfig(root, leanRigorConfigSchema.parse(config));
-    console.log((await new ClaudeAdapter().doctor(root, config)).join("\n"));
+    console.log((await new ClaudeAdapter().doctor(root, await effectiveRepositoryConfig(root))).join("\n"));
     if (!config.models.tiers.small.opencode || !config.models.tiers.medium.opencode || !config.models.tiers.large.opencode) {
       console.log("OpenCode tiers are incomplete. Supply provider/model identifiers before enabling the OpenCode adapter.");
     }
@@ -338,7 +337,7 @@ program.command("triage")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .action(async (request, { root, provider }) => {
-    const config = await loadConfig(root);
+    const config = await effectiveRepositoryConfig(root);
     const providerSelection = triageProviderSelection(provider);
     const result = await runTriage({
       request,
@@ -369,7 +368,7 @@ program.command("doctor")
   .option("--adapter <adapter>", "harness adapter: claude", "claude")
   .action(async ({ root, adapter }) => {
     if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
-    const config = await loadConfig(root);
+    const config = await effectiveRepositoryConfig(root);
     console.log((await new ClaudeAdapter().doctor(root, config)).join("\n"));
     // Also show config management hints
     console.log("");
@@ -426,7 +425,7 @@ flow.command("answer")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, answer, options) => {
-    const config = await ensureRepositoryConfig(options.root);
+    const config = await effectiveRepositoryConfig(options.root);
     const providerSelection = triageProviderSelection(options.provider);
     printFlowState(await answerClarification({
       root: options.root,
@@ -451,7 +450,7 @@ flow.command("approve-approach")
     printFlowState(await approveApproach(
       options.root,
       workflowId,
-      await ensureRepositoryConfig(options.root),
+      await effectiveRepositoryConfig(options.root),
       mutationOptions(options),
       { provider: planningProvider(providerSelection), providerSelection }
     ));
@@ -489,7 +488,7 @@ flow.command("revise-plan")
       options.root,
       workflowId,
       feedback,
-      await ensureRepositoryConfig(options.root),
+      await effectiveRepositoryConfig(options.root),
       mutationOptions(options),
       { provider: planningProvider(providerSelection), providerSelection }
     ));
@@ -502,7 +501,7 @@ flow.command("phase-start")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "phase lease owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
-    printFlowState(await startPhase(options.root, workflowId, phaseId, { ...mutationOptions(options), config: await ensureRepositoryConfig(options.root) }));
+    printFlowState(await startPhase(options.root, workflowId, phaseId, { ...mutationOptions(options), config: await effectiveRepositoryConfig(options.root) }));
   });
 
 flow.command("phase-complete")
@@ -520,7 +519,7 @@ flow.command("phase-complete")
   .option("--owner <id>", "phase lease owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
     const evidence = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
-    const config = await ensureRepositoryConfig(options.root);
+    const config = await effectiveRepositoryConfig(options.root);
     printFlowState(await completePhase({
       root: options.root,
       workflowId,
@@ -560,7 +559,7 @@ flow.command("ready")
   .option("--root <path>", "repository root", process.cwd())
   .option("--json", "print structured ready phase schedule")
   .action(async (workflowId, options) => {
-    const schedule = readyPhases(await resumeFlow(options.root, workflowId), await ensureRepositoryConfig(options.root));
+    const schedule = readyPhases(await resumeFlow(options.root, workflowId), await effectiveRepositoryConfig(options.root));
     if (options.json) console.log(JSON.stringify(schedule, null, 2));
     else console.log(`${schedule.dispatchableCount}/${schedule.eligibleCount} phase(s) dispatchable; max parallel phases ${schedule.maxParallelPhases}.`);
   });
@@ -635,7 +634,7 @@ flow.command("lease-phase")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--json", "print workflow JSON summary")
   .action(async (workflowId, phaseId, options) => {
-    const state = await leasePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    const state = await leasePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
     if (options.json) printFlowState(state);
     else console.log(`Phase ${phaseId} leased by ${options.owner}.`);
   });
@@ -648,7 +647,7 @@ flow.command("heartbeat-phase")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--json", "print workflow JSON summary")
   .action(async (workflowId, phaseId, options) => {
-    const state = await heartbeatPhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    const state = await heartbeatPhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
     if (options.json) printFlowState(state);
     else console.log(`Phase ${phaseId} lease refreshed by ${options.owner}.`);
   });
@@ -682,7 +681,7 @@ flow.command("git-preflight")
   .option("--root <path>", "repository root", process.cwd())
   .option("--json", "print structured preflight result")
   .action(async (options) => {
-    const result = await gitPreflight(options.root, await ensureRepositoryConfig(options.root));
+    const result = await gitPreflight(options.root, await effectiveRepositoryConfig(options.root));
     if (options.json) console.log(JSON.stringify(result, null, 2));
     else console.log(result.ok ? "Git workspace preflight passed." : `Git workspace preflight failed: ${result.code}`);
   });
@@ -694,7 +693,7 @@ flow.command("workspace-init")
   .option("--owner <id>", "lock owner ID", "cli")
   .option("--json", "print workflow JSON summary")
   .action(async (workflowId, options) => {
-    const state = await workspaceInit({ root: options.root, workflowId, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    const state = await workspaceInit({ root: options.root, workflowId, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
     if (options.json) printFlowState(state);
     else console.log(`Integration workspace ready: ${state.git?.integration.path}`);
   });
@@ -712,7 +711,7 @@ flow.command("workspace-create-phase")
       workflowId,
       phaseId,
       ownerId: options.owner,
-      config: await ensureRepositoryConfig(options.root),
+      config: await effectiveRepositoryConfig(options.root),
       mutation: mutationOptions(options)
     });
     if (options.json) printFlowState(state);
@@ -724,7 +723,7 @@ flow.command("workspace-status")
   .option("--root <path>", "repository root", process.cwd())
   .option("--json", "print structured workspace status")
   .action(async (workflowId, options) => {
-    const status = await workspaceStatus(options.root, workflowId, await ensureRepositoryConfig(options.root));
+    const status = await workspaceStatus(options.root, workflowId, await effectiveRepositoryConfig(options.root));
     if (options.json) console.log(JSON.stringify(status, null, 2));
     else console.log(status.git ? `Integration workspace: ${status.git.integration.status}` : "No Git workspace initialized.");
   });
@@ -826,7 +825,7 @@ flow.command("repair")
       phaseId,
       reason: options.reason,
       requestedScope: options.scope,
-      config: await ensureRepositoryConfig(options.root),
+      config: await effectiveRepositoryConfig(options.root),
       mutation: mutationOptions(options)
     }));
   });
@@ -866,7 +865,7 @@ flow.command("record-review")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
-    const config = await ensureRepositoryConfig(options.root);
+    const config = await effectiveRepositoryConfig(options.root);
     printFlowState(await recordReview({
       root: options.root,
       workflowId,
@@ -1142,7 +1141,7 @@ function printHumanStatus(state: SequentialWorkflowState): void {
 }
 
 async function executionCoordinator(root: string, workflowId: string, providerName: string, scriptFile?: string): Promise<{ coordinator: ExecutionCoordinator; providerFallbackReason?: string }> {
-  const config = await ensureRepositoryConfig(root);
+  const config = await effectiveRepositoryConfig(root);
   const selected = await executionProvider(providerName, scriptFile);
   return {
     coordinator: new ExecutionCoordinator({
@@ -1153,6 +1152,11 @@ async function executionCoordinator(root: string, workflowId: string, providerNa
     }),
     providerFallbackReason: selected.fallbackReason
   };
+}
+
+async function effectiveRepositoryConfig(root: string) {
+  await ensureRepositoryConfig(root);
+  return (await resolveEffectiveConfig(root)).values;
 }
 
 async function executionProvider(providerName: string, scriptFile?: string): Promise<{ provider: ExecutionProvider; fallbackReason?: string }> {

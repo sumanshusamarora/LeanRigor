@@ -1,4 +1,5 @@
 import { ensureRepositoryConfig, ensureGitignore, findRepoRoot } from "../config/bootstrap.js";
+import { resolveEffectiveConfig } from "../config/resolver.js";
 import { ClaudeAdapter, type BootstrapReport, type InstallationMode, type ShadowingReport, detectInstallationMode, detectShadowing } from "../adapters/claude/adapter.js";
 import type { LeanRigorConfig } from "../config/schema.js";
 import path from "node:path";
@@ -41,8 +42,11 @@ export async function ensureBootstrapped(
 ): Promise<EnsureBootstrappedResult> {
   const warnings: string[] = [];
 
-  // 1. Always ensure .leanrigor/ directory, .gitignore, and config.json
-  const config = await ensureRepositoryConfig(root);
+  // 1. Always ensure .leanrigor/ directory, .gitignore, and config.json.
+  // Runtime decisions use the layered effective config so user/repo/local
+  // settings resolve the same way as init-report and config show.
+  await ensureRepositoryConfig(root);
+  const config = (await resolveEffectiveConfig(root)).values;
 
   // 2. Always ensure .leanrigor/.gitignore is correct
   await ensureGitignore(path.join(root, ".leanrigor"));
@@ -151,7 +155,8 @@ export async function ensureBootstrapped(
  * avoid the full adapter bootstrap overhead.
  */
 export async function ensureStateBootstrapped(root: string): Promise<EnsureBootstrappedResult> {
-  const config = await ensureRepositoryConfig(root);
+  await ensureRepositoryConfig(root);
+  const config = (await resolveEffectiveConfig(root)).values;
   await ensureGitignore(path.join(root, ".leanrigor"));
   return {
     bootstrapped: false,

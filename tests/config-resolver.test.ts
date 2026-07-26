@@ -1,13 +1,15 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveEffectiveConfig } from "../src/config/resolver.js";
+import { resolveModelTier } from "../src/config/models.js";
 
 describe("resolveEffectiveConfig", () => {
   let tempDir: string;
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     if (tempDir) {
       await import("node:fs/promises").then((fs) => fs.rm(tempDir, { recursive: true, force: true }));
     }
@@ -107,6 +109,64 @@ describe("resolveEffectiveConfig", () => {
       // isClaudeAlias is present (may be true or false depending on env)
       expect(typeof smallProv.isClaudeAlias).toBe("boolean");
     }
+  });
+
+  it("maps user-scoped Claude models into all effective model tiers", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "leanrigor-user-home-"));
+    tempDir = await mkdtemp(path.join(tmpdir(), "leanrigor-resolve-"));
+    vi.stubEnv("HOME", home);
+    await mkdir(path.join(home, ".config", "leanrigor"), { recursive: true });
+    await writeFile(path.join(home, ".config", "leanrigor", "config.json"), JSON.stringify({
+      version: 1,
+      models: {
+        claude: {
+          small: "deepseek-user-small",
+          medium: "deepseek-user-medium",
+          large: "deepseek-user-large"
+        }
+      }
+    }));
+
+    const effective = await resolveEffectiveConfig(tempDir);
+
+    expect(resolveModelTier("small", "claude", effective.values).model).toBe("deepseek-user-small");
+    expect(resolveModelTier("medium", "claude", effective.values).model).toBe("deepseek-user-medium");
+    expect(resolveModelTier("large", "claude", effective.values).model).toBe("deepseek-user-large");
+  });
+
+  it("keeps local repo model config ahead of user and adapter defaults for all tiers", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "leanrigor-user-home-"));
+    tempDir = await mkdtemp(path.join(tmpdir(), "leanrigor-resolve-"));
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("ANTHROPIC_DEFAULT_SONNET_MODEL", "deepseek-env-medium");
+    await mkdir(path.join(home, ".config", "leanrigor"), { recursive: true });
+    await writeFile(path.join(home, ".config", "leanrigor", "config.json"), JSON.stringify({
+      version: 1,
+      models: {
+        claude: {
+          small: "deepseek-user-small",
+          medium: "deepseek-user-medium",
+          large: "deepseek-user-large"
+        }
+      }
+    }));
+    await mkdir(path.join(tempDir, ".leanrigor"), { recursive: true });
+    await writeFile(path.join(tempDir, ".leanrigor", "config.json"), JSON.stringify({
+      version: 1,
+      models: {
+        tiers: {
+          small: { claude: "deepseek-local-small" },
+          medium: { claude: "deepseek-local-medium" },
+          large: { claude: "deepseek-local-large" }
+        }
+      }
+    }));
+
+    const effective = await resolveEffectiveConfig(tempDir);
+
+    expect(resolveModelTier("small", "claude", effective.values).model).toBe("deepseek-local-small");
+    expect(resolveModelTier("medium", "claude", effective.values).model).toBe("deepseek-local-medium");
+    expect(resolveModelTier("large", "claude", effective.values).model).toBe("deepseek-local-large");
   });
 });
 

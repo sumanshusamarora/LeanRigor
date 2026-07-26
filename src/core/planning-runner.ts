@@ -6,6 +6,7 @@ export interface PlanningProviderResult {
   raw: unknown;
   provider: string;
   model?: string;
+  warnings?: string[];
 }
 
 export interface PlanningProviderInput {
@@ -61,6 +62,7 @@ export async function runPlanning(args: {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const result = await provider.plan(input);
+      warnings.push(...(result.warnings ?? []));
       const plan = args.validate(normaliseModelPayload(result.raw));
       return {
         plan,

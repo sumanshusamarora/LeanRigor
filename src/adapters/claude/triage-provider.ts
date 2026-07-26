@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { LeanRigorConfig } from "../../config/schema.js";
-import { resolveModelTier } from "../../config/models.js";
+import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
+import { resolveModelTierFallbacks, type ResolvedModel } from "../../config/models.js";
 import type { TriageProvider, TriageProviderResult } from "../../core/triage-runner.js";
 
 export interface CommandResult {
@@ -19,32 +19,21 @@ export class ClaudeCliTriageProvider implements TriageProvider {
   constructor(private readonly runCommand: CommandRunner = defaultCommandRunner) {}
 
   async classify(request: string, root: string, config: LeanRigorConfig): Promise<TriageProviderResult> {
-    const model = resolveModelTier(config.routing.triage, "claude", config).model;
+    const tier = config.routing.triage;
     const prompt = await buildTriagePrompt(root, request);
     // Allow read-only tools for informed inspection; keep enough turns for inspect + respond.
     // Mutating and side-effect tools are forbidden.
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "5", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
-    if (model) args.push("--model", model);
+    const baseArgs = ["-p", prompt, "--output-format", "json", "--max-turns", "5", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const attempted = await runClaudeWithTierFallback({
+      runCommand: this.runCommand,
+      root,
+      baseArgs,
+      preferredTier: tier,
+      config,
+      stage: "triage"
+    });
 
-    const result = await this.runCommand("claude", args, root);
-    if (result.exitCode !== 0) {
-      const resolved = model ?? "inherit";
-      throw new Error(
-        `Claude Code could not run the LeanRigor '${config.routing.triage}' tier ` +
-        `(resolved model: '${resolved}'). ${result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`} ` +
-        `Verify the model is allowed in Claude Code, configure it with ` +
-        `'leanrigor models --claude-${config.routing.triage} <model-or-alias>', or set ` +
-        `LEANRIGOR_CLAUDE_MODEL_${config.routing.triage.toUpperCase()}.`
-      );
-    }
-
-    let raw: unknown;
-    try {
-      raw = JSON.parse(result.stdout);
-    } catch {
-      raw = result.stdout;
-    }
-    return { raw, provider: this.name, model };
+    return { raw: parseCommandOutput(attempted.result), provider: this.name, model: attempted.model, warnings: attempted.warnings };
   }
 }
 
@@ -72,3 +61,61 @@ export const defaultCommandRunner: CommandRunner = (command, args, cwd) => new P
   child.on("error", reject);
   child.on("close", (code: number | null) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
 });
+
+export async function runClaudeWithTierFallback(args: {
+  runCommand: CommandRunner;
+  root: string;
+  baseArgs: string[];
+  preferredTier: ModelTier;
+  config: LeanRigorConfig;
+  stage: string;
+}): Promise<{ result: CommandResult; model?: string; warnings: string[] }> {
+  const resolvedModels = resolveModelTierFallbacks(args.preferredTier, "claude", args.config);
+  const failures: string[] = [];
+
+  for (const resolved of resolvedModels) {
+    const commandArgs = [...args.baseArgs];
+    if (resolved.model) commandArgs.push("--model", resolved.model);
+    try {
+      const result = await args.runCommand("claude", commandArgs, args.root);
+      if (result.exitCode === 0) {
+        return {
+          result,
+          model: resolved.model,
+          warnings: failures.map((failure) => `Claude ${args.stage} provider tier fallback: ${failure}`)
+        };
+      }
+      failures.push(formatTierFailure(args.stage, resolved, result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`));
+    } catch (error) {
+      failures.push(formatTierFailure(args.stage, resolved, error instanceof Error ? error.message : String(error ?? "unknown error")));
+    }
+  }
+
+  const tried = resolvedModels.map(modelLabel).join(", ");
+  throw new Error(
+    `Claude Code could not run LeanRigor ${args.stage} after trying ${tried}. ` +
+    `Last failure: ${failures.at(-1) ?? "reason unavailable"}. ` +
+    `Configure the preferred tier with 'leanrigor models --claude-${args.preferredTier} <model-or-alias>', ` +
+    `set LEANRIGOR_CLAUDE_MODEL_${args.preferredTier.toUpperCase()}, or adjust models.fallback.`
+  );
+}
+
+function parseCommandOutput(result: CommandResult): unknown {
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return result.stdout;
+  }
+}
+
+function formatTierFailure(stage: string, resolved: ResolvedModel, reason: string): string {
+  return `${stage} tier '${resolved.tier}' (${modelLabel(resolved)}) failed: ${compactReason(reason)}`;
+}
+
+function modelLabel(resolved: ResolvedModel): string {
+  return resolved.model ? `model '${resolved.model}'` : "inherited Claude default";
+}
+
+function compactReason(reason: string): string {
+  return reason.replace(/\s+/g, " ").trim().slice(0, 500);
+}

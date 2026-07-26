@@ -158,8 +158,8 @@ export async function cleanupProjectLocalAssets(
     // Load config for asset manifest
     let config: LeanRigorConfig;
     try {
-      const { loadConfig } = await import("../../config/load.js");
-      config = await loadConfig(root);
+      const { resolveEffectiveConfig } = await import("../../config/resolver.js");
+      config = (await resolveEffectiveConfig(root)).values;
     } catch {
       const { defaultConfig } = await import("../../config/defaults.js");
       config = (await defaultConfig()) as unknown as LeanRigorConfig;
@@ -1063,8 +1063,8 @@ function runtimeSource(): string {
 /** Load config for uninstall without crashing if config is missing. */
 async function loadConfigForUninstall(root: string): Promise<LeanRigorConfig> {
   try {
-    const { loadConfig } = await import("../../config/load.js");
-    return loadConfig(root);
+    const { resolveEffectiveConfig } = await import("../../config/resolver.js");
+    return (await resolveEffectiveConfig(root)).values;
   } catch {
     const { defaultConfig } = await import("../../config/defaults.js");
     return defaultConfig();

@@ -1,8 +1,7 @@
 import type { LeanRigorConfig } from "../../config/schema.js";
-import { resolveModelTier } from "../../config/models.js";
 import type { PlanningProvider, PlanningProviderInput, PlanningProviderResult } from "../../core/planning-runner.js";
 import type { CommandRunner } from "./triage-provider.js";
-import { defaultCommandRunner } from "./triage-provider.js";
+import { defaultCommandRunner, runClaudeWithTierFallback } from "./triage-provider.js";
 
 export class ClaudeCliPlanningProvider implements PlanningProvider {
   name = "claude-cli";
@@ -10,30 +9,27 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
   constructor(private readonly runCommand: CommandRunner = defaultCommandRunner) {}
 
   async plan(input: PlanningProviderInput): Promise<PlanningProviderResult> {
-    const model = resolveModelTier(planningTier(input), "claude", input.config).model;
+    const tier = planningTier(input);
     const prompt = buildPlanningPrompt(input);
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "7", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
-    if (model) args.push("--model", model);
+    const baseArgs = ["-p", prompt, "--output-format", "json", "--max-turns", "7", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const attempted = await runClaudeWithTierFallback({
+      runCommand: this.runCommand,
+      root: input.root,
+      baseArgs,
+      preferredTier: tier,
+      config: input.config,
+      stage: "planning"
+    });
 
-    const result = await this.runCommand("claude", args, input.root);
-    if (result.exitCode !== 0) {
-      const tier = planningTier(input);
-      const resolved = model ?? "inherit";
-      throw new Error(
-        `Claude Code could not run LeanRigor planning tier '${tier}' ` +
-        `(resolved model: '${resolved}'). ${result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`} ` +
-        `Configure it with 'leanrigor models --claude-${tier} <model-or-alias>', or set ` +
-        `LEANRIGOR_CLAUDE_MODEL_${tier.toUpperCase()}.`
-      );
-    }
+    return { raw: parseCommandOutput(attempted.result), provider: this.name, model: attempted.model, warnings: attempted.warnings };
+  }
+}
 
-    let raw: unknown;
-    try {
-      raw = JSON.parse(result.stdout);
-    } catch {
-      raw = result.stdout;
-    }
-    return { raw, provider: this.name, model };
+function parseCommandOutput(result: { stdout: string }): unknown {
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return result.stdout;
   }
 }
 

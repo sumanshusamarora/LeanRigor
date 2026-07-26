@@ -100,6 +100,14 @@ describe("applyRepoPolicy", () => {
     expect(config.review.fast).toBe("deep");
     expect(config.review.allowUserOverride).toBe(false);
   });
+
+  it("applies repo policy model fallback chains", () => {
+    const base = defaultConfig();
+    const policy = repoPolicyConfigSchema.parse({ modelFallback: { medium: ["inherit"] } });
+
+    const { config } = applyRepoPolicy(base, policy);
+    expect(config.models.fallback.medium).toEqual(["inherit"]);
+  });
 });
 
 describe("applyUserConfig", () => {

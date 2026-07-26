@@ -6,6 +6,7 @@ export interface TriageProviderResult {
   raw: unknown;
   provider: string;
   model?: string;
+  warnings?: string[];
 }
 
 export interface TriageProvider {
@@ -63,6 +64,7 @@ export async function runTriage(args: {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const result = await provider.classify(request, root, config);
+      warnings.push(...(result.warnings ?? []));
       const parsed = validateTriageOutput(normaliseModelPayload(result.raw));
       const policyChecked = applyPolicyOverrides(parsed, config);
       return {

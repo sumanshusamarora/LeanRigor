@@ -42,14 +42,14 @@ async function tempRepo(): Promise<string> {
   return root;
 }
 
-function planningProviderFrom(values: unknown[]): PlanningProvider {
+function planningProviderFrom(values: unknown[], warnings: string[] = []): PlanningProvider {
   let index = 0;
   return {
     name: "fake-planner",
     async plan() {
       const raw = values[Math.min(index, values.length - 1)];
       index += 1;
-      return { raw, provider: "fake-planner", model: "planner-test-model" };
+      return { raw, provider: "fake-planner", model: "planner-test-model", warnings };
     }
   };
 }
@@ -146,6 +146,19 @@ describe("sequential workflow orchestration", () => {
     expect(planned.plan?.phases).toHaveLength(1);
     expect(planned.plan?.phases[0]?.objective).toBe("Implement issue-specific test obligation planning.");
     expect(planned.plan?.phases[0]?.status).toBe("planned");
+  });
+
+  it("persists model provider warnings when planning succeeds after tier fallback", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([compactPlan()], ["Claude planning provider tier fallback: planning tier 'medium' (model 'sonnet') failed: unavailable"]),
+      providerSelection: "auto"
+    });
+
+    expect(planned.planningRun?.source).toBe("model");
+    expect(planned.planningRun?.warnings.join("\n")).toContain("planning tier 'medium'");
   });
 
   it("falls back to deterministic planning with a reason when model planning fails", async () => {
