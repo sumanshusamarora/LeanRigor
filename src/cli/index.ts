@@ -62,7 +62,8 @@ import {
   workspaceInit,
   workspaceRecover,
   workspaceStatus,
-  workflowEvents
+  workflowEvents,
+  getEvidenceTemplate
 } from "../core/flow.js";
 import { RevisionConflictError } from "../core/workflow-store.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowMode } from "../core/types.js";
@@ -73,7 +74,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.3");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.4");
 
 program.command("setup")
   .alias("init")
@@ -508,6 +509,21 @@ flow.command("phase-complete")
       modelDecision: evidence.modelDecision,
       mutation: mutationOptions(options)
     }));
+  });
+
+flow.command("evidence-template")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print template as structured JSON")
+  .description("Print the evidence template for a phase's completion gate")
+  .action(async (workflowId, phaseId, options) => {
+    const state = await resumeFlow(options.root, workflowId);
+    if (!state.plan) throw new Error("Workflow has no plan.");
+    const phase = state.plan.phases.find((candidate) => candidate.id === phaseId);
+    if (!phase) throw new Error(`Unknown phase: ${phaseId}`);
+    const template = getEvidenceTemplate(phase);
+    console.log(JSON.stringify(template, null, 2));
   });
 
 flow.command("ready")

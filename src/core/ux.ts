@@ -1,4 +1,4 @@
-import { listFlows, resumeFlow } from "./flow.js";
+import { listFlows, nextActions, resumeFlow } from "./flow.js";
 import type { CommitPlan, SequentialWorkflowState, WorkflowLifecycleState, WorkflowMode, WorkflowPhase } from "./types.js";
 
 export interface WorkflowListSummary {
@@ -16,6 +16,13 @@ export interface ActiveWorkflowSelection {
   message: string;
 }
 
+export interface ApprovalAction {
+  label: string;
+  intent: string;
+  command: string;
+  description: string;
+}
+
 export interface WorkflowNextSummary {
   workflow: WorkflowListSummary;
   label: string;
@@ -23,6 +30,7 @@ export interface WorkflowNextSummary {
   pendingDecision: string | null;
   pendingAction: string;
   allowedIntents: string[];
+  approvalActions?: ApprovalAction[];
   summary: Record<string, unknown>;
   troubleshooting: {
     showCommandsOnlyOnFailure: true;
@@ -79,13 +87,19 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     };
   }
   if (state.state === "awaiting_approach_approval") {
+    const commands = nextActions(state);
     return {
       ...base,
       label: "Approach approval",
       userDecisionRequired: true,
       pendingDecision: "Approve this approach, request changes, reject it, or cancel.",
-      pendingAction: "Approve this approach, request changes, or cancel?",
+      pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "reject", "cancel", "show status"],
+      approvalActions: [
+        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the proposed approach and continue to plan generation." },
+        { label: "Revise", intent: "revise", command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root "${state.root}"`, description: "Request changes to the approach with specific feedback." },
+        { label: "Reject", intent: "reject", command: commands[1] ?? "", description: "Reject the approach with a reason. The workflow will be blocked." }
+      ],
       summary: {
         proposed: state.approach?.proposed,
         preferredBecause: state.approach?.preferredBecause,
@@ -95,13 +109,19 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     };
   }
   if (state.state === "awaiting_plan_approval") {
+    const commands = nextActions(state);
     return {
       ...base,
       label: "Plan approval",
       userDecisionRequired: true,
       pendingDecision: "Approve this plan, request changes, or cancel.",
-      pendingAction: "Approve this plan, request changes, or cancel?",
+      pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "cancel", "show status", "show plan"],
+      approvalActions: [
+        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the plan and begin phase execution." },
+        { label: "Revise", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
+        { label: "Cancel", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root "${state.root}"`, description: "Cancel this workflow." }
+      ],
       summary: {
         phases: state.plan?.phases.map((candidate, index) => ({
           number: index + 1,
@@ -150,13 +170,19 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     };
   }
   if (state.state === "awaiting_commit_approval") {
+    const commands = nextActions(state);
     return {
       ...base,
       label: "Commit proposal",
       userDecisionRequired: true,
       pendingDecision: "Review the commit proposal. No commit or push has occurred.",
-      pendingAction: "Review the proposal, ask for changes, complete the workflow, or cancel.",
+      pendingAction: "Select an action: review the proposal, complete the workflow, or cancel.",
       allowedIntents: ["show proposal", "complete", "cancel", "show status"],
+      approvalActions: [
+        { label: "Complete", intent: "complete", command: commands[1] ?? "", description: "Finalize the workflow. No commit or push is performed." },
+        { label: "Show Proposal", intent: "show proposal", command: commands[0] ?? "", description: "Display the commit proposal for review." },
+        { label: "Cancel", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root "${state.root}"`, description: "Cancel this workflow." }
+      ],
       summary: { commitPlan: commitPlanSummary(state.commitPlan) }
     };
   }

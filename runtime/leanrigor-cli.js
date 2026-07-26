@@ -23137,6 +23137,46 @@ async function completePhase(args) {
     return transition(next, "validating", "All phases completed; targeted validation is required.");
   }, { ...args.mutation, operation: "phase_complete" });
 }
+function getEvidenceTemplate(phase2) {
+  return {
+    phaseId: phase2.id,
+    objective: phase2.objective,
+    criteria: phase2.acceptanceCriteria.map((criterion) => ({
+      criterion,
+      status: "met",
+      evidence: ["<describe the concrete evidence that proves this criterion is satisfied>"]
+    })),
+    filesChanged: phase2.filesChanged.length > 0 ? phase2.filesChanged : ["<list every file changed in this phase>"],
+    commandsRun: phase2.validationCommands.length > 0 ? phase2.validationCommands : ["<list every command run during this phase>"],
+    validation: phase2.validationCommands.length > 0 ? phase2.validationCommands.map((command) => ({
+      command,
+      exitStatus: 0,
+      result: "<command output summary>",
+      status: "passed",
+      skipped: false,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    })) : [{
+      command: "<validation command>",
+      exitStatus: 0,
+      result: "<command output summary>",
+      status: "passed",
+      skipped: false,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    }],
+    scopeDeviations: ["<list any files changed outside expected areas, or remove this entry if none>"],
+    assumptions: ["<list any assumptions made during execution, or remove this entry if none>"],
+    remainingRisks: ["<list any remaining risks, or remove this entry if none>"],
+    _instructions: {
+      criteria: "Each acceptance criterion must have status 'met', 'not_met', 'uncertain', or 'not_applicable' with concrete evidence strings.",
+      filesChanged: "List every file path changed. Required.",
+      commandsRun: "List every command run. Required.",
+      validation: "Each validation entry requires command, exitStatus (number or null if skipped), result, status ('passed'|'failed'|'skipped'), skipped (boolean), and timestamp (ISO string). Skipped entries require skippedReason.",
+      scopeDeviations: "List any files changed outside the phase expected areas. Remove this entry if there are no scope deviations.",
+      assumptions: "List assumptions introduced during execution. Remove this entry if none.",
+      remainingRisks: "List risks that remain after this phase. Remove this entry if none."
+    }
+  };
+}
 async function repairPhase(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
@@ -24053,6 +24093,24 @@ function decideCompletionGate(args) {
   if (criticalRisk) return { decision: "needs_review", reason: `Critical remaining risk: ${criticalRisk}` };
   return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };
 }
+function classifyFilePath(raw) {
+  const file2 = raw.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\s*\((modified|added|deleted|renamed|new file|untracked)\)\s*$/i, "").trim();
+  const lower = file2.toLowerCase();
+  const base = lower.split("/").pop() ?? lower;
+  if (["readme.md", "readme.txt", "readme.rst", "readme", "changelog.md", "contributing.md", "code_of_conduct.md", "security.md", "license", "license.md", "license.txt"].includes(base)) {
+    return "documentation";
+  }
+  if (lower.startsWith("docs/")) return "documentation";
+  if (/\.(md|mdx|txt|rst)$/.test(lower)) return "documentation";
+  if (lower.includes("/tests/") || lower.includes("/__tests__/") || lower.includes("/test/")) return "test";
+  if (/\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(lower)) return "test";
+  if (!lower.startsWith("docs/")) {
+    if (/\.(json|ya?ml|toml)$/.test(lower)) return "config";
+    if (lower.startsWith(".env") || lower.endsWith(".env") || lower.includes("/.env")) return "config";
+    if (["dockerfile", ".dockerignore", ".gitignore", ".gitattributes", ".editorconfig"].includes(base)) return "config";
+  }
+  return "runtime";
+}
 function detectScopeDeviations(phase2, config2) {
   const deviations = [];
   const expected = phase2.expectedFilesOrAreas.filter(isPathLikeArea2);
@@ -24062,6 +24120,7 @@ function detectScopeDeviations(phase2, config2) {
     }
   }
   const objective = phase2.objective.toLowerCase();
+  const isDocumentationPhase = /\b(readme|docs?|documentation)\b/.test(objective) || phase2.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
   for (const file2 of phase2.filesChanged) {
     const lower = file2.toLowerCase();
     if ((lower === "package.json" || lower === "package-lock.json" || lower.endsWith("/package.json")) && !/\b(dependency|package|build|tooling)\b/.test(objective)) {
@@ -24076,9 +24135,11 @@ function detectScopeDeviations(phase2, config2) {
     if (matchesConfiguredPath(file2, config2?.risk.rigorousPaths ?? []) && phase2.riskLevel !== "high") {
       deviations.push(`sensitive path touched by non-rigorous phase: ${file2}`);
     }
-    const expectedDocumentation = phase2.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
-    if ((/\b(readme|docs?|documentation)\b/.test(objective) || expectedDocumentation) && !/\.(md|mdx|txt|rst)$/.test(lower) && !lower.startsWith("docs/")) {
-      deviations.push(`documentation phase changed runtime behavior: ${file2}`);
+    if (isDocumentationPhase) {
+      const classification = classifyFilePath(file2);
+      if (classification !== "documentation") {
+        deviations.push(`scope deviation: '${file2}' classified as ${classification}. Phase expected documentation changes only. Expected areas: ${phase2.expectedFilesOrAreas.filter(isPathLikeArea2).join(", ") || "(none)"}.`);
+      }
     }
   }
   return unique3(deviations);
@@ -24117,7 +24178,7 @@ function matchesConfiguredPath(file2, patterns) {
   return patterns.some((pattern) => areaMatchesFile(pattern, file2));
 }
 function isMaterialScopeDeviation(deviation) {
-  return /outside expected scope|production dependency|migration introduced|public contract changed|documentation phase changed runtime/.test(deviation);
+  return /outside expected scope|production dependency|migration introduced|public contract changed|documentation phase changed runtime|scope deviation/.test(deviation);
 }
 function isReviewScopeDeviation(deviation) {
   return /sensitive path touched/.test(deviation);
@@ -24373,13 +24434,19 @@ function workflowNextSummary(state) {
     };
   }
   if (state.state === "awaiting_approach_approval") {
+    const commands = nextActions(state);
     return {
       ...base,
       label: "Approach approval",
       userDecisionRequired: true,
       pendingDecision: "Approve this approach, request changes, reject it, or cancel.",
-      pendingAction: "Approve this approach, request changes, or cancel?",
+      pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "reject", "cancel", "show status"],
+      approvalActions: [
+        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the proposed approach and continue to plan generation." },
+        { label: "Revise", intent: "revise", command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root "${state.root}"`, description: "Request changes to the approach with specific feedback." },
+        { label: "Reject", intent: "reject", command: commands[1] ?? "", description: "Reject the approach with a reason. The workflow will be blocked." }
+      ],
       summary: {
         proposed: state.approach?.proposed,
         preferredBecause: state.approach?.preferredBecause,
@@ -24389,13 +24456,19 @@ function workflowNextSummary(state) {
     };
   }
   if (state.state === "awaiting_plan_approval") {
+    const commands = nextActions(state);
     return {
       ...base,
       label: "Plan approval",
       userDecisionRequired: true,
       pendingDecision: "Approve this plan, request changes, or cancel.",
-      pendingAction: "Approve this plan, request changes, or cancel?",
+      pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "cancel", "show status", "show plan"],
+      approvalActions: [
+        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the plan and begin phase execution." },
+        { label: "Revise", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
+        { label: "Cancel", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root "${state.root}"`, description: "Cancel this workflow." }
+      ],
       summary: {
         phases: state.plan?.phases.map((candidate, index) => ({
           number: index + 1,
@@ -24444,13 +24517,19 @@ function workflowNextSummary(state) {
     };
   }
   if (state.state === "awaiting_commit_approval") {
+    const commands = nextActions(state);
     return {
       ...base,
       label: "Commit proposal",
       userDecisionRequired: true,
       pendingDecision: "Review the commit proposal. No commit or push has occurred.",
-      pendingAction: "Review the proposal, ask for changes, complete the workflow, or cancel.",
+      pendingAction: "Select an action: review the proposal, complete the workflow, or cancel.",
       allowedIntents: ["show proposal", "complete", "cancel", "show status"],
+      approvalActions: [
+        { label: "Complete", intent: "complete", command: commands[1] ?? "", description: "Finalize the workflow. No commit or push is performed." },
+        { label: "Show Proposal", intent: "show proposal", command: commands[0] ?? "", description: "Display the commit proposal for review." },
+        { label: "Cancel", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root "${state.root}"`, description: "Cancel this workflow." }
+      ],
       summary: { commitPlan: commitPlanSummary(state.commitPlan) }
     };
   }
@@ -25527,7 +25606,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.3");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.4");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -25795,6 +25874,14 @@ flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").
     modelDecision: evidence.modelDecision,
     mutation: mutationOptions(options)
   }));
+});
+flow.command("evidence-template").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print template as structured JSON").description("Print the evidence template for a phase's completion gate").action(async (workflowId2, phaseId, options) => {
+  const state = await resumeFlow(options.root, workflowId2);
+  if (!state.plan) throw new Error("Workflow has no plan.");
+  const phase2 = state.plan.phases.find((candidate) => candidate.id === phaseId);
+  if (!phase2) throw new Error(`Unknown phase: ${phaseId}`);
+  const template = getEvidenceTemplate(phase2);
+  console.log(JSON.stringify(template, null, 2));
 });
 flow.command("ready").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured ready phase schedule").action(async (workflowId2, options) => {
   const schedule = readyPhases(await resumeFlow(options.root, workflowId2), await ensureRepositoryConfig(options.root));

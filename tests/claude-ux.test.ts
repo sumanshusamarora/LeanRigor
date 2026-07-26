@@ -35,8 +35,11 @@ describe("Claude conversational workflow UX support", () => {
     const next = workflowNextSummary(state);
 
     expect(next.label).toBe("Plan approval");
-    expect(next.pendingAction).toBe("Approve this plan, request changes, or cancel?");
-    expect(JSON.stringify(next)).not.toContain("leanrigor flow approve-plan");
+    expect(next.pendingAction).toBe("Select an approval action or type a response.");
+    expect(next.approvalActions).toBeDefined();
+    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve");
+    expect(next.approvalActions?.find((a) => a.intent === "revise")?.label).toBe("Revise");
+    expect(next.approvalActions?.find((a) => a.intent === "cancel")?.label).toBe("Cancel");
   });
 
   it("/leanrigor:start resumes one active workflow", async () => {
@@ -188,6 +191,96 @@ describe("Claude conversational workflow UX support", () => {
       expect(content).toContain("I could not run the LeanRigor transition automatically");
       expect(content).toMatch(/Raw commands belong only|Do not print raw JSON or CLI commands/);
     }
+  });
+});
+
+describe("approval actions", () => {
+  it("presents approval actions for approach approval", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const next = workflowNextSummary(started);
+
+    expect(next.label).toBe("Approach approval");
+    expect(next.approvalActions).toBeDefined();
+    expect(next.approvalActions).toHaveLength(3);
+
+    const approve = next.approvalActions?.find((a) => a.intent === "approve");
+    expect(approve).toBeDefined();
+    expect(approve?.label).toBe("Approve");
+    expect(approve?.command).toContain("leanrigor flow approve-approach");
+
+    const revise = next.approvalActions?.find((a) => a.intent === "revise");
+    expect(revise).toBeDefined();
+    expect(revise?.label).toBe("Revise");
+
+    const reject = next.approvalActions?.find((a) => a.intent === "reject");
+    expect(reject).toBeDefined();
+    expect(reject?.label).toBe("Reject");
+    expect(reject?.command).toContain("leanrigor flow reject-approach");
+  });
+
+  it("presents approval actions for plan approval", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const planned = await approveApproach(root, started.id, defaultConfig());
+    const next = workflowNextSummary(planned);
+
+    expect(next.label).toBe("Plan approval");
+    expect(next.approvalActions).toBeDefined();
+    expect(next.approvalActions).toHaveLength(3);
+
+    const approve = next.approvalActions?.find((a) => a.intent === "approve");
+    expect(approve?.command).toContain("leanrigor flow approve-plan");
+
+    const revise = next.approvalActions?.find((a) => a.intent === "revise");
+    expect(revise?.command).toContain("leanrigor flow revise-plan");
+
+    const cancel = next.approvalActions?.find((a) => a.intent === "cancel");
+    expect(cancel?.command).toContain("leanrigor flow cancel");
+  });
+
+  it("presents approval actions for commit proposal", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    const executing = await approvePlan(root, started.id);
+    const state = await completePhaseWithEvidence(root, executing, "phase-1", ["README.md"]);
+    const reviewed = await recordReview({ root, workflowId: state.id, status: "passed", summary: "Review passed.", config: defaultConfig() });
+    const next = workflowNextSummary(reviewed);
+
+    expect(next.label).toBe("Commit proposal");
+    expect(next.approvalActions).toBeDefined();
+
+    const complete = next.approvalActions?.find((a) => a.intent === "complete");
+    expect(complete).toBeDefined();
+    expect(complete?.command).toContain("leanrigor flow complete");
+
+    const showProposal = next.approvalActions?.find((a) => a.intent === "show proposal");
+    expect(showProposal).toBeDefined();
+
+    const cancel = next.approvalActions?.find((a) => a.intent === "cancel");
+    expect(cancel).toBeDefined();
+  });
+
+  it("free-form allowedIntents remain for backward compatibility", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const next = workflowNextSummary(started);
+
+    expect(next.allowedIntents).toContain("approve");
+    expect(next.allowedIntents).toContain("revise");
+    expect(next.allowedIntents).toContain("reject");
+    expect(next.allowedIntents).toContain("cancel");
+  });
+
+  it("no approval occurs without explicit user action", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const next = workflowNextSummary(started);
+
+    // The gate must require a user decision
+    expect(next.userDecisionRequired).toBe(true);
+    // Actions exist but none auto-approved
+    expect(next.approvalActions?.every((a) => !a.command.includes("--auto"))).toBe(true);
   });
 });
 

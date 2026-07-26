@@ -75,9 +75,16 @@ persisted phases exist.
 - Completed and cancelled workflows are not selected by default.
 - Never attach a new request to an unrelated active workflow silently.
 
-## Natural Responses
+## Approval Actions
 
-Interpret common responses using the current persisted state:
+When `flow next --json` returns `approvalActions`, present them as a numbered list
+of explicit choices. Each action has a `label`, `description`, and deterministic
+`command`. Do not infer approval from conversational tone — the user must select
+an action or type an explicit response.
+
+### Free-form fallback
+
+The following typed responses remain supported as a fallback:
 
 - `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach, then immediately render the generated plan for plan approval.
 - `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, initialize the integration workspace, read the new revision, inspect ready phases, and begin one ready phase through the internal lease/start/workspace path.
@@ -127,8 +134,12 @@ create its phase workspace. Before editing, verify that the current directory
 equals the active phase workspace returned by LeanRigor and that Git root is
 that workspace. If not, stop rather than editing the wrong tree. Refresh the
 lease during long phases where practical, run declared validation in the phase
-workspace or explicitly record skipped validation with a reason, then submit
-criterion evidence, Git workspace evidence, validation, assumptions, risks, and
+workspace or explicitly record skipped validation with a reason.
+
+Before submitting phase completion evidence, retrieve the exact evidence contract
+with `flow evidence-template <workflowId> <phaseId>`. Write the evidence JSON file
+conforming to the template — every field in the template must be present. Then
+submit criterion evidence, Git workspace evidence, validation, assumptions, risks, and
 scope deviations with `flow phase-complete` as the same owner. Follow the
 returned gate decision; Claude must not unlock the next phase itself.
 

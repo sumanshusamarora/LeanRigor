@@ -644,6 +644,65 @@ export async function completePhase(args: {
   }, { ...args.mutation, operation: "phase_complete" });
 }
 
+export interface EvidenceTemplate {
+  phaseId: string;
+  objective: string;
+  criteria: Array<{ criterion: string; status: string; evidence: string[] }>;
+  filesChanged: string[];
+  commandsRun: string[];
+  validation: Array<{ command: string; exitStatus: number | null; result: string; status: string; skipped: boolean; skippedReason?: string; timestamp: string }>;
+  scopeDeviations: string[];
+  assumptions: string[];
+  remainingRisks: string[];
+  blockedReason?: string;
+  requestedRepairScope?: string;
+  modelDecision?: string;
+  _instructions: Record<string, string>;
+}
+
+export function getEvidenceTemplate(phase: WorkflowPhase): EvidenceTemplate {
+  return {
+    phaseId: phase.id,
+    objective: phase.objective,
+    criteria: phase.acceptanceCriteria.map((criterion) => ({
+      criterion,
+      status: "met",
+      evidence: ["<describe the concrete evidence that proves this criterion is satisfied>"]
+    })),
+    filesChanged: phase.filesChanged.length > 0 ? phase.filesChanged : ["<list every file changed in this phase>"],
+    commandsRun: phase.validationCommands.length > 0 ? phase.validationCommands : ["<list every command run during this phase>"],
+    validation: phase.validationCommands.length > 0
+      ? phase.validationCommands.map((command) => ({
+          command,
+          exitStatus: 0,
+          result: "<command output summary>",
+          status: "passed",
+          skipped: false,
+          timestamp: new Date().toISOString()
+        }))
+      : [{
+          command: "<validation command>",
+          exitStatus: 0,
+          result: "<command output summary>",
+          status: "passed",
+          skipped: false,
+          timestamp: new Date().toISOString()
+        }],
+    scopeDeviations: ["<list any files changed outside expected areas, or remove this entry if none>"],
+    assumptions: ["<list any assumptions made during execution, or remove this entry if none>"],
+    remainingRisks: ["<list any remaining risks, or remove this entry if none>"],
+    _instructions: {
+      criteria: "Each acceptance criterion must have status 'met', 'not_met', 'uncertain', or 'not_applicable' with concrete evidence strings.",
+      filesChanged: "List every file path changed. Required.",
+      commandsRun: "List every command run. Required.",
+      validation: "Each validation entry requires command, exitStatus (number or null if skipped), result, status ('passed'|'failed'|'skipped'), skipped (boolean), and timestamp (ISO string). Skipped entries require skippedReason.",
+      scopeDeviations: "List any files changed outside the phase expected areas. Remove this entry if there are no scope deviations.",
+      assumptions: "List assumptions introduced during execution. Remove this entry if none.",
+      remainingRisks: "List risks that remain after this phase. Remove this entry if none."
+    }
+  };
+}
+
 export async function repairPhase(args: {
   root: string;
   workflowId: string;
@@ -1787,6 +1846,39 @@ function decideCompletionGate(args: {
   return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };
 }
 
+export type FileClassification = "documentation" | "runtime" | "config" | "test" | "other";
+
+export function classifyFilePath(raw: string): FileClassification {
+  const file = raw
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\s*\((modified|added|deleted|renamed|new file|untracked)\)\s*$/i, "")
+    .trim();
+  const lower = file.toLowerCase();
+  const base = lower.split("/").pop() ?? lower;
+
+  // Explicit documentation files
+  if (["readme.md", "readme.txt", "readme.rst", "readme", "changelog.md", "contributing.md", "code_of_conduct.md", "security.md", "license", "license.md", "license.txt"].includes(base)) {
+    return "documentation";
+  }
+  if (lower.startsWith("docs/")) return "documentation";
+  if (/\.(md|mdx|txt|rst)$/.test(lower)) return "documentation";
+
+  // Test files
+  if (lower.includes("/tests/") || lower.includes("/__tests__/") || lower.includes("/test/")) return "test";
+  if (/\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(lower)) return "test";
+
+  // Config files (but not in docs/)
+  if (!lower.startsWith("docs/")) {
+    if (/\.(json|ya?ml|toml)$/.test(lower)) return "config";
+    if (lower.startsWith(".env") || lower.endsWith(".env") || lower.includes("/.env")) return "config";
+    if (["dockerfile", ".dockerignore", ".gitignore", ".gitattributes", ".editorconfig"].includes(base)) return "config";
+  }
+
+  // Everything else is runtime
+  return "runtime";
+}
+
 function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): string[] {
   const deviations: string[] = [];
   const expected = phase.expectedFilesOrAreas.filter(isPathLikeArea);
@@ -1796,6 +1888,8 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
     }
   }
   const objective = phase.objective.toLowerCase();
+  const isDocumentationPhase = /\b(readme|docs?|documentation)\b/.test(objective) || phase.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
+
   for (const file of phase.filesChanged) {
     const lower = file.toLowerCase();
     if ((lower === "package.json" || lower === "package-lock.json" || lower.endsWith("/package.json")) && !/\b(dependency|package|build|tooling)\b/.test(objective)) {
@@ -1810,9 +1904,12 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
     if (matchesConfiguredPath(file, config?.risk.rigorousPaths ?? []) && phase.riskLevel !== "high") {
       deviations.push(`sensitive path touched by non-rigorous phase: ${file}`);
     }
-    const expectedDocumentation = phase.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
-    if ((/\b(readme|docs?|documentation)\b/.test(objective) || expectedDocumentation) && !/\.(md|mdx|txt|rst)$/.test(lower) && !lower.startsWith("docs/")) {
-      deviations.push(`documentation phase changed runtime behavior: ${file}`);
+
+    if (isDocumentationPhase) {
+      const classification = classifyFilePath(file);
+      if (classification !== "documentation") {
+        deviations.push(`scope deviation: '${file}' classified as ${classification}. Phase expected documentation changes only. Expected areas: ${phase.expectedFilesOrAreas.filter(isPathLikeArea).join(", ") || "(none)"}.`);
+      }
     }
   }
   return unique(deviations);
@@ -1859,7 +1956,7 @@ function matchesConfiguredPath(file: string, patterns: string[]): boolean {
 }
 
 function isMaterialScopeDeviation(deviation: string): boolean {
-  return /outside expected scope|production dependency|migration introduced|public contract changed|documentation phase changed runtime/.test(deviation);
+  return /outside expected scope|production dependency|migration introduced|public contract changed|documentation phase changed runtime|scope deviation/.test(deviation);
 }
 
 function isReviewScopeDeviation(deviation: string): boolean {

@@ -8,9 +8,11 @@ import {
   approveApproach,
   approvePlan,
   cancelFlow,
+  classifyFilePath,
   completeFlow,
   completePhase,
   getCommitPlan,
+  getEvidenceTemplate,
   listFlows,
   loadFlowState,
   repairPhase,
@@ -229,7 +231,7 @@ describe("sequential workflow orchestration", () => {
     const replanned = await completePhaseWithEvidence(root, executing, "phase-1", ["src/runtime.ts"]);
 
     expect(replanned.plan?.phases[0]?.status).toBe("needs_replan");
-    expect(replanned.plan?.phases[0]?.scopeDeviations.join("\n")).toMatch(/documentation phase changed runtime behavior/);
+    expect(replanned.plan?.phases[0]?.scopeDeviations.join("\n")).toMatch(/scope deviation.*runtime/i);
   });
 
   it("external blockers stop the workflow", async () => {
@@ -429,6 +431,156 @@ describe("sequential workflow orchestration", () => {
 
     expect(reviewed.mode).toBe("rigorous");
     expect(reviewed.state).toBe("awaiting_commit_approval");
+  });
+});
+
+describe("evidence template", () => {
+  it("returns criteria matching phase acceptance criteria", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({ request: "Add a practical first-workflow guide for new LeanRigor users. Create docs/first-workflow.md and link it prominently from README.md.", root, config: defaultConfig() });
+    if (!state.plan) throw new Error("expected plan");
+    const phase = state.plan.phases[0];
+    if (!phase) throw new Error("expected phase");
+
+    const template = getEvidenceTemplate(phase);
+
+    expect(template.phaseId).toBe(phase.id);
+    expect(template.objective).toBe(phase.objective);
+    expect(template.criteria).toHaveLength(phase.acceptanceCriteria.length);
+    expect(template.criteria.every((c) => typeof c.criterion === "string" && c.criterion.length > 0)).toBe(true);
+    expect(template.criteria.every((c) => c.status === "met")).toBe(true);
+  });
+
+  it("includes all required CompletionEvidenceFile fields with instructions", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    if (!state.plan) throw new Error("expected plan");
+    const phase = state.plan.phases[0];
+    if (!phase) throw new Error("expected phase");
+
+    const template = getEvidenceTemplate(phase);
+
+    expect(template).toHaveProperty("phaseId");
+    expect(template).toHaveProperty("objective");
+    expect(template).toHaveProperty("criteria");
+    expect(template).toHaveProperty("filesChanged");
+    expect(template).toHaveProperty("validation");
+    expect(template).toHaveProperty("scopeDeviations");
+    expect(template).toHaveProperty("assumptions");
+    expect(template).toHaveProperty("remainingRisks");
+    expect(template).toHaveProperty("_instructions");
+    expect(template._instructions).toHaveProperty("criteria");
+    expect(template._instructions).toHaveProperty("validation");
+    expect(template._instructions).toHaveProperty("filesChanged");
+  });
+
+  it("populates validation entries from phase validation commands", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const planned = await approveApproach(root, state.id, defaultConfig());
+    if (!planned.plan) throw new Error("expected plan");
+    const phase = planned.plan.phases[0];
+    if (!phase) throw new Error("expected phase");
+
+    const template = getEvidenceTemplate(phase);
+
+    expect(template.validation.length).toBeGreaterThan(0);
+    expect(template.validation.every((v) => typeof v.command === "string" && v.command.length > 0)).toBe(true);
+    expect(template.validation.every((v) => v.status === "passed")).toBe(true);
+  });
+});
+
+describe("scope classification", () => {
+  it("classifies README.md as documentation", () => {
+    expect(classifyFilePath("README.md")).toBe("documentation");
+    expect(classifyFilePath("readme.md")).toBe("documentation");
+    expect(classifyFilePath("./README.md")).toBe("documentation");
+  });
+
+  it("classifies docs/ paths as documentation", () => {
+    expect(classifyFilePath("docs/first-workflow.md")).toBe("documentation");
+    expect(classifyFilePath("docs/guides/setup.md")).toBe("documentation");
+  });
+
+  it("classifies TypeScript source as runtime", () => {
+    expect(classifyFilePath("src/main.ts")).toBe("runtime");
+    expect(classifyFilePath("src/core/flow.ts")).toBe("runtime");
+    expect(classifyFilePath("lib/utils.js")).toBe("runtime");
+  });
+
+  it("classifies test files as test", () => {
+    expect(classifyFilePath("tests/flow.test.ts")).toBe("test");
+    expect(classifyFilePath("src/__tests__/utils.test.ts")).toBe("test");
+    expect(classifyFilePath("src/components/button.spec.tsx")).toBe("test");
+  });
+
+  it("classifies config files as config", () => {
+    expect(classifyFilePath("package.json")).toBe("config");
+    expect(classifyFilePath("tsconfig.json")).toBe("config");
+    expect(classifyFilePath(".env")).toBe("config");
+  });
+
+  it("strips (modified) annotations before classification", () => {
+    expect(classifyFilePath("README.md (modified)")).toBe("documentation");
+    expect(classifyFilePath("src/main.ts (new file)")).toBe("runtime");
+    expect(classifyFilePath("README.md\t(modified)")).toBe("documentation");
+  });
+
+  it("documentation phase changing README.md and docs/first-workflow.md passes scope validation", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({
+      request: "Add a practical first-workflow guide for new LeanRigor users. Create docs/first-workflow.md and link it prominently from README.md.",
+      root,
+      config: defaultConfig()
+    });
+    const executing = await approvePlan(root, state.id);
+    if (!executing.plan) throw new Error("expected plan");
+    const phase = executing.plan.phases[0];
+    if (!phase) throw new Error("expected phase");
+
+    const result = await completePhaseWithEvidence(root, executing, phase.id, ["docs/first-workflow.md", "README.md"]);
+
+    const deviations = result.plan?.phases[0]?.scopeDeviations ?? [];
+    const runtimeDeviations = deviations.filter((d) => d.includes("runtime") || d.includes("scope deviation"));
+    expect(runtimeDeviations).toHaveLength(0);
+    expect(result.plan?.phases[0]?.status).toBe("completed");
+  });
+
+  it("documentation phase changing a runtime file triggers needs_replan", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({
+      request: "Add a practical first-workflow guide for new LeanRigor users. Create docs/first-workflow.md and link it prominently from README.md.",
+      root,
+      config: defaultConfig()
+    });
+    const executing = await approvePlan(root, state.id);
+    if (!executing.plan) throw new Error("expected plan");
+    const phase = executing.plan.phases[0];
+    if (!phase) throw new Error("expected phase");
+
+    const result = await completePhaseWithEvidence(root, executing, phase.id, ["src/core/flow.ts"]);
+
+    expect(result.plan?.phases[0]?.status).toBe("needs_replan");
+    const deviations = result.plan?.phases[0]?.scopeDeviations ?? [];
+    expect(deviations.some((d) => d.includes("scope deviation") && d.includes("runtime"))).toBe(true);
+  });
+
+  it("diagnostic identifies expected areas and unexpected paths", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    const executing = await approvePlan(root, state.id);
+    if (!executing.plan) throw new Error("expected plan");
+    executing.plan.phases[0].expectedFilesOrAreas = ["README.md"];
+    await saveFlowState(root, executing, { expectedRevision: executing.revision });
+
+    const result = await completePhaseWithEvidence(root, executing, "phase-1", ["src/other.ts"]);
+
+    const deviations = result.plan?.phases[0]?.scopeDeviations ?? [];
+    const docDeviation = deviations.find((d) => d.includes("scope deviation") || d.includes("classified"));
+    expect(docDeviation).toBeDefined();
+    expect(docDeviation).toMatch(/classified as runtime/i);
+    expect(docDeviation).toMatch(/expected/i);
+    expect(docDeviation).toContain("README.md");
   });
 });
 
