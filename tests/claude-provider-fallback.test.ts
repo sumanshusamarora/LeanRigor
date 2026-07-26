@@ -12,6 +12,7 @@ afterEach(() => {
 
 function commandRunner(args: {
   failModels: string[];
+  failureReason?: string;
   output: unknown;
   calls: string[][];
 }): CommandRunner {
@@ -20,7 +21,7 @@ function commandRunner(args: {
     const modelIndex = commandArgs.indexOf("--model");
     const model = modelIndex >= 0 ? commandArgs[modelIndex + 1] : undefined;
     if (model && args.failModels.includes(model)) {
-      return { stdout: "", stderr: `model ${model} unavailable`, exitCode: 1 };
+      return { stdout: "", stderr: args.failureReason ?? `model ${model} unavailable`, exitCode: 1 };
     }
     return { stdout: JSON.stringify({ result: JSON.stringify(args.output) }), stderr: "", exitCode: 0 };
   };
@@ -28,6 +29,7 @@ function commandRunner(args: {
 
 describe("Claude provider model tier fallback", () => {
   it("tries triage fallback tiers before deterministic triage can run", async () => {
+    clearModelEnv();
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliTriageProvider(commandRunner({
@@ -44,6 +46,7 @@ describe("Claude provider model tier fallback", () => {
   });
 
   it("tries planning fallback tiers down to inherited Claude default", async () => {
+    clearModelEnv();
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliPlanningProvider(commandRunner({
@@ -61,6 +64,7 @@ describe("Claude provider model tier fallback", () => {
   });
 
   it("uses ANTHROPIC_DEFAULT_SONNET_MODEL for standard planning when no LeanRigor model is configured", async () => {
+    clearModelEnv();
     vi.stubEnv("ANTHROPIC_DEFAULT_SONNET_MODEL", "deepseek-env-sonnet");
     const config = defaultConfig();
     const calls: string[][] = [];
@@ -75,7 +79,40 @@ describe("Claude provider model tier fallback", () => {
     expect(modelArgs(calls)).toEqual(["deepseek-env-sonnet"]);
     expect(result.model).toBe("deepseek-env-sonnet");
   });
+
+  it("surfaces max-turn provider fallback diagnostics explicitly", async () => {
+    clearModelEnv();
+    const config = defaultConfig();
+    const calls: string[][] = [];
+    const provider = new ClaudeCliPlanningProvider(commandRunner({
+      failModels: ["sonnet"],
+      failureReason: "Claude stopped because maximum turns were reached",
+      output: compactPlan(),
+      calls
+    }));
+
+    const result = await provider.plan(planningInput(config));
+
+    expect(modelArgs(calls)).toEqual(["sonnet", "opus"]);
+    expect(result.warnings?.join("\n")).toContain("max_turns_reached");
+  });
 });
+
+function clearModelEnv(): void {
+  for (const key of [
+    "LEANRIGOR_CLAUDE_MODEL_SMALL",
+    "LEANRIGOR_CLAUDE_MODEL_MEDIUM",
+    "LEANRIGOR_CLAUDE_MODEL_LARGE",
+    "LEANRIGOR_MODEL_SMALL",
+    "LEANRIGOR_MODEL_MEDIUM",
+    "LEANRIGOR_MODEL_LARGE",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL"
+  ]) {
+    vi.stubEnv(key, "");
+  }
+}
 
 function modelArgs(calls: string[][]): string[] {
   return calls.map((args) => {

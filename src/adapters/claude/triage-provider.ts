@@ -69,7 +69,7 @@ export async function runClaudeWithTierFallback(args: {
   preferredTier: ModelTier;
   config: LeanRigorConfig;
   stage: string;
-}): Promise<{ result: CommandResult; model?: string; warnings: string[] }> {
+}): Promise<{ result: CommandResult; model?: string; tier: ModelTier; warnings: string[] }> {
   const resolvedModels = resolveModelTierFallbacks(args.preferredTier, "claude", args.config);
   const failures: string[] = [];
 
@@ -82,6 +82,7 @@ export async function runClaudeWithTierFallback(args: {
         return {
           result,
           model: resolved.model,
+          tier: resolved.tier,
           warnings: failures.map((failure) => `Claude ${args.stage} provider tier fallback: ${failure}`)
         };
       }
@@ -117,5 +118,7 @@ function modelLabel(resolved: ResolvedModel): string {
 }
 
 function compactReason(reason: string): string {
-  return reason.replace(/\s+/g, " ").trim().slice(0, 500);
+  const compact = reason.replace(/\s+/g, " ").trim();
+  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return `max_turns_reached: ${compact.slice(0, 450)}`;
+  return compact.slice(0, 500);
 }

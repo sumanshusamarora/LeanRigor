@@ -188,13 +188,14 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     };
   }
   if (state.state === "blocked") {
+    const planBlocked = Boolean(state.planningRun?.approvalBlockedReason);
     return {
       ...base,
       label: "Blocked",
       userDecisionRequired: true,
       pendingDecision: state.blockers[0] ?? "Workflow is blocked.",
-      pendingAction: "Resolve the blocker, revise the workflow, or cancel.",
-      allowedIntents: ["show status", "cancel"],
+      pendingAction: planBlocked ? "Revise the plan before continuing." : "Resolve the blocker, revise the workflow, or cancel.",
+      allowedIntents: planBlocked ? ["revise", "show status", "cancel"] : ["show status", "cancel"],
       summary: { blockers: state.blockers }
     };
   }
@@ -307,6 +308,7 @@ function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
   if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
+  if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["revise-plan", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
   return ["status"];
 }

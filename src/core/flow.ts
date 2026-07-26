@@ -25,8 +25,8 @@ import {
   type WorkspaceRecoveryReport,
   type WorkspaceStatus
 } from "./git-workspace.js";
-import type { PlanningProvider, PlanningRunResult } from "./planning-runner.js";
-import { runPlanning } from "./planning-runner.js";
+import type { PlanDiagnostic, PlanningProvider, PlanningRunResult } from "./planning-runner.js";
+import { PlanningValidationError, runPlanning } from "./planning-runner.js";
 import type { TriageProvider, TriageProviderSelection, TriageRunResult } from "./triage-runner.js";
 import { runTriage } from "./triage-runner.js";
 import type {
@@ -247,9 +247,6 @@ const planSchema = z.object({
   for (const issue of validatePhaseDag(plan as ExecutionPlan)) {
     ctx.addIssue({ code: "custom", path: ["phases"], message: issue });
   }
-  for (const issue of validatePlanQuality(plan)) {
-    ctx.addIssue({ code: "custom", path: ["phases"], message: issue });
-  }
 });
 
 const modelPlanPhaseSchema = z.object({
@@ -356,6 +353,13 @@ const workflowGitStateSchema = z.object({
   integrationValidation: integrationValidationSchema.optional()
 });
 
+const planningDiagnosticSchema = z.object({
+  stage: z.enum(["syntax", "schema", "quality"]),
+  path: z.array(z.union([z.string(), z.number()])),
+  code: z.string(),
+  message: z.string()
+});
+
 const workflowStateSchema = z.object({
   version: z.literal(STATE_VERSION),
   id: z.string().min(1),
@@ -381,7 +385,11 @@ const workflowStateSchema = z.object({
     model: z.string().optional(),
     attempts: z.number().int(),
     fallbackReason: z.string().optional(),
-    warnings: z.array(z.string())
+    warnings: z.array(z.string()),
+    diagnostics: z.array(planningDiagnosticSchema).optional(),
+    syntaxRepairApplied: z.boolean().optional(),
+    semanticRepairApplied: z.boolean().optional(),
+    approvalBlockedReason: z.string().optional()
   }).optional(),
   clarification: z.object({
     question: z.string().min(1),
@@ -553,7 +561,8 @@ export async function rejectApproach(root: string, workflowId: string, reason: s
 
 export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig, mutation?: MutationOptions, planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, async (state) => {
-    assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
+    assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing", "blocked"]);
+    if (state.state === "blocked" && !state.planningRun?.approvalBlockedReason) throw new WorkflowStateError("Cannot revise this blocked workflow through the plan revision path.");
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
     const next = structuredClone(state);
     const triage = state.triage;
@@ -1370,6 +1379,10 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
   planning.plan = planningRun.plan;
   planning.planningRun = planningRunMetadata(planningRun);
   appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
+  if (planningRun.approvalBlockedReason) {
+    planning.blockers = unique([...planning.blockers, planningRun.approvalBlockedReason]);
+    return transition(planning, "blocked", "Plan approval disabled because deterministic fallback was too generic; revise the plan before continuing.");
+  }
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
 }
 
@@ -1413,7 +1426,7 @@ function buildPlan(request: string, triage: TriageOutput, root: string, config?:
     summary: revisionNote
       ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})`
       : `Sequential plan for: ${request.trim()}`,
-    principles: planningPrinciples(),
+    principles: planningPrinciples(triage),
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
@@ -1446,12 +1459,15 @@ async function generatePlan(args: {
     },
     provider: args.provider,
     providerSelection: args.providerSelection,
-    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config, args.revisionRequests)
+    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config, args.revisionRequests),
+    normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics)
   });
 }
 
 function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorConfig, revisionRequests: ExecutionPlan["revisionRequests"]): ExecutionPlan {
-  const parsed = modelPlanSchema.parse(raw);
+  const parsedResult = modelPlanSchema.safeParse(raw);
+  if (!parsedResult.success) throw new PlanningValidationError(zodDiagnostics(parsedResult.error, "schema"));
+  const parsed = parsedResult.data;
   const plan: ExecutionPlan = {
     version: 1,
     summary: parsed.summary,
@@ -1474,20 +1490,61 @@ function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorCo
     }),
     revisionRequests
   };
-  const checked = planSchema.parse(plan) as ExecutionPlan;
-  const issues = validatePlanQuality(checked, mode, config);
-  if (issues.length > 0) throw new WorkflowStateError(`Model plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
+  const checkedResult = planSchema.safeParse(plan);
+  if (!checkedResult.success) throw new PlanningValidationError(zodDiagnostics(checkedResult.error, "schema"));
+  const checked = checkedResult.data as ExecutionPlan;
+  const diagnostics = validatePlanQualityDetailed(checked, mode, config);
+  if (diagnostics.length > 0) throw new PlanningValidationError(diagnostics);
   return checked;
 }
 
-function planningPrinciples(): string[] {
-  return [
+function normaliseModelPlan(raw: unknown, diagnostics: PlanDiagnostic[]): { raw: unknown; changed: boolean; warnings?: string[] } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { raw, changed: false };
+  const mutable = structuredClone(raw) as Record<string, unknown>;
+  let changed = false;
+  if (Array.isArray(mutable.phases)) {
+    mutable.phases = mutable.phases.map((phase) => {
+      if (!phase || typeof phase !== "object" || Array.isArray(phase)) return phase;
+      const next = { ...phase } as Record<string, unknown>;
+      if (!Array.isArray(next.expectedFilesOrAreas) && Array.isArray(next.expectedWriteAreas)) {
+        next.expectedFilesOrAreas = next.expectedWriteAreas;
+        changed = true;
+      }
+      if (!Array.isArray(next.expectedWriteAreas) && Array.isArray(next.expectedFilesOrAreas)) {
+        next.expectedWriteAreas = next.expectedFilesOrAreas;
+        changed = true;
+      }
+      return next;
+    });
+  }
+  return {
+    raw: mutable,
+    changed,
+    warnings: changed ? [`Applied safe deterministic planning normalisation for ${diagnostics.length} diagnostic(s).`] : undefined
+  };
+}
+
+function zodDiagnostics(error: z.ZodError, stage: PlanDiagnostic["stage"]): PlanDiagnostic[] {
+  return error.issues.map((issue) => ({
+    stage,
+    path: issue.path.filter((part): part is string | number => typeof part === "string" || typeof part === "number"),
+    code: issue.code,
+    message: issue.message
+  }));
+}
+
+function planningPrinciples(triage?: TriageOutput): string[] {
+  const principles = [
     "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
     "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
     "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
     "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
     "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
   ];
+  return unique([
+    ...principles,
+    ...(triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: must not ${constraint}`)
+  ]);
 }
 
 function planningRunMetadata(run: PlanningRunResult): SequentialWorkflowState["planningRun"] {
@@ -1497,7 +1554,11 @@ function planningRunMetadata(run: PlanningRunResult): SequentialWorkflowState["p
     model: run.model,
     attempts: run.attempts,
     fallbackReason: run.fallbackReason,
-    warnings: run.warnings
+    warnings: run.warnings,
+    diagnostics: run.diagnostics,
+    syntaxRepairApplied: run.syntaxRepairApplied,
+    semanticRepairApplied: run.semanticRepairApplied,
+    approvalBlockedReason: run.approvalBlockedReason
   };
 }
 
@@ -1682,27 +1743,35 @@ function filterAreas(targets: string[], keywords: string[]): string[] {
 }
 
 export function validatePlanQuality(plan: ExecutionPlan, mode?: WorkflowMode, config?: LeanRigorConfig): string[] {
-  const issues: string[] = [];
+  return validatePlanQualityDetailed(plan, mode, config).map((diagnostic) => diagnostic.message);
+}
+
+function validatePlanQualityDetailed(plan: ExecutionPlan, mode?: WorkflowMode, config?: LeanRigorConfig): PlanDiagnostic[] {
+  const issues: PlanDiagnostic[] = [];
   const ids = new Set<string>();
-  for (const phase of plan.phases) {
-    if (ids.has(phase.id)) issues.push(`Phase ${phase.id} is duplicated.`);
+  for (const [index, phase] of plan.phases.entries()) {
+    const phasePath = ["phases", index];
+    if (ids.has(phase.id)) issues.push(planDiagnostic("quality", phasePath.concat("id"), "phase.duplicate_id", `Phase ${phase.id} is duplicated.`));
     ids.add(phase.id);
-    if (!phase.objective.trim()) issues.push(`Phase ${phase.id} is missing an objective.`);
-    if (hasMultiplePrimaryObjectives(phase.objective)) issues.push(`Phase ${phase.id} appears to have multiple primary objectives.`);
-    if (isBroadContainer(phase.objective)) issues.push(`Phase ${phase.id} is a vague or overly broad container.`);
-    if (phase.acceptanceCriteria.length === 0) issues.push(`Phase ${phase.id} has no acceptance criteria.`);
+    if (!phase.objective.trim()) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.missing", `Phase ${phase.id} is missing an objective.`));
+    if (isBroadContainer(phase.objective)) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.generic_container", `Phase ${phase.id} is a vague or overly broad container.`));
+    if (phase.acceptanceCriteria.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.missing", `Phase ${phase.id} has no acceptance criteria.`));
     if (phase.acceptanceCriteria.some((criterion) => !isInspectableCriterion(criterion))) {
-      issues.push(`Phase ${phase.id} has non-testable or non-inspectable acceptance criteria.`);
+      issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.not_inspectable", `Phase ${phase.id} has non-testable or non-inspectable acceptance criteria.`));
     }
-    if (phase.validationCommands.length === 0) issues.push(`Phase ${phase.id} has no validation command or check expectation.`);
-    if (phase.expectedFilesOrAreas.length === 0) issues.push(`Phase ${phase.id} has no bounded expected write area.`);
+    if (phase.validationCommands.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("validationCommands"), "validation.missing", `Phase ${phase.id} has no validation command or check expectation.`));
+    if (phase.expectedFilesOrAreas.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.missing_write_area", `Phase ${phase.id} has no bounded expected write area.`));
     if (phase.expectedFilesOrAreas.length >= (config?.taskSizing.reviewSplitThresholdFiles ?? 8) && mode !== "fast") {
-      issues.push(`Phase ${phase.id} lists many expected write areas and should be reviewed for splitting.`);
+      issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.too_many_write_areas", `Phase ${phase.id} lists many expected write areas and should be reviewed for splitting.`));
+    }
+    const mixedBoundary = mixedArchitecturalBoundary(phase, mode);
+    if (mixedBoundary) {
+      issues.push(planDiagnostic("quality", phasePath.concat("expectedWriteAreas"), "scope.mixed_architectural_boundaries", mixedBoundary));
     }
   }
   for (const phase of plan.phases) {
     for (const dependency of phase.dependencies) {
-      if (!ids.has(dependency)) issues.push(`Phase ${phase.id} depends on missing phase ${dependency}.`);
+      if (!ids.has(dependency)) issues.push(planDiagnostic("quality", ["phases", phase.id, "dependencies"], "dependency.missing", `Phase ${phase.id} depends on missing phase ${dependency}.`));
     }
   }
   const visiting = new Set<string>();
@@ -1710,7 +1779,7 @@ export function validatePlanQuality(plan: ExecutionPlan, mode?: WorkflowMode, co
   const byId = new Map(plan.phases.map((phase) => [phase.id, phase]));
   const visit = (id: string): void => {
     if (visiting.has(id)) {
-      issues.push(`Dependency cycle detected at ${id}.`);
+      issues.push(planDiagnostic("quality", ["phases"], "dependency.cycle", `Dependency cycle detected at ${id}.`));
       return;
     }
     if (visited.has(id)) return;
@@ -1720,16 +1789,7 @@ export function validatePlanQuality(plan: ExecutionPlan, mode?: WorkflowMode, co
     visited.add(id);
   };
   for (const phase of plan.phases) visit(phase.id);
-  if (mode === "fast" && plan.phases.length === 1) return unique(issues);
-  const broadPhase = plan.phases.find((phase) => boundaryWordCount(phase.objective) > 1 && !/coverage|validation|documentation/.test(phase.objective.toLowerCase()));
-  if (broadPhase) issues.push(`Phase ${broadPhase.id} mixes architectural boundaries.`);
-  return unique(issues);
-}
-
-function hasMultiplePrimaryObjectives(objective: string): boolean {
-  const lower = objective.toLowerCase();
-  if (/\b(backend|frontend|tests?|docs?|documentation|migration|schema|api|consumer)\b.*\band\b.*\b(backend|frontend|tests?|docs?|documentation|migration|schema|api|consumer)\b/.test(lower)) return true;
-  return /\b(update|add|implement|refactor|change|fix)\b.*\band\b.*\b(update|add|implement|refactor|change|fix)\b/.test(lower);
+  return uniqueDiagnostics(issues);
 }
 
 function isBroadContainer(objective: string): boolean {
@@ -1742,16 +1802,43 @@ function isInspectableCriterion(criterion: string): boolean {
   return lower.length >= 12;
 }
 
-function boundaryWordCount(value: string): number {
-  const lower = value.toLowerCase();
-  return [
-    /\bbackend|api|service|server\b/.test(lower),
-    /\bfrontend|ui|client|component\b/.test(lower),
-    /\btests?|coverage|validation\b/.test(lower),
-    /\bdocs?|documentation|readme\b/.test(lower),
-    /\bmigration|database|schema\b/.test(lower),
-    /\bauth|security|permission|credential\b/.test(lower)
-  ].filter(Boolean).length;
+function mixedArchitecturalBoundary(phase: WorkflowPhase, mode?: WorkflowMode): string | undefined {
+  if (mode === "fast") return undefined;
+  const productionGroups = unique((phase.expectedWriteAreas.length > 0 ? phase.expectedWriteAreas : phase.expectedFilesOrAreas)
+    .map(areaBoundary)
+    .filter((group): group is string => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
+  if (productionGroups.length <= 1) return undefined;
+  return `Phase ${phase.id} writes multiple architectural boundaries (${productionGroups.join(", ")}); split the phase or make the dependency boundary explicit.`;
+}
+
+function areaBoundary(area: string): string | undefined {
+  const normalized = area.trim().replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+  if (!normalized || normalized.startsWith("risk:")) return "risk";
+  if (/^(tests?|__tests__|test)\//.test(normalized) || normalized.includes("/__tests__/") || normalized.endsWith(".test.ts") || normalized.endsWith(".spec.ts")) return "tests";
+  if (/^(docs?|readme\.md|contributing\.md|changelog\.md)/.test(normalized)) return "docs";
+  if (/^(src\/core)\//.test(normalized)) return "src/core";
+  if (/^(src\/config)\//.test(normalized)) return "src/config";
+  if (/^(src\/cli)\//.test(normalized)) return "src/cli";
+  if (/^(src\/adapters\/[^/]+)/.test(normalized)) return normalized.match(/^(src\/adapters\/[^/]+)/)?.[1];
+  if (/^(src\/[^/]+)/.test(normalized)) return normalized.match(/^(src\/[^/]+)/)?.[1];
+  if (/^([^/]+\/[^/]+)/.test(normalized) && isPathLikeArea(normalized)) return normalized.match(/^([^/]+\/[^/]+)/)?.[1];
+  return undefined;
+}
+
+function planDiagnostic(stage: PlanDiagnostic["stage"], pathParts: Array<string | number>, code: string, message: string): PlanDiagnostic {
+  return { stage, path: pathParts, code, message };
+}
+
+function uniqueDiagnostics(diagnostics: PlanDiagnostic[]): PlanDiagnostic[] {
+  const seen = new Set<string>();
+  const out: PlanDiagnostic[] = [];
+  for (const diagnostic of diagnostics) {
+    const key = `${diagnostic.stage}:${diagnostic.code}:${diagnostic.path.join(".")}:${diagnostic.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(diagnostic);
+  }
+  return out;
 }
 
 function phase(args: {

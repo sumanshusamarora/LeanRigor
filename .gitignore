@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.codex/
 .leanrigor/runtime/
 .leanrigor/ownership.json
 .leanrigor/validations.json

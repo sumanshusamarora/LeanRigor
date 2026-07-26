@@ -145,6 +145,13 @@ export interface ValidationResult {
   timestamp: string;
 }
 
+export interface PlanningDiagnostic {
+  stage: "syntax" | "schema" | "quality";
+  path: Array<string | number>;
+  code: string;
+  message: string;
+}
+
 export interface WorkflowState {
   version: 1;
   request: string;
@@ -165,6 +172,10 @@ export interface WorkflowState {
     attempts: number;
     fallbackReason?: string;
     warnings: string[];
+    diagnostics?: PlanningDiagnostic[];
+    syntaxRepairApplied?: boolean;
+    semanticRepairApplied?: boolean;
+    approvalBlockedReason?: string;
   };
   graph?: ExecutionGraph;
   reflections?: ReflectionRecord[];
@@ -445,6 +456,10 @@ export interface SequentialWorkflowState {
     attempts: number;
     fallbackReason?: string;
     warnings: string[];
+    diagnostics?: PlanningDiagnostic[];
+    syntaxRepairApplied?: boolean;
+    semanticRepairApplied?: boolean;
+    approvalBlockedReason?: string;
   };
   clarification?: {
     question: string;

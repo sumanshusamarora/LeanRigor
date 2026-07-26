@@ -20727,6 +20727,7 @@ async function runClaudeWithTierFallback(args) {
         return {
           result,
           model: resolved.model,
+          tier: resolved.tier,
           warnings: failures.map((failure) => `Claude ${args.stage} provider tier fallback: ${failure}`)
         };
       }
@@ -20754,7 +20755,9 @@ function modelLabel(resolved) {
   return resolved.model ? `model '${resolved.model}'` : "inherited Claude default";
 }
 function compactReason(reason) {
-  return reason.replace(/\s+/g, " ").trim().slice(0, 500);
+  const compact = reason.replace(/\s+/g, " ").trim();
+  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return `max_turns_reached: ${compact.slice(0, 450)}`;
+  return compact.slice(0, 500);
 }
 
 // src/adapters/claude/planning-provider.ts
@@ -20776,7 +20779,18 @@ var ClaudeCliPlanningProvider = class {
       config: input.config,
       stage: "planning"
     });
-    return { raw: parseCommandOutput2(attempted.result), provider: this.name, model: attempted.model, warnings: attempted.warnings };
+    return { raw: parseCommandOutput2(attempted.result), provider: this.name, model: attempted.model, tier: attempted.tier, warnings: attempted.warnings };
+  }
+  async repair(input, request) {
+    const prompt = buildPlanningRepairPrompt(input, request);
+    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "4", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    if (request.model) args.push("--model", request.model);
+    const result = await this.runCommand("claude", args, input.root);
+    if (result.exitCode !== 0) {
+      const reason = compactFailure(result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`);
+      throw new Error(`Claude planning repair failed for ${request.model ? `model '${request.model}'` : "inherited Claude default"}: ${reason}`);
+    }
+    return { raw: parseCommandOutput2(result), provider: this.name, model: request.model, tier: request.tier, warnings: [] };
   }
 };
 function parseCommandOutput2(result) {
@@ -20824,6 +20838,17 @@ function buildPlanningPrompt(input) {
     "- Do not include runtime fields such as status, completion, workspace, filesChanged, commandsRun, validationResults, or repairAttempts.",
     "- Preserve revisionRequests exactly.",
     "- Use the deterministic baseline only as a safety floor; improve specificity when repository evidence supports it.",
+    "",
+    "Enforced quality rules:",
+    "- One primary objective means one reviewable outcome in one phase. Supporting actions may be mentioned only when they are necessary evidence for that same outcome.",
+    "- Good objective: 'Persist phase-specific test obligations in workflow state.'",
+    "- Good objective: 'Require completion evidence to satisfy mandatory obligations.'",
+    "- Bad objective: 'Implement backend, frontend, tests, docs, and migration changes.'",
+    "- Bad objective: 'Do everything needed for issue 12.'",
+    "- A single architectural boundary is determined from expectedWriteAreas, not from words in the objective. Keep each phase within one production owner such as src/core, src/config, src/cli, or one adapter unless dependencies make the boundary explicit.",
+    "- Migration, security, schema, compatibility, failure, concurrency, recovery, contract, and regression may be obligation categories. These words do not by themselves mean a phase mixes boundaries.",
+    "- Every phase must include specific acceptance criteria, at least one validation command or check expectation, and bounded expected write areas.",
+    "- Preserve approved constraints from triage.constraints.mustNot and revisionRequests. Do not reintroduce assumptions or scope the user rejected.",
     "User request:",
     input.request,
     "Triage output:",
@@ -20831,6 +20856,31 @@ function buildPlanningPrompt(input) {
     "Deterministic baseline plan:",
     JSON.stringify(input.deterministicPlan, null, 2)
   ].join("\n\n");
+}
+function buildPlanningRepairPrompt(input, request) {
+  return [
+    "You are repairing a LeanRigor ExecutionPlan returned by the same planning model.",
+    "Return only one JSON object; no prose or markdown.",
+    "Repair only the invalid fields named in diagnostics.",
+    "Preserve all valid fields exactly, including phase IDs, dependencies, expectedReadAreas, expectedWriteAreas, expectedFilesOrAreas, acceptanceCriteria, validationCommands, riskLevel, modelTier, and revisionRequests.",
+    "Do not restart planning. Do not add new phases unless a diagnostic explicitly requires it.",
+    "Quality definitions:",
+    "- One primary objective means one reviewable outcome in one phase; supporting evidence can remain in acceptanceCriteria or validationCommands.",
+    "- Single architectural boundary is determined primarily by expectedWriteAreas and component ownership, not by words such as migration, security, schema, compatibility, failure, concurrency, recovery, contract, or regression.",
+    "Original request:",
+    input.request,
+    "Triage constraints and context:",
+    JSON.stringify(input.triage, null, 2),
+    "Diagnostics to repair:",
+    JSON.stringify(request.diagnostics, null, 2),
+    "Invalid plan:",
+    JSON.stringify(request.plan, null, 2)
+  ].join("\n\n");
+}
+function compactFailure(reason) {
+  const compact = reason.replace(/\s+/g, " ").trim();
+  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return `max_turns_reached: ${compact.slice(0, 450)}`;
+  return compact.slice(0, 500);
 }
 
 // src/core/review-policy.ts
@@ -22605,10 +22655,784 @@ async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
 }
 
+// node_modules/jsonrepair/lib/esm/utils/JSONRepairError.js
+var JSONRepairError = class extends Error {
+  constructor(message, position) {
+    super(`${message} at position ${position}`);
+    this.position = position;
+  }
+};
+
+// node_modules/jsonrepair/lib/esm/utils/stringUtils.js
+var codeSpace = 32;
+var codeNewline = 10;
+var codeTab = 9;
+var codeReturn = 13;
+var codeNonBreakingSpace = 160;
+var codeMongolianVowelSeparator = 6158;
+var codeEnQuad = 8192;
+var codeZeroWidthSpace = 8203;
+var codeNarrowNoBreakSpace = 8239;
+var codeMediumMathematicalSpace = 8287;
+var codeIdeographicSpace = 12288;
+var codeZeroWidthNoBreakSpace = 65279;
+function isHex(char) {
+  return /^[0-9A-Fa-f]$/.test(char);
+}
+function isDigit(char) {
+  return char >= "0" && char <= "9";
+}
+function isValidStringCharacter(char) {
+  return char >= " ";
+}
+function isDelimiter(char) {
+  return ",:[]/{}()\n+".includes(char);
+}
+function isFunctionNameCharStart(char) {
+  return char >= "a" && char <= "z" || char >= "A" && char <= "Z" || char === "_" || char === "$";
+}
+function isFunctionNameChar(char) {
+  return char >= "a" && char <= "z" || char >= "A" && char <= "Z" || char === "_" || char === "$" || char >= "0" && char <= "9";
+}
+var regexUrlStart = /^(http|https|ftp|mailto|file|data|irc):\/\/$/;
+var regexUrlChar = /^[A-Za-z0-9-._~:/?#@!$&'()*+;=]$/;
+function isUnquotedStringDelimiter(char) {
+  return ",[]/{}\n+".includes(char);
+}
+function isStartOfValue(char) {
+  return isQuote(char) || regexStartOfValue.test(char);
+}
+var regexStartOfValue = /^[[{\w-]$/;
+function isControlCharacter(char) {
+  return char === "\n" || char === "\r" || char === "	" || char === "\b" || char === "\f";
+}
+function isWhitespace(text, index) {
+  const code = text.charCodeAt(index);
+  return code === codeSpace || code === codeNewline || code === codeTab || code === codeReturn;
+}
+function isWhitespaceExceptNewline(text, index) {
+  const code = text.charCodeAt(index);
+  return code === codeSpace || code === codeTab || code === codeReturn;
+}
+function isSpecialWhitespace(text, index) {
+  const code = text.charCodeAt(index);
+  return code === codeNonBreakingSpace || code === codeMongolianVowelSeparator || code >= codeEnQuad && code <= codeZeroWidthSpace || code === codeNarrowNoBreakSpace || code === codeMediumMathematicalSpace || code === codeIdeographicSpace || code === codeZeroWidthNoBreakSpace;
+}
+function isQuote(char) {
+  return isDoubleQuoteLike(char) || isSingleQuoteLike(char);
+}
+function isDoubleQuoteLike(char) {
+  return char === '"' || char === "\u201C" || char === "\u201D";
+}
+function isDoubleQuote(char) {
+  return char === '"';
+}
+function isSingleQuoteLike(char) {
+  return char === "'" || char === "\u2018" || char === "\u2019" || char === "`" || char === "\xB4";
+}
+function isSingleQuote(char) {
+  return char === "'";
+}
+function stripLastOccurrence(text, textToStrip) {
+  let stripRemainingText = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : false;
+  const index = text.lastIndexOf(textToStrip);
+  return index !== -1 ? text.substring(0, index) + (stripRemainingText ? "" : text.substring(index + 1)) : text;
+}
+function insertBeforeLastWhitespace(text, textToInsert) {
+  let index = text.length;
+  if (!isWhitespace(text, index - 1)) {
+    return text + textToInsert;
+  }
+  while (isWhitespace(text, index - 1)) {
+    index--;
+  }
+  return text.substring(0, index) + textToInsert + text.substring(index);
+}
+function removeAtIndex(text, start, count) {
+  return text.substring(0, start) + text.substring(start + count);
+}
+function endsWithCommaOrNewline(text) {
+  return /[,\n][ \t\r]*$/.test(text);
+}
+var namedHtmlEntities = {
+  "&quot;": '"',
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&apos;": "'"
+};
+var maxHtmlEntityLength = 12;
+function matchHtmlEntity(fragment) {
+  if (fragment.charAt(0) !== "&") {
+    return null;
+  }
+  const semicolon = fragment.indexOf(";");
+  if (semicolon === -1) {
+    return null;
+  }
+  const entity = fragment.substring(0, semicolon + 1);
+  const named = namedHtmlEntities[entity];
+  if (named !== void 0) {
+    return {
+      char: named,
+      length: entity.length
+    };
+  }
+  if (fragment.charAt(1) === "#") {
+    const body = fragment.substring(2, semicolon);
+    const hex3 = body.charAt(0) === "x" || body.charAt(0) === "X";
+    const digits = hex3 ? body.substring(1) : body;
+    if (digits.length > 0) {
+      const code = Number.parseInt(digits, hex3 ? 16 : 10);
+      if (!Number.isNaN(code) && code >= 0 && code <= 1114111) {
+        return {
+          char: String.fromCodePoint(code),
+          length: entity.length
+        };
+      }
+    }
+  }
+  return null;
+}
+function isDoubleQuoteEntity(match) {
+  return match !== null && match.char === '"';
+}
+function isSingleQuoteEntity(match) {
+  return match !== null && match.char === "'";
+}
+function countOccurrences(text, char) {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charAt(i) === char) {
+      count++;
+    }
+  }
+  return count;
+}
+function isInsideUnclosedBracket(text, closeChar) {
+  switch (closeChar) {
+    case ")":
+      return countOccurrences(text, "(") > countOccurrences(text, ")");
+    case "]":
+      return countOccurrences(text, "[") > countOccurrences(text, "]");
+    case "}":
+      return countOccurrences(text, "{") > countOccurrences(text, "}");
+    default:
+      return false;
+  }
+}
+
+// node_modules/jsonrepair/lib/esm/regular/jsonrepair.js
+var controlCharacters = {
+  "\b": "\\b",
+  "\f": "\\f",
+  "\n": "\\n",
+  "\r": "\\r",
+  "	": "\\t"
+};
+var escapeCharacters = {
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "	"
+  // note that \u is handled separately in parseString()
+};
+function jsonrepair(text) {
+  let i = 0;
+  let output = "";
+  parseMarkdownCodeBlock(["```", "[```", "{```"]);
+  const processed = parseValue();
+  if (!processed) {
+    throwUnexpectedEnd();
+  }
+  parseMarkdownCodeBlock(["```", "```]", "```}"]);
+  const processedComma = parseCharacter(",");
+  if (processedComma) {
+    parseWhitespaceAndSkipComments();
+  }
+  if (isStartOfValue(text[i]) && endsWithCommaOrNewline(output)) {
+    if (!processedComma) {
+      output = insertBeforeLastWhitespace(output, ",");
+    }
+    parseNewlineDelimitedJSON();
+  } else if (processedComma) {
+    output = stripLastOccurrence(output, ",");
+  }
+  while (text[i] === "}" || text[i] === "]") {
+    i++;
+    parseWhitespaceAndSkipComments();
+  }
+  if (i >= text.length) {
+    return output;
+  }
+  throwUnexpectedCharacter();
+  function parseValue() {
+    parseWhitespaceAndSkipComments();
+    const processed2 = parseObject() || parseArray() || parseString() || parseNumber() || parseKeywords() || parseUnquotedString(false) || parseRegex();
+    parseWhitespaceAndSkipComments();
+    return processed2;
+  }
+  function parseWhitespaceAndSkipComments() {
+    let skipNewline = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : true;
+    const start = i;
+    let changed = parseWhitespace(skipNewline);
+    do {
+      changed = parseComment();
+      if (changed) {
+        changed = parseWhitespace(skipNewline);
+      }
+    } while (changed);
+    return i > start;
+  }
+  function parseWhitespace(skipNewline) {
+    const _isWhiteSpace = skipNewline ? isWhitespace : isWhitespaceExceptNewline;
+    let whitespace = "";
+    while (true) {
+      if (_isWhiteSpace(text, i)) {
+        whitespace += text[i];
+        i++;
+      } else if (isSpecialWhitespace(text, i)) {
+        whitespace += " ";
+        i++;
+      } else {
+        break;
+      }
+    }
+    if (whitespace.length > 0) {
+      output += whitespace;
+      return true;
+    }
+    return false;
+  }
+  function parseComment() {
+    if (text[i] === "/" && text[i + 1] === "*") {
+      while (i < text.length && !atEndOfBlockComment(text, i)) {
+        i++;
+      }
+      i += 2;
+      return true;
+    }
+    if (text[i] === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        i++;
+      }
+      return true;
+    }
+    return false;
+  }
+  function parseMarkdownCodeBlock(blocks) {
+    if (skipMarkdownCodeBlock(blocks)) {
+      if (isFunctionNameCharStart(text[i])) {
+        while (i < text.length && isFunctionNameChar(text[i])) {
+          i++;
+        }
+      }
+      parseWhitespaceAndSkipComments();
+      return true;
+    }
+    return false;
+  }
+  function skipMarkdownCodeBlock(blocks) {
+    parseWhitespace(true);
+    for (const block of blocks) {
+      const end = i + block.length;
+      if (text.slice(i, end) === block) {
+        i = end;
+        return true;
+      }
+    }
+    return false;
+  }
+  function parseCharacter(char) {
+    if (text[i] === char) {
+      output += text[i];
+      i++;
+      return true;
+    }
+    return false;
+  }
+  function skipCharacter(char) {
+    if (text[i] === char) {
+      i++;
+      return true;
+    }
+    return false;
+  }
+  function skipEscapeCharacter() {
+    return skipCharacter("\\");
+  }
+  function skipEllipsis() {
+    parseWhitespaceAndSkipComments();
+    if (text[i] === "." && text[i + 1] === "." && text[i + 2] === ".") {
+      i += 3;
+      parseWhitespaceAndSkipComments();
+      skipCharacter(",");
+      return true;
+    }
+    return false;
+  }
+  function parseObject() {
+    if (text[i] === "{") {
+      output += "{";
+      i++;
+      parseWhitespaceAndSkipComments();
+      if (skipCharacter(",")) {
+        parseWhitespaceAndSkipComments();
+      }
+      let initial = true;
+      while (i < text.length && text[i] !== "}") {
+        let processedComma2;
+        if (!initial) {
+          processedComma2 = parseCharacter(",");
+          if (!processedComma2) {
+            output = insertBeforeLastWhitespace(output, ",");
+          }
+          parseWhitespaceAndSkipComments();
+        } else {
+          processedComma2 = true;
+        }
+        skipEllipsis();
+        const processedKey = parseString() || parseUnquotedString(true);
+        if (!processedKey) {
+          if (text[i] === "}" || text[i] === "{" || text[i] === "]" || text[i] === "[" || text[i] === void 0) {
+            if (!initial) {
+              output = stripLastOccurrence(output, ",");
+            }
+          } else {
+            throwObjectKeyExpected();
+          }
+          break;
+        }
+        parseWhitespaceAndSkipComments();
+        const processedColon = parseCharacter(":");
+        const truncatedText = i >= text.length;
+        if (!processedColon) {
+          if (isStartOfValue(text[i]) || truncatedText) {
+            output = insertBeforeLastWhitespace(output, ":");
+          } else {
+            throwColonExpected();
+          }
+        }
+        const processedValue = parseValue();
+        if (!processedValue) {
+          if (processedColon || truncatedText) {
+            output += "null";
+          } else {
+            throwColonExpected();
+          }
+        }
+        initial = false;
+      }
+      if (text[i] === "}") {
+        output += "}";
+        i++;
+      } else {
+        output = insertBeforeLastWhitespace(output, "}");
+      }
+      return true;
+    }
+    return false;
+  }
+  function parseArray() {
+    if (text[i] === "[") {
+      output += "[";
+      i++;
+      parseWhitespaceAndSkipComments();
+      if (skipCharacter(",")) {
+        parseWhitespaceAndSkipComments();
+      }
+      let initial = true;
+      while (i < text.length && text[i] !== "]") {
+        if (!initial) {
+          const processedComma2 = parseCharacter(",");
+          if (!processedComma2) {
+            output = insertBeforeLastWhitespace(output, ",");
+          }
+        }
+        skipEllipsis();
+        const processedValue = parseValue();
+        if (!processedValue) {
+          if (!initial) {
+            output = stripLastOccurrence(output, ",");
+          }
+          break;
+        }
+        initial = false;
+      }
+      if (text[i] === "]") {
+        output += "]";
+        i++;
+      } else {
+        output = insertBeforeLastWhitespace(output, "]");
+      }
+      return true;
+    }
+    return false;
+  }
+  function parseNewlineDelimitedJSON() {
+    let initial = true;
+    let processedValue = true;
+    while (processedValue) {
+      if (!initial) {
+        const processedComma2 = parseCharacter(",");
+        if (!processedComma2) {
+          output = insertBeforeLastWhitespace(output, ",");
+        }
+      } else {
+        initial = false;
+      }
+      processedValue = parseValue();
+    }
+    if (!processedValue) {
+      output = stripLastOccurrence(output, ",");
+    }
+    output = `[
+${output}
+]`;
+  }
+  function parseString() {
+    let stopAtDelimiter = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : false;
+    let stopAtIndex = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : -1;
+    const skipEscapeChars = text[i] === "\\";
+    if (skipEscapeChars) {
+      i++;
+      if (!isQuote(text[i])) {
+        throwUnexpectedCharacter();
+      }
+    }
+    const openEntity = text[i] === "&" ? matchHtmlEntity(text.slice(i, i + maxHtmlEntityLength)) : null;
+    const openedByEntity = isDoubleQuoteEntity(openEntity) || isSingleQuoteEntity(openEntity);
+    if (isQuote(text[i]) || openedByEntity) {
+      const isEndQuote = isDoubleQuote(text[i]) ? isDoubleQuote : isSingleQuote(text[i]) ? isSingleQuote : isSingleQuoteLike(text[i]) ? isSingleQuoteLike : isDoubleQuoteLike;
+      const iBefore = i;
+      const oBefore = output.length;
+      let str = '"';
+      i += openedByEntity && openEntity ? openEntity.length : 1;
+      while (true) {
+        if (i >= text.length) {
+          const iPrev = prevNonWhitespaceIndex(i - 1);
+          if (!stopAtDelimiter && isDelimiter(text.charAt(iPrev))) {
+            i = iBefore;
+            output = output.substring(0, oBefore);
+            return parseString(true);
+          }
+          str = insertBeforeLastWhitespace(str, '"');
+          output += str;
+          return true;
+        }
+        if (i === stopAtIndex) {
+          str = insertBeforeLastWhitespace(str, '"');
+          output += str;
+          return true;
+        }
+        const entity = openedByEntity && text[i] === "&" ? matchHtmlEntity(text.slice(i, i + maxHtmlEntityLength)) : null;
+        const isEnd = entity && openEntity ? entity.char === openEntity.char : isEndQuote(text[i]);
+        if (isEnd) {
+          const iQuote = i;
+          const oQuote = str.length;
+          str += '"';
+          i += entity ? entity.length : 1;
+          output += str;
+          parseWhitespaceAndSkipComments(false);
+          if (stopAtDelimiter || i >= text.length || isDelimiter(text[i]) && // only count the brackets inside the string when actually needed,
+          // i.e. when the quote is directly followed by a closing bracket
+          !isInsideUnclosedBracket(str, text[i]) || isQuote(text[i]) && !nextQuoteIsEndQuote(i) || isDigit(text[i])) {
+            parseConcatenatedString();
+            return true;
+          }
+          if (text[i] === "\\") {
+            throwUnexpectedCharacter();
+          }
+          const iPrevChar = prevNonWhitespaceIndex(iQuote - 1);
+          const prevChar = text.charAt(iPrevChar);
+          if (prevChar === ",") {
+            i = iBefore;
+            output = output.substring(0, oBefore);
+            return parseString(false, iPrevChar);
+          }
+          if (isDelimiter(prevChar)) {
+            i = iBefore;
+            output = output.substring(0, oBefore);
+            return parseString(true);
+          }
+          output = output.substring(0, oBefore);
+          i = iQuote + (entity ? entity.length : 1);
+          str = `${str.substring(0, oQuote)}\\${str.substring(oQuote)}`;
+        } else if (stopAtDelimiter && isUnquotedStringDelimiter(text[i])) {
+          if (text[i - 1] === ":" && regexUrlStart.test(text.substring(iBefore + 1, i + 2))) {
+            while (i < text.length && regexUrlChar.test(text[i])) {
+              str += text[i];
+              i++;
+            }
+          }
+          str = insertBeforeLastWhitespace(str, '"');
+          output += str;
+          parseConcatenatedString();
+          return true;
+        } else if (entity) {
+          const char = entity.char;
+          if (char === '"') {
+            str += '\\"';
+          } else if (isControlCharacter(char)) {
+            str += controlCharacters[char];
+          } else {
+            str += char;
+          }
+          i += entity.length;
+        } else if (text[i] === "\\") {
+          const char = text.charAt(i + 1);
+          const escapeChar = escapeCharacters[char];
+          if (escapeChar !== void 0) {
+            str += text.slice(i, i + 2);
+            i += 2;
+          } else if (char === "u") {
+            let j = 2;
+            while (j < 6 && isHex(text[i + j])) {
+              j++;
+            }
+            if (j === 6) {
+              str += text.slice(i, i + 6);
+              i += 6;
+            } else if (i + j >= text.length) {
+              i = text.length;
+            } else {
+              throwInvalidUnicodeCharacter();
+            }
+          } else if (char === "\n") {
+            str += "\\n";
+            i += 2;
+          } else {
+            str += char;
+            i += 2;
+          }
+        } else {
+          const char = text.charAt(i);
+          if (char === '"' && text[i - 1] !== "\\") {
+            str += `\\${char}`;
+            i++;
+          } else if (isControlCharacter(char)) {
+            str += controlCharacters[char];
+            i++;
+          } else {
+            if (!isValidStringCharacter(char)) {
+              throwInvalidCharacter(char);
+            }
+            str += char;
+            i++;
+          }
+        }
+        if (skipEscapeChars) {
+          skipEscapeCharacter();
+        }
+      }
+    }
+    return false;
+  }
+  function parseConcatenatedString() {
+    let processed2 = false;
+    parseWhitespaceAndSkipComments();
+    while (text[i] === "+") {
+      processed2 = true;
+      i++;
+      parseWhitespaceAndSkipComments();
+      output = stripLastOccurrence(output, '"', true);
+      const start = output.length;
+      const parsedStr = parseString();
+      if (parsedStr) {
+        output = removeAtIndex(output, start, 1);
+      } else {
+        output = insertBeforeLastWhitespace(output, '"');
+      }
+    }
+    return processed2;
+  }
+  function parseNumber() {
+    const start = i;
+    let num = "";
+    let invalid = false;
+    if (text[i] === "-") {
+      num += text[i];
+      i++;
+      if (!isDigit(text[i]) && atEndOfNumber()) {
+        num += "0";
+      }
+    }
+    if (text[i] === "0" && isDigit(text[i + 1])) {
+      invalid = true;
+    }
+    while (isDigit(text[i])) {
+      num += text[i];
+      i++;
+    }
+    if (text[i] === ".") {
+      if (num === "" || num === "-") {
+        num += "0";
+      }
+      num += text[i];
+      i++;
+      if (!isDigit(text[i])) {
+        num += "0";
+      }
+      while (isDigit(text[i])) {
+        num += text[i];
+        i++;
+      }
+    }
+    if (i > start) {
+      if (text[i] === "e" || text[i] === "E") {
+        if (num === "-") {
+          invalid = true;
+        }
+        num += text[i];
+        i++;
+        if (text[i] === "-" || text[i] === "+") {
+          num += text[i];
+          i++;
+        }
+        if (!isDigit(text[i])) {
+          num += "0";
+        }
+        while (isDigit(text[i])) {
+          num += text[i];
+          i++;
+        }
+      }
+      if (!atEndOfNumber()) {
+        i = start;
+        return false;
+      }
+      output += invalid ? `"${text.substring(start, i)}"` : num;
+      return true;
+    }
+    return false;
+  }
+  function parseKeywords() {
+    return parseKeyword("true", "true") || parseKeyword("false", "false") || parseKeyword("null", "null") || // repair Python keywords True, False, None
+    parseKeyword("True", "true") || parseKeyword("False", "false") || parseKeyword("None", "null");
+  }
+  function parseKeyword(name, value) {
+    if (text.slice(i, i + name.length) === name && !isFunctionNameChar(text[i + name.length])) {
+      output += value;
+      i += name.length;
+      return true;
+    }
+    return false;
+  }
+  function parseUnquotedString(isKey) {
+    const start = i;
+    if (isFunctionNameCharStart(text[i])) {
+      while (i < text.length && isFunctionNameChar(text[i])) {
+        i++;
+      }
+      let j = i;
+      while (isWhitespace(text, j)) {
+        j++;
+      }
+      if (text[j] === "(") {
+        i = j + 1;
+        parseValue();
+        if (text[i] === ")") {
+          i++;
+          if (text[i] === ";") {
+            i++;
+          }
+        }
+        return true;
+      }
+    }
+    while (i < text.length && !isUnquotedStringDelimiter(text[i]) && !isQuote(text[i]) && (!isKey || text[i] !== ":")) {
+      i++;
+    }
+    if (text[i - 1] === ":" && regexUrlStart.test(text.substring(start, i + 2))) {
+      while (i < text.length && regexUrlChar.test(text[i])) {
+        i++;
+      }
+    }
+    if (i > start) {
+      while (isWhitespace(text, i - 1) && i > 0) {
+        i--;
+      }
+      const symbol2 = text.slice(start, i);
+      output += symbol2 === "undefined" ? "null" : JSON.stringify(symbol2);
+      if (text[i] === '"') {
+        i++;
+      }
+      return true;
+    }
+  }
+  function parseRegex() {
+    if (text[i] === "/") {
+      const start = i;
+      i++;
+      while (i < text.length && (text[i] !== "/" || text[i - 1] === "\\")) {
+        i++;
+      }
+      i++;
+      output += JSON.stringify(text.substring(start, i));
+      return true;
+    }
+  }
+  function prevNonWhitespaceIndex(start) {
+    let prev = start;
+    while (prev > 0 && isWhitespace(text, prev)) {
+      prev--;
+    }
+    return prev;
+  }
+  function nextQuoteIsEndQuote(index) {
+    let next = index + 1;
+    while (next < text.length && isWhitespace(text, next)) {
+      next++;
+    }
+    return next >= text.length || isDelimiter(text[next]);
+  }
+  function atEndOfNumber() {
+    return i >= text.length || isDelimiter(text[i]) || isWhitespace(text, i);
+  }
+  function throwInvalidCharacter(char) {
+    throw new JSONRepairError(`Invalid character ${JSON.stringify(char)}`, i);
+  }
+  function throwUnexpectedCharacter() {
+    throw new JSONRepairError(`Unexpected character ${JSON.stringify(text[i])}`, i);
+  }
+  function throwUnexpectedEnd() {
+    throw new JSONRepairError("Unexpected end of json string", text.length);
+  }
+  function throwObjectKeyExpected() {
+    throw new JSONRepairError("Object key expected", i);
+  }
+  function throwColonExpected() {
+    throw new JSONRepairError("Colon expected", i);
+  }
+  function throwInvalidUnicodeCharacter() {
+    const chars = text.slice(i, i + 6);
+    throw new JSONRepairError(`Invalid unicode character "${chars}"`, i);
+  }
+}
+function atEndOfBlockComment(text, i) {
+  return text[i] === "*" && text[i + 1] === "/";
+}
+
 // src/core/planning-runner.ts
+var PlanningValidationError = class extends Error {
+  constructor(diagnostics) {
+    super(diagnostics.map((diagnostic) => `${diagnostic.stage}:${diagnostic.path.join(".") || "<root>"}:${diagnostic.message}`).join("\n"));
+    this.diagnostics = diagnostics;
+  }
+  diagnostics;
+};
 async function runPlanning(args) {
   const { input, provider } = args;
   const warnings = [];
+  const allDiagnostics = [];
+  let syntaxRepairApplied = false;
+  let semanticRepairApplied = false;
+  let sawQualityRepairablePlan = false;
+  let attempts = 0;
   if (!input.config.workflow.automaticTriage || !provider) {
     const fallbackReason2 = !input.config.workflow.automaticTriage ? "automatic model planning is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model planning provider was resolved";
     return {
@@ -22622,32 +23446,169 @@ async function runPlanning(args) {
   }
   const maxAttempts = Math.min(2, input.config.budgets.triageCalls);
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    attempts = attempt;
+    let result;
     try {
-      const result = await provider.plan(input);
-      warnings.push(...result.warnings ?? []);
-      const plan = args.validate(normaliseModelPayload(result.raw));
-      return {
-        plan,
-        source: "model",
-        provider: result.provider,
-        model: result.model,
-        attempts: attempt,
-        warnings
-      };
+      result = await provider.plan(input);
     } catch (error51) {
-      warnings.push(`Model planning attempt ${attempt} failed: ${messageOf2(error51)}`);
+      warnings.push(`Planning provider invocation ${attempt} failed: ${messageOf2(error51)}`);
+      continue;
+    }
+    warnings.push(...result.warnings ?? []);
+    let parsed;
+    try {
+      parsed = parsePlanningPayload(result.raw);
+      syntaxRepairApplied ||= parsed.syntaxRepairApplied;
+      if (parsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once before schema validation.");
+    } catch (error51) {
+      const diagnostics = diagnosticsOf(error51, "syntax");
+      allDiagnostics.push(...diagnostics);
+      warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf2(error51)}`);
+      continue;
+    }
+    const validated = validateCandidate(args, parsed.value);
+    if (validated.ok) {
+      return modelResult(validated.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
+    }
+    allDiagnostics.push(...validated.diagnostics);
+    if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) sawQualityRepairablePlan = true;
+    warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
+    const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
+    warnings.push(...normalised.warnings ?? []);
+    if (normalised.changed) {
+      const normalisedValidation = validateCandidate(args, normalised.raw);
+      if (normalisedValidation.ok) {
+        semanticRepairApplied = true;
+        warnings.push("Planning semantic repair applied with deterministic field normalisation.");
+        return modelResult(normalisedValidation.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
+      }
+      allDiagnostics.push(...normalisedValidation.diagnostics);
+    }
+    if (provider.repair) {
+      try {
+        const repairResult = await provider.repair(input, {
+          plan: normalised.raw,
+          diagnostics: validated.diagnostics,
+          model: result.model,
+          tier: result.tier
+        });
+        warnings.push(...repairResult.warnings ?? []);
+        const repairedParsed = parsePlanningPayload(repairResult.raw);
+        syntaxRepairApplied ||= repairedParsed.syntaxRepairApplied;
+        if (repairedParsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once to semantic repair output.");
+        const repairedValidation = validateCandidate(args, repairedParsed.value);
+        if (repairedValidation.ok) {
+          semanticRepairApplied = true;
+          warnings.push("Planning semantic repair applied by the same provider/model.");
+          return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
+        }
+        allDiagnostics.push(...repairedValidation.diagnostics);
+        warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
+      } catch (error51) {
+        allDiagnostics.push(...diagnosticsOf(error51, "schema"));
+        warnings.push(`Planning semantic repair failed: ${messageOf2(error51)}`);
+      }
+      if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) break;
     }
   }
-  const fallbackReason = `model planning failed after ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}`;
-  warnings.push("Using deterministic planning fallback after model plan could not be validated.");
+  const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
+  const approvalBlockedReason = sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan) ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised." : void 0;
+  warnings.push(approvalBlockedReason ?? "Using deterministic planning fallback after model plan could not be validated.");
   return {
     plan: input.deterministicPlan,
     source: "deterministic-fallback",
     provider: provider.name,
-    attempts: maxAttempts,
+    attempts,
     fallbackReason,
-    warnings
+    warnings,
+    diagnostics: allDiagnostics,
+    syntaxRepairApplied,
+    semanticRepairApplied,
+    approvalBlockedReason
   };
+}
+function parsePlanningPayload(raw) {
+  if (typeof raw === "object" && raw !== null) {
+    const record2 = raw;
+    if (typeof record2.result === "string") return parsePlanningText(record2.result);
+    if (typeof record2.content === "string") return parsePlanningText(record2.content);
+    return { value: raw, syntaxRepairApplied: false };
+  }
+  if (typeof raw === "string") return parsePlanningText(raw);
+  throw new PlanningValidationError([{ stage: "syntax", path: [], code: "unsupported_payload", message: "Planning provider returned neither JSON nor text." }]);
+}
+function parsePlanningText(text) {
+  const candidate = extractJsonCandidate(text);
+  try {
+    return { value: JSON.parse(candidate), syntaxRepairApplied: false };
+  } catch (firstError) {
+    let repaired;
+    try {
+      repaired = jsonrepair(candidate);
+    } catch {
+      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "invalid_json", message: messageOf2(firstError) }]);
+    }
+    try {
+      return { value: JSON.parse(repaired), syntaxRepairApplied: true };
+    } catch (secondError) {
+      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "jsonrepair_failed", message: messageOf2(secondError) }]);
+    }
+  }
+}
+function extractJsonCandidate(text) {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  if (fenced) return fenced;
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (objectStart >= 0 && objectEnd > objectStart) return trimmed.slice(objectStart, objectEnd + 1);
+  if (arrayStart >= 0 && arrayEnd > arrayStart) return trimmed.slice(arrayStart, arrayEnd + 1);
+  return trimmed;
+}
+function validateCandidate(args, raw) {
+  try {
+    return { ok: true, plan: args.validate(raw) };
+  } catch (error51) {
+    return { ok: false, diagnostics: diagnosticsOf(error51, "schema") };
+  }
+}
+function modelResult(plan, result, attempts, warnings, diagnostics, syntaxRepairApplied, semanticRepairApplied) {
+  return {
+    plan,
+    source: "model",
+    provider: result.provider,
+    model: result.model,
+    attempts,
+    warnings,
+    diagnostics,
+    syntaxRepairApplied,
+    semanticRepairApplied
+  };
+}
+function diagnosticsOf(error51, fallbackStage) {
+  if (error51 instanceof PlanningValidationError) return error51.diagnostics;
+  const record2 = error51;
+  if (Array.isArray(record2?.issues)) {
+    return record2.issues.map((issue2) => {
+      const candidate = issue2;
+      return {
+        stage: fallbackStage,
+        path: Array.isArray(candidate.path) ? candidate.path.filter((part) => typeof part === "string" || typeof part === "number") : [],
+        code: candidate.code ?? "validation_error",
+        message: candidate.message ?? messageOf2(issue2)
+      };
+    });
+  }
+  return [{ stage: fallbackStage, path: [], code: "planning_error", message: messageOf2(error51) }];
+}
+function diagnosticSummary(diagnostics) {
+  return diagnostics.map((diagnostic) => `${diagnostic.stage}:${diagnostic.path.join(".") || "<root>"}:${diagnostic.message}`).join("; ");
+}
+function isGenericFallbackPlan(plan) {
+  const text = plan.phases.map((phase2) => phase2.objective).join("\n").toLowerCase();
+  return /\bimplement (the )?(primary|approved|high-risk) behavior( change)?\b/.test(text) || /\bfocused regression coverage\b/.test(text) || /\bactual implementation work will need\b/.test(plan.summary.toLowerCase());
 }
 function messageOf2(error51) {
   return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
@@ -22966,9 +23927,6 @@ var planSchema = external_exports.object({
   for (const issue2 of validatePhaseDag(plan)) {
     ctx.addIssue({ code: "custom", path: ["phases"], message: issue2 });
   }
-  for (const issue2 of validatePlanQuality(plan)) {
-    ctx.addIssue({ code: "custom", path: ["phases"], message: issue2 });
-  }
 });
 var modelPlanPhaseSchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -23065,6 +24023,12 @@ var workflowGitStateSchema = external_exports.object({
   phaseWorkspaces: external_exports.record(external_exports.string(), phaseWorkspaceSchema).default({}),
   integrationValidation: integrationValidationSchema.optional()
 });
+var planningDiagnosticSchema = external_exports.object({
+  stage: external_exports.enum(["syntax", "schema", "quality"]),
+  path: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])),
+  code: external_exports.string(),
+  message: external_exports.string()
+});
 var workflowStateSchema = external_exports.object({
   version: external_exports.literal(STATE_VERSION),
   id: external_exports.string().min(1),
@@ -23090,7 +24054,11 @@ var workflowStateSchema = external_exports.object({
     model: external_exports.string().optional(),
     attempts: external_exports.number().int(),
     fallbackReason: external_exports.string().optional(),
-    warnings: external_exports.array(external_exports.string())
+    warnings: external_exports.array(external_exports.string()),
+    diagnostics: external_exports.array(planningDiagnosticSchema).optional(),
+    syntaxRepairApplied: external_exports.boolean().optional(),
+    semanticRepairApplied: external_exports.boolean().optional(),
+    approvalBlockedReason: external_exports.string().optional()
   }).optional(),
   clarification: external_exports.object({
     question: external_exports.string().min(1),
@@ -23232,7 +24200,8 @@ async function rejectApproach(root, workflowId2, reason, mutation) {
 }
 async function revisePlan(root, workflowId2, feedback, config2, mutation, planning) {
   return updateFlowState(root, workflowId2, async (state) => {
-    assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
+    assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing", "blocked"]);
+    if (state.state === "blocked" && !state.planningRun?.approvalBlockedReason) throw new WorkflowStateError("Cannot revise this blocked workflow through the plan revision path.");
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
     const next = structuredClone(state);
     const triage = state.triage;
@@ -23868,6 +24837,10 @@ async function withPlan(state, config2, planningOptions) {
   planning.plan = planningRun.plan;
   planning.planningRun = planningRunMetadata(planningRun);
   appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
+  if (planningRun.approvalBlockedReason) {
+    planning.blockers = unique3([...planning.blockers, planningRun.approvalBlockedReason]);
+    return transition(planning, "blocked", "Plan approval disabled because deterministic fallback was too generic; revise the plan before continuing.");
+  }
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
 }
 function buildApproach(triage, config2) {
@@ -23894,7 +24867,7 @@ function buildPlan(request, triage, root, config2, options) {
   const plan = {
     version: 1,
     summary: revisionNote ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})` : `Sequential plan for: ${request.trim()}`,
-    principles: planningPrinciples(),
+    principles: planningPrinciples(triage),
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
@@ -23918,11 +24891,14 @@ async function generatePlan(args) {
     },
     provider: args.provider,
     providerSelection: args.providerSelection,
-    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config2, args.revisionRequests)
+    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config2, args.revisionRequests),
+    normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics)
   });
 }
 function validateModelPlan(raw, mode2, config2, revisionRequests) {
-  const parsed = modelPlanSchema.parse(raw);
+  const parsedResult = modelPlanSchema.safeParse(raw);
+  if (!parsedResult.success) throw new PlanningValidationError(zodDiagnostics(parsedResult.error, "schema"));
+  const parsed = parsedResult.data;
   const plan = {
     version: 1,
     summary: parsed.summary,
@@ -23945,19 +24921,58 @@ function validateModelPlan(raw, mode2, config2, revisionRequests) {
     }),
     revisionRequests
   };
-  const checked = planSchema.parse(plan);
-  const issues = validatePlanQuality(checked, mode2, config2);
-  if (issues.length > 0) throw new WorkflowStateError(`Model plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
+  const checkedResult = planSchema.safeParse(plan);
+  if (!checkedResult.success) throw new PlanningValidationError(zodDiagnostics(checkedResult.error, "schema"));
+  const checked = checkedResult.data;
+  const diagnostics = validatePlanQualityDetailed(checked, mode2, config2);
+  if (diagnostics.length > 0) throw new PlanningValidationError(diagnostics);
   return checked;
 }
-function planningPrinciples() {
-  return [
+function normaliseModelPlan(raw, diagnostics) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { raw, changed: false };
+  const mutable = structuredClone(raw);
+  let changed = false;
+  if (Array.isArray(mutable.phases)) {
+    mutable.phases = mutable.phases.map((phase2) => {
+      if (!phase2 || typeof phase2 !== "object" || Array.isArray(phase2)) return phase2;
+      const next = { ...phase2 };
+      if (!Array.isArray(next.expectedFilesOrAreas) && Array.isArray(next.expectedWriteAreas)) {
+        next.expectedFilesOrAreas = next.expectedWriteAreas;
+        changed = true;
+      }
+      if (!Array.isArray(next.expectedWriteAreas) && Array.isArray(next.expectedFilesOrAreas)) {
+        next.expectedWriteAreas = next.expectedFilesOrAreas;
+        changed = true;
+      }
+      return next;
+    });
+  }
+  return {
+    raw: mutable,
+    changed,
+    warnings: changed ? [`Applied safe deterministic planning normalisation for ${diagnostics.length} diagnostic(s).`] : void 0
+  };
+}
+function zodDiagnostics(error51, stage) {
+  return error51.issues.map((issue2) => ({
+    stage,
+    path: issue2.path.filter((part) => typeof part === "string" || typeof part === "number"),
+    code: issue2.code,
+    message: issue2.message
+  }));
+}
+function planningPrinciples(triage) {
+  const principles = [
     "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
     "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
     "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
     "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
     "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
   ];
+  return unique3([
+    ...principles,
+    ...(triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: must not ${constraint}`)
+  ]);
 }
 function planningRunMetadata(run) {
   return {
@@ -23966,7 +24981,11 @@ function planningRunMetadata(run) {
     model: run.model,
     attempts: run.attempts,
     fallbackReason: run.fallbackReason,
-    warnings: run.warnings
+    warnings: run.warnings,
+    diagnostics: run.diagnostics,
+    syntaxRepairApplied: run.syntaxRepairApplied,
+    semanticRepairApplied: run.semanticRepairApplied,
+    approvalBlockedReason: run.approvalBlockedReason
   };
 }
 function planningEventSummary(run) {
@@ -24123,27 +25142,34 @@ function filterAreas(targets, keywords) {
   return filtered.length > 0 ? filtered : targets;
 }
 function validatePlanQuality(plan, mode2, config2) {
+  return validatePlanQualityDetailed(plan, mode2, config2).map((diagnostic) => diagnostic.message);
+}
+function validatePlanQualityDetailed(plan, mode2, config2) {
   const issues = [];
   const ids = /* @__PURE__ */ new Set();
-  for (const phase2 of plan.phases) {
-    if (ids.has(phase2.id)) issues.push(`Phase ${phase2.id} is duplicated.`);
+  for (const [index, phase2] of plan.phases.entries()) {
+    const phasePath = ["phases", index];
+    if (ids.has(phase2.id)) issues.push(planDiagnostic("quality", phasePath.concat("id"), "phase.duplicate_id", `Phase ${phase2.id} is duplicated.`));
     ids.add(phase2.id);
-    if (!phase2.objective.trim()) issues.push(`Phase ${phase2.id} is missing an objective.`);
-    if (hasMultiplePrimaryObjectives(phase2.objective)) issues.push(`Phase ${phase2.id} appears to have multiple primary objectives.`);
-    if (isBroadContainer(phase2.objective)) issues.push(`Phase ${phase2.id} is a vague or overly broad container.`);
-    if (phase2.acceptanceCriteria.length === 0) issues.push(`Phase ${phase2.id} has no acceptance criteria.`);
+    if (!phase2.objective.trim()) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.missing", `Phase ${phase2.id} is missing an objective.`));
+    if (isBroadContainer(phase2.objective)) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.generic_container", `Phase ${phase2.id} is a vague or overly broad container.`));
+    if (phase2.acceptanceCriteria.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.missing", `Phase ${phase2.id} has no acceptance criteria.`));
     if (phase2.acceptanceCriteria.some((criterion) => !isInspectableCriterion(criterion))) {
-      issues.push(`Phase ${phase2.id} has non-testable or non-inspectable acceptance criteria.`);
+      issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.not_inspectable", `Phase ${phase2.id} has non-testable or non-inspectable acceptance criteria.`));
     }
-    if (phase2.validationCommands.length === 0) issues.push(`Phase ${phase2.id} has no validation command or check expectation.`);
-    if (phase2.expectedFilesOrAreas.length === 0) issues.push(`Phase ${phase2.id} has no bounded expected write area.`);
+    if (phase2.validationCommands.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("validationCommands"), "validation.missing", `Phase ${phase2.id} has no validation command or check expectation.`));
+    if (phase2.expectedFilesOrAreas.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.missing_write_area", `Phase ${phase2.id} has no bounded expected write area.`));
     if (phase2.expectedFilesOrAreas.length >= (config2?.taskSizing.reviewSplitThresholdFiles ?? 8) && mode2 !== "fast") {
-      issues.push(`Phase ${phase2.id} lists many expected write areas and should be reviewed for splitting.`);
+      issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.too_many_write_areas", `Phase ${phase2.id} lists many expected write areas and should be reviewed for splitting.`));
+    }
+    const mixedBoundary = mixedArchitecturalBoundary(phase2, mode2);
+    if (mixedBoundary) {
+      issues.push(planDiagnostic("quality", phasePath.concat("expectedWriteAreas"), "scope.mixed_architectural_boundaries", mixedBoundary));
     }
   }
   for (const phase2 of plan.phases) {
     for (const dependency of phase2.dependencies) {
-      if (!ids.has(dependency)) issues.push(`Phase ${phase2.id} depends on missing phase ${dependency}.`);
+      if (!ids.has(dependency)) issues.push(planDiagnostic("quality", ["phases", phase2.id, "dependencies"], "dependency.missing", `Phase ${phase2.id} depends on missing phase ${dependency}.`));
     }
   }
   const visiting = /* @__PURE__ */ new Set();
@@ -24151,7 +25177,7 @@ function validatePlanQuality(plan, mode2, config2) {
   const byId = new Map(plan.phases.map((phase2) => [phase2.id, phase2]));
   const visit = (id) => {
     if (visiting.has(id)) {
-      issues.push(`Dependency cycle detected at ${id}.`);
+      issues.push(planDiagnostic("quality", ["phases"], "dependency.cycle", `Dependency cycle detected at ${id}.`));
       return;
     }
     if (visited.has(id)) return;
@@ -24161,15 +25187,7 @@ function validatePlanQuality(plan, mode2, config2) {
     visited.add(id);
   };
   for (const phase2 of plan.phases) visit(phase2.id);
-  if (mode2 === "fast" && plan.phases.length === 1) return unique3(issues);
-  const broadPhase = plan.phases.find((phase2) => boundaryWordCount(phase2.objective) > 1 && !/coverage|validation|documentation/.test(phase2.objective.toLowerCase()));
-  if (broadPhase) issues.push(`Phase ${broadPhase.id} mixes architectural boundaries.`);
-  return unique3(issues);
-}
-function hasMultiplePrimaryObjectives(objective) {
-  const lower = objective.toLowerCase();
-  if (/\b(backend|frontend|tests?|docs?|documentation|migration|schema|api|consumer)\b.*\band\b.*\b(backend|frontend|tests?|docs?|documentation|migration|schema|api|consumer)\b/.test(lower)) return true;
-  return /\b(update|add|implement|refactor|change|fix)\b.*\band\b.*\b(update|add|implement|refactor|change|fix)\b/.test(lower);
+  return uniqueDiagnostics(issues);
 }
 function isBroadContainer(objective) {
   return /\b(whole feature|backend, frontend|frontend, tests|tests and docs|some related|various|everything|all changes|whole task)\b/i.test(objective);
@@ -24179,16 +25197,38 @@ function isInspectableCriterion(criterion) {
   if (/^(done|works|complete|as needed|tbd)\.?$/.test(lower.trim())) return false;
   return lower.length >= 12;
 }
-function boundaryWordCount(value) {
-  const lower = value.toLowerCase();
-  return [
-    /\bbackend|api|service|server\b/.test(lower),
-    /\bfrontend|ui|client|component\b/.test(lower),
-    /\btests?|coverage|validation\b/.test(lower),
-    /\bdocs?|documentation|readme\b/.test(lower),
-    /\bmigration|database|schema\b/.test(lower),
-    /\bauth|security|permission|credential\b/.test(lower)
-  ].filter(Boolean).length;
+function mixedArchitecturalBoundary(phase2, mode2) {
+  if (mode2 === "fast") return void 0;
+  const productionGroups = unique3((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(areaBoundary).filter((group) => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
+  if (productionGroups.length <= 1) return void 0;
+  return `Phase ${phase2.id} writes multiple architectural boundaries (${productionGroups.join(", ")}); split the phase or make the dependency boundary explicit.`;
+}
+function areaBoundary(area) {
+  const normalized = area.trim().replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+  if (!normalized || normalized.startsWith("risk:")) return "risk";
+  if (/^(tests?|__tests__|test)\//.test(normalized) || normalized.includes("/__tests__/") || normalized.endsWith(".test.ts") || normalized.endsWith(".spec.ts")) return "tests";
+  if (/^(docs?|readme\.md|contributing\.md|changelog\.md)/.test(normalized)) return "docs";
+  if (/^(src\/core)\//.test(normalized)) return "src/core";
+  if (/^(src\/config)\//.test(normalized)) return "src/config";
+  if (/^(src\/cli)\//.test(normalized)) return "src/cli";
+  if (/^(src\/adapters\/[^/]+)/.test(normalized)) return normalized.match(/^(src\/adapters\/[^/]+)/)?.[1];
+  if (/^(src\/[^/]+)/.test(normalized)) return normalized.match(/^(src\/[^/]+)/)?.[1];
+  if (/^([^/]+\/[^/]+)/.test(normalized) && isPathLikeArea2(normalized)) return normalized.match(/^([^/]+\/[^/]+)/)?.[1];
+  return void 0;
+}
+function planDiagnostic(stage, pathParts, code, message) {
+  return { stage, path: pathParts, code, message };
+}
+function uniqueDiagnostics(diagnostics) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const diagnostic of diagnostics) {
+    const key = `${diagnostic.stage}:${diagnostic.code}:${diagnostic.path.join(".")}:${diagnostic.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(diagnostic);
+  }
+  return out;
 }
 function phase(args) {
   const areas = unique3(args.areas);
@@ -24831,13 +25871,14 @@ function workflowNextSummary(state) {
     };
   }
   if (state.state === "blocked") {
+    const planBlocked = Boolean(state.planningRun?.approvalBlockedReason);
     return {
       ...base,
       label: "Blocked",
       userDecisionRequired: true,
       pendingDecision: state.blockers[0] ?? "Workflow is blocked.",
-      pendingAction: "Resolve the blocker, revise the workflow, or cancel.",
-      allowedIntents: ["show status", "cancel"],
+      pendingAction: planBlocked ? "Revise the plan before continuing." : "Resolve the blocker, revise the workflow, or cancel.",
+      allowedIntents: planBlocked ? ["revise", "show status", "cancel"] : ["show status", "cancel"],
       summary: { blockers: state.blockers }
     };
   }
@@ -24941,6 +25982,7 @@ function internalOperationsFor(state) {
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
   if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
+  if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["revise-plan", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
   return ["status"];
 }
@@ -25959,7 +27001,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.10");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.11");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -26548,7 +27590,11 @@ function printFlowState(state) {
       model: state.planningRun.model,
       attempts: state.planningRun.attempts,
       fallbackReason: state.planningRun.fallbackReason,
-      warnings: state.planningRun.warnings
+      warnings: state.planningRun.warnings,
+      diagnostics: state.planningRun.diagnostics,
+      syntaxRepairApplied: state.planningRun.syntaxRepairApplied,
+      semanticRepairApplied: state.planningRun.semanticRepairApplied,
+      approvalBlockedReason: state.planningRun.approvalBlockedReason
     } : void 0,
     clarification: state.clarification,
     approach: state.approach,

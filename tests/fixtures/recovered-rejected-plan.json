@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "summary": "Model plan for deterministic test-obligation planning and evidence gates.",
+  "principles": [
+    "Keep obligation derivation separate from evidence gate enforcement.",
+    "Preserve existing workflow loadability."
+  ],
+  "phases": [
+    {
+      "id": "phase-1",
+      "objective": "Persist phase-specific test obligation types in workflow state.",
+      "rationale": "State shape and compatibility must be established before planning and gate logic use obligations.",
+      "dependencies": [],
+      "expectedReadAreas": [
+        "src/core/types.ts",
+        "src/core/flow.ts"
+      ],
+      "expectedWriteAreas": [
+        "src/core/types.ts",
+        "src/core/flow.ts"
+      ],
+      "expectedFilesOrAreas": [
+        "src/core/types.ts",
+        "src/core/flow.ts"
+      ],
+      "acceptanceCriteria": [
+        "Workflow state can persist phase-specific obligation records without breaking existing workflows.",
+        "Obligation records include stable IDs, category, required status, and satisfied evidence links."
+      ],
+      "validationCommands": [
+        "npm test",
+        "npm run typecheck"
+      ],
+      "riskLevel": "high",
+      "modelTier": "large"
+    },
+    {
+      "id": "phase-2",
+      "objective": "Derive deterministic obligation categories during planning.",
+      "rationale": "Planning must create obligations before completion evidence can be checked.",
+      "dependencies": [
+        "phase-1"
+      ],
+      "expectedReadAreas": [
+        "src/core/flow.ts",
+        "src/core/assessment.ts"
+      ],
+      "expectedWriteAreas": [
+        "src/core/flow.ts"
+      ],
+      "expectedFilesOrAreas": [
+        "src/core/flow.ts"
+      ],
+      "acceptanceCriteria": [
+        "Bug-fix plans include a mandatory regression obligation.",
+        "Public-contract changes include a mandatory contract obligation.",
+        "Rigorous mode adds applicable failure, migration, security, compatibility, concurrency, and recovery obligations."
+      ],
+      "validationCommands": [
+        "npm test",
+        "npm run typecheck"
+      ],
+      "riskLevel": "high",
+      "modelTier": "large"
+    },
+    {
+      "id": "phase-3",
+      "objective": "Require validation evidence to satisfy mandatory obligations.",
+      "rationale": "Completion gates must reject missing required obligation evidence.",
+      "dependencies": [
+        "phase-2"
+      ],
+      "expectedReadAreas": [
+        "src/core/flow.ts",
+        "src/core/types.ts",
+        "tests/flow.test.ts"
+      ],
+      "expectedWriteAreas": [
+        "src/core/flow.ts",
+        "tests/flow.test.ts"
+      ],
+      "expectedFilesOrAreas": [
+        "src/core/flow.ts",
+        "tests/flow.test.ts"
+      ],
+      "acceptanceCriteria": [
+        "Completion gates reject phases that lack mandatory obligation evidence.",
+        "Diagnostics identify the missing obligation IDs and categories."
+      ],
+      "validationCommands": [
+        "npm test",
+        "npm run typecheck",
+        "npm run lint"
+      ],
+      "riskLevel": "high",
+      "modelTier": "large"
+    },
+    {
+      "id": "phase-4",
+      "objective": "Add migration, security, schema, and compatibility obligation coverage.",
+      "rationale": "The rejected workflow failed because category words were mistaken for architectural boundaries.",
+      "dependencies": [
+        "phase-3"
+      ],
+      "expectedReadAreas": [
+        "tests/flow.test.ts",
+        "tests/claude-marketplace-plugin.test.ts"
+      ],
+      "expectedWriteAreas": [
+        "tests/flow.test.ts"
+      ],
+      "expectedFilesOrAreas": [
+        "tests/flow.test.ts"
+      ],
+      "acceptanceCriteria": [
+        "Migration, security, schema, and compatibility categories are accepted as obligation categories.",
+        "False-positive boundary checks do not reject objective text that stays within one write area."
+      ],
+      "validationCommands": [
+        "npm test",
+        "npm run typecheck"
+      ],
+      "riskLevel": "medium",
+      "modelTier": "large"
+    },
+    {
+      "id": "phase-5",
+      "objective": "Update validation evidence and completion diagnostics.",
+      "rationale": "Evidence output should show exactly which obligation each command satisfies.",
+      "dependencies": [
+        "phase-4"
+      ],
+      "expectedReadAreas": [
+        "src/core/types.ts",
+        "src/core/flow.ts",
+        "tests/flow.test.ts"
+      ],
+      "expectedWriteAreas": [
+        "src/core/types.ts",
+        "src/core/flow.ts",
+        "tests/flow.test.ts"
+      ],
+      "expectedFilesOrAreas": [
+        "src/core/types.ts",
+        "src/core/flow.ts",
+        "tests/flow.test.ts"
+      ],
+      "acceptanceCriteria": [
+        "Validation evidence records the obligation IDs satisfied by each command or manual check.",
+        "Missing required obligations prevent completion with precise diagnostics."
+      ],
+      "validationCommands": [
+        "npm test",
+        "npm run typecheck",
+        "npm run lint",
+        "git diff --check"
+      ],
+      "riskLevel": "high",
+      "modelTier": "large"
+    }
+  ],
+  "revisionRequests": []
+}

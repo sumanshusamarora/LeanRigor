@@ -74,7 +74,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.10");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.11");
 
 program.command("setup")
   .alias("init")
@@ -1069,7 +1069,11 @@ function printFlowState(state: SequentialWorkflowState): void {
       model: state.planningRun.model,
       attempts: state.planningRun.attempts,
       fallbackReason: state.planningRun.fallbackReason,
-      warnings: state.planningRun.warnings
+      warnings: state.planningRun.warnings,
+      diagnostics: state.planningRun.diagnostics,
+      syntaxRepairApplied: state.planningRun.syntaxRepairApplied,
+      semanticRepairApplied: state.planningRun.semanticRepairApplied,
+      approvalBlockedReason: state.planningRun.approvalBlockedReason
     } : undefined,
     clarification: state.clarification,
     approach: state.approach,

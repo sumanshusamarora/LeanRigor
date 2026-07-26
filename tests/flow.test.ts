@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
+import { assessTask } from "../src/core/assessment.js";
 import {
   answerClarification,
   approveApproach,
@@ -27,7 +28,9 @@ import {
   validatePlanQuality
 } from "../src/core/flow.js";
 import type { PlanningProvider } from "../src/core/planning-runner.js";
+import type { TriageProvider } from "../src/core/triage-runner.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
+import recoveredRejectedPlan from "./fixtures/recovered-rejected-plan.json" with { type: "json" };
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-flow-"));
@@ -50,6 +53,27 @@ function planningProviderFrom(values: unknown[], warnings: string[] = []): Plann
       const raw = values[Math.min(index, values.length - 1)];
       index += 1;
       return { raw, provider: "fake-planner", model: "planner-test-model", warnings };
+    }
+  };
+}
+
+function planningProviderWithRepair(args: {
+  plan: unknown;
+  repair?: unknown | Error;
+  model?: string;
+  onPlan?: () => void;
+  onRepair?: () => void;
+}): PlanningProvider {
+  return {
+    name: "fake-planner",
+    async plan() {
+      args.onPlan?.();
+      return { raw: args.plan, provider: "fake-planner", model: args.model ?? "planner-test-model", tier: "medium" };
+    },
+    async repair() {
+      args.onRepair?.();
+      if (args.repair instanceof Error) throw args.repair;
+      return { raw: args.repair ?? args.plan, provider: "fake-planner", model: args.model ?? "planner-test-model", tier: "medium" };
     }
   };
 }
@@ -148,6 +172,100 @@ describe("sequential workflow orchestration", () => {
     expect(planned.plan?.phases[0]?.status).toBe("planned");
   });
 
+  it("accepts the recovered rejected model plan without false-positive boundary diagnostics", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates", root, config: defaultConfig() });
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([recoveredRejectedPlan]),
+      providerSelection: "auto"
+    });
+
+    expect(planned.planningRun?.source).toBe("model");
+    expect(planned.planningRun?.diagnostics ?? []).toEqual([]);
+    expect(planned.plan?.phases.map((phase) => phase.id)).toEqual(["phase-1", "phase-2", "phase-3", "phase-4", "phase-5"]);
+    expect(planned.plan?.phases[3]?.objective).toContain("migration, security, schema, and compatibility");
+    expect(validatePlanQuality(planned.plan!, "rigorous", defaultConfig())).toEqual([]);
+  });
+
+  it("repairs malformed JSON once before schema and quality validation", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const malformed = JSON.stringify(compactPlan()).replace(/"revisionRequests":\[\]/, "\"revisionRequests\":[],");
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([malformed]),
+      providerSelection: "auto"
+    });
+
+    expect(planned.planningRun?.source).toBe("model");
+    expect(planned.planningRun?.syntaxRepairApplied).toBe(true);
+    expect(planned.planningRun?.warnings.join("\n")).toContain("Planning syntax repair applied once");
+  });
+
+  it("repairs schema-valid but quality-invalid plans while preserving valid fields", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const invalid = compactPlan("Do everything needed for issue 12.");
+    const repaired = compactPlan("Persist issue-specific test obligation planning.");
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderWithRepair({ plan: invalid, repair: repaired }),
+      providerSelection: "auto"
+    });
+
+    expect(planned.planningRun?.source).toBe("model");
+    expect(planned.planningRun?.semanticRepairApplied).toBe(true);
+    expect(planned.planningRun?.diagnostics?.some((diagnostic) => diagnostic.path.includes("objective"))).toBe(true);
+    const phase = planned.plan?.phases[0];
+    expect(phase?.objective).toBe("Persist issue-specific test obligation planning.");
+    expect(phase?.dependencies).toEqual((invalid as { phases: Array<{ dependencies: string[] }> }).phases[0].dependencies);
+    expect(phase?.expectedFilesOrAreas).toEqual((invalid as { phases: Array<{ expectedFilesOrAreas: string[] }> }).phases[0].expectedFilesOrAreas);
+    expect(phase?.acceptanceCriteria).toEqual((invalid as { phases: Array<{ acceptanceCriteria: string[] }> }).phases[0].acceptanceCriteria);
+    expect(phase?.validationCommands).toEqual((invalid as { phases: Array<{ validationCommands: string[] }> }).phases[0].validationCommands);
+    expect(planned.plan?.revisionRequests).toEqual([]);
+  });
+
+  it("uses same-model semantic repair before any new planning generation", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    let planCalls = 0;
+    let repairCalls = 0;
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderWithRepair({
+        plan: compactPlan("Do everything needed for issue 12."),
+        repair: compactPlan("Persist issue-specific test obligation planning."),
+        model: "deepseek-user-medium",
+        onPlan: () => { planCalls += 1; },
+        onRepair: () => { repairCalls += 1; }
+      }),
+      providerSelection: "auto"
+    });
+
+    expect(planCalls).toBe(1);
+    expect(repairCalls).toBe(1);
+    expect(planned.planningRun).toMatchObject({ source: "model", model: "deepseek-user-medium", semanticRepairApplied: true });
+  });
+
+  it("blocks normal plan approval when generic fallback would replace a repairable model plan", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates", root, config: defaultConfig() });
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderWithRepair({
+        plan: compactPlan("Do everything needed for issue 12."),
+        repair: new Error("repair provider unavailable")
+      }),
+      providerSelection: "auto"
+    });
+
+    expect(planned.state).toBe("blocked");
+    expect(planned.planningRun?.source).toBe("deterministic-fallback");
+    expect(planned.planningRun?.approvalBlockedReason).toMatch(/generic/i);
+    expect(planned.blockers.join("\n")).toMatch(/plan approval is disabled/i);
+  });
+
   it("persists model provider warnings when planning succeeds after tier fallback", async () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
@@ -174,8 +292,38 @@ describe("sequential workflow orchestration", () => {
     expect(planned.planningRun?.provider).toBe("fake-planner");
     expect(planned.planningRun?.attempts).toBe(2);
     expect(planned.planningRun?.fallbackReason).toBe("model planning failed after 2 attempts");
-    expect(planned.planningRun?.warnings.join("\n")).toMatch(/Model planning attempt 1 failed/);
+    expect(planned.planningRun?.warnings.join("\n")).toMatch(/Planning generation attempt 1 failed validation/);
     expect(planned.plan?.phases).toHaveLength(2);
+  });
+
+  it("preserves approved constraints in deterministic fallback planning principles", async () => {
+    const root = await tempRepo();
+    const config = defaultConfig();
+    const triage = assessTask("Implement GitHub issue #12: deterministic test-obligation planning and evidence gates.", config);
+    triage.constraints.mustNot = [
+      "Break loadability for existing persisted workflows",
+      "Allow phase completion without mandatory obligation evidence"
+    ];
+    const provider: TriageProvider = {
+      name: "fake-triage",
+      async classify() {
+        return { raw: triage, provider: "fake-triage", model: "triage-test-model" };
+      }
+    };
+    const started = await startFlow({
+      request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates.",
+      root,
+      config,
+      provider,
+      providerSelection: "auto"
+    });
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      providerSelection: "deterministic"
+    });
+
+    expect(planned.plan?.principles.join("\n")).toMatch(/Constraint: must not/i);
+    expect(planned.plan?.principles.join("\n")).toContain("Constraint: must not Break loadability for existing persisted workflows");
+    expect(planned.plan?.principles.join("\n")).toContain("Constraint: must not Allow phase completion without mandatory obligation evidence");
   });
 
   it("requires stronger gates and phases for Rigorous work", async () => {
