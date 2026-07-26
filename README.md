@@ -53,6 +53,8 @@ Then, from any repository:
 
 LeanRigor creates repository-local state under `.leanrigor/`, presents the selected mode and approvals conversationally, coordinates phased work, requires completion evidence, runs final integrated review, and proposes commits without creating the final user commit or pushing.
 
+📖 **New to LeanRigor?** Follow the [first-workflow guide](docs/first-workflow.md) for a step-by-step walkthrough — from installation to your first commit proposal.
+
 Other useful commands:
 
 ```text
@@ -243,11 +245,12 @@ This path is intended for development and pre-release testing. It creates LeanRi
 
 | Start here | Deep dives |
 |---|---|
-| [Product rationale](PRODUCT.md) | [Architecture](ARCHITECTURE.md) |
-| [Setup](docs/setup.md) | [Workflow and completion gates](docs/workflow.md) |
-| [Claude Code adapter](docs/claude-code.md) | [Engineering methodology](docs/methodology.md) |
-| [Claude marketplace plugin](docs/claude-marketplace.md) | [Configuration reference](docs/configuration.md) |
-| [Current implementation status](IMPLEMENTATION_STATUS.md) | [Contributor architecture](docs/contributor-architecture.md) |
+| [**First workflow**](docs/first-workflow.md) | [Architecture](ARCHITECTURE.md) |
+| [Product rationale](PRODUCT.md) | [Workflow and completion gates](docs/workflow.md) |
+| [Setup](docs/setup.md) | [Engineering methodology](docs/methodology.md) |
+| [Claude Code adapter](docs/claude-code.md) | [Configuration reference](docs/configuration.md) |
+| [Claude marketplace plugin](docs/claude-marketplace.md) | [Contributor architecture](docs/contributor-architecture.md) |
+| [Current implementation status](IMPLEMENTATION_STATUS.md) | |
 | [Support](SUPPORT.md) | [Security](SECURITY.md) |
 | [Contributing](CONTRIBUTING.md) | [Governance](GOVERNANCE.md) and [releasing](RELEASING.md) |
 
