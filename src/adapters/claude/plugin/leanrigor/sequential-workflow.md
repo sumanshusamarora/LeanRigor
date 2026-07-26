@@ -74,12 +74,21 @@ Rules:
 - Multiple active workflows: use `AskUserQuestion` to let the user choose among them (header: "Workflow"). Show ID, request, state, mode, and updated time in each option description. Do not render an ordinary text question first. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable.
 - When `flow next --json` returns `approvalActions`, call the `AskUserQuestion` tool to present a structured selector. This is mandatory whenever the tool is available. Map each action's `label` to the option label and `description` to the option description. Use a short header (max 12 chars) derived from the current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for multi-workflow selection. Do not render an ordinary text question such as "Approve or reject this approach?" before calling the selector. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable. Each action has a deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response. Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 - Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
-- Approval at approach immediately generates and renders the actual phased plan.
+- Approval at approach immediately generates and renders the actual phased plan
+  through `leanrigor flow approve-approach <workflow-id> --provider auto`, so
+  Claude-backed planning is attempted when available. Use deterministic planning
+  only when explicitly requested or when the provider falls back with a recorded
+  reason.
+- Plan revisions use
+  `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
+  unless deterministic planning was explicitly requested.
 - Approval at plan derives ready phases. When execution providers/workspaces are
-  configured, use `execution.mode = coordinator`: invoke `flow execute-next` or
-  `flow execution-poll`, monitor persisted execution records, and present only
-  persisted gates. Do not implement phase edits yourself and do not edit the
-  original working tree.
+  configured, use `execution.mode = coordinator`: invoke
+  `leanrigor flow execute-next --provider auto` or
+  `leanrigor flow execution-poll --provider auto`, monitor persisted execution
+  records, and present only persisted gates. Use `--provider scripted` only when
+  the user explicitly requests scripted/deterministic execution. Do not
+  implement phase edits yourself and do not edit the original working tree.
 - Use `execution.mode = manual` only when no configured provider/workspace path
   is available. In manual mode, initialize the integration workspace, then start
   one ready phase internally with a stable session owner, phase lease, and phase

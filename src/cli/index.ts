@@ -6,6 +6,7 @@ import { loadConfig } from "../config/load.js";
 import { saveWorkflow, loadWorkflow } from "../core/workflow.js";
 import { ClaudeAdapter, cleanupProjectLocalAssets, type CleanupScope } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
+import { ClaudeCliPlanningProvider } from "../adapters/claude/planning-provider.js";
 import { runTriage, type TriageProviderSelection } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
 import type { UninstallReport } from "../adapters/types.js";
@@ -74,7 +75,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.7");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.8");
 
 program.command("setup")
   .alias("init")
@@ -411,6 +412,7 @@ flow.command("start")
       root: options.root,
       config,
       provider: triageProvider(providerSelection),
+      planningProvider: planningProvider(providerSelection),
       providerSelection
     });
     printFlowState(state);
@@ -432,6 +434,7 @@ flow.command("answer")
       answer,
       config,
       provider: triageProvider(providerSelection),
+      planningProvider: planningProvider(providerSelection),
       providerSelection,
       mutation: mutationOptions(options)
     }));
@@ -440,10 +443,18 @@ flow.command("answer")
 flow.command("approve-approach")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
-    printFlowState(await approveApproach(options.root, workflowId, await ensureRepositoryConfig(options.root), mutationOptions(options)));
+    const providerSelection = triageProviderSelection(options.provider);
+    printFlowState(await approveApproach(
+      options.root,
+      workflowId,
+      await ensureRepositoryConfig(options.root),
+      mutationOptions(options),
+      { provider: planningProvider(providerSelection), providerSelection }
+    ));
   });
 
 flow.command("reject-approach")
@@ -469,10 +480,19 @@ flow.command("revise-plan")
   .argument("<workflow-id>")
   .argument("<feedback>")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, feedback, options) => {
-    printFlowState(await revisePlan(options.root, workflowId, feedback, await ensureRepositoryConfig(options.root), mutationOptions(options)));
+    const providerSelection = triageProviderSelection(options.provider);
+    printFlowState(await revisePlan(
+      options.root,
+      workflowId,
+      feedback,
+      await ensureRepositoryConfig(options.root),
+      mutationOptions(options),
+      { provider: planningProvider(providerSelection), providerSelection }
+    ));
   });
 
 flow.command("phase-start")
@@ -548,69 +568,63 @@ flow.command("ready")
 flow.command("execute-next")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
   .option("--script-file <path>", "scripted provider JSON file")
   .option("--json", "print structured coordinator result")
   .action(async (workflowId, options) => {
-    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
-    printCoordinatorResult(await coordinator.runNext(), Boolean(options.json));
+    printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId, options.provider, options.scriptFile, (coordinator) => coordinator.runNext()), Boolean(options.json));
   });
 
 flow.command("execute-ready")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
   .option("--script-file <path>", "scripted provider JSON file")
   .option("--json", "print structured coordinator result")
   .action(async (workflowId, options) => {
-    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
-    printCoordinatorResult(await coordinator.dispatchReady(), Boolean(options.json));
+    printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId, options.provider, options.scriptFile, (coordinator) => coordinator.dispatchReady()), Boolean(options.json));
   });
 
 flow.command("execution-status")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
   .option("--script-file <path>", "scripted provider JSON file")
   .option("--json", "print structured coordinator result")
   .action(async (workflowId, options) => {
-    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
-    printCoordinatorResult(coordinator.executionStatus(await resumeFlow(options.root, workflowId)), Boolean(options.json));
+    printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId, options.provider, options.scriptFile, async (coordinator) => coordinator.executionStatus(await resumeFlow(options.root, workflowId))), Boolean(options.json));
   });
 
 flow.command("execution-poll")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
   .option("--script-file <path>", "scripted provider JSON file")
   .option("--json", "print structured coordinator result")
   .action(async (workflowId, options) => {
-    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
-    printCoordinatorResult(await coordinator.poll(), Boolean(options.json));
+    printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId, options.provider, options.scriptFile, (coordinator) => coordinator.poll()), Boolean(options.json));
   });
 
 flow.command("execution-cancel")
   .argument("<workflow-id>")
   .argument("<phase-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
   .option("--script-file <path>", "scripted provider JSON file")
   .option("--reason <reason>", "cancellation reason")
   .option("--json", "print structured coordinator result")
   .action(async (workflowId, phaseId, options) => {
-    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
-    printCoordinatorResult(await coordinator.cancelPhase(phaseId, options.reason), Boolean(options.json));
+    printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId, options.provider, options.scriptFile, (coordinator) => coordinator.cancelPhase(phaseId, options.reason)), Boolean(options.json));
   });
 
 flow.command("execution-recover")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider: scripted or claude", "scripted")
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
   .option("--script-file <path>", "scripted provider JSON file")
   .option("--json", "print structured coordinator result")
   .action(async (workflowId, options) => {
-    const coordinator = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
-    printCoordinatorResult(await coordinator.recover(), Boolean(options.json));
+    printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId, options.provider, options.scriptFile, (coordinator) => coordinator.recover()), Boolean(options.json));
   });
 
 flow.command("lease-phase")
@@ -1022,6 +1036,10 @@ function triageProvider(provider: TriageProviderSelection): ClaudeCliTriageProvi
   return provider === "deterministic" ? undefined : new ClaudeCliTriageProvider();
 }
 
+function planningProvider(provider: TriageProviderSelection): ClaudeCliPlanningProvider | undefined {
+  return provider === "deterministic" ? undefined : new ClaudeCliPlanningProvider();
+}
+
 function printFlowState(state: SequentialWorkflowState): void {
   console.log(JSON.stringify({
     id: state.id,
@@ -1045,6 +1063,14 @@ function printFlowState(state: SequentialWorkflowState): void {
       reasons: state.triage.escalationReasons,
       assumptions: state.triage.assumptions,
       overrideReason: state.triage.workflow.overrideReason
+    } : undefined,
+    planning: state.planningRun ? {
+      source: state.planningRun.source,
+      provider: state.planningRun.provider,
+      model: state.planningRun.model,
+      attempts: state.planningRun.attempts,
+      fallbackReason: state.planningRun.fallbackReason,
+      warnings: state.planningRun.warnings
     } : undefined,
     clarification: state.clarification,
     approach: state.approach,
@@ -1115,23 +1141,54 @@ function printHumanStatus(state: SequentialWorkflowState): void {
   console.log(lines.join("\n"));
 }
 
-async function executionCoordinator(root: string, workflowId: string, providerName: string, scriptFile?: string): Promise<ExecutionCoordinator> {
+async function executionCoordinator(root: string, workflowId: string, providerName: string, scriptFile?: string): Promise<{ coordinator: ExecutionCoordinator; providerFallbackReason?: string }> {
   const config = await ensureRepositoryConfig(root);
-  return new ExecutionCoordinator({
-    root,
-    workflowId,
-    config,
-    provider: await executionProvider(providerName, scriptFile)
-  });
+  const selected = await executionProvider(providerName, scriptFile);
+  return {
+    coordinator: new ExecutionCoordinator({
+      root,
+      workflowId,
+      config,
+      provider: selected.provider
+    }),
+    providerFallbackReason: selected.fallbackReason
+  };
 }
 
-async function executionProvider(providerName: string, scriptFile?: string): Promise<ExecutionProvider> {
-  if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile(path.resolve(scriptFile), "utf8")) as Record<string, ScriptedPhase> : {};
-    return new ScriptedExecutionProvider(scripts);
+async function executionProvider(providerName: string, scriptFile?: string): Promise<{ provider: ExecutionProvider; fallbackReason?: string }> {
+  if (providerName === "auto") {
+    const provider = new ClaudeCliExecutionProvider();
+    try {
+      await provider.capabilities();
+      return { provider };
+    } catch (error) {
+      return {
+        provider: await scriptedExecutionProvider(scriptFile),
+        fallbackReason: `Claude execution provider unavailable before dispatch: ${messageOf(error)}`
+      };
+    }
   }
-  if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
+  if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
+  if (providerName === "claude" || providerName === "claude-cli") return { provider: new ClaudeCliExecutionProvider() };
   throw new Error(`Unsupported execution provider: ${providerName}`);
+}
+
+async function scriptedExecutionProvider(scriptFile?: string): Promise<ScriptedExecutionProvider> {
+  const scripts = scriptFile ? JSON.parse(await readFile(path.resolve(scriptFile), "utf8")) as Record<string, ScriptedPhase> : {};
+  return new ScriptedExecutionProvider(scripts);
+}
+
+async function runCoordinatorCommand(
+  root: string,
+  workflowId: string,
+  providerName: string,
+  scriptFile: string | undefined,
+  run: (coordinator: ExecutionCoordinator) => Promise<CoordinatorResult> | CoordinatorResult
+): Promise<CoordinatorResult> {
+  const selected = await executionCoordinator(root, workflowId, providerName, scriptFile);
+  const result = await run(selected.coordinator);
+  if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+  return result;
 }
 
 function printCoordinatorResult(result: CoordinatorResult, json: boolean): void {
@@ -1144,6 +1201,7 @@ function printCoordinatorResult(result: CoordinatorResult, json: boolean): void 
     result.message,
     result.executionMode ? `Execution mode: ${result.executionMode}` : undefined,
     result.provider ? `Provider: ${result.provider}` : undefined,
+    result.providerFallbackReason ? `Provider fallback: ${result.providerFallbackReason}` : undefined,
     result.runningPhase ? `Running phase: ${result.runningPhase}` : undefined,
     result.lastProviderStatus ? `Last provider status: ${result.lastProviderStatus}` : undefined,
     result.phaseGateStatus ? `Phase gate: ${result.phaseGateStatus}` : undefined,
@@ -1157,6 +1215,10 @@ function printCoordinatorResult(result: CoordinatorResult, json: boolean): void 
     `Next action: ${result.nextValidAction ?? result.nextAction}`
   ].filter((line): line is string => Boolean(line));
   console.log(lines.join("\n"));
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? "unknown error");
 }
 
 function printActiveSelection(selection: ActiveWorkflowSelection): void {

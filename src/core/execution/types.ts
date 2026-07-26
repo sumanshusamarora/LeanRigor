@@ -112,6 +112,7 @@ export interface CoordinatorResult {
   state: string;
   executionMode?: "coordinator" | "manual";
   provider?: string;
+  providerFallbackReason?: string;
   runningPhase?: string;
   lastProviderStatus?: string;
   phaseGateStatus?: string;

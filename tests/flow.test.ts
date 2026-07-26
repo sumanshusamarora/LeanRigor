@@ -26,6 +26,7 @@ import {
   startPhase,
   validatePlanQuality
 } from "../src/core/flow.js";
+import type { PlanningProvider } from "../src/core/planning-runner.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
 
 async function tempRepo(): Promise<string> {
@@ -39,6 +40,40 @@ async function tempRepo(): Promise<string> {
     }
   }));
   return root;
+}
+
+function planningProviderFrom(values: unknown[]): PlanningProvider {
+  let index = 0;
+  return {
+    name: "fake-planner",
+    async plan() {
+      const raw = values[Math.min(index, values.length - 1)];
+      index += 1;
+      return { raw, provider: "fake-planner", model: "planner-test-model" };
+    }
+  };
+}
+
+function compactPlan(objective = "Implement issue-specific test obligation planning."): unknown {
+  return {
+    version: 1,
+    summary: "Model-generated plan with repository-specific test obligation phases.",
+    principles: ["Use model-derived phase boundaries.", "Record specific test obligation evidence."],
+    phases: [{
+      id: "phase-1",
+      objective,
+      rationale: "The obligation planner should be reviewed separately from evidence gate enforcement.",
+      dependencies: [],
+      expectedReadAreas: ["src/core/flow.ts", "src/core/types.ts", "tests/flow.test.ts"],
+      expectedWriteAreas: ["src/core/flow.ts", "src/core/types.ts", "tests/flow.test.ts"],
+      expectedFilesOrAreas: ["src/core/flow.ts", "src/core/types.ts", "tests/flow.test.ts"],
+      acceptanceCriteria: ["Planned changes derive explicit test obligations.", "Mandatory obligation evidence is persisted and enforced."],
+      validationCommands: ["npm test", "npm run typecheck"],
+      riskLevel: "medium",
+      modelTier: "medium"
+    }],
+    revisionRequests: []
+  };
 }
 
 describe("sequential workflow orchestration", () => {
@@ -90,6 +125,43 @@ describe("sequential workflow orchestration", () => {
 
     const planned = await approveApproach(root, started.id);
     expect(planned.state).toBe("awaiting_plan_approval");
+    expect(planned.plan?.phases).toHaveLength(2);
+  });
+
+  it("uses model-backed planning after approach approval when a provider is available", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([compactPlan()]),
+      providerSelection: "auto"
+    });
+
+    expect(planned.planningRun).toMatchObject({
+      source: "model",
+      provider: "fake-planner",
+      model: "planner-test-model",
+      attempts: 1
+    });
+    expect(planned.plan?.phases).toHaveLength(1);
+    expect(planned.plan?.phases[0]?.objective).toBe("Implement issue-specific test obligation planning.");
+    expect(planned.plan?.phases[0]?.status).toBe("planned");
+  });
+
+  it("falls back to deterministic planning with a reason when model planning fails", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([{ bad: true }, "still bad"]),
+      providerSelection: "auto"
+    });
+
+    expect(planned.planningRun?.source).toBe("deterministic-fallback");
+    expect(planned.planningRun?.provider).toBe("fake-planner");
+    expect(planned.planningRun?.attempts).toBe(2);
+    expect(planned.planningRun?.fallbackReason).toBe("model planning failed after 2 attempts");
+    expect(planned.planningRun?.warnings.join("\n")).toMatch(/Model planning attempt 1 failed/);
     expect(planned.plan?.phases).toHaveLength(2);
   });
 

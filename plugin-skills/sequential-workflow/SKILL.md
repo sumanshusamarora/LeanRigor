@@ -100,9 +100,9 @@ Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 
 The following typed responses remain supported as a fallback:
 
-- `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach, then immediately render the generated plan for plan approval.
+- `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
 - `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, initialize the integration workspace, read the new revision, inspect ready phases, and begin one ready phase through the internal lease/start/workspace path.
-- `revise ...`: revise the current approach/plan when that gate is active.
+- `revise ...`: revise the current approach/plan when that gate is active. For plan revisions, use `flow revise-plan <workflow-id> "<feedback>" --provider auto` unless deterministic planning was explicitly requested.
 - `reject because ...`: reject the approach with the supplied reason.
 - `cancel`: cancel the workflow after confirming intent when destructive to progress.
 - `show plan` / `show status`: render persisted plan/status.
@@ -118,8 +118,10 @@ Execution mode is explicit:
 - `execution.mode = coordinator`: default when LeanRigor workspaces and an
   execution provider are configured. Claude approves the plan, invokes or
   resumes the coordinator, monitors persisted execution records, and presents
-  gates. Claude must not implement phase edits itself and must not edit the
-  original working tree.
+  gates. Invoke `flow execute-next --provider auto` or
+  `flow execution-poll --provider auto`; use the scripted provider only when
+  the user explicitly requests scripted/deterministic execution. Claude must
+  not implement phase edits itself and must not edit the original working tree.
 - `execution.mode = manual`: fallback for environments without a configured
   provider. Claude may perform phase work manually, but only in the
   LeanRigor-assigned phase workspace and only through persisted
@@ -135,12 +137,13 @@ During execution, each phase must pass:
 
 `planned -> ready -> leased/running -> targeted validation -> completion gate -> completed | needs_repair | needs_review | needs_replan | blocked`
 
-In coordinator mode, invoke `flow execute-next` or `flow execution-poll` and
-continue until the next meaningful persisted gate. A worker completion should
-be followed by result collection, completion gate evaluation, internal phase
-integration, combined validation when all phases are integrated, and the final
-integrated review gate. Stop only when the coordinator reports a user gate,
-repair, conflict, final review, commit proposal, or a real error.
+In coordinator mode, invoke `flow execute-next --provider auto` or
+`flow execution-poll --provider auto` and continue until the next meaningful
+persisted gate. A worker completion should be followed by result collection,
+completion gate evaluation, internal phase integration, combined validation
+when all phases are integrated, and the final integrated review gate. Stop only
+when the coordinator reports a user gate, repair, conflict, final review,
+commit proposal, or a real error.
 
 In manual mode before implementation, read the current workflow revision and use a stable owner
 ID for this Claude session. Acquire/start a phase lease for one ready phase and

@@ -21,9 +21,13 @@ Behaviour:
    selector when available. Do not render an ordinary text question first.
 5. If approach approval is pending, show `Approach approval`; when the user
    approves through `AskUserQuestion` or an explicit fallback response, invoke
-   approval internally and immediately render the generated `Plan approval`.
+   `flow approve-approach <workflow-id> --provider auto` internally and
+   immediately render the generated `Plan approval`. Do not use
+   `--provider deterministic` unless the user explicitly asks for deterministic
+   planning.
 6. If a plan exists, show the persisted phases and validation expectations.
-7. If the user gives revision feedback, invoke plan revision internally and
+7. If the user gives revision feedback, invoke
+   `flow revise-plan <workflow-id> "<feedback>" --provider auto` internally and
    render the revised plan.
 
 Do not create a duplicate workflow when an active relevant workflow already

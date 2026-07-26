@@ -25,6 +25,8 @@ import {
   type WorkspaceRecoveryReport,
   type WorkspaceStatus
 } from "./git-workspace.js";
+import type { PlanningProvider, PlanningRunResult } from "./planning-runner.js";
+import { runPlanning } from "./planning-runner.js";
 import type { TriageProvider, TriageProviderSelection, TriageRunResult } from "./triage-runner.js";
 import { runTriage } from "./triage-runner.js";
 import type {
@@ -250,6 +252,29 @@ const planSchema = z.object({
   }
 });
 
+const modelPlanPhaseSchema = z.object({
+  id: z.string().min(1),
+  objective: z.string().min(1),
+  rationale: z.string().min(1),
+  dependencies: z.array(z.string()).default([]),
+  dependsOn: z.array(z.string()).optional(),
+  expectedReadAreas: z.array(z.string()).optional(),
+  expectedWriteAreas: z.array(z.string()).optional(),
+  expectedFilesOrAreas: z.array(z.string()).optional(),
+  acceptanceCriteria: z.array(z.string().min(1)).min(1),
+  validationCommands: z.array(z.string()),
+  riskLevel: riskSchema,
+  modelTier: modelProfileSchema
+});
+
+const modelPlanSchema = z.object({
+  version: z.literal(1).default(1),
+  summary: z.string().min(1),
+  principles: z.array(z.string().min(1)).optional(),
+  phases: z.array(modelPlanPhaseSchema).min(1),
+  revisionRequests: z.array(z.object({ feedback: z.string().min(1), timestamp: z.string() })).default([])
+});
+
 const phaseLeaseSchema = z.object({
   phaseId: z.string().min(1),
   ownerId: z.string().min(1),
@@ -350,6 +375,14 @@ const workflowStateSchema = z.object({
     fallbackReason: z.string().optional(),
     warnings: z.array(z.string())
   }).optional(),
+  planningRun: z.object({
+    source: z.enum(["model", "deterministic-fallback"]),
+    provider: z.string(),
+    model: z.string().optional(),
+    attempts: z.number().int(),
+    fallbackReason: z.string().optional(),
+    warnings: z.array(z.string())
+  }).optional(),
   clarification: z.object({
     question: z.string().min(1),
     reason: z.string().min(1),
@@ -417,6 +450,7 @@ export interface FlowStartOptions {
   root: string;
   config: LeanRigorConfig;
   provider?: TriageProvider;
+  planningProvider?: PlanningProvider;
   providerSelection?: TriageProviderSelection;
 }
 
@@ -452,7 +486,10 @@ export async function startFlow(options: FlowStartOptions): Promise<SequentialWo
     providerSelection: options.providerSelection
   });
 
-  return updateFlowState(root, state.id, (current) => applyTriageResult(current, triageRun, options.config));
+  return updateFlowState(root, state.id, (current) => applyTriageResult(current, triageRun, options.config, {
+    planningProvider: options.planningProvider,
+    providerSelection: options.providerSelection
+  }));
 }
 
 export async function answerClarification(args: {
@@ -461,6 +498,7 @@ export async function answerClarification(args: {
   answer: string;
   config: LeanRigorConfig;
   provider?: TriageProvider;
+  planningProvider?: PlanningProvider;
   providerSelection?: TriageProviderSelection;
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
@@ -483,19 +521,23 @@ export async function answerClarification(args: {
       provider: args.provider,
       providerSelection: args.providerSelection
     });
-    const next = applyTriageResult(answered, triageRun, args.config, { clarificationAlreadyAnswered: true });
+    const next = await applyTriageResult(answered, triageRun, args.config, {
+      clarificationAlreadyAnswered: true,
+      planningProvider: args.planningProvider,
+      providerSelection: args.providerSelection
+    });
     return next;
   }, { ...args.mutation, operation: "answer_clarification" });
 }
 
-export async function approveApproach(root: string, workflowId: string, config?: LeanRigorConfig, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
-  return updateFlowState(root, workflowId, (state) => {
+export async function approveApproach(root: string, workflowId: string, config?: LeanRigorConfig, mutation?: MutationOptions, planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
+  return updateFlowState(root, workflowId, async (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
     next.approach = { ...state.approach, approved: true };
     appendEvent(next, "approach_approved", "Approach approved.");
-    return withPlan(next, config);
+    return withPlan(next, config, planning);
   }, { ...mutation, operation: "approve_approach" });
 }
 
@@ -509,16 +551,26 @@ export async function rejectApproach(root: string, workflowId: string, reason: s
   }, { ...mutation, operation: "reject_approach" });
 }
 
-export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
-  return updateFlowState(root, workflowId, (state) => {
+export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig, mutation?: MutationOptions, planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
+  return updateFlowState(root, workflowId, async (state) => {
     assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
     const next = structuredClone(state);
     const triage = state.triage;
     const previousRequests = next.plan?.revisionRequests ?? [];
-    next.plan = buildPlan(next.request, triage, next.root, config, {
-      revisionRequests: [...previousRequests, { feedback, timestamp: timestamp() }]
+    const revisionRequests = [...previousRequests, { feedback, timestamp: timestamp() }];
+    const planningRun = await generatePlan({
+      request: next.request,
+      root: next.root,
+      triage,
+      config,
+      revisionRequests,
+      provider: planning?.provider,
+      providerSelection: planning?.providerSelection
     });
+    next.plan = planningRun.plan;
+    next.planningRun = planningRunMetadata(planningRun);
+    appendEvent(next, "planning_completed", planningEventSummary(planningRun));
     next.review = undefined;
     next.commitPlan = undefined;
     next.blockers = [];
@@ -1261,12 +1313,12 @@ export function nextActions(state: SequentialWorkflowState): string[] {
   }
 }
 
-function applyTriageResult(
+async function applyTriageResult(
   state: SequentialWorkflowState,
   triageRun: TriageRunResult,
   config: LeanRigorConfig,
-  options: { clarificationAlreadyAnswered?: boolean } = {}
-): SequentialWorkflowState {
+  options: { clarificationAlreadyAnswered?: boolean; planningProvider?: PlanningProvider; providerSelection?: TriageProviderSelection } = {}
+): Promise<SequentialWorkflowState> {
   const next = structuredClone(state);
   const triage = enforceOneClarification(triageRun.output, options.clarificationAlreadyAnswered ?? false);
   next.triage = triage;
@@ -1292,7 +1344,7 @@ function applyTriageResult(
 
   next.approach = buildApproach(triage, config);
   if (next.approach.required) return transition(next, "awaiting_approach_approval", "Approach recommendation is awaiting approval.");
-  return withPlan(next, config);
+  return withPlan(next, config, { provider: options.planningProvider, providerSelection: options.providerSelection });
 }
 
 function enforceOneClarification(triage: TriageOutput, clarificationAlreadyAnswered: boolean): TriageOutput {
@@ -1303,12 +1355,21 @@ function enforceOneClarification(triage: TriageOutput, clarificationAlreadyAnswe
   return next;
 }
 
-function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig): SequentialWorkflowState {
+async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig, planningOptions?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
   if (!state.triage) throw new WorkflowStateError("Cannot plan before triage completes.");
   const planning = transition(state, "planning", "Sequential plan generation started.");
-  planning.plan = buildPlan(planning.request, state.triage, planning.root, config, {
-    revisionRequests: planning.plan?.revisionRequests ?? []
+  const planningRun = await generatePlan({
+    request: planning.request,
+    root: planning.root,
+    triage: state.triage,
+    config,
+    revisionRequests: planning.plan?.revisionRequests ?? [],
+    provider: planningOptions?.provider,
+    providerSelection: planningOptions?.providerSelection
   });
+  planning.plan = planningRun.plan;
+  planning.planningRun = planningRunMetadata(planningRun);
+  appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
 }
 
@@ -1352,19 +1413,99 @@ function buildPlan(request: string, triage: TriageOutput, root: string, config?:
     summary: revisionNote
       ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})`
       : `Sequential plan for: ${request.trim()}`,
-    principles: [
-      "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
-      "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
-      "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
-      "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
-      "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
-    ],
+    principles: planningPrinciples(),
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
   const issues = validatePlanQuality(plan, mode, config);
   if (issues.length > 0) throw new WorkflowStateError(`Generated plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
   return plan;
+}
+
+async function generatePlan(args: {
+  request: string;
+  root: string;
+  triage: TriageOutput;
+  config?: LeanRigorConfig;
+  revisionRequests: ExecutionPlan["revisionRequests"];
+  provider?: PlanningProvider;
+  providerSelection?: TriageProviderSelection;
+}): Promise<PlanningRunResult> {
+  const config = args.config ?? defaultConfig();
+  const deterministicPlan = buildPlan(args.request, args.triage, args.root, config, {
+    revisionRequests: args.revisionRequests
+  });
+  return runPlanning({
+    input: {
+      request: args.request,
+      root: args.root,
+      config,
+      triage: args.triage,
+      deterministicPlan,
+      revisionRequests: args.revisionRequests
+    },
+    provider: args.provider,
+    providerSelection: args.providerSelection,
+    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config, args.revisionRequests)
+  });
+}
+
+function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorConfig, revisionRequests: ExecutionPlan["revisionRequests"]): ExecutionPlan {
+  const parsed = modelPlanSchema.parse(raw);
+  const plan: ExecutionPlan = {
+    version: 1,
+    summary: parsed.summary,
+    principles: parsed.principles && parsed.principles.length > 0 ? parsed.principles : planningPrinciples(),
+    phases: parsed.phases.map((candidate) => {
+      const areas = candidate.expectedFilesOrAreas ?? candidate.expectedWriteAreas;
+      if (!areas || areas.length === 0) throw new WorkflowStateError(`Model plan phase ${candidate.id} did not declare expected files or areas.`);
+      return phase({
+        id: candidate.id,
+        objective: candidate.objective,
+        rationale: candidate.rationale,
+        dependencies: unique([...candidate.dependencies, ...candidate.dependsOn ?? []]),
+        areas,
+        readAreas: candidate.expectedReadAreas ?? areas,
+        acceptance: candidate.acceptanceCriteria,
+        validationCommands: candidate.validationCommands,
+        riskLevel: candidate.riskLevel,
+        modelTier: candidate.modelTier
+      });
+    }),
+    revisionRequests
+  };
+  const checked = planSchema.parse(plan) as ExecutionPlan;
+  const issues = validatePlanQuality(checked, mode, config);
+  if (issues.length > 0) throw new WorkflowStateError(`Model plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
+  return checked;
+}
+
+function planningPrinciples(): string[] {
+  return [
+    "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
+    "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
+    "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
+    "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
+    "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
+  ];
+}
+
+function planningRunMetadata(run: PlanningRunResult): SequentialWorkflowState["planningRun"] {
+  return {
+    source: run.source,
+    provider: run.provider,
+    model: run.model,
+    attempts: run.attempts,
+    fallbackReason: run.fallbackReason,
+    warnings: run.warnings
+  };
+}
+
+function planningEventSummary(run: PlanningRunResult): string {
+  if (run.source === "model") {
+    return `Plan generated by ${run.provider}${run.model ? ` (${run.model})` : ""} after ${run.attempts} attempt${run.attempts === 1 ? "" : "s"}.`;
+  }
+  return `Deterministic planning fallback used: ${run.fallbackReason ?? "reason unavailable"}.`;
 }
 
 function fastPhases(targets: string[], validationCommands: string[]): WorkflowPhase[] {

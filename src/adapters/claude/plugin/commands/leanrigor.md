@@ -28,12 +28,21 @@ AskUserQuestion selector contract at every decision gate.
 5. Render distinct `Approach approval`, `Plan approval`, `Phase completion
    review`, `Final integrated review`, and `Commit proposal` states.
 6. After user approval, invoke the transition internally and continue to the
-   next meaningful gate before replying.
-7. When execution providers/workspaces are configured, use the coordinator
-   execution path (`flow execute-next` / `flow execution-poll`) and render only
-   persisted coordinator gates. Do not implement phase edits in the original
-   working tree.
-8. Never compensate for an unavailable workflow transition by narrating that the
+   next meaningful gate before replying. For approach approval, use
+   `leanrigor flow approve-approach <workflow-id> --provider auto` so plan
+   generation can call Claude when available. Do not use
+   `--provider deterministic` unless the user explicitly asks for deterministic
+   planning.
+7. For plan revision feedback, use
+   `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
+   unless deterministic planning was explicitly requested.
+8. When execution providers/workspaces are configured, use the coordinator
+   execution path (`flow execute-next --provider auto` /
+   `flow execution-poll --provider auto`) and render only persisted
+   coordinator gates. Do not use `--provider scripted` unless the user explicitly
+   asks for scripted/deterministic execution. Do not implement phase edits in
+   the original working tree.
+9. Never compensate for an unavailable workflow transition by narrating that the
    workflow is complete. Report the persisted state and the exact blocker.
 
 Normal output must not ask users to copy-paste LeanRigor CLI commands. Show

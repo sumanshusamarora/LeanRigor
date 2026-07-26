@@ -158,6 +158,14 @@ export interface WorkflowState {
     fallbackReason?: string;
     warnings: string[];
   };
+  planningRun?: {
+    source: "model" | "deterministic-fallback";
+    provider: string;
+    model?: string;
+    attempts: number;
+    fallbackReason?: string;
+    warnings: string[];
+  };
   graph?: ExecutionGraph;
   reflections?: ReflectionRecord[];
   currentPhase:
@@ -423,6 +431,14 @@ export interface SequentialWorkflowState {
   updatedAt: string;
   triage?: TriageOutput;
   triageRun?: {
+    source: "model" | "deterministic-fallback";
+    provider: string;
+    model?: string;
+    attempts: number;
+    fallbackReason?: string;
+    warnings: string[];
+  };
+  planningRun?: {
     source: "model" | "deterministic-fallback";
     provider: string;
     model?: string;

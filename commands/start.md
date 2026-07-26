@@ -26,17 +26,25 @@ Behaviour:
    Do not guess.
 5. At approval gates, render `Approach approval` or `Plan approval` with a
    concise summary and use `AskUserQuestion` for the action selector when
-   available. After explicit approval, invoke the transition internally and
-   continue to the next meaningful gate before responding.
-6. During execution, use `execution.mode = coordinator` when execution
-   providers/workspaces are configured: invoke `flow execute-next` or
-   `flow execution-poll`, monitor persisted coordinator state, and present the
-   returned gate. Do not edit the original working tree or implement the phase
-   directly in coordinator mode.
-7. Use `execution.mode = manual` only when no execution provider/workspace path
+   available. After explicit approach approval, invoke
+   `flow approve-approach <workflow-id> --provider auto` internally so plan
+   generation can call Claude when available. Do not use
+   `--provider deterministic` unless the user explicitly asks for deterministic
+   planning. Continue to the next meaningful gate before responding.
+6. For plan revisions, invoke
+   `flow revise-plan <workflow-id> "<feedback>" --provider auto` internally.
+   Preserve any explicit user request for deterministic planning.
+7. During execution, use `execution.mode = coordinator` when execution
+   providers/workspaces are configured: invoke `flow execute-next --provider auto`
+   or `flow execution-poll --provider auto`, monitor persisted coordinator
+   state, and present the returned gate. Do not use the scripted provider unless
+   the user explicitly asks for a scripted/deterministic execution provider. Do
+   not edit the original working tree or implement the phase directly in
+   coordinator mode.
+8. Use `execution.mode = manual` only when no execution provider/workspace path
    is available. In manual mode, work only in the active phase workspace and
    record validation/completion evidence before presenting a phase gate.
-8. Render the persisted final review and commit proposal conversationally. Never commit or
+9. Render the persisted final review and commit proposal conversationally. Never commit or
    push automatically.
 
 At every LeanRigor decision gate, `AskUserQuestion` is mandatory when the tool

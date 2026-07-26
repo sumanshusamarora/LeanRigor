@@ -20351,6 +20351,83 @@ var defaultCommandRunner = (command, args, cwd) => new Promise((resolve, reject)
   child.on("close", (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
 });
 
+// src/adapters/claude/planning-provider.ts
+init_models();
+var ClaudeCliPlanningProvider = class {
+  constructor(runCommand = defaultCommandRunner) {
+    this.runCommand = runCommand;
+  }
+  runCommand;
+  name = "claude-cli";
+  async plan(input) {
+    const model = resolveModelTier(planningTier(input), "claude", input.config).model;
+    const prompt = buildPlanningPrompt(input);
+    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "7", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    if (model) args.push("--model", model);
+    const result = await this.runCommand("claude", args, input.root);
+    if (result.exitCode !== 0) {
+      const tier = planningTier(input);
+      const resolved = model ?? "inherit";
+      throw new Error(
+        `Claude Code could not run LeanRigor planning tier '${tier}' (resolved model: '${resolved}'). ${result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`} Configure it with 'leanrigor models --claude-${tier} <model-or-alias>', or set LEANRIGOR_CLAUDE_MODEL_${tier.toUpperCase()}.`
+      );
+    }
+    let raw;
+    try {
+      raw = JSON.parse(result.stdout);
+    } catch {
+      raw = result.stdout;
+    }
+    return { raw, provider: this.name, model };
+  }
+};
+function planningTier(input) {
+  const mode2 = input.triage.workflow.finalMode;
+  const config2 = input.config;
+  if (mode2 === "rigorous") return config2.routing.rigorousPlanning;
+  if (mode2 === "standard") return config2.routing.standardPlanning;
+  return config2.routing.standardPlanning;
+}
+function buildPlanningPrompt(input) {
+  return [
+    "You are the bounded sequential planner for LeanRigor.",
+    "You may inspect the repository with Read/Glob/Grep to identify concrete files, existing schemas, tests, and integration points. Keep inspection minimal.",
+    "Return only one JSON object as your final response; no prose or markdown.",
+    "Produce a LeanRigor ExecutionPlan using this compact schema:",
+    JSON.stringify({
+      version: 1,
+      summary: "string",
+      principles: ["string"],
+      phases: [{
+        id: "phase-1",
+        objective: "specific outcome",
+        rationale: "why this phase is separately reviewable",
+        dependencies: [],
+        expectedReadAreas: ["src/example.ts"],
+        expectedWriteAreas: ["src/example.ts"],
+        expectedFilesOrAreas: ["src/example.ts"],
+        acceptanceCriteria: ["specific evidence obligation"],
+        validationCommands: ["npm test"],
+        riskLevel: "low|medium|high",
+        modelTier: "small|medium|large|inherit"
+      }],
+      revisionRequests: input.revisionRequests
+    }, null, 2),
+    "Rules:",
+    "- Prefer concrete repository files or narrow areas over generic areas.",
+    "- Keep phases sequential and independently reviewable.",
+    "- Do not include runtime fields such as status, completion, workspace, filesChanged, commandsRun, validationResults, or repairAttempts.",
+    "- Preserve revisionRequests exactly.",
+    "- Use the deterministic baseline only as a safety floor; improve specificity when repository evidence supports it.",
+    "User request:",
+    input.request,
+    "Triage output:",
+    JSON.stringify(input.triage, null, 2),
+    "Deterministic baseline plan:",
+    JSON.stringify(input.deterministicPlan, null, 2)
+  ].join("\n\n");
+}
+
 // src/core/review-policy.ts
 function defaultReviewLevel(mode2, multiAgent = false) {
   if (mode2 === "rigorous") return "deep";
@@ -22487,6 +22564,53 @@ async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
 }
 
+// src/core/planning-runner.ts
+async function runPlanning(args) {
+  const { input, provider } = args;
+  const warnings = [];
+  if (!input.config.workflow.automaticTriage || !provider) {
+    const fallbackReason2 = !input.config.workflow.automaticTriage ? "automatic model planning is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model planning provider was resolved";
+    return {
+      plan: input.deterministicPlan,
+      source: "deterministic-fallback",
+      provider: provider?.name ?? "deterministic",
+      attempts: 0,
+      fallbackReason: fallbackReason2,
+      warnings
+    };
+  }
+  const maxAttempts = Math.min(2, input.config.budgets.triageCalls);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await provider.plan(input);
+      const plan = args.validate(normaliseModelPayload(result.raw));
+      return {
+        plan,
+        source: "model",
+        provider: result.provider,
+        model: result.model,
+        attempts: attempt,
+        warnings
+      };
+    } catch (error51) {
+      warnings.push(`Model planning attempt ${attempt} failed: ${messageOf2(error51)}`);
+    }
+  }
+  const fallbackReason = `model planning failed after ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}`;
+  warnings.push("Using deterministic planning fallback after model plan could not be validated.");
+  return {
+    plan: input.deterministicPlan,
+    source: "deterministic-fallback",
+    provider: provider.name,
+    attempts: maxAttempts,
+    fallbackReason,
+    warnings
+  };
+}
+function messageOf2(error51) {
+  return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
+}
+
 // src/core/workflow-lock.ts
 import { open as open2, readFile as readFile11, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
 import os from "node:os";
@@ -22804,6 +22928,27 @@ var planSchema = external_exports.object({
     ctx.addIssue({ code: "custom", path: ["phases"], message: issue2 });
   }
 });
+var modelPlanPhaseSchema = external_exports.object({
+  id: external_exports.string().min(1),
+  objective: external_exports.string().min(1),
+  rationale: external_exports.string().min(1),
+  dependencies: external_exports.array(external_exports.string()).default([]),
+  dependsOn: external_exports.array(external_exports.string()).optional(),
+  expectedReadAreas: external_exports.array(external_exports.string()).optional(),
+  expectedWriteAreas: external_exports.array(external_exports.string()).optional(),
+  expectedFilesOrAreas: external_exports.array(external_exports.string()).optional(),
+  acceptanceCriteria: external_exports.array(external_exports.string().min(1)).min(1),
+  validationCommands: external_exports.array(external_exports.string()),
+  riskLevel: riskSchema,
+  modelTier: modelProfileSchema
+});
+var modelPlanSchema = external_exports.object({
+  version: external_exports.literal(1).default(1),
+  summary: external_exports.string().min(1),
+  principles: external_exports.array(external_exports.string().min(1)).optional(),
+  phases: external_exports.array(modelPlanPhaseSchema).min(1),
+  revisionRequests: external_exports.array(external_exports.object({ feedback: external_exports.string().min(1), timestamp: external_exports.string() })).default([])
+});
 var phaseLeaseSchema = external_exports.object({
   phaseId: external_exports.string().min(1),
   ownerId: external_exports.string().min(1),
@@ -22897,6 +23042,14 @@ var workflowStateSchema = external_exports.object({
     fallbackReason: external_exports.string().optional(),
     warnings: external_exports.array(external_exports.string())
   }).optional(),
+  planningRun: external_exports.object({
+    source: external_exports.enum(["model", "deterministic-fallback"]),
+    provider: external_exports.string(),
+    model: external_exports.string().optional(),
+    attempts: external_exports.number().int(),
+    fallbackReason: external_exports.string().optional(),
+    warnings: external_exports.array(external_exports.string())
+  }).optional(),
   clarification: external_exports.object({
     question: external_exports.string().min(1),
     reason: external_exports.string().min(1),
@@ -22982,7 +23135,10 @@ async function startFlow(options) {
     provider: options.provider,
     providerSelection: options.providerSelection
   });
-  return updateFlowState(root, state.id, (current) => applyTriageResult(current, triageRun, options.config));
+  return updateFlowState(root, state.id, (current) => applyTriageResult(current, triageRun, options.config, {
+    planningProvider: options.planningProvider,
+    providerSelection: options.providerSelection
+  }));
 }
 async function answerClarification(args) {
   return updateFlowState(args.root, args.workflowId, async (state) => {
@@ -23005,18 +23161,22 @@ Clarification answer: ${args.answer}`,
       provider: args.provider,
       providerSelection: args.providerSelection
     });
-    const next = applyTriageResult(answered, triageRun, args.config, { clarificationAlreadyAnswered: true });
+    const next = await applyTriageResult(answered, triageRun, args.config, {
+      clarificationAlreadyAnswered: true,
+      planningProvider: args.planningProvider,
+      providerSelection: args.providerSelection
+    });
     return next;
   }, { ...args.mutation, operation: "answer_clarification" });
 }
-async function approveApproach(root, workflowId2, config2, mutation) {
-  return updateFlowState(root, workflowId2, (state) => {
+async function approveApproach(root, workflowId2, config2, mutation, planning) {
+  return updateFlowState(root, workflowId2, async (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
     next.approach = { ...state.approach, approved: true };
     appendEvent(next, "approach_approved", "Approach approved.");
-    return withPlan(next, config2);
+    return withPlan(next, config2, planning);
   }, { ...mutation, operation: "approve_approach" });
 }
 async function rejectApproach(root, workflowId2, reason, mutation) {
@@ -23028,16 +23188,26 @@ async function rejectApproach(root, workflowId2, reason, mutation) {
     return transition(next, "blocked", "Approach rejected; workflow blocked pending a new request or manual restart.");
   }, { ...mutation, operation: "reject_approach" });
 }
-async function revisePlan(root, workflowId2, feedback, config2, mutation) {
-  return updateFlowState(root, workflowId2, (state) => {
+async function revisePlan(root, workflowId2, feedback, config2, mutation, planning) {
+  return updateFlowState(root, workflowId2, async (state) => {
     assertState(state, ["awaiting_plan_approval", "executing", "validating", "reviewing"]);
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
     const next = structuredClone(state);
     const triage = state.triage;
     const previousRequests = next.plan?.revisionRequests ?? [];
-    next.plan = buildPlan(next.request, triage, next.root, config2, {
-      revisionRequests: [...previousRequests, { feedback, timestamp: timestamp2() }]
+    const revisionRequests = [...previousRequests, { feedback, timestamp: timestamp2() }];
+    const planningRun = await generatePlan({
+      request: next.request,
+      root: next.root,
+      triage,
+      config: config2,
+      revisionRequests,
+      provider: planning?.provider,
+      providerSelection: planning?.providerSelection
     });
+    next.plan = planningRun.plan;
+    next.planningRun = planningRunMetadata(planningRun);
+    appendEvent(next, "planning_completed", planningEventSummary(planningRun));
     next.review = void 0;
     next.commitPlan = void 0;
     next.blockers = [];
@@ -23608,7 +23778,7 @@ function nextActions(state) {
       return [`leanrigor flow status ${id} --root "${state.root}"`];
   }
 }
-function applyTriageResult(state, triageRun, config2, options = {}) {
+async function applyTriageResult(state, triageRun, config2, options = {}) {
   const next = structuredClone(state);
   const triage = enforceOneClarification(triageRun.output, options.clarificationAlreadyAnswered ?? false);
   next.triage = triage;
@@ -23632,7 +23802,7 @@ function applyTriageResult(state, triageRun, config2, options = {}) {
   }
   next.approach = buildApproach(triage, config2);
   if (next.approach.required) return transition(next, "awaiting_approach_approval", "Approach recommendation is awaiting approval.");
-  return withPlan(next, config2);
+  return withPlan(next, config2, { provider: options.planningProvider, providerSelection: options.providerSelection });
 }
 function enforceOneClarification(triage, clarificationAlreadyAnswered) {
   if (!clarificationAlreadyAnswered || !triage.clarification.required) return triage;
@@ -23641,12 +23811,21 @@ function enforceOneClarification(triage, clarificationAlreadyAnswered) {
   next.assumptions = unique3([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
   return next;
 }
-function withPlan(state, config2) {
+async function withPlan(state, config2, planningOptions) {
   if (!state.triage) throw new WorkflowStateError("Cannot plan before triage completes.");
   const planning = transition(state, "planning", "Sequential plan generation started.");
-  planning.plan = buildPlan(planning.request, state.triage, planning.root, config2, {
-    revisionRequests: planning.plan?.revisionRequests ?? []
+  const planningRun = await generatePlan({
+    request: planning.request,
+    root: planning.root,
+    triage: state.triage,
+    config: config2,
+    revisionRequests: planning.plan?.revisionRequests ?? [],
+    provider: planningOptions?.provider,
+    providerSelection: planningOptions?.providerSelection
   });
+  planning.plan = planningRun.plan;
+  planning.planningRun = planningRunMetadata(planningRun);
+  appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
 }
 function buildApproach(triage, config2) {
@@ -23673,19 +23852,86 @@ function buildPlan(request, triage, root, config2, options) {
   const plan = {
     version: 1,
     summary: revisionNote ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})` : `Sequential plan for: ${request.trim()}`,
-    principles: [
-      "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
-      "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
-      "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
-      "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
-      "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
-    ],
+    principles: planningPrinciples(),
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
   const issues = validatePlanQuality(plan, mode2, config2);
   if (issues.length > 0) throw new WorkflowStateError(`Generated plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
   return plan;
+}
+async function generatePlan(args) {
+  const config2 = args.config ?? defaultConfig();
+  const deterministicPlan = buildPlan(args.request, args.triage, args.root, config2, {
+    revisionRequests: args.revisionRequests
+  });
+  return runPlanning({
+    input: {
+      request: args.request,
+      root: args.root,
+      config: config2,
+      triage: args.triage,
+      deterministicPlan,
+      revisionRequests: args.revisionRequests
+    },
+    provider: args.provider,
+    providerSelection: args.providerSelection,
+    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config2, args.revisionRequests)
+  });
+}
+function validateModelPlan(raw, mode2, config2, revisionRequests) {
+  const parsed = modelPlanSchema.parse(raw);
+  const plan = {
+    version: 1,
+    summary: parsed.summary,
+    principles: parsed.principles && parsed.principles.length > 0 ? parsed.principles : planningPrinciples(),
+    phases: parsed.phases.map((candidate) => {
+      const areas = candidate.expectedFilesOrAreas ?? candidate.expectedWriteAreas;
+      if (!areas || areas.length === 0) throw new WorkflowStateError(`Model plan phase ${candidate.id} did not declare expected files or areas.`);
+      return phase({
+        id: candidate.id,
+        objective: candidate.objective,
+        rationale: candidate.rationale,
+        dependencies: unique3([...candidate.dependencies, ...candidate.dependsOn ?? []]),
+        areas,
+        readAreas: candidate.expectedReadAreas ?? areas,
+        acceptance: candidate.acceptanceCriteria,
+        validationCommands: candidate.validationCommands,
+        riskLevel: candidate.riskLevel,
+        modelTier: candidate.modelTier
+      });
+    }),
+    revisionRequests
+  };
+  const checked = planSchema.parse(plan);
+  const issues = validatePlanQuality(checked, mode2, config2);
+  if (issues.length > 0) throw new WorkflowStateError(`Model plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
+  return checked;
+}
+function planningPrinciples() {
+  return [
+    "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
+    "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
+    "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
+    "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
+    "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
+  ];
+}
+function planningRunMetadata(run) {
+  return {
+    source: run.source,
+    provider: run.provider,
+    model: run.model,
+    attempts: run.attempts,
+    fallbackReason: run.fallbackReason,
+    warnings: run.warnings
+  };
+}
+function planningEventSummary(run) {
+  if (run.source === "model") {
+    return `Plan generated by ${run.provider}${run.model ? ` (${run.model})` : ""} after ${run.attempts} attempt${run.attempts === 1 ? "" : "s"}.`;
+  }
+  return `Deterministic planning fallback used: ${run.fallbackReason ?? "reason unavailable"}.`;
 }
 function fastPhases(targets, validationCommands) {
   return [phase({
@@ -25671,7 +25917,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.7");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.8");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -25896,6 +26142,7 @@ flow.command("start").argument("<request>").option("--root <path>", "repository 
     root: options.root,
     config: config2,
     provider: triageProvider(providerSelection),
+    planningProvider: planningProvider(providerSelection),
     providerSelection
   });
   printFlowState(state);
@@ -25909,12 +26156,20 @@ flow.command("answer").argument("<workflow-id>").argument("<answer>").option("--
     answer,
     config: config2,
     provider: triageProvider(providerSelection),
+    planningProvider: planningProvider(providerSelection),
     providerSelection,
     mutation: mutationOptions(options)
   }));
 });
-flow.command("approve-approach").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
-  printFlowState(await approveApproach(options.root, workflowId2, await ensureRepositoryConfig(options.root), mutationOptions(options)));
+flow.command("approve-approach").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  const providerSelection = triageProviderSelection(options.provider);
+  printFlowState(await approveApproach(
+    options.root,
+    workflowId2,
+    await ensureRepositoryConfig(options.root),
+    mutationOptions(options),
+    { provider: planningProvider(providerSelection), providerSelection }
+  ));
 });
 flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reason <reason>", "reason for rejection").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await rejectApproach(options.root, workflowId2, options.reason, mutationOptions(options)));
@@ -25922,8 +26177,16 @@ flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reas
 flow.command("approve-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await approvePlan(options.root, workflowId2, mutationOptions(options)));
 });
-flow.command("revise-plan").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
-  printFlowState(await revisePlan(options.root, workflowId2, feedback, await ensureRepositoryConfig(options.root), mutationOptions(options)));
+flow.command("revise-plan").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
+  const providerSelection = triageProviderSelection(options.provider);
+  printFlowState(await revisePlan(
+    options.root,
+    workflowId2,
+    feedback,
+    await ensureRepositoryConfig(options.root),
+    mutationOptions(options),
+    { provider: planningProvider(providerSelection), providerSelection }
+  ));
 });
 flow.command("phase-start").argument("<workflow-id>").argument("[phase-id]").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "phase lease owner ID", "cli").action(async (workflowId2, phaseId, options) => {
   printFlowState(await startPhase(options.root, workflowId2, phaseId, { ...mutationOptions(options), config: await ensureRepositoryConfig(options.root) }));
@@ -25962,29 +26225,23 @@ flow.command("ready").argument("<workflow-id>").option("--root <path>", "reposit
   if (options.json) console.log(JSON.stringify(schedule, null, 2));
   else console.log(`${schedule.dispatchableCount}/${schedule.eligibleCount} phase(s) dispatchable; max parallel phases ${schedule.maxParallelPhases}.`);
 });
-flow.command("execute-next").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: scripted or claude", "scripted").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
-  const coordinator = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
-  printCoordinatorResult(await coordinator.runNext(), Boolean(options.json));
+flow.command("execute-next").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.runNext()), Boolean(options.json));
 });
-flow.command("execute-ready").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: scripted or claude", "scripted").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
-  const coordinator = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
-  printCoordinatorResult(await coordinator.dispatchReady(), Boolean(options.json));
+flow.command("execute-ready").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.dispatchReady()), Boolean(options.json));
 });
-flow.command("execution-status").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: scripted or claude", "scripted").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
-  const coordinator = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
-  printCoordinatorResult(coordinator.executionStatus(await resumeFlow(options.root, workflowId2)), Boolean(options.json));
+flow.command("execution-status").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, async (coordinator) => coordinator.executionStatus(await resumeFlow(options.root, workflowId2))), Boolean(options.json));
 });
-flow.command("execution-poll").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: scripted or claude", "scripted").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
-  const coordinator = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
-  printCoordinatorResult(await coordinator.poll(), Boolean(options.json));
+flow.command("execution-poll").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.poll()), Boolean(options.json));
 });
-flow.command("execution-cancel").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: scripted or claude", "scripted").option("--script-file <path>", "scripted provider JSON file").option("--reason <reason>", "cancellation reason").option("--json", "print structured coordinator result").action(async (workflowId2, phaseId, options) => {
-  const coordinator = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
-  printCoordinatorResult(await coordinator.cancelPhase(phaseId, options.reason), Boolean(options.json));
+flow.command("execution-cancel").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--reason <reason>", "cancellation reason").option("--json", "print structured coordinator result").action(async (workflowId2, phaseId, options) => {
+  printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.cancelPhase(phaseId, options.reason)), Boolean(options.json));
 });
-flow.command("execution-recover").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: scripted or claude", "scripted").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
-  const coordinator = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
-  printCoordinatorResult(await coordinator.recover(), Boolean(options.json));
+flow.command("execution-recover").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.recover()), Boolean(options.json));
 });
 flow.command("lease-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
   const state = await leasePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await ensureRepositoryConfig(options.root), mutation: mutationOptions(options) });
@@ -26216,6 +26473,9 @@ function triageProviderSelection(provider) {
 function triageProvider(provider) {
   return provider === "deterministic" ? void 0 : new ClaudeCliTriageProvider();
 }
+function planningProvider(provider) {
+  return provider === "deterministic" ? void 0 : new ClaudeCliPlanningProvider();
+}
 function printFlowState(state) {
   console.log(JSON.stringify({
     id: state.id,
@@ -26239,6 +26499,14 @@ function printFlowState(state) {
       reasons: state.triage.escalationReasons,
       assumptions: state.triage.assumptions,
       overrideReason: state.triage.workflow.overrideReason
+    } : void 0,
+    planning: state.planningRun ? {
+      source: state.planningRun.source,
+      provider: state.planningRun.provider,
+      model: state.planningRun.model,
+      attempts: state.planningRun.attempts,
+      fallbackReason: state.planningRun.fallbackReason,
+      warnings: state.planningRun.warnings
     } : void 0,
     clarification: state.clarification,
     approach: state.approach,
@@ -26309,20 +26577,43 @@ function printHumanStatus(state) {
 }
 async function executionCoordinator(root, workflowId2, providerName, scriptFile) {
   const config2 = await ensureRepositoryConfig(root);
-  return new ExecutionCoordinator({
-    root,
-    workflowId: workflowId2,
-    config: config2,
-    provider: await executionProvider(providerName, scriptFile)
-  });
+  const selected = await executionProvider(providerName, scriptFile);
+  return {
+    coordinator: new ExecutionCoordinator({
+      root,
+      workflowId: workflowId2,
+      config: config2,
+      provider: selected.provider
+    }),
+    providerFallbackReason: selected.fallbackReason
+  };
 }
 async function executionProvider(providerName, scriptFile) {
-  if (providerName === "scripted") {
-    const scripts = scriptFile ? JSON.parse(await readFile14(path18.resolve(scriptFile), "utf8")) : {};
-    return new ScriptedExecutionProvider(scripts);
+  if (providerName === "auto") {
+    const provider = new ClaudeCliExecutionProvider();
+    try {
+      await provider.capabilities();
+      return { provider };
+    } catch (error51) {
+      return {
+        provider: await scriptedExecutionProvider(scriptFile),
+        fallbackReason: `Claude execution provider unavailable before dispatch: ${messageOf3(error51)}`
+      };
+    }
   }
-  if (providerName === "claude" || providerName === "claude-cli") return new ClaudeCliExecutionProvider();
+  if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
+  if (providerName === "claude" || providerName === "claude-cli") return { provider: new ClaudeCliExecutionProvider() };
   throw new Error(`Unsupported execution provider: ${providerName}`);
+}
+async function scriptedExecutionProvider(scriptFile) {
+  const scripts = scriptFile ? JSON.parse(await readFile14(path18.resolve(scriptFile), "utf8")) : {};
+  return new ScriptedExecutionProvider(scripts);
+}
+async function runCoordinatorCommand(root, workflowId2, providerName, scriptFile, run) {
+  const selected = await executionCoordinator(root, workflowId2, providerName, scriptFile);
+  const result = await run(selected.coordinator);
+  if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+  return result;
 }
 function printCoordinatorResult(result, json2) {
   if (json2) {
@@ -26334,6 +26625,7 @@ function printCoordinatorResult(result, json2) {
     result.message,
     result.executionMode ? `Execution mode: ${result.executionMode}` : void 0,
     result.provider ? `Provider: ${result.provider}` : void 0,
+    result.providerFallbackReason ? `Provider fallback: ${result.providerFallbackReason}` : void 0,
     result.runningPhase ? `Running phase: ${result.runningPhase}` : void 0,
     result.lastProviderStatus ? `Last provider status: ${result.lastProviderStatus}` : void 0,
     result.phaseGateStatus ? `Phase gate: ${result.phaseGateStatus}` : void 0,
@@ -26347,6 +26639,9 @@ function printCoordinatorResult(result, json2) {
     `Next action: ${result.nextValidAction ?? result.nextAction}`
   ].filter((line) => Boolean(line));
   console.log(lines.join("\n"));
+}
+function messageOf3(error51) {
+  return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
 }
 function printActiveSelection(selection) {
   console.log(`LeanRigor - Active workflows

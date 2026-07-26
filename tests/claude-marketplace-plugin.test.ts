@@ -45,14 +45,38 @@ function run(command: string, args: string[], options: { cwd?: string; env?: Nod
 
 async function fakeClaudePath(): Promise<string> {
   const binDir = await tempDir("leanrigor-fake-claude-");
-  const modelOutput = assessTask("Change authentication migration handling for production credentials", defaultConfig());
-  const envelope = JSON.stringify({ result: JSON.stringify(modelOutput) });
+  const triageOutput = assessTask("Change authentication migration handling for production credentials", defaultConfig());
+  const planningOutput = {
+    version: 1,
+    summary: "Model-generated marketplace planning result.",
+    principles: ["Use Claude-derived phase boundaries.", "Persist specific evidence obligations."],
+    phases: [{
+      id: "phase-1",
+      objective: "Implement model-backed planning for issue-specific obligations.",
+      rationale: "Planning should prove the provider path can inspect and specialize workflow phases.",
+      dependencies: [],
+      expectedReadAreas: ["src/core/flow.ts", "tests/claude-marketplace-plugin.test.ts"],
+      expectedWriteAreas: ["src/core/flow.ts", "tests/claude-marketplace-plugin.test.ts"],
+      expectedFilesOrAreas: ["src/core/flow.ts", "tests/claude-marketplace-plugin.test.ts"],
+      acceptanceCriteria: ["Planning metadata reports a model source.", "The generated phase is not the deterministic generic baseline."],
+      validationCommands: ["npm test"],
+      riskLevel: "medium",
+      modelTier: "medium"
+    }],
+    revisionRequests: []
+  };
+  const triageEnvelope = JSON.stringify({ result: JSON.stringify(triageOutput) });
+  const planningEnvelope = JSON.stringify({ result: JSON.stringify(planningOutput) });
   await writeFile(
     path.join(binDir, "claude"),
-    `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(`${envelope}\n`)});\n`,
+    `#!/usr/bin/env node\nconst prompt = process.argv.join("\\n");\nprocess.stdout.write(prompt.includes("bounded sequential planner") ? ${JSON.stringify(`${planningEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)});\n`,
     { mode: 0o755 }
   );
   return `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+async function pathWithoutClaude(): Promise<string> {
+  return tempDir("leanrigor-no-claude-");
 }
 
 function frontmatter(content: string): Record<string, string> {
@@ -127,6 +151,10 @@ describe("Claude marketplace plugin manifests", () => {
     const content = await readFile(path.join(repoRoot, "commands", "start.md"), "utf8");
     expect(content).toContain("flow start \"$ARGUMENTS\" --provider auto");
     expect(content).toContain("Do not use `--provider deterministic` unless the user");
+    expect(content).toContain("flow approve-approach <workflow-id> --provider auto");
+    expect(content).toContain("flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
+    expect(content).toContain("flow execute-next --provider auto");
+    expect(content).toContain("flow execution-poll --provider auto");
   });
 
   it("declares AskUserQuestion availability for marketplace command turns", async () => {
@@ -169,6 +197,14 @@ describe("Claude marketplace plugin manifests", () => {
     expect(startContent).toContain("leanrigor flow start \"$ARGUMENTS\" --provider auto");
     expect(workflowContent).toContain("leanrigor flow start \"$ARGUMENTS\" --provider auto");
     expect(startContent).toContain("Do not use `--provider deterministic` unless the");
+    expect(startContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
+    expect(startContent).toContain("leanrigor flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
+    expect(startContent).toContain("flow execute-next --provider auto");
+    expect(startContent).toContain("flow execution-poll --provider auto");
+    expect(workflowContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
+    expect(workflowContent).toContain("leanrigor flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
+    expect(workflowContent).toContain("leanrigor flow execute-next --provider auto");
+    expect(workflowContent).toContain("leanrigor flow execution-poll --provider auto");
   });
 
   it("hook paths resolve through CLAUDE_PLUGIN_ROOT", async () => {
@@ -226,6 +262,29 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.triage.fallbackReason).toBeUndefined();
   });
 
+  it("defaults marketplace approach approval to model-backed auto planning", async () => {
+    const repo = path.join(await tempDir("leanrigor marketplace planning repo "), "repo");
+    await mkdir(repo, { recursive: true });
+    const env = { CLAUDE_PLUGIN_ROOT: repoRoot, PATH: await fakeClaudePath() };
+    const started = await run(path.join(repoRoot, "bin", "leanrigor"), ["flow", "start", "Fix a typo in README documentation", "--root", repo], {
+      cwd: repo,
+      env
+    });
+    expect(started.code).toBe(0);
+    const startState = JSON.parse(started.stdout) as { id: string };
+
+    const result = await run(path.join(repoRoot, "bin", "leanrigor"), ["flow", "approve-approach", startState.id, "--root", repo], {
+      cwd: repo,
+      env
+    });
+
+    expect(result.code).toBe(0);
+    const state = JSON.parse(result.stdout) as { planning: { source: string; provider: string; attempts: number; fallbackReason?: string }; phaseProgress: Array<{ objective: string }> };
+    expect(state.planning).toMatchObject({ source: "model", provider: "claude-cli", attempts: 1 });
+    expect(state.planning.fallbackReason).toBeUndefined();
+    expect(state.phaseProgress[0]?.objective).toBe("Implement model-backed planning for issue-specific obligations.");
+  });
+
   it("prints a clear error when Node is unavailable", async () => {
     const result = await run("/bin/sh", [path.join(repoRoot, "bin", "leanrigor"), "--version"], {
       env: { PATH: "/tmp", CLAUDE_PLUGIN_ROOT: repoRoot }
@@ -264,6 +323,48 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.mode).toBe("rigorous");
     expect(state.triage).toMatchObject({ source: "model", provider: "claude-cli", attempts: 1 });
     expect(state.triage.fallbackReason).toBeUndefined();
+  });
+
+  it("defaults project-local approach approval to model-backed auto planning", async () => {
+    const repo = await tempDir("leanrigor-project-local-planning-");
+    await new ClaudeAdapter().install(repo, defaultConfig());
+    const env = { CLAUDE_PLUGIN_ROOT: "", LEANRIGOR_CLAUDE_PLUGIN_ROOT: "", PATH: await fakeClaudePath() };
+    const started = await run("node", [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "start", "Fix a typo in README documentation", "--root", repo], {
+      cwd: repo,
+      env
+    });
+    expect(started.code).toBe(0);
+    const startState = JSON.parse(started.stdout) as { id: string };
+
+    const result = await run("node", [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "approve-approach", startState.id, "--root", repo], {
+      cwd: repo,
+      env
+    });
+
+    expect(result.code).toBe(0);
+    const state = JSON.parse(result.stdout) as { planning: { source: string; provider: string; attempts: number; fallbackReason?: string }; phaseProgress: Array<{ objective: string }> };
+    expect(state.planning).toMatchObject({ source: "model", provider: "claude-cli", attempts: 1 });
+    expect(state.planning.fallbackReason).toBeUndefined();
+    expect(state.phaseProgress[0]?.objective).toBe("Implement model-backed planning for issue-specific obligations.");
+  });
+
+  it("reports execution auto fallback when Claude is unavailable before dispatch", async () => {
+    const repo = await tempDir("leanrigor-execution-auto-fallback-");
+    const started = await run(process.execPath, [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "start", "Fix a typo in README documentation", "--provider", "deterministic", "--root", repo], {
+      cwd: repo
+    });
+    expect(started.code).toBe(0);
+    const startState = JSON.parse(started.stdout) as { id: string };
+
+    const result = await run(process.execPath, [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "execution-status", startState.id, "--root", repo, "--json"], {
+      cwd: repo,
+      env: { PATH: await pathWithoutClaude() }
+    });
+
+    expect(result.code).toBe(0);
+    const status = JSON.parse(result.stdout) as { provider: string; providerFallbackReason?: string };
+    expect(status.provider).toBe("scripted");
+    expect(status.providerFallbackReason).toMatch(/Claude execution provider unavailable before dispatch/);
   });
 });
 
