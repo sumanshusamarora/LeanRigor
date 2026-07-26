@@ -4,7 +4,7 @@ argument-hint: "[workflow-id]"
 allowed-tools: AskUserQuestion, Bash(leanrigor *)
 ---
 
-<!-- generated_by: leanrigor | asset_version: 5 -->
+<!-- generated_by: leanrigor | asset_version: 6 -->
 # /leanrigor-status
 
 Report concise human-readable LeanRigor workflow status.

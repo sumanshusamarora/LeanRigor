@@ -1,4 +1,4 @@
-import { access, cp, mkdir, mkdtemp, readFile, readdir, stat } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,8 +7,9 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../package.json" with { type: "json" };
 import marketplace from "../.claude-plugin/marketplace.json" with { type: "json" };
 import plugin from "../.claude-plugin/plugin.json" with { type: "json" };
-import { ClaudeAdapter } from "../src/adapters/claude/adapter.js";
+import { ASSET_VERSION, ClaudeAdapter } from "../src/adapters/claude/adapter.js";
 import { defaultConfig } from "../src/config/defaults.js";
+import { assessTask } from "../src/core/assessment.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const expectedMarketplaceCommands = [
@@ -40,6 +41,18 @@ function run(command: string, args: string[], options: { cwd?: string; env?: Nod
     child.on("error", reject);
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
+}
+
+async function fakeClaudePath(): Promise<string> {
+  const binDir = await tempDir("leanrigor-fake-claude-");
+  const modelOutput = assessTask("Change authentication migration handling for production credentials", defaultConfig());
+  const envelope = JSON.stringify({ result: JSON.stringify(modelOutput) });
+  await writeFile(
+    path.join(binDir, "claude"),
+    `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(`${envelope}\n`)});\n`,
+    { mode: 0o755 }
+  );
+  return `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
 }
 
 function frontmatter(content: string): Record<string, string> {
@@ -110,6 +123,12 @@ describe("Claude marketplace plugin manifests", () => {
     }
   });
 
+  it("pins marketplace conversational starts to auto triage", async () => {
+    const content = await readFile(path.join(repoRoot, "commands", "start.md"), "utf8");
+    expect(content).toContain("flow start \"$ARGUMENTS\" --provider auto");
+    expect(content).toContain("Do not use `--provider deterministic` unless the user");
+  });
+
   it("declares AskUserQuestion availability for marketplace command turns", async () => {
     for (const command of plugin.commands) {
       const content = await readFile(path.join(repoRoot, command), "utf8");
@@ -145,6 +164,11 @@ describe("Claude marketplace plugin manifests", () => {
       expect(fm["allowed-tools"]).toContain("AskUserQuestion");
       expect(content).toContain("AskUserQuestion selector contract");
     }
+    const startContent = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "commands", "leanrigor.md"), "utf8");
+    const workflowContent = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
+    expect(startContent).toContain("leanrigor flow start \"$ARGUMENTS\" --provider auto");
+    expect(workflowContent).toContain("leanrigor flow start \"$ARGUMENTS\" --provider auto");
+    expect(startContent).toContain("Do not use `--provider deterministic` unless the");
   });
 
   it("hook paths resolve through CLAUDE_PLUGIN_ROOT", async () => {
@@ -186,6 +210,22 @@ describe("Claude marketplace plugin runtime", () => {
     await expect(access(path.join(repo, ".claude"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("defaults marketplace flow start to model-backed auto triage", async () => {
+    const repo = path.join(await tempDir("leanrigor marketplace auto repo "), "repo");
+    await mkdir(repo, { recursive: true });
+
+    const result = await run(path.join(repoRoot, "bin", "leanrigor"), ["flow", "start", "Fix a typo in README documentation", "--root", repo], {
+      cwd: repo,
+      env: { CLAUDE_PLUGIN_ROOT: repoRoot, PATH: await fakeClaudePath() }
+    });
+
+    expect(result.code).toBe(0);
+    const state = JSON.parse(result.stdout) as { mode: string; triage: { source: string; provider: string; attempts: number; fallbackReason?: string } };
+    expect(state.mode).toBe("rigorous");
+    expect(state.triage).toMatchObject({ source: "model", provider: "claude-cli", attempts: 1 });
+    expect(state.triage.fallbackReason).toBeUndefined();
+  });
+
   it("prints a clear error when Node is unavailable", async () => {
     const result = await run("/bin/sh", [path.join(repoRoot, "bin", "leanrigor"), "--version"], {
       env: { PATH: "/tmp", CLAUDE_PLUGIN_ROOT: repoRoot }
@@ -208,6 +248,22 @@ describe("Claude marketplace plugin runtime", () => {
     expect(result.code).toBe(0);
     await expect(access(path.join(repo, ".claude", "commands", "leanrigor.md"))).resolves.toBeUndefined();
     await expect(access(path.join(repo, ".leanrigor", "workflows"))).resolves.toBeUndefined();
+  });
+
+  it("defaults project-local flow start to model-backed auto triage", async () => {
+    const repo = await tempDir("leanrigor-project-local-auto-");
+    await new ClaudeAdapter().install(repo, defaultConfig());
+
+    const result = await run("node", [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "start", "Fix a typo in README documentation", "--root", repo], {
+      cwd: repo,
+      env: { CLAUDE_PLUGIN_ROOT: "", LEANRIGOR_CLAUDE_PLUGIN_ROOT: "", PATH: await fakeClaudePath() }
+    });
+
+    expect(result.code).toBe(0);
+    const state = JSON.parse(result.stdout) as { mode: string; triage: { source: string; provider: string; attempts: number; fallbackReason?: string } };
+    expect(state.mode).toBe("rigorous");
+    expect(state.triage).toMatchObject({ source: "model", provider: "claude-cli", attempts: 1 });
+    expect(state.triage.fallbackReason).toBeUndefined();
   });
 });
 
@@ -254,7 +310,6 @@ describe("Claude marketplace plugin package inclusion", () => {
 
 import { detectInstallationMode, detectShadowing, type InstallationMode } from "../src/adapters/claude/adapter.js";
 import { ensureBootstrapped } from "../src/core/bootstrap.js";
-import { writeFile } from "node:fs/promises";
 
 async function withEnv(env: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
   const saved: Record<string, string | undefined> = {};
@@ -358,7 +413,7 @@ describe("Marketplace mode doctor output", () => {
       expect(text).toContain("Plugin assets: current (served from plugin root)");
       expect(text).toContain("Project-local fallback assets: not applicable");
       expect(text).not.toContain("Fallback assets:");
-      expect(text).toContain(`Asset version: 5`);
+      expect(text).toContain(`Asset version: ${ASSET_VERSION}`);
     });
   });
 

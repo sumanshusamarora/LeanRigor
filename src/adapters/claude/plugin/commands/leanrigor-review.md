@@ -4,7 +4,7 @@ argument-hint: "[workflow-id or review response]"
 allowed-tools: AskUserQuestion, Bash(leanrigor *)
 ---
 
-<!-- generated_by: leanrigor | asset_version: 5 -->
+<!-- generated_by: leanrigor | asset_version: 6 -->
 # /leanrigor-review
 
 Show or perform the valid LeanRigor review step.

@@ -15,7 +15,8 @@ Behaviour:
 
 1. Discover active workflows with `flow active --json`.
 2. If one active workflow exists, inspect it with `flow next --json`.
-3. If no active workflow exists and `$ARGUMENTS` is a coding request, start one.
+3. If no active workflow exists and `$ARGUMENTS` is a coding request, start one
+   with `flow start "$ARGUMENTS" --provider auto`.
 4. If multiple active workflows exist, use `AskUserQuestion` for the workflow
    selector when available. Do not render an ordinary text question first.
 5. If approach approval is pending, show `Approach approval`; when the user

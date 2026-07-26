@@ -4,7 +4,7 @@ argument-hint: "[configuration action]"
 allowed-tools: AskUserQuestion, Bash(leanrigor *)
 ---
 
-<!-- generated_by: leanrigor | asset_version: 5 -->
+<!-- generated_by: leanrigor | asset_version: 6 -->
 # /leanrigor:init
 
 Inspect and update LeanRigor configuration for this repository.

@@ -16,7 +16,9 @@ Behaviour:
 
 1. Read active workflow selection with `flow active --json`.
 2. If `$ARGUMENTS` is a new coding request and no active workflow exists, start
-   a workflow, then read `flow next --json`.
+   a workflow with `flow start "$ARGUMENTS" --provider auto`, then read
+   `flow next --json`. Do not use `--provider deterministic` unless the user
+   explicitly asks for deterministic triage.
 3. If one active workflow exists, resume it and interpret `$ARGUMENTS` as a
    natural-language response when present.
 4. If multiple active workflows exist, use `AskUserQuestion` for the workflow

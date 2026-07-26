@@ -155,6 +155,7 @@ export interface WorkflowState {
     provider: string;
     model?: string;
     attempts: number;
+    fallbackReason?: string;
     warnings: string[];
   };
   graph?: ExecutionGraph;
@@ -426,6 +427,7 @@ export interface SequentialWorkflowState {
     provider: string;
     model?: string;
     attempts: number;
+    fallbackReason?: string;
     warnings: string[];
   };
   clarification?: {

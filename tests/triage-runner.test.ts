@@ -59,6 +59,9 @@ describe("model-backed triage", () => {
     });
     expect(result.source).toBe("deterministic-fallback");
     expect(result.output.workflow.finalMode).toBe("standard");
+    expect(result.provider).toBe("fake-model");
+    expect(result.attempts).toBe(2);
+    expect(result.fallbackReason).toBe("model triage failed after 2 attempts");
     expect(result.warnings.at(-1)).toMatch(/fallback/i);
   });
 
@@ -77,5 +80,20 @@ describe("model-backed triage", () => {
     });
     expect(result.source).toBe("deterministic-fallback");
     expect(result.attempts).toBe(0);
+    expect(result.fallbackReason).toBe("automatic triage is disabled by configuration");
+  });
+
+  it("labels explicit deterministic triage without attempting a model call", async () => {
+    const config = defaultConfig();
+    const result = await runTriage({
+      request: "Fix a typo in README",
+      root: process.cwd(),
+      config,
+      providerSelection: "deterministic"
+    });
+    expect(result.source).toBe("deterministic-fallback");
+    expect(result.provider).toBe("deterministic");
+    expect(result.attempts).toBe(0);
+    expect(result.fallbackReason).toBe("deterministic provider explicitly selected");
   });
 });

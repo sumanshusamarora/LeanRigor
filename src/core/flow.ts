@@ -25,7 +25,7 @@ import {
   type WorkspaceRecoveryReport,
   type WorkspaceStatus
 } from "./git-workspace.js";
-import type { TriageProvider, TriageRunResult } from "./triage-runner.js";
+import type { TriageProvider, TriageProviderSelection, TriageRunResult } from "./triage-runner.js";
 import { runTriage } from "./triage-runner.js";
 import type {
   ApproachRecommendation,
@@ -347,6 +347,7 @@ const workflowStateSchema = z.object({
     provider: z.string(),
     model: z.string().optional(),
     attempts: z.number().int(),
+    fallbackReason: z.string().optional(),
     warnings: z.array(z.string())
   }).optional(),
   clarification: z.object({
@@ -416,6 +417,7 @@ export interface FlowStartOptions {
   root: string;
   config: LeanRigorConfig;
   provider?: TriageProvider;
+  providerSelection?: TriageProviderSelection;
 }
 
 export async function startFlow(options: FlowStartOptions): Promise<SequentialWorkflowState> {
@@ -446,7 +448,8 @@ export async function startFlow(options: FlowStartOptions): Promise<SequentialWo
     request: options.request,
     root,
     config: options.config,
-    provider: options.provider
+    provider: options.provider,
+    providerSelection: options.providerSelection
   });
 
   return updateFlowState(root, state.id, (current) => applyTriageResult(current, triageRun, options.config));
@@ -458,6 +461,7 @@ export async function answerClarification(args: {
   answer: string;
   config: LeanRigorConfig;
   provider?: TriageProvider;
+  providerSelection?: TriageProviderSelection;
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, async (state) => {
@@ -476,7 +480,8 @@ export async function answerClarification(args: {
       request: `${answered.request}\n\nClarification answer: ${args.answer}`,
       root: answered.root,
       config: args.config,
-      provider: args.provider
+      provider: args.provider,
+      providerSelection: args.providerSelection
     });
     const next = applyTriageResult(answered, triageRun, args.config, { clarificationAlreadyAnswered: true });
     return next;
@@ -1270,6 +1275,7 @@ function applyTriageResult(
     provider: triageRun.provider,
     model: triageRun.model,
     attempts: triageRun.attempts,
+    fallbackReason: triageRun.fallbackReason,
     warnings: triageRun.warnings
   };
   next.mode = triage.workflow.finalMode;

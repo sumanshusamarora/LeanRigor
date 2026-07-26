@@ -4,7 +4,7 @@ argument-hint: "[request or plan response]"
 allowed-tools: AskUserQuestion, Bash(leanrigor *)
 ---
 
-<!-- generated_by: leanrigor | asset_version: 5 -->
+<!-- generated_by: leanrigor | asset_version: 6 -->
 # /leanrigor-plan
 
 Show, generate, approve, or revise the persisted LeanRigor plan.
@@ -19,7 +19,8 @@ AskUserQuestion selector contract at every decision gate.
 2. Show an existing plan when one exists; do not create a duplicate workflow.
 3. If approach approval is pending, render `Approach approval`; after approval,
    invoke the transition internally and immediately render `Plan approval`.
-4. If no active workflow exists and `$ARGUMENTS` is a request, start one.
+4. If no active workflow exists and `$ARGUMENTS` is a request, start one with
+   `leanrigor flow start "$ARGUMENTS" --provider auto`.
 5. If the user gives revision feedback, revise the persisted plan internally
    and render the revised phases.
 

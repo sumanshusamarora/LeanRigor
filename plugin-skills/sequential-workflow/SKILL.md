@@ -70,7 +70,10 @@ persisted phases exist.
 ## Active Workflow Selection
 
 - One active workflow: resume it.
-- No active workflow: start only when the user supplied a request.
+- No active workflow: start only when the user supplied a request. Invoke
+  `flow start "$ARGUMENTS" --provider auto` so automatic triage can call Claude
+  when available. Use `--provider deterministic` only when the user explicitly
+  requests deterministic triage.
 - Multiple active workflows: use `AskUserQuestion` to let the user choose among
   them (header: "Workflow"). Show ID, request, state, mode, and updated time in
   each option description. Do not render an ordinary text question first. Fall

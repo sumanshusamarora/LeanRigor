@@ -6,7 +6,7 @@ import { loadConfig } from "../config/load.js";
 import { saveWorkflow, loadWorkflow } from "../core/workflow.js";
 import { ClaudeAdapter, cleanupProjectLocalAssets, type CleanupScope } from "../adapters/claude/adapter.js";
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
-import { runTriage } from "../core/triage-runner.js";
+import { runTriage, type TriageProviderSelection } from "../core/triage-runner.js";
 import { leanRigorConfigSchema } from "../config/schema.js";
 import type { UninstallReport } from "../adapters/types.js";
 import { resolveEffectiveConfig, formatEffectiveConfig } from "../config/resolver.js";
@@ -74,7 +74,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.6");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.7");
 
 program.command("setup")
   .alias("init")
@@ -338,12 +338,17 @@ program.command("triage")
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .action(async (request, { root, provider }) => {
     const config = await loadConfig(root);
-    if (!["auto", "claude", "deterministic"].includes(provider)) throw new Error(`Unsupported triage provider: ${provider}`);
-    const triageProvider = provider === "deterministic" ? undefined : new ClaudeCliTriageProvider();
-    const result = await runTriage({ request, root, config, provider: triageProvider });
+    const providerSelection = triageProviderSelection(provider);
+    const result = await runTriage({
+      request,
+      root,
+      config,
+      provider: triageProvider(providerSelection),
+      providerSelection
+    });
     const assessment = result.output;
     await saveWorkflow(root, { version: 1, request, mode: assessment.workflow.finalMode, assessment,
-      triageRun: { source: result.source, provider: result.provider, model: result.model, attempts: result.attempts, warnings: result.warnings },
+      triageRun: { source: result.source, provider: result.provider, model: result.model, attempts: result.attempts, fallbackReason: result.fallbackReason, warnings: result.warnings },
       currentPhase: assessment.clarification.required ? "clarification" : "planning", decisions: [], updatedAt: new Date().toISOString() });
     console.log(JSON.stringify(result, null, 2));
   });
@@ -400,11 +405,13 @@ flow.command("start")
   .action(async (request, options) => {
     // Bootstrap project environment before starting the workflow
     const { config } = await ensureBootstrapped(options.root);
+    const providerSelection = triageProviderSelection(options.provider);
     const state = await startFlow({
       request,
       root: options.root,
       config,
-      provider: triageProvider(options.provider)
+      provider: triageProvider(providerSelection),
+      providerSelection
     });
     printFlowState(state);
   });
@@ -418,12 +425,14 @@ flow.command("answer")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, answer, options) => {
     const config = await ensureRepositoryConfig(options.root);
+    const providerSelection = triageProviderSelection(options.provider);
     printFlowState(await answerClarification({
       root: options.root,
       workflowId,
       answer,
       config,
-      provider: triageProvider(options.provider),
+      provider: triageProvider(providerSelection),
+      providerSelection,
       mutation: mutationOptions(options)
     }));
   });
@@ -1003,8 +1012,13 @@ function printCleanupReport(report: { dryRun: boolean; scope: string; items: Arr
   }
 }
 
-function triageProvider(provider: string): ClaudeCliTriageProvider | undefined {
-  if (!["auto", "claude", "deterministic"].includes(provider)) throw new Error(`Unsupported triage provider: ${provider}`);
+function triageProviderSelection(provider: unknown): TriageProviderSelection {
+  const selection = provider === undefined ? "auto" : String(provider);
+  if (!["auto", "claude", "deterministic"].includes(selection)) throw new Error(`Unsupported triage provider: ${selection}`);
+  return selection as TriageProviderSelection;
+}
+
+function triageProvider(provider: TriageProviderSelection): ClaudeCliTriageProvider | undefined {
   return provider === "deterministic" ? undefined : new ClaudeCliTriageProvider();
 }
 
@@ -1024,6 +1038,10 @@ function printFlowState(state: SequentialWorkflowState): void {
       testLevel: state.triage.workflow.testLevel,
       source: state.triageRun?.source,
       provider: state.triageRun?.provider,
+      model: state.triageRun?.model,
+      attempts: state.triageRun?.attempts,
+      fallbackReason: state.triageRun?.fallbackReason,
+      warnings: state.triageRun?.warnings,
       reasons: state.triage.escalationReasons,
       assumptions: state.triage.assumptions,
       overrideReason: state.triage.workflow.overrideReason

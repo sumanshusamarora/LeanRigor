@@ -19,8 +19,11 @@ export interface TriageRunResult {
   provider: string;
   model?: string;
   attempts: number;
+  fallbackReason?: string;
   warnings: string[];
 }
+
+export type TriageProviderSelection = "auto" | "claude" | "deterministic";
 
 export class TriageExecutionError extends Error {}
 
@@ -34,16 +37,23 @@ export async function runTriage(args: {
   root: string;
   config: LeanRigorConfig;
   provider?: TriageProvider;
+  providerSelection?: TriageProviderSelection;
 }): Promise<TriageRunResult> {
   const { request, root, config, provider } = args;
   const warnings: string[] = [];
 
   if (!config.workflow.automaticTriage || !provider) {
+    const fallbackReason = !config.workflow.automaticTriage
+      ? "automatic triage is disabled by configuration"
+      : args.providerSelection === "deterministic"
+        ? "deterministic provider explicitly selected"
+        : "no model triage provider was resolved";
     return {
       output: assessTask(request, config),
       source: "deterministic-fallback",
       provider: provider?.name ?? "deterministic",
       attempts: 0,
+      fallbackReason,
       warnings
     };
   }
@@ -68,12 +78,14 @@ export async function runTriage(args: {
     }
   }
 
+  const fallbackReason = `model triage failed after ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}`;
   warnings.push("Using deterministic triage fallback after model output could not be validated.");
   return {
     output: assessTask(request, config),
     source: "deterministic-fallback",
     provider: provider.name,
     attempts: maxAttempts,
+    fallbackReason,
     warnings
   };
 }

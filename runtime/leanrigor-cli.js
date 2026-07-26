@@ -19547,7 +19547,7 @@ function deepEqual(a, b) {
 }
 
 // src/adapters/claude/adapter.ts
-var ASSET_VERSION = 5;
+var ASSET_VERSION = 6;
 var OWNERSHIP_TOKEN = "generated_by: leanrigor";
 var PROTECT_GIT_DEST = path6.join(".claude", "leanrigor", "protect-git.sh");
 async function cleanupProjectLocalAssets(root, opts) {
@@ -20562,11 +20562,13 @@ async function runTriage(args) {
   const { request, root, config: config2, provider } = args;
   const warnings = [];
   if (!config2.workflow.automaticTriage || !provider) {
+    const fallbackReason2 = !config2.workflow.automaticTriage ? "automatic triage is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model triage provider was resolved";
     return {
       output: assessTask(request, config2),
       source: "deterministic-fallback",
       provider: provider?.name ?? "deterministic",
       attempts: 0,
+      fallbackReason: fallbackReason2,
       warnings
     };
   }
@@ -20588,12 +20590,14 @@ async function runTriage(args) {
       warnings.push(`Model triage attempt ${attempt} failed: ${messageOf(error51)}`);
     }
   }
+  const fallbackReason = `model triage failed after ${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"}`;
   warnings.push("Using deterministic triage fallback after model output could not be validated.");
   return {
     output: assessTask(request, config2),
     source: "deterministic-fallback",
     provider: provider.name,
     attempts: maxAttempts,
+    fallbackReason,
     warnings
   };
 }
@@ -22890,6 +22894,7 @@ var workflowStateSchema = external_exports.object({
     provider: external_exports.string(),
     model: external_exports.string().optional(),
     attempts: external_exports.number().int(),
+    fallbackReason: external_exports.string().optional(),
     warnings: external_exports.array(external_exports.string())
   }).optional(),
   clarification: external_exports.object({
@@ -22974,7 +22979,8 @@ async function startFlow(options) {
     request: options.request,
     root,
     config: options.config,
-    provider: options.provider
+    provider: options.provider,
+    providerSelection: options.providerSelection
   });
   return updateFlowState(root, state.id, (current) => applyTriageResult(current, triageRun, options.config));
 }
@@ -22996,7 +23002,8 @@ async function answerClarification(args) {
 Clarification answer: ${args.answer}`,
       root: answered.root,
       config: args.config,
-      provider: args.provider
+      provider: args.provider,
+      providerSelection: args.providerSelection
     });
     const next = applyTriageResult(answered, triageRun, args.config, { clarificationAlreadyAnswered: true });
     return next;
@@ -23610,6 +23617,7 @@ function applyTriageResult(state, triageRun, config2, options = {}) {
     provider: triageRun.provider,
     model: triageRun.model,
     attempts: triageRun.attempts,
+    fallbackReason: triageRun.fallbackReason,
     warnings: triageRun.warnings
   };
   next.mode = triage.workflow.finalMode;
@@ -25663,7 +25671,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.6");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.7");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -25828,16 +25836,21 @@ configCmd.command("unset").description("Remove a configuration value from the sp
 });
 program2.command("triage").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, { root, provider }) => {
   const config2 = await loadConfig(root);
-  if (!["auto", "claude", "deterministic"].includes(provider)) throw new Error(`Unsupported triage provider: ${provider}`);
-  const triageProvider2 = provider === "deterministic" ? void 0 : new ClaudeCliTriageProvider();
-  const result = await runTriage({ request, root, config: config2, provider: triageProvider2 });
+  const providerSelection = triageProviderSelection(provider);
+  const result = await runTriage({
+    request,
+    root,
+    config: config2,
+    provider: triageProvider(providerSelection),
+    providerSelection
+  });
   const assessment = result.output;
   await saveWorkflow(root, {
     version: 1,
     request,
     mode: assessment.workflow.finalMode,
     assessment,
-    triageRun: { source: result.source, provider: result.provider, model: result.model, attempts: result.attempts, warnings: result.warnings },
+    triageRun: { source: result.source, provider: result.provider, model: result.model, attempts: result.attempts, fallbackReason: result.fallbackReason, warnings: result.warnings },
     currentPhase: assessment.clarification.required ? "clarification" : "planning",
     decisions: [],
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -25877,22 +25890,26 @@ program2.command("init-report").description("Produce a deterministic structured 
 var flow = program2.command("flow").description("Run the persisted sequential LeanRigor workflow");
 flow.command("start").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, options) => {
   const { config: config2 } = await ensureBootstrapped(options.root);
+  const providerSelection = triageProviderSelection(options.provider);
   const state = await startFlow({
     request,
     root: options.root,
     config: config2,
-    provider: triageProvider(options.provider)
+    provider: triageProvider(providerSelection),
+    providerSelection
   });
   printFlowState(state);
 });
 flow.command("answer").argument("<workflow-id>").argument("<answer>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, answer, options) => {
   const config2 = await ensureRepositoryConfig(options.root);
+  const providerSelection = triageProviderSelection(options.provider);
   printFlowState(await answerClarification({
     root: options.root,
     workflowId: workflowId2,
     answer,
     config: config2,
-    provider: triageProvider(options.provider),
+    provider: triageProvider(providerSelection),
+    providerSelection,
     mutation: mutationOptions(options)
   }));
 });
@@ -26191,8 +26208,12 @@ ${report.summary}`);
     console.log("Use --force to also remove modified owned files.");
   }
 }
+function triageProviderSelection(provider) {
+  const selection = provider === void 0 ? "auto" : String(provider);
+  if (!["auto", "claude", "deterministic"].includes(selection)) throw new Error(`Unsupported triage provider: ${selection}`);
+  return selection;
+}
 function triageProvider(provider) {
-  if (!["auto", "claude", "deterministic"].includes(provider)) throw new Error(`Unsupported triage provider: ${provider}`);
   return provider === "deterministic" ? void 0 : new ClaudeCliTriageProvider();
 }
 function printFlowState(state) {
@@ -26211,6 +26232,10 @@ function printFlowState(state) {
       testLevel: state.triage.workflow.testLevel,
       source: state.triageRun?.source,
       provider: state.triageRun?.provider,
+      model: state.triageRun?.model,
+      attempts: state.triageRun?.attempts,
+      fallbackReason: state.triageRun?.fallbackReason,
+      warnings: state.triageRun?.warnings,
       reasons: state.triage.escalationReasons,
       assumptions: state.triage.assumptions,
       overrideReason: state.triage.workflow.overrideReason
