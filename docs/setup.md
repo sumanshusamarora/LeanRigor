@@ -1,268 +1,212 @@
-# Setup and configuration
+# Setup and installation
 
-LeanRigor is currently a private, locally installable TypeScript CLI package. Verified setup from this repository is:
+Claude Code marketplace installation is the recommended user path. The npm package is currently private and not published as a stable public package.
 
-```bash
-npm install
-npm run build
-npm pack
-```
+## Requirements
 
-The generated tarball can be installed into a clean temporary project, after which the `leanrigor` binary is available from npm's `.bin` directory or through `npx leanrigor`.
+- Claude Code for the marketplace integration;
+- Node.js 20 or later on `PATH`;
+- Git for workspace-backed workflows;
+- an authenticated Claude CLI only when using the experimental `claude-cli` execution provider or live smoke script.
 
-## Claude Code Marketplace Installation
-
-Recommended:
+## Recommended: Claude Code marketplace
 
 ```text
 /plugin marketplace add sumanshusamarora/LeanRigor
 /plugin install leanrigor@leanrigor
 ```
 
-This installs LeanRigor globally in Claude Code. Current marketplace installs
-expose namespaced commands such as `/leanrigor:start` and
-`/leanrigor:status`. On first use in a repository, LeanRigor creates
-`.leanrigor/config.json` and later `.leanrigor/workflows/`; it does not create
-`.claude/`.
+Then, from a repository:
 
-For a full developer reinstall from GitHub main, use:
-
-```bash
-./scripts/dev-refresh-claude-plugin.sh
+```text
+/leanrigor:start Fix the assignment regression
 ```
 
-## CLI commands
+Available marketplace commands:
+
+```text
+/leanrigor:start
+/leanrigor:init
+/leanrigor:plan
+/leanrigor:status
+/leanrigor:review
+/leanrigor:commit
+```
+
+Marketplace installation is global to Claude Code. LeanRigor auto-bootstraps repository-local state under `.leanrigor/` on first use and does not install LeanRigor command files into the target repository's `.claude/` directory.
+
+## Install from source
+
+Use this path for development, pre-release testing, or project-local Claude assets:
+
+```bash
+npm install
+npm run build
+npm pack
+npm install -g ./leanrigor-$(node -p "require('./package.json').version").tgz
+```
+
+Verify the CLI:
 
 ```bash
 leanrigor --help
+```
 
-# Fallback: initialise a repository (creates config + installs local Claude assets)
+### Project-local Claude assets
+
+```bash
 leanrigor init --adapter claude --root /path/to/repository
-
-# Re-run after updating leanrigor to upgrade assets
-leanrigor init --adapter claude --root /path/to/repository
-
-# Force-replace LeanRigor-owned files that have been user-modified
-leanrigor init --adapter claude --force-owned-files --root /path/to/repository
-
-# Check status of installed assets and model tier resolution
 leanrigor doctor --adapter claude --root /path/to/repository
+```
 
-# Remove all LeanRigor-owned unmodified files
+Project-local initialisation creates LeanRigor-owned `.claude/` commands, triage agent, methodology references, hook script, and shared settings entries. It also creates repository-local LeanRigor configuration and state directories when required.
+
+Installation is repeat-safe:
+
+- missing assets are created;
+- exact current assets remain unchanged;
+- content-equal adoptable assets can be adopted safely;
+- user-created files are never overwritten;
+- modified LeanRigor-owned files are preserved and reported;
+- `--force-owned-files` replaces only LeanRigor-owned files;
+- LeanRigor hook entries are merged into shared `.claude/settings.json` without deleting unrelated settings.
+
+To restore modified LeanRigor-owned assets:
+
+```bash
+leanrigor init --adapter claude --force-owned-files --root /path/to/repository
+```
+
+To remove LeanRigor-owned project-local assets:
+
+```bash
 leanrigor uninstall --adapter claude --root /path/to/repository
+```
 
-# Also remove .leanrigor/config.json
-leanrigor uninstall --adapter claude --remove-config --root /path/to/repository
+Uninstall preserves unrelated files, modified owned files, workflow state unless explicitly requested, and unrelated settings entries.
 
-# Triage a request using the deterministic classifier
-leanrigor triage "Fix a README typo" --provider deterministic --root /path/to/repository
+## First workflow
 
-# Triage using the configured small model (auto falls back to deterministic)
-leanrigor triage "Fix the assignment regression" --provider auto --root /path/to/repository
+### Conversational Claude Code path
 
-# Start and resume the persisted sequential workflow
+```text
+/leanrigor:start Add an optional API field and update its consumer
+```
+
+Claude presents triage, approvals, plan, execution progress, evidence gates, integration, final review, and the commit proposal conversationally.
+
+### Manual CLI path
+
+```bash
 leanrigor flow start "Fix the assignment regression" --provider auto --root /path/to/repository
 leanrigor flow active --json --root /path/to/repository
 leanrigor flow next <workflow-id> --json --root /path/to/repository
 leanrigor flow status <workflow-id> --root /path/to/repository
-leanrigor flow resume <workflow-id> --root /path/to/repository
 ```
 
-In Claude Code, prefer `/leanrigor:start` for normal workflow use. Claude
-invokes LeanRigor transitions internally and renders human-readable gates, so
-users should not need to copy-paste shell commands unless troubleshooting or
-manually operating the CLI.
+Raw workflow commands are intended for advanced use and troubleshooting. Normal Claude Code use should not require users to copy and paste internal transition commands.
 
-## Initialisation
+## Execution providers
 
-`leanrigor init --adapter claude` creates `.leanrigor/config.json` and installs
-the Claude Code plugin assets under `.claude/`. The setup flow detects top-level
-repository guidance files such as `AGENTS.md`, `CLAUDE.md`, and
-`CONTRIBUTING.md`, then records references to them in LeanRigor configuration.
+### Deterministic scripted provider
 
-Marketplace users do not need this command. Use it only for the npm/manual
-fallback or when you want repository-local unqualified commands such as
-`/leanrigor`.
-
-### Installed assets
-
-```
-.leanrigor/config.json
-.claude/commands/leanrigor.md
-.claude/commands/leanrigor-plan.md
-.claude/commands/leanrigor-status.md
-.claude/commands/leanrigor-review.md
-.claude/commands/leanrigor-commit.md
-.claude/agents/leanrigor-triage.md
-.claude/leanrigor/sequential-workflow.md
-.claude/leanrigor/methodology/
-.claude/leanrigor/protect-git.sh
-.claude/settings.json
-```
-
-### Conflict handling
-
-`leanrigor init` is repeat-safe and non-destructive:
-
-- Files that do not exist are created.
-- Files already matching the packaged version are reported as "already current".
-- User-created files without LeanRigor ownership metadata are skipped.
-- LeanRigor-owned files that have been locally modified are skipped and reported.
-
-Use `--force-owned-files` to restore LeanRigor-owned files to the packaged
-version. Non-owned files are never overwritten, even with `--force-owned-files`.
-
-`leanrigor init --adapter claude` explicitly sets
-`.claude/leanrigor/protect-git.sh` to mode `0755` whenever it writes, restores,
-or finds the unmodified packaged hook. This does not depend on Git file mode or
-npm tarball extraction preserving executable bits. `leanrigor doctor --adapter
-claude` reports:
-
-```text
-protect-git.sh: current and executable
-protect-git.sh: installed but not executable
-protect-git.sh: missing
-protect-git.sh: modified
-```
-
-## Configuration
-
-Configuration lives in `.leanrigor/config.json`. The `$schema` field points at
-`../node_modules/leanrigor/config.schema.json` for editor validation when
-LeanRigor is installed in the target repository.
-
-Use `leanrigor models` to configure portable model tiers:
+Used by automated tests and disposable real-Git smoke scenarios:
 
 ```bash
-leanrigor models --claude-small claude-haiku-4-5 --root /path/to/repository
+leanrigor flow execute-next <workflow-id> --provider scripted --json --root /path/to/repository
+leanrigor flow execution-poll <workflow-id> --provider scripted --json --root /path/to/repository
 ```
 
-Phase sizing and completion-gate defaults are configurable while preserving
-backward-compatible behavior:
+### Claude CLI provider prototype
 
-```json
-{
-  "completionGate": {
-    "enabled": true,
-    "requireEvidence": true,
-    "requireValidation": true,
-    "allowSkippedValidation": {
-      "fast": true,
-      "standard": false,
-      "rigorous": false
-    },
-    "maxRepairAttempts": {
-      "fast": 1,
-      "standard": 2,
-      "rigorous": 2
-    }
-  },
-  "taskSizing": {
-    "maxPrimaryObjectives": 1,
-    "preferredWriteFiles": 5,
-    "reviewSplitThresholdFiles": 8,
-    "requireSplitWhen": [
-      "multiple architectural boundaries",
-      "independent backend and frontend outcomes",
-      "database migration plus application behaviour",
-      "public contract plus consumer updates",
-      "implementation mixed with unrelated refactoring"
-    ]
-  }
-}
-```
-
-These are heuristics, not mechanical file-count limits.
-
-Methodology files are not configured individually. They are packaged under
-`methodology/` and copied into `.claude/leanrigor/methodology/` for
-project-local installs. Mode and risk policy select which guidance applies.
-
-## Diagnostics
-
-`leanrigor doctor --adapter claude` reports:
-
-- Git commit, package version, plugin version, and asset version
-- Installed commit/version and install status (when running in marketplace mode)
-- Claude CLI availability on PATH
-- Resolved Claude model for each tier (small / medium / large)
-- Each installed asset's status (current / missing / modified / conflict)
-
-Example output:
-
-```
-LeanRigor CLI: 0.2.0-draft
-Platform: Claude Code
-Claude assets available: 2
-Claude CLI: not found on PATH
-
-Model tier resolution:
-  small: haiku (source: Claude alias fallback)
-  medium: sonnet (source: Claude alias fallback)
-  large: opus (source: Claude alias fallback)
-
-Claude assets installed: 21/21
-Status: current
-```
-
-## Troubleshooting workflow commands
-
-If a Claude command cannot invoke LeanRigor automatically, it should show:
-
-```text
-I could not run the LeanRigor transition automatically.
-
-You can retry, or run:
-<exact command>
-
-Error:
-<concise error>
-```
-
-For manual diagnosis:
+Requires a locally authenticated Claude CLI:
 
 ```bash
-leanrigor flow active --json --root /path/to/repository
-leanrigor flow next <workflow-id> --json --root /path/to/repository
-leanrigor flow ready <workflow-id> --json --root /path/to/repository
-leanrigor flow workspace-status <workflow-id> --json --root /path/to/repository
-leanrigor flow integration-status <workflow-id> --json --root /path/to/repository
-leanrigor flow events <workflow-id> --json --root /path/to/repository
-leanrigor flow status <workflow-id> --json --root /path/to/repository
+leanrigor flow execute-next <workflow-id> --provider claude-cli --json --root /path/to/repository
+leanrigor flow execution-poll <workflow-id> --provider claude-cli --json --root /path/to/repository
 ```
 
-`active` excludes completed and cancelled workflows by default. When multiple
-active workflows exist, choose by workflow ID instead of starting another
-workflow accidentally.
+For the full disposable smoke scenario:
 
-Revision conflicts mean another process updated the workflow between read and
-write. Reread status/next, then decide the next transition from the latest
-state. Lease commands are intended for troubleshooting or adapter internals;
-normal Claude usage should not display them unless a transition fails.
+```bash
+scripts/smoke-claude-cli-execution.sh
+```
 
-## Workspace troubleshooting
+The live-provider smoke is not run in ordinary CI.
 
-Git workspace setup writes worktrees outside the repository by default:
+## Repository-local files
+
+LeanRigor may create:
+
+```text
+leanrigor.config.json       committed repository policy, when a team adds one
+.leanrigor/.gitignore       protects private runtime state
+.leanrigor/config.json      local private configuration
+.leanrigor/workflows/       persisted workflow state and evidence
+.leanrigor/executions/      bounded provider execution artifacts
+```
+
+Workspace-backed workflows create LeanRigor-owned worktrees outside the source repository by default:
 
 ```text
 <repository-parent>/.leanrigor-worktrees/<repository-name>/<workflow-id>/
 ```
 
-Use:
+The user's original working tree is not stashed, reset, rebased, or modified by workspace operations.
+
+## Configuration summary
+
+| Layer | Location | Purpose |
+|---|---|---|
+| User preferences | `~/.config/leanrigor/config.json` | Personal defaults and concrete model choices |
+| Repository policy | `leanrigor.config.json` | Committed team policy and safety minimums |
+| Local overrides | `.leanrigor/config.json` | Private repository-specific settings |
+| Runtime state | `.leanrigor/workflows/` | Persisted workflows, evidence, and resumability |
+
+The central resolver applies built-in and adapter defaults, then user preferences, repository policy, and local configuration before re-applying policy constraints. Personal and local settings cannot weaken committed safety minimums or caps. Claude model aliases may also resolve through the standard `ANTHROPIC_DEFAULT_*` environment variables. See [Configuration reference](configuration.md).
+
+## Diagnostics
+
+```bash
+leanrigor doctor --adapter claude --root /path/to/repository
+```
+
+Diagnostics report:
+
+- installation mode and runtime source;
+- Git commit, package version, plugin version, and asset version;
+- installed marketplace commit/version when available;
+- Claude CLI availability;
+- effective model-tier resolution;
+- configuration files and provenance;
+- bootstrap and managed-asset health;
+- hook content and executable state;
+- stale project-local assets that may shadow marketplace commands.
+
+Use `/leanrigor:init` for the conversational marketplace view of the same installation and configuration health.
+
+## Workspace troubleshooting
 
 ```bash
 leanrigor flow git-preflight --json --root /path/to/repository
 leanrigor flow workspace-status <workflow-id> --json --root /path/to/repository
+leanrigor flow integration-status <workflow-id> --json --root /path/to/repository
 leanrigor flow workspace-recover <workflow-id> --json --root /path/to/repository
 leanrigor flow workspace-cleanup <workflow-id> --mode safe --json --root /path/to/repository
 ```
 
-Dirty original worktrees are allowed, but uncommitted user changes are outside
-the frozen LeanRigor base commit. LeanRigor does not stash or copy them. If a
-task depends on those uncommitted changes, stop and ask for an explicit decision
-before continuing.
+Cleanup verifies LeanRigor ownership metadata. Safe cleanup refuses dirty, conflicted, unintegrated, or ownership-uncertain workspaces and does not delete remote branches.
 
-Cleanup verifies LeanRigor ownership metadata before deleting anything. Safe
-cleanup refuses dirty, conflicted, unintegrated, or ownership-uncertain
-worktrees and preserves the integration workspace by default. No remote branch
-is deleted.
+Dirty original worktrees are allowed, but their uncommitted changes are outside the frozen LeanRigor base commit. When a task depends on those changes, stop and obtain an explicit user decision rather than silently copying or stashing them.
+
+## Developer refresh
+
+From a source checkout:
+
+```bash
+npm run hooks:install
+npm run version:check
+./scripts/dev-refresh-claude-plugin.sh
+```
+
+The refresh script targets only LeanRigor-specific cache entries and LeanRigor-owned project-local assets. Use `--dry-run` to preview actions and `--reset-state` only when repository workflow state should also be removed.

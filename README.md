@@ -1,36 +1,40 @@
+<div align="center">
+
 # LeanRigor
 
-LeanRigor is an adaptive engineering workflow for AI coding agents. It applies
-more planning, validation, review, and execution control when a task is risky,
-while keeping clearly bounded, low-risk work lightweight.
+### The right amount of engineering rigor for every AI coding task.
 
-Instead of forcing every change through the same ceremony, LeanRigor separates
-**task complexity** from **workflow risk** and selects one of three modes:
+**Adaptive planning, execution control, validation, and review for coding agents.**
 
-- **Fast** for clearly bounded, low-risk changes.
-- **Standard** for normal implementation work.
-- **Rigorous** for migrations, security, public contracts, production
-  infrastructure, concurrency, data integrity, destructive operations, and
-  other high-blast-radius work.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-supported-6B4EFF)](#quick-start)
+[![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-339933)](docs/setup.md)
+[![Stage: Early](https://img.shields.io/badge/stage-early--stage-F0AD4E)](#project-status)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-The first supported coding-agent integration is Claude Code. LeanRigor can be
-installed as a native Claude Code marketplace plugin or used through its npm
-CLI and project-local Claude assets.
+</div>
 
-> LeanRigor is the workflow and policy control plane. It decides planning,
-> approvals, dispatch eligibility, evidence requirements, completion gates,
-> integration policy, final validation, and review. Execution providers launch
-> workers and return structured results.
+LeanRigor keeps small, clearly bounded changes lightweight while applying stronger planning, approvals, isolation, validation, and review when the work carries more risk.
 
-## Why LeanRigor?
+It separates **task complexity** from **workflow risk**, then selects a proportional workflow:
 
-AI coding agents are often used in one of two ways:
+| ⚡ Fast | 🛠️ Standard | 🛡️ Rigorous |
+|---|---|---|
+| Clearly bounded, low-risk changes | Normal features, fixes, and refactors | Security, migrations, public contracts, production systems, concurrency, data integrity, destructive operations, and high blast radius |
+| Compact plan and targeted validation | Phased plan, explicit approval, and integrated review | Explicit approach gate, isolated risk boundaries, stronger evidence, and deeper review |
+| Must have positive evidence that Fast is safe | Default for normal engineering work | Deterministic risk triggers can require it |
 
-1. move quickly with limited planning and inconsistent validation; or
-2. apply a comprehensive workflow to every task, regardless of size or risk.
+> **Execution providers do the work. LeanRigor decides what may run, what evidence is required, and whether the result is accepted.**
 
-LeanRigor explores a different trade-off: **use the minimum justified rigor,
-then enforce the selected workflow with evidence rather than confidence**.
+## See it adapt
+
+The same command surface produces different engineering depth:
+
+| Request | LeanRigor response |
+|---|---|
+| `Fix a typo in README.md` | **Fast** — one compact phase, targeted validation, diff sanity review |
+| `Add an optional API field and update its consumer` | **Standard** — contract, consumer, regression coverage, explicit plan approval |
+| `Add a database migration affecting authenticated production requests` | **Rigorous** — deterministic escalation, isolated migration boundary, broader validation, deep review |
 
 ## Quick start
 
@@ -41,22 +45,17 @@ then enforce the selected workflow with evidence rather than confidence**.
 /plugin install leanrigor@leanrigor
 ```
 
-Then, from a repository:
+Then, from any repository:
 
 ```text
 /leanrigor:start Add an optional API field and update its consumer
 ```
 
-Claude presents triage, approvals, the plan, phase progress, validation,
-integrated review, and a commit proposal conversationally. Marketplace mode does
-not create a repository-local `.claude/` directory. LeanRigor lazily creates
-`.leanrigor/` with a protective `.gitignore` on first use — no explicit init is
-required after plugin installation.
+LeanRigor creates repository-local state under `.leanrigor/`, presents the selected mode and approvals conversationally, coordinates phased work, requires completion evidence, runs final integrated review, and proposes commits without creating the final user commit or pushing.
 
-Available marketplace commands:
+Other useful commands:
 
 ```text
-/leanrigor:start
 /leanrigor:init
 /leanrigor:plan
 /leanrigor:status
@@ -64,63 +63,167 @@ Available marketplace commands:
 /leanrigor:commit
 ```
 
-Claude Code namespaces marketplace plugin commands as `/plugin-name:command`.
-LeanRigor therefore uses concise command names such as `/leanrigor:start` and
-`/leanrigor:plan`. After upgrading the plugin, restart or reload Claude Code if
-autocomplete still shows older command names.
+> [!NOTE]
+> The npm package is not yet published as a stable public package. The Claude Code marketplace is the recommended user installation path. See [Setup](docs/setup.md) for source and project-local development installation.
 
-### npm and project-local Claude assets
+## Why LeanRigor exists
 
-The npm package is not yet published as a stable public release. Use this
-fallback when Claude Code marketplace installation is unavailable or when you
-explicitly want repository-local `.claude/` assets:
+[Superpowers](https://github.com/obra/superpowers) shows how much better coding agents can perform with disciplined brainstorming, planning, testing, verification, and review.
 
-```bash
-npm install -g leanrigor
-leanrigor init --adapter claude --root /path/to/repository
-leanrigor doctor --adapter claude --root /path/to/repository
+In my own use, however, applying a comprehensive workflow to every task could make small changes take roughly **5–20× longer than working with the coding agent directly**. That is a personal observation from my workflows, not a controlled benchmark.
+
+The problem was not engineering discipline. The problem was applying similar depth regardless of the task.
+
+LeanRigor began with a different question:
+
+> **Can we preserve strong engineering practices while applying only the ceremony justified by the task's risk and complexity?**
+
+A documentation typo should not be treated like a production migration. A production migration should never be treated like a documentation typo.
+
+### LeanRigor and Superpowers
+
+Both projects value planning, testing, verification, and review. They make different product choices about **when** those practices apply, **how deeply** they apply, and **who decides that work is complete**.
+
+| Area | Superpowers | LeanRigor |
+|---|---|---|
+| Primary idea | A comprehensive software-development methodology for coding agents | An adaptive workflow and policy control plane |
+| Workflow depth | Strong, consistently guided engineering process | Fast, Standard, or Rigorous based on complexity and explicit risk |
+| Small tasks | Still benefit from structured methodology and skills | Stay lightweight only when positive evidence shows they are bounded and low risk |
+| High-risk tasks | Strong planning, testing, verification, and review practices | Deterministic escalation, explicit approvals, persisted evidence, isolated workspaces, and integration gates |
+| Completion | Verification discipline before completion claims | Provider results are evidence; deterministic completion gates decide whether a phase passes |
+| Model selection | May vary by agent role and platform | Portable `small`, `medium`, `large`, and `inherit` capability tiers are part of policy |
+| Architecture | Methodology and agent skills | Separates LeanRigor-owned governance from provider-owned worker execution |
+| Best fit | Developers wanting a strong end-to-end methodology | Developers and teams wanting engineering depth proportional to risk with resumable control and audit state |
+
+This comparison explains the different design emphasis. It is not a claim that one approach universally replaces the other.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[User request] --> B[Complexity assessment]
+    B --> C[Deterministic risk policy]
+    C --> D{Workflow mode}
+    D -->|Bounded + low risk| E[Fast]
+    D -->|Normal engineering| F[Standard]
+    D -->|Explicit risk trigger| G[Rigorous]
+    E --> H[Plan and approvals]
+    F --> H
+    G --> H
+    H --> I[Execution provider]
+    I --> J[Structured result + evidence]
+    J --> K{Completion gate}
+    K -->|Pass| L[Controlled integration]
+    K -->|Repair / review / replan| H
+    K -->|Blocked| M[External action]
+    L --> N[Combined validation]
+    N --> O[Final integrated review]
+    O --> P[Human-reviewed commit proposal]
 ```
+
+LeanRigor owns:
+
+- triage, complexity and risk classification, and final mode selection;
+- planning, phase DAGs, approvals, and dispatch eligibility;
+- ownership and conflict policy;
+- evidence requirements and deterministic completion gates;
+- integration ordering, combined validation, final review, resumability, and audit state.
+
+Execution providers own:
+
+- launching workers;
+- provider-specific lifecycle, status, heartbeat, timeout, and cancellation;
+- returning structured results.
+
+A provider process exiting successfully does **not** complete a phase. LeanRigor collects the result, checks evidence and validation, applies deterministic policy, and only then accepts, repairs, reviews, replans, or blocks the phase.
+
+## Implemented and verified
+
+### Adaptive workflow and governance
+
+- Fast, Standard, and Rigorous workflow modes.
+- Complexity and workflow risk assessed separately.
+- Model-backed triage with schema validation, one retry, deterministic policy overrides, and deterministic fallback.
+- Explicit approach and plan approvals where required.
+- Portable model tiers: `small`, `medium`, `large`, and `inherit`.
+- Repository policy minimums that personal configuration cannot weaken.
+
+### Evidence, persistence, and integration
+
+- Repository-local, versioned workflow state under `.leanrigor/`.
+- Atomic revisions, persistent workflow locks, durable phase leases, heartbeats, and stale-lease recovery.
+- Small functional phases with dependencies, acceptance criteria, expected areas, and validation expectations.
+- Per-phase evidence-based completion gates with bounded repair, review, replan, and blocked outcomes.
+- Isolated phase and integration Git worktrees that leave the user's original working tree untouched.
+- Internal mechanical transfer commits on LeanRigor-owned branches only.
+- Controlled integration order, textual conflict preservation, combined validation tied to the current integration head, and final integrated review.
+
+### Execution providers
+
+- Provider-neutral `ExecutionCoordinator` and `ExecutionProvider` boundary.
+- Deterministic scripted provider and disposable real-Git test harness.
+- Persisted dispatch, polling, heartbeat, timeout, cancellation, recovery, result collection, completion-gate, integration, and final-review progression.
+- Claude CLI execution provider prototype for authenticated headless smoke testing.
+
+### Claude Code integration
+
+- Native marketplace commands and auto-bootstrap on first use.
+- Project-local fallback for development and repositories that need local `.claude/` assets.
+- Read-only triage agent.
+- Git-protection hook blocking automatic `git commit`, `git push`, and `git reset --hard` in Claude-controlled execution paths.
+- Installation and version diagnostics through `/leanrigor:init` and `leanrigor doctor`.
+
+See [Implementation status](IMPLEMENTATION_STATUS.md) for the detailed verification inventory.
+
+## Safety boundaries
+
+LeanRigor deliberately does **not** automatically:
+
+- create the final user commit;
+- push to a remote;
+- deploy;
+- perform destructive production writes;
+- resolve integration conflicts by choosing `ours` or `theirs`;
+- persist hidden chain of thought.
+
+Internal mechanical commits may be created only on LeanRigor-owned phase and integration branches to support controlled transfer and validation. They are not the final user commit and are never pushed automatically.
+
+## Project status
+
+> [!IMPORTANT]
+> **LeanRigor is early-stage and actively evolving.**
+>
+> Claude Code is the first supported coding-agent integration. The workflow engine, deterministic policy, evidence gates, isolated Git workspaces, and provider boundary are implemented, but several capabilities remain experimental or planned.
+
+Known limitations:
+
+- Claude Code is the only supported coding-agent integration today.
+- The Claude CLI execution provider is a prototype and requires an authenticated local Claude CLI for live smoke testing.
+- Native Claude subagent orchestration is not yet integrated.
+- Scheduling and the coordinator are parallel-capable, but autonomous multi-agent execution is not yet presented as a stable user-facing capability.
+- Textual integration conflicts are detected and preserved; semantic conflict repair is not implemented.
+- OpenCode, Codex, Cursor, Copilot, and other adapters remain roadmap items.
+- The npm package remains private and unpublished; source installation is for development and pre-release testing.
 
 ## Configuration
 
-LeanRigor uses a layered configuration hierarchy with deterministic precedence:
+LeanRigor separates team policy from personal provider choices:
 
-| File | Location | Scope | Committed? |
-|---|---|---|---|
-| User preferences | `~/.config/leanrigor/config.json` | Personal defaults across repos | No |
-| Repository policy | `leanrigor.config.json` | Team safety policy, min tiers | Yes |
-| Local config | `.leanrigor/config.json` | Private overrides, concrete models | No |
-| Runtime state | `.leanrigor/workflows/` | Workflow persistence | No |
+| Layer | Location | Intended use |
+|---|---|---|
+| User preferences | `~/.config/leanrigor/config.json` | Personal defaults and concrete model choices |
+| Repository policy | `leanrigor.config.json` | Committed team safety policy, portable routing requirements, and caps |
+| Local overrides | `.leanrigor/config.json` | Private repository-specific values and runtime state references |
+| Runtime state | `.leanrigor/workflows/` | Persisted workflows, evidence, gates, and resumability |
 
-**Precedence** (highest to lowest): CLI flags → environment variables → local
-config → repo policy → user config → adapter defaults → built-in defaults.
+The central resolver applies built-in and adapter defaults, then user preferences, repository policy, and local configuration before re-applying repository-policy constraints. Personal and local settings cannot weaken committed safety minimums or caps. Claude model aliases may also resolve through the standard `ANTHROPIC_DEFAULT_*` environment variables.
 
-**Safety constraints**: Repository policy minimums and maximums cannot be
-weakened by personal preferences. For example, if the repo policy requires
-`large` tier for reviews, user config cannot downgrade it.
+See the [configuration reference](docs/configuration.md).
 
-**Portable model tiers**: Repository policy specifies portable capability tiers
-(`small`, `medium`, `large`, `inherit`) — not concrete model names. Each
-contributor resolves these to their own models via user config, local config, or
-environment variables like `ANTHROPIC_DEFAULT_HAIKU_MODEL`.
+<details>
+<summary><strong>Install from source or create project-local Claude assets</strong></summary>
 
-**Claude adapter**: Derives defaults from `ANTHROPIC_DEFAULT_HAIKU_MODEL` /
-`ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL` environment
-variables, falling back to Claude aliases `haiku` / `sonnet` / `opus`. The
-`inherit` tier omits `--model`.
-
-Inspect effective configuration:
-
-```bash
-leanrigor config show
-leanrigor config show --json
-leanrigor config get execution.maxParallelPhases
-leanrigor config set execution.maxParallelPhases 4 --scope local
-```
-
-### From Source
-
-For local development or a pre-publish install:
+Node.js 20 or later is required.
 
 ```bash
 npm install
@@ -132,211 +235,51 @@ leanrigor init --adapter claude --root /path/to/repository
 leanrigor doctor --adapter claude --root /path/to/repository
 ```
 
-Node.js 20 or later is required.
+This path is intended for development and pre-release testing. It creates LeanRigor-owned project-local `.claude/` assets while preserving unrelated user files.
 
-### Developer refresh and versioning
-
-```bash
-# Install repository hooks (pre-commit version checks)
-npm run hooks:install
-
-# Bump prerelease version and sync plugin manifests
-npm run version:dev
-
-# Fully refresh Claude marketplace plugin install from GitHub main
-./scripts/dev-refresh-claude-plugin.sh
-```
-
-Project-local installation explicitly sets
-`.claude/leanrigor/protect-git.sh` to mode `0755` on clean install, repeat-safe
-repair, and `--force-owned-files` repair. `leanrigor doctor --adapter claude`
-reports whether the hook is current and executable, non-executable, missing, or
-modified.
-
-## Verified capabilities
-
-### Adaptive workflow and policy
-
-- Fast, Standard, and Rigorous workflow modes.
-- Complexity and risk assessed separately.
-- Deterministic policy escalation for explicit high-risk triggers.
-- Portable model tiers: `small`, `medium`, `large`, and `inherit`.
-- At most one blocking clarification at a time.
-- Explicit approach and plan approval where required.
-- Small, cohesive phases with dependencies, acceptance criteria, expected write
-  areas, and validation expectations.
-- Shared adaptive engineering methodology for planning, design,
-  implementation, debugging, testing, review, evidence, and safeguards.
-
-### Evidence and completion control
-
-- Per-phase completion gates with structured criterion evidence.
-- Deterministic enforcement of missing evidence, failed validation, scope
-  deviations, repair budgets, dependency status, and sensitive-path triggers.
-- Bounded repair, review, replan, and blocked outcomes.
-- Final integrated review remains required after local phase completion.
-- Commit proposals are prepared without automatically creating the final user
-  commit.
-
-### Persistence, concurrency, and workspaces
-
-- Repository-local, versioned workflow state under `.leanrigor/`.
-- Atomic workflow persistence, monotonic revisions, revision conflicts, and
-  persistent workflow locks.
-- Explicit phase DAGs, ready-phase scheduling, durable leases, ownership
-  metadata, heartbeats, expiry, and stale-lease recovery.
-- Conflict-aware scheduling based on declared read/write ownership.
-- Dedicated LeanRigor integration worktree and isolated phase worktrees.
-- Internal mechanical phase commits on LeanRigor-owned branches after a phase
-  gate passes.
-- Controlled integration ordering and persisted textual conflict state.
-- Combined validation tied to the current integration head.
-- The user's original branch, index, unstaged files, untracked files, stash, and
-  checkout are not modified by workspace operations.
-
-### Execution providers
-
-- Provider-neutral `ExecutionCoordinator` and `ExecutionProvider` boundary.
-- Deterministic scripted provider and disposable real-Git integration harness.
-- Persisted execution records, polling, cancellation, timeout, heartbeat, and
-  recovery behaviour.
-- Claude CLI provider prototype for headless execution.
-- Persisted coordinator progression from provider result collection through
-  phase gate, internal transfer commit, integration, combined validation, and
-  final integrated review.
-- A successful provider process exit alone does not mark a phase complete;
-  structured evidence and the deterministic completion gate remain required.
-
-### Claude Code integration
-
-- Native marketplace commands:
-  - `/leanrigor:start`
-  - `/leanrigor:plan`
-  - `/leanrigor:status`
-  - `/leanrigor:review`
-  - `/leanrigor:commit`
-- Project-local fallback installed with `leanrigor init --adapter claude`.
-- Git-protection hook blocks automatic `git commit`, `git push`, and
-  `git reset --hard` in the project-local integration.
-- Project-local and marketplace hooks are invoked through `sh` for reliable
-  execution while preserving the executable-bit health check.
-- `leanrigor doctor` checks installation health, hook permissions, and model
-  configuration.
-
-## Safety guarantees
-
-LeanRigor is deliberately conservative around user-controlled and production
-operations. It does not automatically:
-
-- create the final user commit;
-- push to a remote;
-- deploy;
-- perform destructive production writes;
-- resolve integration conflicts by choosing `ours` or `theirs`;
-- persist hidden chain of thought.
-
-Internal mechanical commits may be created only on LeanRigor-owned phase and
-integration branches to support controlled transfer and validation. They are
-not the final user commit and are never pushed automatically.
-
-## How the workflow progresses
-
-```text
-request
-→ triage and deterministic policy
-→ clarification when blocking
-→ approach approval when required
-→ phased plan and plan approval
-→ coordinator or manual phase execution
-→ targeted validation and completion gate
-→ internal phase integration
-→ combined validation on the current integration head
-→ persisted final integrated review
-→ human-approved commit proposal
-```
-
-In coordinator mode, `flow execute-next` and `flow execution-poll` dispatch and
-monitor the configured provider. Claude does not implement the phase directly
-in the user's original working tree. Manual mode remains an explicit fallback
-when no execution provider is configured and still requires assigned workspace
-use and persisted completion evidence.
-
-Dependent phases unlock only after their prerequisite completion gates pass.
-Claude must report the persisted state and blocker rather than narrating a
-workflow as complete when a required transition has not occurred.
-
-## Current limitations
-
-- Claude Code is the only supported coding-agent integration today.
-- The Claude CLI execution provider is a prototype. The repository includes
-  `scripts/smoke-claude-cli-execution.sh` for manual end-to-end verification
-  against an authenticated local Claude CLI; this smoke is not run in ordinary
-  CI.
-- Native Claude subagent orchestration is not yet integrated.
-- Scheduling is parallel-ready, but autonomous multi-agent dispatch is not yet
-  presented as a stable user-facing capability.
-- Textual integration conflicts are detected and preserved for repair; semantic
-  conflict repair is not implemented.
-- OpenCode, Codex, Cursor, Copilot, and other adapters remain roadmap items.
-- The npm package remains a pre-release draft and is not yet published as a
-  stable public package.
-
-## LeanRigor and Superpowers
-
-[Superpowers](https://github.com/obra/superpowers) provides a comprehensive,
-strongly guided engineering methodology for coding agents. LeanRigor shares its
-emphasis on planning, testing, verification, and review, while exploring a
-different product choice: proportional ceremony and model capability selected
-from task complexity and explicit risk.
-
-| Area | Superpowers | LeanRigor |
-|---|---|---|
-| Workflow philosophy | Comprehensive methodology and automatic skill use. | Adaptive Fast, Standard, and Rigorous workflows with deterministic escalation. |
-| Planning | Detailed brainstorming and implementation planning workflow. | Plans and approval depth scale with risk; Fast remains compact. |
-| Testing and review | Strong testing, debugging, verification, and review skills. | Proportional methodology plus persisted per-phase evidence and deterministic completion gates. |
-| Workspaces | Includes worktree-oriented workflow guidance. | Implements LeanRigor-owned phase and integration worktrees coupled to leases, evidence, and integration gates. |
-| Model routing | Model guidance may vary by role and task. | Portable capability tiers are part of workflow configuration. |
-| Execution control | Methodology-focused agent workflow. | Policy control plane with provider-neutral execution contracts and resumable audit state. |
-
-This comparison is intended to explain the different design emphasis, not to
-claim that one approach replaces the other.
+</details>
 
 ## Documentation
 
-- [Product rationale](PRODUCT.md)
-- [Architecture](ARCHITECTURE.md)
-- [Workflow](docs/workflow.md)
-- [Engineering methodology](docs/methodology.md)
-- [Claude Code adapter](docs/claude-code.md)
-- [Claude marketplace plugin](docs/claude-marketplace.md)
-- [Setup](docs/setup.md)
-- [Configuration](docs/configuration.md)
-- [Contributor architecture](docs/contributor-architecture.md)
-- [Security policy](SECURITY.md)
-- [Support policy](SUPPORT.md)
-- [Governance](GOVERNANCE.md)
-- [Release process](RELEASING.md)
-- [Changelog](CHANGELOG.md)
-
-## Roadmap
-
-Roadmap items are tracked through GitHub issues rather than presented as
-available features. Near-term themes include:
-
-- native Claude phase-worker orchestration;
-- integrated semantic conflict repair;
-- build-versus-reuse review for generic workspace and execution mechanics;
-- additional provider and coding-agent adapters;
-- cross-platform CI and release automation.
+| Start here | Deep dives |
+|---|---|
+| [Product rationale](PRODUCT.md) | [Architecture](ARCHITECTURE.md) |
+| [Setup](docs/setup.md) | [Workflow and completion gates](docs/workflow.md) |
+| [Claude Code adapter](docs/claude-code.md) | [Engineering methodology](docs/methodology.md) |
+| [Claude marketplace plugin](docs/claude-marketplace.md) | [Configuration reference](docs/configuration.md) |
+| [Current implementation status](IMPLEMENTATION_STATUS.md) | [Contributor architecture](docs/contributor-architecture.md) |
+| [Support](SUPPORT.md) | [Security](SECURITY.md) |
+| [Contributing](CONTRIBUTING.md) | [Governance](GOVERNANCE.md) and [releasing](RELEASING.md) |
 
 ## Contributing
 
-Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[contributor architecture guide](docs/contributor-architecture.md).
+This is only the beginning. Pull requests, issue reports, architecture critiques, and improvement ideas are welcome—not only code.
 
-Use GitHub issue forms for bugs, feature proposals, documentation problems, and
-provider or workspace requests. Security vulnerabilities should follow
-[SECURITY.md](SECURITY.md) rather than being reported publicly.
+Useful contributions include:
+
+- real-world Fast, Standard, and Rigorous classification examples;
+- onboarding, README, examples, and documentation improvements;
+- provider and coding-agent adapters;
+- Windows and cross-platform testing;
+- workflow benchmarks and reproducible performance evidence;
+- execution, workspace, and integration safety tests;
+- simpler reusable alternatives to custom infrastructure.
+
+Found a weak assumption or unnecessary piece of complexity? Please open an issue. **LeanRigor should improve through evidence, not founder conviction.**
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [contributor architecture guide](docs/contributor-architecture.md) before changing workflow state, policy, execution, or Git integration.
+
+## Roadmap
+
+Near-term themes include:
+
+- native Claude phase-worker orchestration;
+- integrated semantic conflict repair;
+- additional coding-agent and execution-provider adapters;
+- cross-platform CI and release automation;
+- reproducible workflow-quality, latency, and token-use benchmarks.
+
+Roadmap items are not presented as implemented capabilities. Track and discuss them through GitHub issues.
 
 ## License
 

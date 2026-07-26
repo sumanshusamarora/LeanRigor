@@ -1,325 +1,280 @@
-# Claude Code Adapter
+# Claude Code adapter
 
-LeanRigor ships two Claude Code integration paths:
+Claude Code is LeanRigor's first supported coding-agent integration.
 
-- recommended native marketplace plugin;
-- fallback project-local assets installed by `leanrigor init --adapter claude`.
+LeanRigor provides two installation paths:
 
-## Marketplace Installation
+1. **Native Claude Code marketplace plugin** — recommended for users.
+2. **Project-local fallback assets** — intended for development, pre-release testing, or repositories that explicitly need local `.claude/` assets.
+
+## Marketplace installation
 
 ```text
 /plugin marketplace add sumanshusamarora/LeanRigor
 /plugin install leanrigor@leanrigor
 ```
 
-The marketplace plugin is global to Claude Code and invokes its bundled runtime
-through `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor`. Repository-local state remains in
-`.leanrigor/`; marketplace mode does not create `.claude/`.
+The marketplace plugin is installed globally in Claude Code. It invokes the bundled LeanRigor runtime through `${CLAUDE_PLUGIN_ROOT}` while repository-specific workflow state remains under `.leanrigor/`.
 
-Current Claude Code marketplace installs expose plugin commands with the plugin
-namespace:
+Marketplace mode does not install LeanRigor command files into the target repository's `.claude/` directory.
+
+Available marketplace commands:
 
 ```text
 /leanrigor:start
+/leanrigor:init
 /leanrigor:plan
 /leanrigor:status
 /leanrigor:review
 /leanrigor:commit
 ```
 
-Use the project-local fallback below when you want unqualified commands such as
-`/leanrigor`.
+Claude Code namespaces marketplace commands as `/plugin-name:command`. LeanRigor therefore uses concise command segments such as `start`, `plan`, and `status`.
 
-## Project-Local Fallback Installation
+### First use
 
-```bash
-# Install or update Claude Code plugin assets
-leanrigor init --adapter claude --root /path/to/repository
+From a repository:
 
-# Replace LeanRigor-owned files that have local changes
-leanrigor init --adapter claude --force-owned-files --root /path/to/repository
+```text
+/leanrigor:start Add an optional API field and update its consumer
 ```
 
-### Install output
+LeanRigor bootstraps repository-local state under `.leanrigor/`, including a protective `.gitignore`, then starts or resumes the persisted workflow. Users normally respond with plain language such as:
 
-```
-LeanRigor configured. Claude adapter defaults: small → haiku, medium → sonnet, large → opus.
-
-Installed:
-  .claude/commands/leanrigor.md
-  .claude/commands/leanrigor-plan.md
-  .claude/commands/leanrigor-status.md
-  .claude/commands/leanrigor-review.md
-  .claude/commands/leanrigor-commit.md
-  .claude/leanrigor/sequential-workflow.md
-  .claude/leanrigor/methodology/
-  .claude/agents/leanrigor-triage.md
-  .claude/leanrigor/protect-git.sh
-  .claude/settings.json
+```text
+Approve
+Revise the plan to separate the migration
+Continue
+Repair it
+Show status
+Cancel
 ```
 
-## Installed assets
+Claude invokes LeanRigor transitions internally. Raw CLI commands should appear only for troubleshooting, advanced/manual operation, or explicit user request.
 
-Marketplace plugin assets are rooted in the plugin directory:
+## Command behaviour
+
+### `/leanrigor:start`
+
+Primary conversational workflow entry point. It:
+
+1. discovers and resumes an active workflow or starts one from the supplied request;
+2. presents triage, final mode, risk, assumptions, and one blocking clarification when required;
+3. presents approach approval for Standard and Rigorous work;
+4. creates and presents the phased plan for explicit approval;
+5. advances provider-driven coordinator execution or the approved manual fallback;
+6. reports persisted phase-gate outcomes rather than model confidence;
+7. advances through integration, combined validation, and final integrated review;
+8. presents a commit proposal without creating the final commit or pushing.
+
+### `/leanrigor:init`
+
+Shows installation mode, plugin/package version, runtime source, configuration layers, model-tier resolution, execution settings, bootstrap health, managed-asset status, and corrective commands.
+
+Use it after installation, after a marketplace refresh, or when configuration appears stale.
+
+### `/leanrigor:plan`
+
+Shows or advances the current approach and plan. It can accept revision feedback but does not bypass approval gates or implement work.
+
+### `/leanrigor:status`
+
+Reports the persisted workflow state, selected mode, current phase, provider status, completion gate, integration status, validation status, pending user decision, blocker, and next safe action.
+
+### `/leanrigor:review`
+
+Handles phase-completion review outcomes and final integrated review. It records review state rather than creating a second independent review workflow.
+
+### `/leanrigor:commit`
+
+Shows the persisted commit proposal grouped by message, files, and rationale. It clearly states that no final commit or push has occurred.
+
+## Execution paths
+
+LeanRigor separates governance from worker execution.
+
+### Coordinator mode
+
+The `ExecutionCoordinator`:
+
+- derives scheduler-approved phases;
+- acquires leases and creates assigned phase worktrees;
+- dispatches through an `ExecutionProvider`;
+- persists execution handles, status, heartbeat, timeout, and cancellation state;
+- collects structured results;
+- submits validation and completion evidence;
+- invokes deterministic completion gates;
+- creates internal transfer commits only after a gate passes;
+- integrates accepted phases and runs combined validation;
+- advances to final integrated review.
+
+Provider process success alone does not complete a phase.
+
+Current providers:
+
+- `scripted` — deterministic provider used for automated disposable-Git testing.
+- `claude-cli` — prototype provider that runs authenticated Claude Code CLI print mode inside the assigned phase worktree.
+
+### Manual fallback
+
+When coordinator execution is unavailable or explicitly disabled, the active Claude session may implement a phase only inside the LeanRigor-assigned phase workspace. It must run or explicitly skip declared validation and submit persisted completion evidence.
+
+Manual mode does not allow editing in the user's original working tree when Git workspaces are enabled.
+
+## Git workspaces
+
+LeanRigor uses:
+
+- one integration worktree per workflow;
+- one isolated phase worktree per active leased phase;
+- LeanRigor-owned internal branches and mechanical transfer commits;
+- controlled cherry-pick integration in dependency order;
+- combined validation tied to the current integration head.
+
+The user's original branch, index, unstaged files, untracked files, stash, and checkout are not modified by workspace operations.
+
+Textual conflicts are detected and persisted for explicit repair. LeanRigor never resolves them by automatically choosing `ours` or `theirs`.
+
+## Marketplace plugin assets
 
 | Path | Purpose |
 |---|---|
-| `.claude-plugin/marketplace.json` | Marketplace catalog |
-| `.claude-plugin/plugin.json` | Plugin manifest |
-| `commands/start.md`, `plan.md`, `status.md`, `review.md`, `commit.md` | Global namespaced slash commands |
-| `agents/leanrigor-triage.md` | Read-only triage subagent |
-| `plugin-skills/sequential-workflow/SKILL.md` | Shared workflow instruction |
-| `methodology/` | Shared engineering methodology and mode overlays |
-| `hooks/hooks.json` | Plugin hook configuration |
+| `.claude-plugin/marketplace.json` | Marketplace catalogue |
+| `.claude-plugin/plugin.json` | Plugin manifest and component list |
+| `commands/` | Namespaced marketplace commands |
+| `agents/leanrigor-triage.md` | Read-only triage agent |
+| `plugin-skills/sequential-workflow/` | Shared workflow instruction |
+| `methodology/` | Adapter-neutral engineering methodology and mode overlays |
+| `hooks/hooks.json` | Claude plugin hook configuration |
 | `hooks/protect-git.sh` | Git safety hook |
 | `bin/leanrigor` | Plugin launcher |
-| `runtime/leanrigor-cli.js` | Bundled LeanRigor runtime |
+| `runtime/leanrigor-cli.js` | Bundled runtime |
 
-Project-local fallback assets are:
+The current plugin manifest exposes `start`, `init`, `plan`, `status`, `review`, and `commit`.
 
-| Path | Type | Purpose |
-|---|---|---|
-| `.claude/commands/leanrigor.md` | Command | Full adaptive workflow orchestration |
-| `.claude/commands/leanrigor-plan.md` | Command | Plan only — no implementation |
-| `.claude/commands/leanrigor-status.md` | Command | Workflow state report |
-| `.claude/commands/leanrigor-review.md` | Command | Review diff against workflow policy |
-| `.claude/commands/leanrigor-commit.md` | Command | Commit proposal without auto-execution |
-| `.claude/leanrigor/sequential-workflow.md` | Shared reference | Claude command lifecycle and gate contract |
-| `.claude/agents/leanrigor-triage.md` | Subagent | Bounded read-only triage classifier |
-| `.claude/leanrigor/protect-git.sh` | Hook script | Blocks auto-commit and auto-push |
-| `.claude/leanrigor/methodology/` | Shared reference | Same methodology source copied from the package root |
-| `.claude/settings.json` | Settings | Hooks configuration |
+## Project-local fallback
 
-## Plugin architecture
-
-Command, agent, hook, and workflow-reference assets live in the npm package at
-`dist/adapters/claude/plugin/` (compiled from `src/adapters/claude/plugin/`).
-Shared methodology assets live at the package root under `methodology/`. A
-build step copies the non-TypeScript plugin files alongside the compiled
-TypeScript output, while npm packaging includes the root methodology directory.
-
-The marketplace plugin source of truth lives at the repository root because
-Claude Code expects `.claude-plugin/plugin.json` there for this marketplace.
-Runtime code is generated by `npm run build:claude-plugin`.
-
-Every installed command/workflow file embeds
-`generated_by: leanrigor | asset_version: 3`; shared methodology files embed
-the same ownership marker. The installer detects this token to decide whether a
-file was generated by LeanRigor and can be safely updated or removed.
-
-### Conflict handling
-
-The installer classifies each file into one of three outcomes:
-
-- **Installed** — file was missing; the packaged version was written.
-- **Already current** — file exists and matches the packaged version exactly.
-- **Skipped** — file exists and differs (either a user file without LeanRigor
-  ownership, or a LeanRigor-owned file the user has modified).
-
-Skipped files are reported clearly. Use `--force-owned-files` to replace only
-files that carry the LeanRigor ownership token.
-
-## Upgrades
-
-After updating the `leanrigor` package, run init again:
+The npm package is private and not published as a stable public package. For development or pre-release testing, build and install from source:
 
 ```bash
-leanrigor init --adapter claude
+npm install
+npm run build
+npm pack
+npm install -g ./leanrigor-$(node -p "require('./package.json').version").tgz
+
+leanrigor init --adapter claude --root /path/to/repository
+leanrigor doctor --adapter claude --root /path/to/repository
 ```
 
-Unmodified LeanRigor-owned files are updated automatically. User-modified files
-are skipped and reported.
+Project-local initialisation installs LeanRigor-owned assets such as:
+
+```text
+.claude/commands/leanrigor.md
+.claude/commands/leanrigor-plan.md
+.claude/commands/leanrigor-status.md
+.claude/commands/leanrigor-review.md
+.claude/commands/leanrigor-commit.md
+.claude/agents/leanrigor-triage.md
+.claude/leanrigor/sequential-workflow.md
+.claude/leanrigor/methodology/
+.claude/leanrigor/protect-git.sh
+.claude/settings.json
+```
+
+These expose unqualified project-local commands such as `/leanrigor` and `/leanrigor-status`.
+
+### Safe installation and upgrades
+
+Managed assets use LeanRigor ownership metadata with the current asset version. Installation is repeat-safe:
+
+- missing assets are created;
+- exact current assets are left unchanged;
+- content-equal adoptable assets may be adopted safely;
+- user-created files are not overwritten;
+- modified LeanRigor-owned files are reported and preserved;
+- `--force-owned-files` restores only LeanRigor-owned files;
+- shared `.claude/settings.json` entries are merged without deleting unrelated settings or hooks.
+
+Uninstall removes only LeanRigor-owned, unmodified assets and LeanRigor-specific settings entries.
+
+## Triage agent
+
+`leanrigor-triage`:
+
+- uses the configured `small` capability tier;
+- has read-only inspection tools;
+- returns one schema-constrained `TriageOutput`;
+- recommends but does not execute;
+- never has final safety authority.
+
+The runtime validates the output, retries malformed output once, applies deterministic policy, and falls back to deterministic local triage when necessary.
+
+## Git protection hook
+
+The hook blocks Claude-controlled attempts to run:
+
+- `git commit`;
+- `git push`;
+- `git reset --hard`.
+
+Internal mechanical commits are created by LeanRigor's deterministic Git integration on LeanRigor-owned branches, not by the coding agent through ordinary shell commands.
+
+The hook intentionally fails open on input it cannot parse so malformed hook input does not block unrelated legitimate tool use. Deterministic workflow policy still controls final commit and integration eligibility.
 
 ## Diagnostics
+
+Run:
 
 ```bash
 leanrigor doctor --adapter claude --root /path/to/repository
 ```
 
-Reports:
+Diagnostics include:
 
-- LeanRigor CLI version
-- Claude CLI availability on PATH
-- Model tier resolution (small / medium / large)
-- Each installed asset's status (current / missing / modified / conflict)
-- Whether `leanrigor init` is needed
+- installation mode and runtime source;
+- Git commit, package version, plugin version, and asset version;
+- installed marketplace commit/version where available;
+- Claude CLI availability;
+- effective configuration and model-tier resolution;
+- bootstrap and managed-asset health;
+- Git hook contents and executable state;
+- shadowing risk from stale project-local fallback assets.
 
-## Uninstall
+## Live-provider smoke test
 
-```bash
-leanrigor uninstall --adapter claude --root /path/to/repository
-
-# Also remove .leanrigor/config.json
-leanrigor uninstall --adapter claude --remove-config --root /path/to/repository
-```
-
-Uninstall removes only LeanRigor-owned **unmodified** files. User-modified owned
-files and unrelated `.claude` files are preserved and reported as skipped.
-
-## Commands
-
-The command names below are unqualified in project-local fallback mode. In
-marketplace mode, prefix them with `leanrigor:`; for example,
-`/leanrigor:status`.
-
-### `/leanrigor` or `/leanrigor:start`
-
-Primary conversational command. It starts or resumes the active repository
-workflow and owns the normal interaction:
-
-1. Starts a workflow when no active workflow exists and a request is supplied
-2. Resumes one active workflow automatically
-3. Shows a concise selection when multiple active workflows exist
-4. Asks the single persisted blocking clarification question if required
-5. Presents `Approach approval` for Standard and Rigorous work
-6. After approach approval, internally generates and renders `Plan approval`
-7. Derives ready phases, acquires an internal lease for one ready phase with a
-   stable session owner, and executes that phase in the Claude session
-8. Refreshes long-running leases where practical, rereads state on revision
-   conflicts, and never retries rejected transitions blindly
-9. Runs or explicitly skips phase validation, then submits structured
-   completion evidence to the per-phase gate
-10. Follows `completed`, `needs_repair`, `needs_review`, `needs_replan`, or
-   `blocked`; Claude does not unlock the next phase itself
-11. Records final integrated review after all phase gates pass
-12. Shows a commit proposal without committing
-
-The workflow engine is parallel-ready: workflow locks, phase leases, DAG
-readiness, and ownership conflict checks are persisted. Execution remains
-sequential by default (`execution.maxParallelPhases: 1`) and the Claude adapter
-does not spawn parallel agents or create worktrees.
-
-After the mode is known, the workflow instruction tells Claude to load
-`core.md`, the selected mode overlay, and only the methodology files needed for
-the current step. For example, a Standard API change loads planning,
-implementation, testing, review, evidence, and safeguards only if contract or
-production triggers are present. A Fast typo fix should remain compact.
-
-Users normally reply in plain language: `Approve`, `Looks good`, `Continue`,
-`Revise ...`, `Reject because ...`, `Repair it`, `Show plan`, `Show status`, or
-`Cancel`. Ambiguous replies get one concise clarification.
-
-### `/leanrigor-plan` or `/leanrigor:plan`
-
-Shows or advances planning for the active workflow. It shows an existing plan
-when one exists, continues from approach approval to plan generation when the
-user approves, accepts revision feedback, and starts a workflow only when no
-active workflow exists and a request is supplied. It does not modify
-implementation files.
-
-### `/leanrigor-status` or `/leanrigor:status`
-
-Reports human-readable status: workflow ID, request, mode, state, current
-phase, pending decision, completion-gate status, repair attempts, blockers, and
-next action. It does not default to raw JSON or shell commands.
-
-### `/leanrigor-review` or `/leanrigor:review`
-
-Shows `Phase completion review` when a phase gate needs repair/review/replan,
-or performs the `Final integrated review` when all phases have passed and final
-review is pending. It does not create duplicate review workflows.
-
-### `/leanrigor-commit` or `/leanrigor:commit`
-
-Shows the persisted `Commit proposal`, grouped by message, files, and
-rationale. It clearly states that no commit or push has occurred. It never
-commits automatically and never pushes.
-
-## Troubleshooting mode
-
-Claude commands normally invoke LeanRigor internally. If an internal transition
-fails, Claude shows the exact command only in this fallback shape:
-
-```text
-I could not run the LeanRigor transition automatically.
-
-You can retry, or run:
-<exact command>
-
-Error:
-<concise error>
-```
-
-## Persistence and resume
-
-Each workflow is stored as `.leanrigor/workflows/<workflow-id>.json`. State is
-versioned, schema-validated on read and write, written atomically, protected by
-a persistent workflow lock, and guarded by monotonic revision checks. Use:
-
-```bash
-leanrigor flow list --root /path/to/repository
-leanrigor flow resume <workflow-id> --root /path/to/repository
-leanrigor flow cancel <workflow-id> --root /path/to/repository
-```
-
-## Triage subagent
-
-The `leanrigor-triage` subagent:
-
-- Uses the configured `small` model tier (resolved through the `haiku` alias by default)
-- Has only read-only tools: `Read`, `Glob`, `Grep`
-- Returns exactly one `TriageOutput` JSON object — no prose or markdown
-- Never asks user-facing questions (uses the `clarification` field instead)
-- Is bounded to one response
-
-The CLI triage runner validates the agent output, applies deterministic
-repository policy overrides, retries malformed output once, and falls back to
-local deterministic triage if both attempts fail.
-
-## Hooks
-
-In marketplace mode, Claude auto-loads `hooks/hooks.json` from the plugin root.
-The hook command uses `${CLAUDE_PLUGIN_ROOT}/hooks/protect-git.sh`.
-
-In project-local fallback mode, `.claude/settings.json` configures a
-`PreToolUse` hook on the Bash tool that runs
-`sh .claude/leanrigor/protect-git.sh`. The installer still explicitly chmods
-the hook to `0755` after clean install, repeat install, and
-`--force-owned-files` repair so direct execution is also healthy.
-
-The guard script blocks:
-
-- `git push`
-- `git commit`
-- `git reset --hard`
-
-The script fails open: any input it cannot parse causes it to exit 0 rather
-than blocking legitimate tool use.
-
-For end-to-end provider verification, run the manual smoke script from a
-checkout with an authenticated Claude CLI:
+From a source checkout with an authenticated Claude CLI:
 
 ```bash
 scripts/smoke-claude-cli-execution.sh
 ```
 
-The script creates a disposable repository, initializes project-local Claude
-assets, verifies the hook and doctor output, runs coordinator execution through
-the `claude-cli` provider, polls to the persisted final integrated review gate,
-records a passing final review, confirms a commit proposal exists, and confirms
-no final user commit or push occurred.
+The smoke script creates a disposable repository, prepares LeanRigor assets, verifies the hook and diagnostics, runs coordinator execution through the `claude-cli` provider, polls persisted state through completion and integration, records final review, confirms a commit proposal exists, and confirms no final user commit or push occurred.
 
-**Hook behaviour**: The hooks format follows Claude Code's current plugin hook
-conventions for marketplace mode and `settings.json` `PreToolUse` conventions
-for project-local mode. Automated tests verify asset installation and
-preservation rules. Marketplace smoke testing verified command discovery and
-workflow execution; hook firing still depends on the active Claude Code runtime.
+This live-provider smoke is not run in ordinary CI.
 
-## Running model-backed triage
+## Troubleshooting
 
-After setup, run:
+When an internal transition fails, Claude should show a concise error and the exact recovery command rather than pretending the workflow advanced.
+
+Useful commands include:
 
 ```bash
-leanrigor triage "Fix the broken assignment API" --provider auto
+leanrigor flow active --json --root /path/to/repository
+leanrigor flow next <workflow-id> --json --root /path/to/repository
+leanrigor flow execution-status <workflow-id> --json --root /path/to/repository
+leanrigor flow execution-poll <workflow-id> --provider claude-cli --json --root /path/to/repository
+leanrigor flow workspace-status <workflow-id> --json --root /path/to/repository
+leanrigor flow integration-status <workflow-id> --json --root /path/to/repository
+leanrigor flow status <workflow-id> --json --root /path/to/repository
 ```
 
-Provider options:
+After upgrading or refreshing the marketplace plugin, restart or reload Claude Code when autocomplete still shows old command names.
 
-- `auto`: use the configured Claude triage model and safely fall back to
-  deterministic triage.
-- `claude`: behaves like `auto`, but explicitly documents the intended harness.
-- `deterministic`: do not make a model call.
+## Current limitations
 
-The Claude invocation is non-interactive, limited to one turn, and disallows
-Edit, Write, and Bash tools. Invalid output is retried once and then replaced
-with deterministic triage. The workflow state records which path was used.
+- Claude Code is the only supported coding-agent integration.
+- The Claude CLI provider is a prototype and requires live local authentication.
+- Native Claude subagent orchestration is not integrated.
+- Higher parallelism is supported by the coordinator contract but is not yet promoted as a stable autonomous multi-agent user experience.
+- Marketplace hook behaviour may vary with Claude Code runtime versions and still requires live platform smoke testing after material changes.
+- Semantic conflict repair is not implemented.
