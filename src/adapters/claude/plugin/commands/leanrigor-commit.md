@@ -1,9 +1,16 @@
+---
+description: Show the persisted LeanRigor commit proposal without committing.
+argument-hint: "[workflow-id]"
+allowed-tools: AskUserQuestion, Bash(leanrigor *)
+---
+
 <!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor-commit
 
 Show the persisted LeanRigor commit proposal without executing it.
 
-Read `.claude/leanrigor/sequential-workflow.md` first.
+Read `.claude/leanrigor/sequential-workflow.md` first and follow its
+AskUserQuestion selector contract at the commit-proposal gate.
 
 ## Behaviour
 

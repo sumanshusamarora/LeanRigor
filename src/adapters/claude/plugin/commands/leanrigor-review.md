@@ -1,9 +1,16 @@
+---
+description: Show or perform the valid LeanRigor review step.
+argument-hint: "[workflow-id or review response]"
+allowed-tools: AskUserQuestion, Bash(leanrigor *)
+---
+
 <!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor-review
 
 Show or perform the valid LeanRigor review step.
 
-Read `.claude/leanrigor/sequential-workflow.md` first.
+Read `.claude/leanrigor/sequential-workflow.md` first and follow its
+AskUserQuestion selector contract at every decision gate.
 
 ## Behaviour
 

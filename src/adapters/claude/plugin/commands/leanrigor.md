@@ -1,9 +1,16 @@
+---
+description: Start or resume the conversational LeanRigor workflow.
+argument-hint: "[coding request or response]"
+allowed-tools: AskUserQuestion, Bash(leanrigor *)
+---
+
 <!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor
 
 Primary conversational LeanRigor workflow command.
 
-Read `.claude/leanrigor/sequential-workflow.md` first.
+Read `.claude/leanrigor/sequential-workflow.md` first and follow its
+AskUserQuestion selector contract at every decision gate.
 
 ## Behaviour
 

@@ -96,6 +96,41 @@ The validator checks:
 - package, plugin, marketplace, CLI, and build-info version consistency;
 - `claude plugin validate . --strict` when Claude CLI is available.
 
+## Native selector smoke
+
+Run this manually from an authenticated interactive Claude Code session after
+installing or refreshing the marketplace plugin:
+
+```text
+/plugin list
+/reload-plugins
+```
+
+Confirm `leanrigor@leanrigor` is enabled at the expected version. In a disposable
+repository, run:
+
+```text
+/leanrigor:init
+/leanrigor:start Fix the broken assignment API regression
+```
+
+Expected result:
+
+- `/leanrigor:init` reports marketplace mode and current assets.
+- The approach gate appears as a native `AskUserQuestion` selector with
+  `Approve`, `Revise`, and `Reject`; Claude does not first print an ordinary
+  question such as `Approve or reject this approach?`.
+- Selecting `Approve` invokes the internal LeanRigor transition and the plan
+  gate appears as a native selector with `Approve`, `Revise`, and `Cancel`.
+- Selecting `Cancel` cancels only the disposable workflow.
+
+To smoke active-workflow conflict selection, seed two active workflows in the
+same disposable repository with the LeanRigor runtime, then run
+`/leanrigor:status`. Expected result: Claude presents a native selector with
+one option per workflow, using each option description for ID, request, state,
+mode, and updated time. Use numbered text choices only if Claude Code reports
+that `AskUserQuestion` is unavailable.
+
 ## Developer refresh
 
 Use the safe refresh helper to reinstall the current GitHub `main` plugin without deleting unrelated Claude configuration:

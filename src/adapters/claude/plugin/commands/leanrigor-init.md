@@ -1,9 +1,16 @@
+---
+description: Inspect and update LeanRigor configuration for this repository.
+argument-hint: "[configuration action]"
+allowed-tools: AskUserQuestion, Bash(leanrigor *)
+---
+
 <!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor:init
 
 Inspect and update LeanRigor configuration for this repository.
 
-Read `.claude/leanrigor/sequential-workflow.md` first.
+Read `.claude/leanrigor/sequential-workflow.md` first and follow its
+AskUserQuestion selector contract when confirming repository policy changes.
 
 ## Behaviour
 

@@ -42,6 +42,18 @@ function run(command: string, args: string[], options: { cwd?: string; env?: Nod
   });
 }
 
+function frontmatter(content: string): Record<string, string> {
+  expect(content.startsWith("---\n")).toBe(true);
+  const end = content.indexOf("\n---", 4);
+  expect(end).toBeGreaterThan(0);
+  const fields: Record<string, string> = {};
+  for (const line of content.slice(4, end).split("\n")) {
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (match) fields[match[1]] = match[2];
+  }
+  return fields;
+}
+
 describe("Claude marketplace plugin manifests", () => {
   it("declares the leanrigor marketplace and plugin install target", () => {
     expect(marketplace.name).toBe("leanrigor");
@@ -95,6 +107,43 @@ describe("Claude marketplace plugin manifests", () => {
       const content = await readFile(path.join(repoRoot, command), "utf8");
       expect(content).toContain("${CLAUDE_PLUGIN_ROOT}/bin/leanrigor");
       expect(content).not.toContain("leanrigor init --adapter claude");
+    }
+  });
+
+  it("declares AskUserQuestion availability for marketplace command turns", async () => {
+    for (const command of plugin.commands) {
+      const content = await readFile(path.join(repoRoot, command), "utf8");
+      const fm = frontmatter(content);
+      expect(fm["allowed-tools"]).toContain("AskUserQuestion");
+      expect(fm["allowed-tools"]).toContain("${CLAUDE_PLUGIN_ROOT}/bin/leanrigor");
+      expect(content).toMatch(/AskUserQuestion.*mandatory|Use `AskUserQuestion`/s);
+      expect(content).toContain("Do not render an ordinary text question first");
+    }
+  });
+
+  it("declares AskUserQuestion availability for the marketplace workflow skill", async () => {
+    const content = await readFile(path.join(repoRoot, "plugin-skills", "sequential-workflow", "SKILL.md"), "utf8");
+    const fm = frontmatter(content);
+    expect(fm["allowed-tools"]).toContain("AskUserQuestion");
+    expect(content).toContain("mandatory whenever the tool is available");
+    expect(content).toContain("genuinely unavailable");
+    expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
+  });
+
+  it("keeps project-local fallback command declarations aligned with selector support", async () => {
+    const files = [
+      "leanrigor.md",
+      "leanrigor-init.md",
+      "leanrigor-plan.md",
+      "leanrigor-status.md",
+      "leanrigor-review.md",
+      "leanrigor-commit.md"
+    ];
+    for (const file of files) {
+      const content = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "commands", file), "utf8");
+      const fm = frontmatter(content);
+      expect(fm["allowed-tools"]).toContain("AskUserQuestion");
+      expect(content).toContain("AskUserQuestion selector contract");
     }
   });
 

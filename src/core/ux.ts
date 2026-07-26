@@ -143,6 +143,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
       pendingDecision: needsIntervention ? phase.completion?.reason ?? "The active phase needs intervention." : null,
       pendingAction: phaseNextAction(phase.status),
       allowedIntents: phaseIntents(phase.status),
+      approvalActions: needsIntervention ? phaseApprovalActions(state, phase) : undefined,
       summary: {
         phase: phase.id,
         objective: phase.objective,
@@ -246,6 +247,60 @@ function phaseIntents(status: string): string[] {
   return ["continue", "show status", "show plan", "cancel"];
 }
 
+function phaseApprovalActions(state: SequentialWorkflowState, phase: WorkflowPhase): ApprovalAction[] {
+  const reason = phase.completion?.reason ?? "Phase completion gate requires intervention.";
+  const root = quoteArg(state.root);
+  const actions: ApprovalAction[] = [];
+  if (phase.status === "needs_repair") {
+    actions.push({
+      label: "Repair",
+      intent: "repair it",
+      command: `leanrigor flow repair ${state.id} ${phase.id} --reason ${quoteArg(reason)} --root ${root}`,
+      description: "Start a bounded repair for the completion-gate issue."
+    });
+    actions.push({
+      label: "Revise Plan",
+      intent: "revise",
+      command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`,
+      description: "Request a plan revision instead of another repair attempt."
+    });
+  } else if (phase.status === "needs_review") {
+    actions.push({
+      label: "Review",
+      intent: "review",
+      command: `leanrigor flow phase-status ${state.id} ${phase.id} --root ${root}`,
+      description: "Inspect the uncertain phase evidence and decide whether repair or replanning is required."
+    });
+    actions.push({
+      label: "Revise Plan",
+      intent: "revise",
+      command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`,
+      description: "Revise the persisted plan before more execution."
+    });
+  } else if (phase.status === "needs_replan") {
+    actions.push({
+      label: "Revise Plan",
+      intent: "revise",
+      command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`,
+      description: "Revise the persisted plan before continuing."
+    });
+  } else if (phase.status === "blocked") {
+    actions.push({
+      label: "Show Status",
+      intent: "show status",
+      command: `leanrigor flow status ${state.id} --root ${root}`,
+      description: "Show the persisted blocker and current workflow state."
+    });
+  }
+  actions.push({
+    label: "Cancel",
+    intent: "cancel",
+    command: `leanrigor flow cancel ${state.id} --root ${root}`,
+    description: "Cancel this workflow."
+  });
+  return actions;
+}
+
 function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
@@ -275,4 +330,8 @@ function summariseCriteria(criteria: Array<{ status: string }>): { met: number; 
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function quoteArg(value: string): string {
+  return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
 }

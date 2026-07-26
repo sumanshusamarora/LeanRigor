@@ -24490,6 +24490,7 @@ function workflowNextSummary(state) {
       pendingDecision: needsIntervention ? phase2.completion?.reason ?? "The active phase needs intervention." : null,
       pendingAction: phaseNextAction(phase2.status),
       allowedIntents: phaseIntents(phase2.status),
+      approvalActions: needsIntervention ? phaseApprovalActions(state, phase2) : void 0,
       summary: {
         phase: phase2.id,
         objective: phase2.objective,
@@ -24585,6 +24586,59 @@ function phaseIntents(status) {
   if (status === "blocked") return ["show status", "cancel"];
   return ["continue", "show status", "show plan", "cancel"];
 }
+function phaseApprovalActions(state, phase2) {
+  const reason = phase2.completion?.reason ?? "Phase completion gate requires intervention.";
+  const root = quoteArg(state.root);
+  const actions = [];
+  if (phase2.status === "needs_repair") {
+    actions.push({
+      label: "Repair",
+      intent: "repair it",
+      command: `leanrigor flow repair ${state.id} ${phase2.id} --reason ${quoteArg(reason)} --root ${root}`,
+      description: "Start a bounded repair for the completion-gate issue."
+    });
+    actions.push({
+      label: "Revise Plan",
+      intent: "revise",
+      command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`,
+      description: "Request a plan revision instead of another repair attempt."
+    });
+  } else if (phase2.status === "needs_review") {
+    actions.push({
+      label: "Review",
+      intent: "review",
+      command: `leanrigor flow phase-status ${state.id} ${phase2.id} --root ${root}`,
+      description: "Inspect the uncertain phase evidence and decide whether repair or replanning is required."
+    });
+    actions.push({
+      label: "Revise Plan",
+      intent: "revise",
+      command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`,
+      description: "Revise the persisted plan before more execution."
+    });
+  } else if (phase2.status === "needs_replan") {
+    actions.push({
+      label: "Revise Plan",
+      intent: "revise",
+      command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`,
+      description: "Revise the persisted plan before continuing."
+    });
+  } else if (phase2.status === "blocked") {
+    actions.push({
+      label: "Show Status",
+      intent: "show status",
+      command: `leanrigor flow status ${state.id} --root ${root}`,
+      description: "Show the persisted blocker and current workflow state."
+    });
+  }
+  actions.push({
+    label: "Cancel",
+    intent: "cancel",
+    command: `leanrigor flow cancel ${state.id} --root ${root}`,
+    description: "Cancel this workflow."
+  });
+  return actions;
+}
 function internalOperationsFor(state) {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
@@ -24611,6 +24665,9 @@ function summariseCriteria(criteria) {
 }
 function unique4(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+function quoteArg(value) {
+  return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
 }
 
 // src/core/execution/claude-provider.ts
@@ -25606,7 +25663,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.5");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.6");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

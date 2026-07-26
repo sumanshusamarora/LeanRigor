@@ -137,7 +137,11 @@ if (plugin) {
     const content = await readFile(path.join(root, file), "utf8");
     const fm = extractFrontmatter(content, file);
     if (!fm.description) fail(`${file}: command frontmatter needs description`);
+    if (!fm["allowed-tools"]?.includes("AskUserQuestion")) fail(`${file}: command frontmatter must allow AskUserQuestion`);
     if (!content.includes("${CLAUDE_PLUGIN_ROOT}/bin/leanrigor")) fail(`${file}: must invoke plugin-owned runtime`);
+    if (!content.includes("plugin-skills/sequential-workflow")) fail(`${file}: must load the sequential workflow skill`);
+    if (!content.includes("AskUserQuestion")) fail(`${file}: must include native selector guidance`);
+    if (!content.includes("Do not render an ordinary text question first")) fail(`${file}: must prohibit text question before native selector`);
   }
   const agentPaths = Array.isArray(plugin.agents) ? plugin.agents : [plugin.agents].filter(Boolean);
   for (const agentPath of agentPaths) {
@@ -171,8 +175,13 @@ if (hooks) {
 }
 
 const marketplaceWorkflowSkill = await readFile(path.join(root, "plugin-skills", "sequential-workflow", "SKILL.md"), "utf8");
+const marketplaceWorkflowFm = extractFrontmatter(marketplaceWorkflowSkill, "plugin-skills/sequential-workflow/SKILL.md");
+if (!marketplaceWorkflowFm["allowed-tools"]?.includes("AskUserQuestion")) fail("marketplace workflow skill must allow AskUserQuestion");
 if (!marketplaceWorkflowSkill.includes("methodology/core.md")) fail("marketplace workflow skill must reference shared methodology/core.md");
 if (!marketplaceWorkflowSkill.includes("methodology/modes/<fast|standard|rigorous>.md")) fail("marketplace workflow skill must reference mode overlays");
+if (!marketplaceWorkflowSkill.includes("mandatory whenever the tool is available")) fail("marketplace workflow skill must require AskUserQuestion when available");
+if (!marketplaceWorkflowSkill.includes("genuinely unavailable")) fail("marketplace workflow skill must restrict text fallback to genuine AskUserQuestion unavailability");
+if (!marketplaceWorkflowSkill.includes("Do not use `ExitPlanMode` as a substitute")) fail("marketplace workflow skill must prohibit ExitPlanMode as LeanRigor approval");
 for (const file of methodologyFiles.filter((file) => !file.startsWith("modes/"))) {
   if (!marketplaceWorkflowSkill.includes(`methodology/${file}`)) fail(`marketplace workflow skill must reference methodology/${file}`);
 }
@@ -180,6 +189,9 @@ for (const file of methodologyFiles.filter((file) => !file.startsWith("modes/"))
 const localWorkflow = await readFile(path.join(root, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
 if (!localWorkflow.includes(".claude/leanrigor/methodology/core.md")) fail("project-local workflow reference must use installed methodology path");
 if (!localWorkflow.includes(".claude/leanrigor/methodology/modes/<fast|standard|rigorous>.md")) fail("project-local workflow reference must use installed mode overlays");
+if (!localWorkflow.includes("mandatory whenever the tool is available")) fail("project-local workflow must require AskUserQuestion when available");
+if (!localWorkflow.includes("genuinely unavailable")) fail("project-local workflow must restrict text fallback to genuine AskUserQuestion unavailability");
+if (!localWorkflow.includes("Do not use `ExitPlanMode` as a substitute")) fail("project-local workflow must prohibit ExitPlanMode as LeanRigor approval");
 
 try {
   const runtime = await stat(path.join(root, "runtime", "leanrigor-cli.js"));

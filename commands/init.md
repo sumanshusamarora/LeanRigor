@@ -1,11 +1,13 @@
 ---
 description: Inspect and update LeanRigor configuration for this repository.
 argument-hint: "[configuration action]"
+allowed-tools: AskUserQuestion, Bash(${CLAUDE_PLUGIN_ROOT}/bin/leanrigor *)
 ---
 
 # /leanrigor:init
 
-Use `plugin-skills/sequential-workflow` as the workflow UX contract.
+Load `plugin-skills/sequential-workflow` before handling workflow decisions.
+That skill is the workflow UX contract.
 
 Invoke the plugin-owned runtime internally through
 `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor`.
@@ -28,7 +30,8 @@ Behaviour:
    `--scope` option.
 6. Never silently rewrite all config. Prefer explicit, scoped mutations.
 7. For repository policy changes, confirm with the user before writing because
-   changes affect all contributors.
+   changes affect all contributors. Use `AskUserQuestion` for that confirmation
+   when available. Do not render an ordinary text question first.
 8. **In marketplace mode, never suggest the manual init command.**
    The runtime handles bootstrapping automatically. Only mention explicit
    initialization in npm/global install mode or when explicitly asked.

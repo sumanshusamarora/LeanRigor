@@ -193,20 +193,19 @@ describe("Claude conversational workflow UX support", () => {
     }
   });
 
-  it("shared guidance prefers AskUserQuestion over plain text for approval gates", async () => {
+  it("shared guidance requires AskUserQuestion over plain text for approval gates", async () => {
     const marketplace = await readFile(path.join(repoRoot, "plugin-skills", "sequential-workflow", "SKILL.md"), "utf8");
     const local = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
 
     for (const content of [marketplace, local]) {
-      // Must prefer AskUserQuestion for approval gates
       expect(content).toContain("AskUserQuestion");
-      // Must have fallback language
-      expect(content).toMatch(/Fall back to a numbered list|numbered list.*when.*AskUserQuestion.*unavailable/);
-      // Must keep deterministic commands as authority
+      expect(content).toContain("mandatory");
+      expect(content).toContain("Do not render an ordinary text question");
+      expect(content).toMatch(/Fall back to a numbered list|numbered list.*when.*AskUserQuestion.*genuinely unavailable/);
       expect(content).toContain("deterministic");
       expect(content).toMatch(/remains the[\s]*authority/);
-      // Must never infer approval
       expect(content).toContain("Do not infer approval from conversational tone");
+      expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
     }
   });
 });
@@ -276,6 +275,20 @@ describe("approval actions", () => {
 
     const cancel = next.approvalActions?.find((a) => a.intent === "cancel");
     expect(cancel).toBeDefined();
+  });
+
+  it("presents selector actions for phase repair gates", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const executing = await approvePlan(root, (await approveApproach(root, started.id, defaultConfig())).id);
+    const failed = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"], "failed");
+    const next = workflowNextSummary(failed);
+
+    expect(next.label).toBe("Phase completion review");
+    expect(next.approvalActions).toBeDefined();
+    expect(next.approvalActions?.find((a) => a.intent === "repair it")?.command).toContain("leanrigor flow repair");
+    expect(next.approvalActions?.find((a) => a.intent === "revise")?.command).toContain("leanrigor flow revise-plan");
+    expect(next.approvalActions?.find((a) => a.intent === "cancel")?.command).toContain("leanrigor flow cancel");
   });
 
   it("free-form allowedIntents remain for backward compatibility", async () => {

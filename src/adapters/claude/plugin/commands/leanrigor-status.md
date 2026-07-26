@@ -1,9 +1,17 @@
+---
+description: Report concise human-readable LeanRigor workflow status.
+argument-hint: "[workflow-id]"
+allowed-tools: AskUserQuestion, Bash(leanrigor *)
+---
+
 <!-- generated_by: leanrigor | asset_version: 5 -->
 # /leanrigor-status
 
 Report concise human-readable LeanRigor workflow status.
 
-Read `.claude/leanrigor/sequential-workflow.md` first.
+Read `.claude/leanrigor/sequential-workflow.md` first and follow its
+AskUserQuestion selector contract when a workflow selection or decision gate is
+present.
 
 ## Behaviour
 

@@ -1,6 +1,7 @@
 ---
 name: leanrigor-sequential-workflow
 description: Use when running LeanRigor's persisted sequential workflow in Claude Code.
+allowed-tools: AskUserQuestion, Bash(${CLAUDE_PLUGIN_ROOT}/bin/leanrigor *)
 ---
 
 LeanRigor is Claude's persisted workflow controller. Users interact in plain
@@ -70,25 +71,27 @@ persisted phases exist.
 
 - One active workflow: resume it.
 - No active workflow: start only when the user supplied a request.
-- Multiple active workflows: use AskUserQuestion to let the user choose among
+- Multiple active workflows: use `AskUserQuestion` to let the user choose among
   them (header: "Workflow"). Show ID, request, state, mode, and updated time in
-  each option description. Fall back to a plain list only when AskUserQuestion is
-  unavailable.
+  each option description. Do not render an ordinary text question first. Fall
+  back to a numbered list only when `AskUserQuestion` is genuinely unavailable.
 - Completed and cancelled workflows are not selected by default.
 - Never attach a new request to an unrelated active workflow silently.
 
 ## Approval Actions
 
-When `flow next --json` returns `approvalActions`, prefer using the
-`AskUserQuestion` tool to present a structured selector. Map each action's
-`label` to the option label and `description` to the option description. Use a
-short header (max 12 chars) derived from the current gate: "Approach", "Plan",
-"Commit", "Phase", or "Workflow" for multi-workflow selection.
+When `flow next --json` returns `approvalActions`, call the `AskUserQuestion`
+tool to present a structured selector. This is mandatory whenever the tool is available.
+Map each action's `label` to the option label and `description` to
+the option description. Use a short header (max 12 chars) derived from the
+current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for
+multi-workflow selection. Do not render an ordinary text question such as
+"Approve or reject this approach?" before calling the selector.
 
 Fall back to a numbered list of explicit choices only when `AskUserQuestion` is
-unavailable. Each action has a deterministic `command` which remains the
-authority for the transition. Do not infer approval from conversational tone —
-the user must select an action or type an explicit response.
+genuinely unavailable in the current Claude Code environment. Each action has a
+deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response.
+Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 
 ### Free-form fallback
 

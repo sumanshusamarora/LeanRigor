@@ -9,6 +9,7 @@ const checkOnly = process.argv.includes("--check");
 const packagePath = path.join(root, "package.json");
 const pluginManifestPath = path.join(root, ".claude-plugin", "plugin.json");
 const marketplaceManifestPath = path.join(root, ".claude-plugin", "marketplace.json");
+const cliSourcePath = path.join(root, "src", "cli", "index.ts");
 
 function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -18,6 +19,7 @@ async function main() {
   const pkg = JSON.parse(await readFile(packagePath, "utf8"));
   const plugin = JSON.parse(await readFile(pluginManifestPath, "utf8"));
   const marketplace = JSON.parse(await readFile(marketplaceManifestPath, "utf8"));
+  const cliSource = await readFile(cliSourcePath, "utf8");
 
   const version = pkg.version;
   if (typeof version !== "string" || version.length === 0) {
@@ -35,6 +37,11 @@ async function main() {
 
   const nextPlugin = stableJson(plugin);
   const nextMarketplace = stableJson(marketplace);
+  const cliVersionPattern = /(program\.name\("leanrigor"\)\.description\("Adaptive rigor and model routing for AI coding agents"\)\.version\(")([^"]+)("\);)/;
+  if (!cliVersionPattern.test(cliSource)) {
+    throw new Error("src/cli/index.ts: could not find CLI version declaration");
+  }
+  const nextCliSource = cliSource.replace(cliVersionPattern, `$1${version}$3`);
 
   const currentPlugin = await readFile(pluginManifestPath, "utf8");
   const currentMarketplace = await readFile(marketplaceManifestPath, "utf8");
@@ -42,6 +49,7 @@ async function main() {
   const changes = [
     currentPlugin !== nextPlugin ? pluginManifestPath : null,
     currentMarketplace !== nextMarketplace ? marketplaceManifestPath : null,
+    cliSource !== nextCliSource ? cliSourcePath : null,
   ].filter(Boolean);
 
   if (checkOnly) {
@@ -57,6 +65,7 @@ async function main() {
 
   await writeFile(pluginManifestPath, nextPlugin, "utf8");
   await writeFile(marketplaceManifestPath, nextMarketplace, "utf8");
+  await writeFile(cliSourcePath, nextCliSource, "utf8");
 
   if (changes.length === 0) {
     console.log(`All versioned assets are already synced at ${version}.`);
