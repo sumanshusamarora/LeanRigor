@@ -25,7 +25,7 @@ import {
   type WorkspaceRecoveryReport,
   type WorkspaceStatus
 } from "./git-workspace.js";
-import type { PlanDiagnostic, PlanningProvider, PlanningRunResult } from "./planning-runner.js";
+import type { PlanDiagnostic, PlanningProvider, PlanningProviderInput, PlanningRunResult } from "./planning-runner.js";
 import { PlanningValidationError, runPlanning } from "./planning-runner.js";
 import type { TriageProvider, TriageProviderSelection, TriageRunResult } from "./triage-runner.js";
 import { runTriage } from "./triage-runner.js";
@@ -212,10 +212,17 @@ const phaseWorkspaceSchema = z.object({
   status: z.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"]),
   preparation: z.object({
     status: z.enum(["available", "prepared", "blocked", "failed"]),
+    worktreePath: z.string().min(1).optional(),
+    repositoryIdentity: z.string().min(1).optional(),
+    basis: z.object({
+      branch: z.string().min(1).optional(),
+      commit: z.string().min(1).optional()
+    }).optional(),
     packageManager: z.enum(["npm", "pnpm", "yarn", "bun", "none", "unknown"]).optional(),
     dependencies: z.enum(["available", "missing", "not_applicable", "unknown"]),
     bootstrapRequired: z.boolean(),
     bootstrapCommand: z.string().optional(),
+    validationCommandsAvailable: z.boolean().optional(),
     commandRisk: z.object({
       localWrite: z.boolean(),
       network: z.boolean(),
@@ -432,6 +439,7 @@ const integrationValidationSchema = z.object({
 const workflowGitStateSchema = z.object({
   context: z.object({
     repositoryRoot: z.string().min(1),
+    repositoryIdentity: z.string().min(1).optional(),
     gitCommonDir: z.string().min(1),
     baseCommit: z.string().min(1),
     originalHead: z.string().min(1),
@@ -461,7 +469,12 @@ const planningDiagnosticSchema = z.object({
   stage: z.enum(["syntax", "schema", "quality"]),
   path: z.array(z.union([z.string(), z.number()])),
   code: z.string(),
-  message: z.string()
+  message: z.string(),
+  contradictionType: z.string().optional(),
+  affectedPhase: z.string().optional(),
+  effectiveConstraint: z.string().optional(),
+  repairAttempt: z.enum(["same-model", "deterministic-normalisation", "none"]).optional(),
+  resolution: z.enum(["repaired", "blocked", "fallback"]).optional()
 });
 
 const workflowStateSchema = z.object({
@@ -1573,8 +1586,8 @@ function recomputeConstraints(model: WorkflowConstraints): WorkflowConstraints {
   const removals = model.userRemovals.map((change) => change.text);
   const overrideTargets = model.userOverrides.map((change) => change.target).filter((target): target is string => Boolean(target));
   const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions])
-    .filter((record) => record.source === "user" || !removals.some((target) => constraintMatches(record.text, target)))
-    .filter((record) => record.source === "user" || !overrideTargets.some((target) => constraintMatches(record.text, target)));
+    .filter((record) => record.source === "policy" || record.source === "user" || !removals.some((target) => constraintMatches(record.text, target)))
+    .filter((record) => record.source === "policy" || record.source === "user" || !overrideTargets.some((target) => constraintMatches(record.text, target)));
   return {
     ...model,
     original: uniqueRecords(model.original),
@@ -1611,6 +1624,18 @@ function constraintChange(action: ConstraintAction, text: string, target: string
 function effectiveConstraintTexts(state: SequentialWorkflowState, triage: TriageOutput, config: LeanRigorConfig): string[] {
   const constraints = state.constraints ?? initialiseWorkflowConstraints(triage, config, state.revision, "legacy_state_loaded");
   return constraints.effective.map((constraint) => constraint.text);
+}
+
+function effectiveConstraintSet(state: SequentialWorkflowState, triage: TriageOutput, config: LeanRigorConfig): NonNullable<PlanningProviderInput["effectiveConstraintSet"]> {
+  const constraints = state.constraints ?? initialiseWorkflowConstraints(triage, config, state.revision, "legacy_state_loaded");
+  return {
+    policy: constraints.policy.map((constraint) => constraint.text),
+    triage: constraints.original.map((constraint) => constraint.text),
+    userAdditions: constraints.userAdditions.map((constraint) => constraint.text),
+    userRemovals: constraints.userRemovals.map((change) => ({ target: change.target, text: change.text })),
+    userOverrides: constraints.userOverrides.map((change) => ({ target: change.target, text: change.text })),
+    finalEffective: constraints.effective.map((constraint) => constraint.text)
+  };
 }
 
 function approvalConstraintSummary(constraints: WorkflowConstraints): string {
@@ -1665,6 +1690,7 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
     triage: state.triage,
     config,
     constraints: effectiveConstraintTexts(planning, state.triage, config ?? defaultConfig()),
+    constraintSet: effectiveConstraintSet(planning, state.triage, config ?? defaultConfig()),
     constraintAudit: planning.constraints?.audit ?? [],
     revisionRequests: [...(planning.approach?.revisionRequests ?? []), ...(planning.plan?.revisionRequests ?? [])],
     provider: planningOptions?.provider,
@@ -1737,6 +1763,7 @@ async function generatePlan(args: {
   triage: TriageOutput;
   config?: LeanRigorConfig;
   constraints?: string[];
+  constraintSet?: PlanningProviderInput["effectiveConstraintSet"];
   constraintAudit?: WorkflowConstraintChange[];
   revisionRequests: ExecutionPlan["revisionRequests"];
   provider?: PlanningProvider;
@@ -1754,6 +1781,14 @@ async function generatePlan(args: {
       config,
       triage: args.triage,
       effectiveConstraints: args.constraints ?? args.triage.constraints.mustNot,
+      effectiveConstraintSet: args.constraintSet ?? {
+        policy: [],
+        triage: args.triage.constraints.mustNot,
+        userAdditions: [],
+        userRemovals: [],
+        userOverrides: [],
+        finalEffective: args.constraints ?? args.triage.constraints.mustNot
+      },
       constraintChanges: args.constraintAudit ?? [],
       deterministicPlan,
       revisionRequests: args.revisionRequests
@@ -1853,31 +1888,55 @@ function validatePlanConstraintConsistency(plan: ExecutionPlan, constraints: str
   const diagnostics: PlanDiagnostic[] = [];
   const effective = constraints.map(cleanConstraint).filter(Boolean);
   if (effective.length === 0) return diagnostics;
-  const planText = [
-    plan.summary,
-    ...plan.principles,
-    ...plan.phases.flatMap((phase) => [
-      phase.objective,
-      phase.rationale,
-      ...phase.acceptanceCriteria,
-      ...phase.validationCommands
-    ])
-  ].join("\n").toLowerCase();
+  const planText = planConstraintText(plan).normalised;
 
-  if (effective.some(isBackwardCompatibilityNotRequired) && requiresBackwardCompatibility(planText)) {
-    diagnostics.push(planDiagnostic(
-      "quality",
-      ["plan"],
-      "constraint.contradiction.backward_compatibility",
-      "Plan contradicts the approved override that backward compatibility is not required."
-    ));
+  const waivedCompatibility = effective.find(isBackwardCompatibilityNotRequired);
+  if (waivedCompatibility) {
+    for (const [index, phase] of plan.phases.entries()) {
+      if (!phaseRequiresBackwardCompatibility(phase)) continue;
+      diagnostics.push(planDiagnostic(
+        "quality",
+        ["phases", index, "objective"],
+        "constraint.contradiction.backward_compatibility",
+        `Phase ${phase.id} contradicts the approved constraint: ${waivedCompatibility}`,
+        {
+          contradictionType: "backward_compatibility_required_after_waiver",
+          affectedPhase: phase.id,
+          effectiveConstraint: waivedCompatibility
+        }
+      ));
+    }
   }
   for (const constraint of effective) {
-    if (/tests? must be updated|tests? must be added|update tests/i.test(constraint) && !planTextIncludes(planText, ["test", "coverage", "regression"])) {
-      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.tests", "Plan does not reflect the approved constraint that tests must be updated."));
+    const semantic = constraintSemantics(constraint);
+    if (semantic.testsUpdatedRequired && !planTextIncludes(planText, ["test", "coverage", "regression"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.tests", "Plan does not reflect the approved constraint that tests must be updated.", {
+        contradictionType: "missing_required_tests",
+        effectiveConstraint: constraint
+      }));
     }
-    if (/all (configured )?checks must pass|all checks pass/i.test(constraint) && !planTextIncludes(planText, ["check", "validation", "typecheck", "test", "lint"])) {
-      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.checks", "Plan does not reflect the approved constraint that all checks must pass."));
+    if (semantic.allChecksMustPass && (plan.phases.every((phase) => phase.validationCommands.length === 0) || !planTextIncludes(planText, ["check", "validation", "typecheck", "test", "lint", "build"]))) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.checks", "Plan does not reflect the approved constraint that all checks must pass.", {
+        contradictionType: "missing_required_validation",
+        effectiveConstraint: constraint
+      }));
+    }
+    if (semantic.excludedScope) {
+      for (const [index, phase] of plan.phases.entries()) {
+        const phaseAreas = [...phase.expectedWriteAreas, ...phase.expectedFilesOrAreas].map(normaliseConstraint).join("\n");
+        if (!phaseAreas.includes(normaliseConstraint(semantic.excludedScope))) continue;
+        diagnostics.push(planDiagnostic("quality", ["phases", index, "expectedWriteAreas"], "constraint.contradiction.excluded_scope", `Phase ${phase.id} includes excluded scope '${semantic.excludedScope}'.`, {
+          contradictionType: "excluded_scope_in_phase",
+          affectedPhase: phase.id,
+          effectiveConstraint: constraint
+        }));
+      }
+    }
+    if (semantic.policySafetyGate && !planTextIncludes(planText, ["gate", "evidence", "validation", "review"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.policy_gate", "Plan omits a policy-owned safety gate.", {
+        contradictionType: "missing_policy_safety_gate",
+        effectiveConstraint: constraint
+      }));
     }
   }
   return diagnostics;
@@ -1888,14 +1947,61 @@ function isBackwardCompatibilityNotRequired(constraint: string): boolean {
     || /not require .*backward[s]? compatibility/i.test(constraint);
 }
 
-function requiresBackwardCompatibility(text: string): boolean {
-  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b/.test(text);
+function phaseRequiresBackwardCompatibility(phase: WorkflowPhase): boolean {
+  const text = [
+    phase.objective,
+    phase.rationale,
+    ...phase.acceptanceCriteria,
+    ...phase.validationCommands
+  ].join("\n").toLowerCase();
+  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b|\bcompatibility migration\b|\bcompatibility-preserving\b/.test(text);
   if (!mentionsCompatibility) return false;
-  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b/.test(text);
+  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b|\bwithout backward[s]? compatibility\b/.test(text);
+}
+
+function requiresBackwardCompatibility(text: string): boolean {
+  const normalised = text.toLowerCase();
+  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b|\bcompatibility migration\b|\bcompatibility-preserving\b/.test(normalised);
+  if (!mentionsCompatibility) return false;
+  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b|\bwithout backward[s]? compatibility\b/.test(normalised);
 }
 
 function planTextIncludes(text: string, terms: string[]): boolean {
   return terms.some((term) => text.includes(term));
+}
+
+function planConstraintText(plan: ExecutionPlan): { normalised: string } {
+  return {
+    normalised: [
+      plan.summary,
+      ...plan.principles,
+      ...plan.phases.flatMap((phase) => [
+        phase.objective,
+        phase.rationale,
+        ...phase.expectedReadAreas,
+        ...phase.expectedWriteAreas,
+        ...phase.expectedFilesOrAreas,
+        ...phase.acceptanceCriteria,
+        ...phase.validationCommands
+      ])
+    ].join("\n").toLowerCase()
+  };
+}
+
+function constraintSemantics(constraint: string): {
+  testsUpdatedRequired: boolean;
+  allChecksMustPass: boolean;
+  excludedScope?: string;
+  policySafetyGate: boolean;
+} {
+  const normalised = normaliseConstraint(constraint);
+  const excludedScope = constraint.match(/\b(?:exclude|excluding|do not touch|do not modify|out of scope|must not touch|must not modify)\b[:\s-]*(.+)$/i)?.[1]?.trim();
+  return {
+    testsUpdatedRequired: /\btests? (updated|added|required)\b|\bupdate tests?\b|\btest coverage\b/.test(normalised),
+    allChecksMustPass: /\ball configured checks pass\b|\ball checks pass\b|\ball checks must pass\b/.test(normalised),
+    excludedScope,
+    policySafetyGate: /\bsafety gate\b|\bcompletion gate\b|\breview gate\b|\bmandatory evidence\b/.test(normalised)
+  };
 }
 
 function planningRunMetadata(run: PlanningRunResult): SequentialWorkflowState["planningRun"] {
@@ -2176,8 +2282,14 @@ function areaBoundary(area: string): string | undefined {
   return undefined;
 }
 
-function planDiagnostic(stage: PlanDiagnostic["stage"], pathParts: Array<string | number>, code: string, message: string): PlanDiagnostic {
-  return { stage, path: pathParts, code, message };
+function planDiagnostic(
+  stage: PlanDiagnostic["stage"],
+  pathParts: Array<string | number>,
+  code: string,
+  message: string,
+  details: Omit<PlanDiagnostic, "stage" | "path" | "code" | "message"> = {}
+): PlanDiagnostic {
+  return { stage, path: pathParts, code, message, ...details };
 }
 
 function uniqueDiagnostics(diagnostics: PlanDiagnostic[]): PlanDiagnostic[] {

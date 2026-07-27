@@ -121,6 +121,8 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
   }
   if (state.state === "awaiting_plan_approval") {
     const commands = nextActions(state);
+    const plan = state.plan;
+    const readiness = planExecutionStructure(state);
     return {
       ...base,
       label: "Plan approval",
@@ -129,24 +131,52 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
       pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "cancel", "show status", "show plan"],
       approvalActions: [
-        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the plan and begin phase execution." },
-        { label: "Revise", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
-        { label: "Cancel", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root "${state.root}"`, description: "Cancel this workflow." }
+        { label: "Approve plan and start coordinator execution", intent: "approve", command: commands[0] ?? "", description: "Accept the plan; execution remains coordinator-managed and starts only through the execution command." },
+        { label: "Revise plan", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
+        { label: "View full details", intent: "show plan", command: `leanrigor flow status ${state.id} --json --root ${quoteArg(state.root)}`, description: "Show full persisted workflow, plan, constraints, and provenance." },
+        { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${quoteArg(state.root)}`, description: "Cancel this workflow." }
       ],
       summary: {
-        phases: state.plan?.phases.map((candidate, index) => ({
+        workflow: {
+          id: state.id,
+          mode: state.mode,
+          planningSource: state.planningRun?.source ?? "unknown",
+          provider: state.planningRun?.provider ?? "unknown",
+          model: state.planningRun?.model,
+          phases: plan?.phases.length ?? 0
+        },
+        overallStrategy: {
+          implementationDivision: plan?.summary ?? "Sequential implementation plan.",
+          orderRationale: "Dependencies define execution order; each phase is independently reviewable before dependents unlock.",
+          architectureBoundaries: unique(plan?.phases.flatMap((phase) => phase.expectedWriteAreas.map(architectureBoundaryForArea)) ?? []).filter(Boolean)
+        },
+        phases: plan?.phases.map((candidate, index) => ({
           number: index + 1,
           id: candidate.id,
           objective: candidate.objective,
+          rationale: candidate.rationale,
+          dependencies: candidate.dependencies,
+          expectedWriteAreas: candidate.expectedWriteAreas,
+          riskLevel: candidate.riskLevel,
+          modelTier: candidate.modelTier,
           status: candidate.status,
           validation: candidate.validationCommands
         })) ?? [],
-        validation: unique(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+        executionStructure: readiness,
+        validationStrategy: {
+          perPhase: plan?.phases.map((phase) => ({ phase: phase.id, commands: phase.validationCommands, criteria: phase.acceptanceCriteria })) ?? [],
+          finalIntegratedChecks: unique(plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+          completionEvidence: "Each phase must record changed files, validation evidence, criteria evidence, assumptions, risks, and scope deviations before dependent phases proceed."
+        },
         approvedConstraints: state.constraints?.effective.map((constraint) => ({ text: constraint.text, source: constraint.source })) ?? state.triage?.constraints.mustNot ?? [],
         approvedOverrides: state.constraints?.userOverrides ?? [],
         execution: {
           provider: "auto",
-          workspace: "isolated phase worktree",
+          resolvedProvider: "resolved at coordinator dispatch",
+          mode: "coordinator-managed",
+          workspace: "isolated Git worktree outside the main checkout",
+          workspaceRationale: "External worktrees avoid nested Git repositories, recursive search/build traversal, and main working-tree status pollution.",
+          mainWorkingTree: "remains untouched",
           manualExecution: "not selected",
           implementationStarted: false
         }
@@ -256,6 +286,36 @@ function executingReadinessSummary(state: SequentialWorkflowState): {
     recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : undefined,
     otherDependencyReadyPhases: dependencyReady.slice(1).map((phase) => ({ id: phase.id, objective: phase.objective }))
   };
+}
+
+function planExecutionStructure(state: SequentialWorkflowState): {
+  planType: "sequential" | "parallel-candidates";
+  dependencies: Array<{ phase: string; dependsOn: string[] }>;
+  independentPhases: string[];
+  outOfOrderExecution: string;
+  recommendedNextPhase?: { id: string; objective: string };
+} {
+  const phases = state.plan?.phases ?? [];
+  const independent = phases.filter((phase) => phase.dependencies.length === 0).map((phase) => phase.id);
+  const recommended = phases.find((phase) => phase.dependencies.length === 0);
+  return {
+    planType: independent.length > 1 ? "parallel-candidates" : "sequential",
+    dependencies: phases.map((phase) => ({ phase: phase.id, dependsOn: phase.dependencies })),
+    independentPhases: independent,
+    outOfOrderExecution: independent.length > 1 ? "Possible only for dependency-ready phases without write conflicts and with explicit execution selection." : "Not applicable; follow dependency order.",
+    recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : undefined
+  };
+}
+
+function architectureBoundaryForArea(area: string): string {
+  const normalised = area.replace(/\\/g, "/").toLowerCase();
+  if (normalised.startsWith("src/core/")) return "src/core";
+  if (normalised.startsWith("src/cli/")) return "src/cli";
+  if (normalised.startsWith("src/config/")) return "src/config";
+  if (normalised.startsWith("src/adapters/")) return normalised.split("/").slice(0, 3).join("/");
+  if (normalised.startsWith("tests/")) return "tests";
+  if (/^(docs|readme\.md|commands|methodology)\b/.test(normalised)) return "docs";
+  return area;
 }
 
 export function phaseRepairBudget(state: SequentialWorkflowState): number {

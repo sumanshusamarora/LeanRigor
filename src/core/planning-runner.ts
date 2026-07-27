@@ -8,6 +8,11 @@ export interface PlanDiagnostic {
   path: Array<string | number>;
   code: string;
   message: string;
+  contradictionType?: string;
+  affectedPhase?: string;
+  effectiveConstraint?: string;
+  repairAttempt?: "same-model" | "deterministic-normalisation" | "none";
+  resolution?: "repaired" | "blocked" | "fallback";
 }
 
 export interface PlanningProviderResult {
@@ -31,6 +36,14 @@ export interface PlanningProviderInput {
   config: LeanRigorConfig;
   triage: TriageOutput;
   effectiveConstraints?: string[];
+  effectiveConstraintSet?: {
+    policy: string[];
+    triage: string[];
+    userAdditions: string[];
+    userRemovals: Array<{ target?: string; text: string }>;
+    userOverrides: Array<{ target?: string; text: string }>;
+    finalEffective: string[];
+  };
   constraintChanges?: unknown;
   deterministicPlan: ExecutionPlan;
   revisionRequests: ExecutionPlan["revisionRequests"];
@@ -75,6 +88,7 @@ export async function runPlanning(args: {
   let syntaxRepairApplied = false;
   let semanticRepairApplied = false;
   let sawQualityRepairablePlan = false;
+  let sawConstraintContradiction = false;
   let attempts = 0;
 
   if (!input.config.workflow.automaticTriage || !provider) {
@@ -124,6 +138,7 @@ export async function runPlanning(args: {
 
     allDiagnostics.push(...validated.diagnostics);
     if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) sawQualityRepairablePlan = true;
+    if (validated.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
     warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
 
     const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
@@ -140,9 +155,10 @@ export async function runPlanning(args: {
 
     if (provider.repair) {
       try {
+        warnings.push("Attempting same-provider/model planning repair for exact validation diagnostics.");
         const repairResult = await provider.repair(input, {
           plan: normalised.raw,
-          diagnostics: validated.diagnostics,
+          diagnostics: validated.diagnostics.map((diagnostic) => ({ ...diagnostic, repairAttempt: "same-model" })),
           model: result.model,
           tier: result.tier
         });
@@ -154,8 +170,10 @@ export async function runPlanning(args: {
         if (repairedValidation.ok) {
           semanticRepairApplied = true;
           warnings.push("Planning semantic repair applied by the same provider/model.");
+          markDiagnosticsResolution(allDiagnostics, validated.diagnostics, "repaired");
           return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
         }
+        if (repairedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
         allDiagnostics.push(...repairedValidation.diagnostics);
         warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
       } catch (error) {
@@ -167,9 +185,16 @@ export async function runPlanning(args: {
   }
 
   const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
-  const approvalBlockedReason = sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan)
+  const approvalBlockedReason = sawConstraintContradiction
+    ? "Model planning contradicted approved constraints and repair did not produce a valid plan; plan approval is disabled until the plan is revised."
+    : sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan)
     ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised."
     : undefined;
+  if (approvalBlockedReason) {
+    for (const diagnostic of allDiagnostics) {
+      if (isConstraintDiagnostic(diagnostic) && !diagnostic.resolution) diagnostic.resolution = "blocked";
+    }
+  }
   warnings.push(approvalBlockedReason ?? "Using deterministic planning fallback after model plan could not be validated.");
   return {
     plan: input.deterministicPlan,
@@ -240,6 +265,17 @@ function validateCandidate(args: {
     return { ok: true, plan: args.validate(raw) };
   } catch (error) {
     return { ok: false, diagnostics: diagnosticsOf(error, "schema") };
+  }
+}
+
+function isConstraintDiagnostic(diagnostic: PlanDiagnostic): boolean {
+  return diagnostic.code.startsWith("constraint.");
+}
+
+function markDiagnosticsResolution(allDiagnostics: PlanDiagnostic[], matched: PlanDiagnostic[], resolution: NonNullable<PlanDiagnostic["resolution"]>): void {
+  for (const diagnostic of allDiagnostics) {
+    if (!matched.some((candidate) => candidate.code === diagnostic.code && candidate.message === diagnostic.message && candidate.path.join(".") === diagnostic.path.join("."))) continue;
+    diagnostic.resolution = resolution;
   }
 }
 

@@ -24,11 +24,18 @@ export function phaseWorkerPrompt(input: PhaseExecutionInput): string {
     ...input.validationExpectations.map((command) => `- ${command}`),
     "",
     "Workspace preparation:",
+    input.workspacePreparation?.worktreePath ? `- Worktree path: ${input.workspacePreparation.worktreePath}` : undefined,
+    input.workspacePreparation?.repositoryIdentity ? `- Repository identity: ${input.workspacePreparation.repositoryIdentity}` : undefined,
+    input.workspacePreparation?.basis?.branch || input.workspacePreparation?.basis?.commit ? `- Basis: ${[input.workspacePreparation.basis.branch, input.workspacePreparation.basis.commit].filter(Boolean).join(" @ ")}` : undefined,
     `- Prepared: ${input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "yes" : "no"}`,
     input.workspacePreparation ? `- Package manager: ${input.workspacePreparation.packageManager ?? "unknown"}` : "- Package manager: unknown",
     input.workspacePreparation ? `- Dependencies: ${input.workspacePreparation.dependencies}` : "- Dependencies: unknown",
+    input.workspacePreparation ? `- Validation commands available: ${input.workspacePreparation.validationCommandsAvailable === false ? "no" : "yes"}` : "- Validation commands available: unknown",
     input.workspacePreparation?.bootstrapCommand ? `- Bootstrap command: ${input.workspacePreparation.bootstrapCommand}` : "- Bootstrap command: none",
     input.workspacePreparation ? `- Bootstrap result: ${input.workspacePreparation.status}` : "- Bootstrap result: unknown",
+    input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status)
+      ? "- Workspace status: prepared. Do not install dependencies unless LeanRigor explicitly marks preparation incomplete."
+      : undefined,
     input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status)
       ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result."
       : undefined,

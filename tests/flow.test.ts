@@ -62,7 +62,7 @@ function planningProviderWithRepair(args: {
   repair?: unknown | Error;
   model?: string;
   onPlan?: () => void;
-  onRepair?: () => void;
+  onRepair?: (request: Parameters<NonNullable<PlanningProvider["repair"]>>[1]) => void;
 }): PlanningProvider {
   return {
     name: "fake-planner",
@@ -70,8 +70,8 @@ function planningProviderWithRepair(args: {
       args.onPlan?.();
       return { raw: args.plan, provider: "fake-planner", model: args.model ?? "planner-test-model", tier: "medium" };
     },
-    async repair() {
-      args.onRepair?.();
+    async repair(_input, request) {
+      args.onRepair?.(request);
       if (args.repair instanceof Error) throw args.repair;
       return { raw: args.repair ?? args.plan, provider: "fake-planner", model: args.model ?? "planner-test-model", tier: "medium" };
     }
@@ -157,6 +157,39 @@ describe("sequential workflow orchestration", () => {
     const planned = await approveApproach(root, started.id);
     expect(planned.state).toBe("awaiting_plan_approval");
     expect(planned.plan?.phases).toHaveLength(2);
+    const approval = workflowNextSummary(planned);
+    expect(approval.summary).toMatchObject({
+      workflow: {
+        id: planned.id,
+        mode: "standard",
+        phases: 2
+      },
+      overallStrategy: {
+        implementationDivision: expect.stringContaining("Sequential plan")
+      },
+      executionStructure: {
+        dependencies: [
+          { phase: "phase-1", dependsOn: [] },
+          { phase: "phase-2", dependsOn: ["phase-1"] }
+        ],
+        outOfOrderExecution: expect.any(String)
+      },
+      validationStrategy: {
+        finalIntegratedChecks: expect.arrayContaining(["npm test", "npm run typecheck", "npm run lint", "git diff --check"])
+      },
+      execution: {
+        mode: "coordinator-managed",
+        workspace: "isolated Git worktree outside the main checkout",
+        mainWorkingTree: "remains untouched",
+        implementationStarted: false
+      }
+    });
+    expect(approval.approvalActions?.map((action) => action.label)).toEqual([
+      "Approve plan and start coordinator execution",
+      "Revise plan",
+      "View full details",
+      "Cancel workflow"
+    ]);
   });
 
   it("uses model-backed planning after approach approval when a provider is available", async () => {
@@ -187,12 +220,14 @@ describe("sequential workflow orchestration", () => {
     legacy.constraints = undefined;
     await saveFlowState(root, legacy, { expectedRevision: legacy.revision });
     let observedConstraints: string[] = [];
+    let observedConstraintSet: unknown;
 
     const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
       provider: {
         name: "capturing-planner",
         async plan(input) {
           observedConstraints = input.effectiveConstraints ?? [];
+          observedConstraintSet = input.effectiveConstraintSet;
           return { raw: compactPlan("Implement the approved API behavior without compatibility constraints."), provider: "capturing-planner" };
         }
       },
@@ -210,16 +245,46 @@ describe("sequential workflow orchestration", () => {
       "All checks must pass"
     ]);
     expect(observedConstraints).toEqual(planned.constraints?.effective.map((constraint) => constraint.text));
+    expect(observedConstraintSet).toMatchObject({
+      triage: ["Preserve backward compatibility"],
+      userRemovals: [{ text: "Preserve backward compatibility" }],
+      userAdditions: [
+        "Backward compatibility is not required for this workflow",
+        "Tests must be updated",
+        "All checks must pass"
+      ],
+      finalEffective: [
+        "Backward compatibility is not required for this workflow",
+        "Tests must be updated",
+        "All checks must pass"
+      ]
+    });
     expect(workflowNextSummary(planned).summary).toMatchObject({
       approvedConstraints: expect.arrayContaining([
         { text: "Tests must be updated", source: "user" },
         { text: "All checks must pass", source: "user" }
       ]),
-      execution: { provider: "auto", workspace: "isolated phase worktree", manualExecution: "not selected", implementationStarted: false }
+      execution: { provider: "auto", workspace: "isolated Git worktree outside the main checkout", manualExecution: "not selected", implementationStarted: false }
     });
   });
 
-  it("does not present a model plan that contradicts an approved compatibility override", async () => {
+  it("does not allow user removals to delete policy-owned mandatory constraints", async () => {
+    const root = await tempRepo();
+    const config = { ...defaultConfig(), instructions: ["Completion evidence is mandatory."] };
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config });
+
+    const planned = await approveApproach(root, started.id, config, undefined, {
+      provider: planningProviderFrom([compactPlan("Implement behavior with completion evidence gates.")]),
+      providerSelection: "auto"
+    }, {
+      remove: ["Completion evidence is mandatory."]
+    });
+
+    expect(planned.constraints?.policy.map((constraint) => constraint.text)).toEqual(["Completion evidence is mandatory."]);
+    expect(planned.constraints?.effective.map((constraint) => constraint.text)).toContain("Completion evidence is mandatory.");
+  });
+
+  it("blocks approval when a model plan contradicts an approved compatibility override and repair fails", async () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const contradictory = compactPlan("Implement the backward-compatible API behavior.") as Record<string, unknown>;
@@ -233,9 +298,46 @@ describe("sequential workflow orchestration", () => {
     });
 
     const renderedPlan = JSON.stringify(planned.plan);
+    expect(planned.state).toBe("blocked");
     expect(planned.planningRun?.source).toBe("deterministic-fallback");
-    expect(planned.planningRun?.diagnostics?.some((diagnostic) => diagnostic.code === "constraint.contradiction.backward_compatibility")).toBe(true);
+    expect(planned.planningRun?.approvalBlockedReason).toMatch(/contradicted approved constraints/i);
+    expect(planned.planningRun?.diagnostics?.some((diagnostic) =>
+      diagnostic.code === "constraint.contradiction.backward_compatibility"
+      && diagnostic.affectedPhase === "phase-1"
+      && diagnostic.effectiveConstraint === "Backward compatibility is not required"
+      && diagnostic.resolution === "blocked"
+    )).toBe(true);
     expect(renderedPlan).not.toMatch(/backward-compatible|preserves backward compatibility/i);
+  });
+
+  it("repairs an approved-constraint contradiction with exact diagnostics before approval", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const contradictory = compactPlan("Implement the backward-compatible API behavior.") as Record<string, unknown>;
+    (contradictory.phases as Array<Record<string, unknown>>)[0]!.rationale = "This phase performs a backward-compatible migration.";
+    const repaired = compactPlan("Implement the approved API behavior with required tests.");
+    let repairDiagnostic: unknown;
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderWithRepair({
+        plan: contradictory,
+        repair: repaired,
+        onRepair: (request) => { repairDiagnostic = request.diagnostics[0]; }
+      }),
+      providerSelection: "auto"
+    }, {
+      add: ["Backward compatibility is not required", "Tests must be updated", "All checks must pass"]
+    });
+
+    expect(planned.state).toBe("awaiting_plan_approval");
+    expect(planned.planningRun?.semanticRepairApplied).toBe(true);
+    expect(repairDiagnostic).toMatchObject({
+      code: "constraint.contradiction.backward_compatibility",
+      affectedPhase: "phase-1",
+      effectiveConstraint: "Backward compatibility is not required",
+      repairAttempt: "same-model"
+    });
+    expect(JSON.stringify(planned.plan)).not.toMatch(/backward-compatible|compatibility migration/i);
   });
 
   it("accepts the recovered rejected model plan without false-positive boundary diagnostics", async () => {

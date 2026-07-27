@@ -131,8 +131,11 @@ leanrigor flow approve-approach <workflow-id> \
 
 LeanRigor persists original triage constraints, policy constraints, user
 additions, removals, overrides, audit entries, and final effective constraints.
-Planning receives only the effective set. Removed constraints and explicit
-overrides are validated before a plan can be presented for approval.
+Planning receives an authoritative structured constraint set with policy,
+triage, user additions, user removals, user overrides, and the final effective
+constraints. Removed triage constraints and explicit overrides are validated
+before a plan can be presented for approval. Policy-owned mandatory safety
+constraints remain active and cannot be silently removed by user deltas.
 
 ## Planning
 
@@ -144,11 +147,23 @@ acceptance criteria, bounded expected read/write areas, validation commands,
 and a meaningful dependency relationship to later phases.
 
 Plan validation checks that phase dependencies are acyclic, criteria are
-inspectable, validation expectations are present, and no phase is an obvious
+inspectable, validation expectations are present, no phase is an obvious
 container such as "implement the whole feature" or "update backend, frontend,
-tests and docs." File-count heuristics are advisory: cohesive refactors may
-touch many files, while unrelated changes in one file still belong in separate
-phases.
+tests and docs," and no phase contradicts approved effective constraints. For
+example, a plan cannot reach approval if the user waived backward
+compatibility but a phase introduces a compatibility migration. LeanRigor first
+attempts same-model repair with the exact diagnostic; if the contradiction
+remains, approval is blocked with the persisted affected phase, effective
+constraint, repair attempt, and resolution. File-count heuristics are advisory:
+cohesive refactors may touch many files, while unrelated changes in one file
+still belong in separate phases.
+
+Plan approval presents the persisted phase DAG with concise context rather than
+a separate design document: workflow and model provenance, overall strategy,
+architecture boundaries, effective approved constraints, dependencies and
+execution order, validation strategy, provider mode, and isolated-worktree
+policy. Approval remains explicit; implementation starts only through the
+coordinator execution command after plan approval.
 
 Mode differences:
 
@@ -293,13 +308,17 @@ Runtime paths are explicit:
   Claude may implement a phase only in the LeanRigor-assigned phase workspace
   and must submit persisted completion evidence.
 
-Before dispatch, workspace preparation records package-manager detection,
-dependency availability, any bootstrap command, command risk, approval
-requirements, and evidence. Existing dependencies proceed. Missing JavaScript
-dependencies block by default with the exact lockfile-preserving command, such
-as `npm ci` when `package-lock.json` is present. Automatic bootstrap is allowed
-only by `execution.dependencyBootstrap = "auto-lockfile"` and must preserve
-manifests and lockfiles; otherwise provider dispatch stops before implementation.
+Before dispatch, workspace preparation records the worktree path, repository
+identity, branch or commit basis, package-manager detection, dependency
+availability, validation-command availability, any bootstrap command, command
+risk, approval requirements, and evidence. Existing dependencies proceed.
+Missing JavaScript dependencies block by default with the exact
+lockfile-preserving command, such as `npm ci` when `package-lock.json` is
+present. Automatic bootstrap is allowed only by
+`execution.dependencyBootstrap = "auto-lockfile"` and must preserve manifests
+and lockfiles; otherwise provider dispatch stops before implementation. The
+provider handoff states that dependencies were prepared and instructs workers
+not to improvise package installation.
 
 ## Integration Workspace
 

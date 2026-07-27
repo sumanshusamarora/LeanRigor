@@ -10,6 +10,8 @@ const execFileAsync = promisify(execFile);
 export async function preparePhaseWorkspace(args: {
   workspacePath: string;
   repositoryRoot: string;
+  repositoryIdentity?: string;
+  basis?: { branch?: string; commit?: string };
   validationCommands: string[];
   config: LeanRigorConfig;
 }): Promise<WorkspacePreparation> {
@@ -18,9 +20,13 @@ export async function preparePhaseWorkspace(args: {
   if (!await exists(packageJson)) {
     return preparation({
       status: "available",
+      worktreePath: args.workspacePath,
+      repositoryIdentity: args.repositoryIdentity,
+      basis: args.basis,
       packageManager: "none",
       dependencies: "not_applicable",
       bootstrapRequired: false,
+      validationCommandsAvailable: args.validationCommands.length === 0,
       reason: "No package.json was detected in the phase workspace.",
       checkedAt,
       evidence: ["package.json absent"]
@@ -32,9 +38,13 @@ export async function preparePhaseWorkspace(args: {
   if (!hasDeclaredDependencies(packageJsonData)) {
     return preparation({
       status: "available",
+      worktreePath: args.workspacePath,
+      repositoryIdentity: args.repositoryIdentity,
+      basis: args.basis,
       packageManager: manager.packageManager,
       dependencies: "not_applicable",
       bootstrapRequired: false,
+      validationCommandsAvailable: true,
       reason: "package.json declares no installable dependencies.",
       checkedAt,
       evidence: manager.evidence
@@ -44,9 +54,13 @@ export async function preparePhaseWorkspace(args: {
   if (dependenciesAvailable) {
     return preparation({
       status: "available",
+      worktreePath: args.workspacePath,
+      repositoryIdentity: args.repositoryIdentity,
+      basis: args.basis,
       packageManager: manager.packageManager,
       dependencies: "available",
       bootstrapRequired: false,
+      validationCommandsAvailable: true,
       reason: "Existing workspace dependencies are available.",
       checkedAt,
       evidence: manager.evidence
@@ -56,9 +70,13 @@ export async function preparePhaseWorkspace(args: {
   const command = manager.bootstrapCommand ?? fallbackBootstrapCommand();
   const result = preparation({
     status: args.config.execution.dependencyBootstrap === "auto-lockfile" && manager.lockfilePreserving ? "prepared" : "blocked",
+    worktreePath: args.workspacePath,
+    repositoryIdentity: args.repositoryIdentity,
+    basis: args.basis,
     packageManager: manager.packageManager,
     dependencies: "missing",
     bootstrapRequired: true,
+    validationCommandsAvailable: false,
     bootstrapCommand: command,
     approvalRequired: args.config.execution.dependencyBootstrap !== "auto-lockfile" || !manager.lockfilePreserving,
     reason: manager.lockfilePreserving
@@ -122,6 +140,9 @@ type PreparationArgs = Omit<WorkspacePreparation, "commandRisk" | "approvalRequi
 function preparation(args: PreparationArgs): WorkspacePreparation {
   return {
     ...args,
+    worktreePath: args.worktreePath,
+    repositoryIdentity: args.repositoryIdentity,
+    basis: args.basis,
     bootstrapCommand: args.bootstrapCommand?.join(" "),
     approvalRequired: args.approvalRequired ?? false,
     commandRisk: {

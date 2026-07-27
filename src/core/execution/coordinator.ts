@@ -96,6 +96,8 @@ export class ExecutionCoordinator {
         const preparation = await preparePhaseWorkspace({
           workspacePath: workspace.path,
           repositoryRoot: withWorkspace.git!.context.repositoryRoot,
+          repositoryIdentity: withWorkspace.git!.context.repositoryIdentity,
+          basis: { branch: workspace.branch, commit: workspace.baseCommit },
           validationCommands: phase.validationCommands,
           config: this.config
         });

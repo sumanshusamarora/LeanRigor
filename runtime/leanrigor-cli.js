@@ -21829,8 +21829,10 @@ function buildPlanningPrompt(input) {
     input.request,
     "Triage output:",
     JSON.stringify(input.triage, null, 2),
+    "Authoritative approved constraint set:",
+    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
     "Final approved effective constraints:",
-    JSON.stringify(input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
+    JSON.stringify(input.effectiveConstraintSet?.finalEffective ?? input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
     "Constraint change audit:",
     JSON.stringify(input.constraintChanges ?? [], null, 2),
     "Deterministic baseline plan:",
@@ -21851,8 +21853,10 @@ function buildPlanningRepairPrompt(input, request) {
     input.request,
     "Triage constraints and context:",
     JSON.stringify(input.triage, null, 2),
+    "Authoritative approved constraint set:",
+    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
     "Final approved effective constraints:",
-    JSON.stringify(input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
+    JSON.stringify(input.effectiveConstraintSet?.finalEffective ?? input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
     "Diagnostics to repair:",
     JSON.stringify(request.diagnostics, null, 2),
     "Invalid plan:",
@@ -22722,7 +22726,8 @@ async function preflightGitRepository(root, config2) {
   if (nested.length > 0) {
     return { ok: false, code: "nested_repository_ambiguous", repositoryRoot, gitCommonDir, message: nested.join(", ") };
   }
-  const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config2);
+  const repositoryIdentity = repositoryIdentityFor(repositoryRoot);
+  const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config2, repositoryIdentity);
   if (isPathInside(workspaceRoot, repositoryRoot) && !isPathInside(workspaceRoot, gitCommonDir)) {
     return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot };
   }
@@ -22736,6 +22741,7 @@ async function preflightGitRepository(root, config2) {
   return {
     ok: true,
     repositoryRoot,
+    repositoryIdentity,
     gitCommonDir,
     baseCommit: originalHead,
     originalHead,
@@ -22774,6 +22780,7 @@ async function ensureIntegrationWorkspace(state, config2) {
   });
   const context = existing?.context ?? {
     repositoryRoot: preflight.repositoryRoot,
+    repositoryIdentity: preflight.repositoryIdentity,
     gitCommonDir: preflight.gitCommonDir,
     baseCommit: preflight.baseCommit,
     originalHead: preflight.originalHead,
@@ -23087,6 +23094,11 @@ async function cleanupOwnedWorkspaces(state, mode2) {
       report.needsReview.push(workspace.path);
       continue;
     }
+    if (isSamePath(workspace.path, state.git.context.repositoryRoot) || isPathInside(state.git.context.repositoryRoot, workspace.path)) {
+      report.retainedWorktrees.push({ path: workspace.path, reason: "cleanup target overlaps the main repository checkout" });
+      report.needsReview.push(workspace.path);
+      continue;
+    }
     const dirty = await worktreeDirty(workspace.path);
     if (dirty) {
       report.retainedWorktrees.push({ path: workspace.path, reason: "workspace contains unrecorded changes" });
@@ -23200,10 +23212,16 @@ function workspaceNames(workflowId2, phaseId, config2) {
 function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
-function resolveWorkspaceRoot(repositoryRoot, config2) {
+function resolveWorkspaceRoot(repositoryRoot, config2, repositoryIdentity = repositoryIdentityFor(repositoryRoot)) {
   if (config2.execution.workspaceRoot) return path13.resolve(repositoryRoot, config2.execution.workspaceRoot);
-  const identity = createHash2("sha256").update(path13.resolve(repositoryRoot)).digest("hex").slice(0, 12);
+  const identity = safeIdentitySegment(repositoryIdentity);
   return path13.join(path13.dirname(repositoryRoot), ".leanrigor-worktrees", `${path13.basename(repositoryRoot)}-${identity}`);
+}
+function repositoryIdentityFor(repositoryRoot) {
+  return `root-sha256:${createHash2("sha256").update(path13.resolve(repositoryRoot)).digest("hex")}`;
+}
+function safeIdentitySegment(repositoryIdentity) {
+  return (repositoryIdentity.includes(":") ? repositoryIdentity.split(":").at(-1) : repositoryIdentity).replace(/[^a-f0-9]/gi, "").slice(0, 12) || createHash2("sha256").update(repositoryIdentity).digest("hex").slice(0, 12);
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
   const dir = path13.join(workflowRoot, ".leanrigor-owned-worktrees");
@@ -23355,6 +23373,9 @@ function timestamp() {
 function isPathInside(child, parent) {
   const relative = path13.relative(path13.resolve(parent), path13.resolve(child));
   return relative === "" || !relative.startsWith("..") && !path13.isAbsolute(relative);
+}
+function isSamePath(left, right) {
+  return path13.resolve(left) === path13.resolve(right);
 }
 async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
@@ -24137,6 +24158,7 @@ async function runPlanning(args) {
   let syntaxRepairApplied = false;
   let semanticRepairApplied = false;
   let sawQualityRepairablePlan = false;
+  let sawConstraintContradiction = false;
   let attempts = 0;
   if (!input.config.workflow.automaticTriage || !provider) {
     const fallbackReason2 = !input.config.workflow.automaticTriage ? "automatic model planning is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model planning provider was resolved";
@@ -24177,6 +24199,7 @@ async function runPlanning(args) {
     }
     allDiagnostics.push(...validated.diagnostics);
     if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) sawQualityRepairablePlan = true;
+    if (validated.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
     warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
     const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
     warnings.push(...normalised.warnings ?? []);
@@ -24191,9 +24214,10 @@ async function runPlanning(args) {
     }
     if (provider.repair) {
       try {
+        warnings.push("Attempting same-provider/model planning repair for exact validation diagnostics.");
         const repairResult = await provider.repair(input, {
           plan: normalised.raw,
-          diagnostics: validated.diagnostics,
+          diagnostics: validated.diagnostics.map((diagnostic) => ({ ...diagnostic, repairAttempt: "same-model" })),
           model: result.model,
           tier: result.tier
         });
@@ -24205,8 +24229,10 @@ async function runPlanning(args) {
         if (repairedValidation.ok) {
           semanticRepairApplied = true;
           warnings.push("Planning semantic repair applied by the same provider/model.");
+          markDiagnosticsResolution(allDiagnostics, validated.diagnostics, "repaired");
           return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
         }
+        if (repairedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
         allDiagnostics.push(...repairedValidation.diagnostics);
         warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
       } catch (error51) {
@@ -24217,7 +24243,12 @@ async function runPlanning(args) {
     }
   }
   const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
-  const approvalBlockedReason = sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan) ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised." : void 0;
+  const approvalBlockedReason = sawConstraintContradiction ? "Model planning contradicted approved constraints and repair did not produce a valid plan; plan approval is disabled until the plan is revised." : sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan) ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised." : void 0;
+  if (approvalBlockedReason) {
+    for (const diagnostic of allDiagnostics) {
+      if (isConstraintDiagnostic(diagnostic) && !diagnostic.resolution) diagnostic.resolution = "blocked";
+    }
+  }
   warnings.push(approvalBlockedReason ?? "Using deterministic planning fallback after model plan could not be validated.");
   return {
     plan: input.deterministicPlan,
@@ -24277,6 +24308,15 @@ function validateCandidate(args, raw) {
     return { ok: true, plan: args.validate(raw) };
   } catch (error51) {
     return { ok: false, diagnostics: diagnosticsOf(error51, "schema") };
+  }
+}
+function isConstraintDiagnostic(diagnostic) {
+  return diagnostic.code.startsWith("constraint.");
+}
+function markDiagnosticsResolution(allDiagnostics, matched, resolution) {
+  for (const diagnostic of allDiagnostics) {
+    if (!matched.some((candidate) => candidate.code === diagnostic.code && candidate.message === diagnostic.message && candidate.path.join(".") === diagnostic.path.join("."))) continue;
+    diagnostic.resolution = resolution;
   }
 }
 function modelResult(plan, result, attempts, warnings, diagnostics, syntaxRepairApplied, semanticRepairApplied) {
@@ -24594,10 +24634,17 @@ var phaseWorkspaceSchema = external_exports.object({
   status: external_exports.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"]),
   preparation: external_exports.object({
     status: external_exports.enum(["available", "prepared", "blocked", "failed"]),
+    worktreePath: external_exports.string().min(1).optional(),
+    repositoryIdentity: external_exports.string().min(1).optional(),
+    basis: external_exports.object({
+      branch: external_exports.string().min(1).optional(),
+      commit: external_exports.string().min(1).optional()
+    }).optional(),
     packageManager: external_exports.enum(["npm", "pnpm", "yarn", "bun", "none", "unknown"]).optional(),
     dependencies: external_exports.enum(["available", "missing", "not_applicable", "unknown"]),
     bootstrapRequired: external_exports.boolean(),
     bootstrapCommand: external_exports.string().optional(),
+    validationCommandsAvailable: external_exports.boolean().optional(),
     commandRisk: external_exports.object({
       localWrite: external_exports.boolean(),
       network: external_exports.boolean(),
@@ -24798,6 +24845,7 @@ var integrationValidationSchema = external_exports.object({
 var workflowGitStateSchema = external_exports.object({
   context: external_exports.object({
     repositoryRoot: external_exports.string().min(1),
+    repositoryIdentity: external_exports.string().min(1).optional(),
     gitCommonDir: external_exports.string().min(1),
     baseCommit: external_exports.string().min(1),
     originalHead: external_exports.string().min(1),
@@ -24826,7 +24874,12 @@ var planningDiagnosticSchema = external_exports.object({
   stage: external_exports.enum(["syntax", "schema", "quality"]),
   path: external_exports.array(external_exports.union([external_exports.string(), external_exports.number()])),
   code: external_exports.string(),
-  message: external_exports.string()
+  message: external_exports.string(),
+  contradictionType: external_exports.string().optional(),
+  affectedPhase: external_exports.string().optional(),
+  effectiveConstraint: external_exports.string().optional(),
+  repairAttempt: external_exports.enum(["same-model", "deterministic-normalisation", "none"]).optional(),
+  resolution: external_exports.enum(["repaired", "blocked", "fallback"]).optional()
 });
 var workflowStateSchema = external_exports.object({
   version: external_exports.literal(STATE_VERSION),
@@ -25707,7 +25760,7 @@ function applyApprovalConstraintChanges(state, changes) {
 function recomputeConstraints(model) {
   const removals = model.userRemovals.map((change) => change.text);
   const overrideTargets = model.userOverrides.map((change) => change.target).filter((target) => Boolean(target));
-  const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions]).filter((record2) => record2.source === "user" || !removals.some((target) => constraintMatches(record2.text, target))).filter((record2) => record2.source === "user" || !overrideTargets.some((target) => constraintMatches(record2.text, target)));
+  const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions]).filter((record2) => record2.source === "policy" || record2.source === "user" || !removals.some((target) => constraintMatches(record2.text, target))).filter((record2) => record2.source === "policy" || record2.source === "user" || !overrideTargets.some((target) => constraintMatches(record2.text, target)));
   return {
     ...model,
     original: uniqueRecords(model.original),
@@ -25741,6 +25794,17 @@ function constraintChange(action, text, target, timestampValue, workflowRevision
 function effectiveConstraintTexts(state, triage, config2) {
   const constraints = state.constraints ?? initialiseWorkflowConstraints(triage, config2, state.revision, "legacy_state_loaded");
   return constraints.effective.map((constraint) => constraint.text);
+}
+function effectiveConstraintSet(state, triage, config2) {
+  const constraints = state.constraints ?? initialiseWorkflowConstraints(triage, config2, state.revision, "legacy_state_loaded");
+  return {
+    policy: constraints.policy.map((constraint) => constraint.text),
+    triage: constraints.original.map((constraint) => constraint.text),
+    userAdditions: constraints.userAdditions.map((constraint) => constraint.text),
+    userRemovals: constraints.userRemovals.map((change) => ({ target: change.target, text: change.text })),
+    userOverrides: constraints.userOverrides.map((change) => ({ target: change.target, text: change.text })),
+    finalEffective: constraints.effective.map((constraint) => constraint.text)
+  };
 }
 function approvalConstraintSummary(constraints) {
   const changes = constraints.audit.filter((change) => change.transition === "approve_approach");
@@ -25787,6 +25851,7 @@ async function withPlan(state, config2, planningOptions) {
     triage: state.triage,
     config: config2,
     constraints: effectiveConstraintTexts(planning, state.triage, config2 ?? defaultConfig()),
+    constraintSet: effectiveConstraintSet(planning, state.triage, config2 ?? defaultConfig()),
     constraintAudit: planning.constraints?.audit ?? [],
     revisionRequests: [...planning.approach?.revisionRequests ?? [], ...planning.plan?.revisionRequests ?? []],
     provider: planningOptions?.provider,
@@ -25848,6 +25913,14 @@ async function generatePlan(args) {
       config: config2,
       triage: args.triage,
       effectiveConstraints: args.constraints ?? args.triage.constraints.mustNot,
+      effectiveConstraintSet: args.constraintSet ?? {
+        policy: [],
+        triage: args.triage.constraints.mustNot,
+        userAdditions: [],
+        userRemovals: [],
+        userOverrides: [],
+        finalEffective: args.constraints ?? args.triage.constraints.mustNot
+      },
       constraintChanges: args.constraintAudit ?? [],
       deterministicPlan,
       revisionRequests: args.revisionRequests
@@ -25942,30 +26015,54 @@ function validatePlanConstraintConsistency(plan, constraints) {
   const diagnostics = [];
   const effective = constraints.map(cleanConstraint).filter(Boolean);
   if (effective.length === 0) return diagnostics;
-  const planText = [
-    plan.summary,
-    ...plan.principles,
-    ...plan.phases.flatMap((phase2) => [
-      phase2.objective,
-      phase2.rationale,
-      ...phase2.acceptanceCriteria,
-      ...phase2.validationCommands
-    ])
-  ].join("\n").toLowerCase();
-  if (effective.some(isBackwardCompatibilityNotRequired) && requiresBackwardCompatibility(planText)) {
-    diagnostics.push(planDiagnostic(
-      "quality",
-      ["plan"],
-      "constraint.contradiction.backward_compatibility",
-      "Plan contradicts the approved override that backward compatibility is not required."
-    ));
+  const planText = planConstraintText(plan).normalised;
+  const waivedCompatibility = effective.find(isBackwardCompatibilityNotRequired);
+  if (waivedCompatibility) {
+    for (const [index, phase2] of plan.phases.entries()) {
+      if (!phaseRequiresBackwardCompatibility(phase2)) continue;
+      diagnostics.push(planDiagnostic(
+        "quality",
+        ["phases", index, "objective"],
+        "constraint.contradiction.backward_compatibility",
+        `Phase ${phase2.id} contradicts the approved constraint: ${waivedCompatibility}`,
+        {
+          contradictionType: "backward_compatibility_required_after_waiver",
+          affectedPhase: phase2.id,
+          effectiveConstraint: waivedCompatibility
+        }
+      ));
+    }
   }
   for (const constraint of effective) {
-    if (/tests? must be updated|tests? must be added|update tests/i.test(constraint) && !planTextIncludes(planText, ["test", "coverage", "regression"])) {
-      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.tests", "Plan does not reflect the approved constraint that tests must be updated."));
+    const semantic = constraintSemantics(constraint);
+    if (semantic.testsUpdatedRequired && !planTextIncludes(planText, ["test", "coverage", "regression"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.tests", "Plan does not reflect the approved constraint that tests must be updated.", {
+        contradictionType: "missing_required_tests",
+        effectiveConstraint: constraint
+      }));
     }
-    if (/all (configured )?checks must pass|all checks pass/i.test(constraint) && !planTextIncludes(planText, ["check", "validation", "typecheck", "test", "lint"])) {
-      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.checks", "Plan does not reflect the approved constraint that all checks must pass."));
+    if (semantic.allChecksMustPass && (plan.phases.every((phase2) => phase2.validationCommands.length === 0) || !planTextIncludes(planText, ["check", "validation", "typecheck", "test", "lint", "build"]))) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.checks", "Plan does not reflect the approved constraint that all checks must pass.", {
+        contradictionType: "missing_required_validation",
+        effectiveConstraint: constraint
+      }));
+    }
+    if (semantic.excludedScope) {
+      for (const [index, phase2] of plan.phases.entries()) {
+        const phaseAreas = [...phase2.expectedWriteAreas, ...phase2.expectedFilesOrAreas].map(normaliseConstraint).join("\n");
+        if (!phaseAreas.includes(normaliseConstraint(semantic.excludedScope))) continue;
+        diagnostics.push(planDiagnostic("quality", ["phases", index, "expectedWriteAreas"], "constraint.contradiction.excluded_scope", `Phase ${phase2.id} includes excluded scope '${semantic.excludedScope}'.`, {
+          contradictionType: "excluded_scope_in_phase",
+          affectedPhase: phase2.id,
+          effectiveConstraint: constraint
+        }));
+      }
+    }
+    if (semantic.policySafetyGate && !planTextIncludes(planText, ["gate", "evidence", "validation", "review"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.policy_gate", "Plan omits a policy-owned safety gate.", {
+        contradictionType: "missing_policy_safety_gate",
+        effectiveConstraint: constraint
+      }));
     }
   }
   return diagnostics;
@@ -25973,13 +26070,52 @@ function validatePlanConstraintConsistency(plan, constraints) {
 function isBackwardCompatibilityNotRequired(constraint) {
   return /backward[s]? compatibility .*not required|backward-compatible .*not required|compatibility .*not required/i.test(constraint) || /not require .*backward[s]? compatibility/i.test(constraint);
 }
-function requiresBackwardCompatibility(text) {
-  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b/.test(text);
+function phaseRequiresBackwardCompatibility(phase2) {
+  const text = [
+    phase2.objective,
+    phase2.rationale,
+    ...phase2.acceptanceCriteria,
+    ...phase2.validationCommands
+  ].join("\n").toLowerCase();
+  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b|\bcompatibility migration\b|\bcompatibility-preserving\b/.test(text);
   if (!mentionsCompatibility) return false;
-  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b/.test(text);
+  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b|\bwithout backward[s]? compatibility\b/.test(text);
+}
+function requiresBackwardCompatibility(text) {
+  const normalised = text.toLowerCase();
+  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b|\bcompatibility migration\b|\bcompatibility-preserving\b/.test(normalised);
+  if (!mentionsCompatibility) return false;
+  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b|\bwithout backward[s]? compatibility\b/.test(normalised);
 }
 function planTextIncludes(text, terms) {
   return terms.some((term) => text.includes(term));
+}
+function planConstraintText(plan) {
+  return {
+    normalised: [
+      plan.summary,
+      ...plan.principles,
+      ...plan.phases.flatMap((phase2) => [
+        phase2.objective,
+        phase2.rationale,
+        ...phase2.expectedReadAreas,
+        ...phase2.expectedWriteAreas,
+        ...phase2.expectedFilesOrAreas,
+        ...phase2.acceptanceCriteria,
+        ...phase2.validationCommands
+      ])
+    ].join("\n").toLowerCase()
+  };
+}
+function constraintSemantics(constraint) {
+  const normalised = normaliseConstraint(constraint);
+  const excludedScope = constraint.match(/\b(?:exclude|excluding|do not touch|do not modify|out of scope|must not touch|must not modify)\b[:\s-]*(.+)$/i)?.[1]?.trim();
+  return {
+    testsUpdatedRequired: /\btests? (updated|added|required)\b|\bupdate tests?\b|\btest coverage\b/.test(normalised),
+    allChecksMustPass: /\ball configured checks pass\b|\ball checks pass\b|\ball checks must pass\b/.test(normalised),
+    excludedScope,
+    policySafetyGate: /\bsafety gate\b|\bcompletion gate\b|\breview gate\b|\bmandatory evidence\b/.test(normalised)
+  };
 }
 function planningRunMetadata(run) {
   return {
@@ -26223,8 +26359,8 @@ function areaBoundary(area) {
   if (/^([^/]+\/[^/]+)/.test(normalized) && isPathLikeArea2(normalized)) return normalized.match(/^([^/]+\/[^/]+)/)?.[1];
   return void 0;
 }
-function planDiagnostic(stage, pathParts, code, message) {
-  return { stage, path: pathParts, code, message };
+function planDiagnostic(stage, pathParts, code, message, details = {}) {
+  return { stage, path: pathParts, code, message, ...details };
 }
 function uniqueDiagnostics(diagnostics) {
   const seen = /* @__PURE__ */ new Set();
@@ -26825,6 +26961,8 @@ function workflowNextSummary(state) {
   }
   if (state.state === "awaiting_plan_approval") {
     const commands = nextActions(state);
+    const plan = state.plan;
+    const readiness = planExecutionStructure(state);
     return {
       ...base,
       label: "Plan approval",
@@ -26833,24 +26971,52 @@ function workflowNextSummary(state) {
       pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "cancel", "show status", "show plan"],
       approvalActions: [
-        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the plan and begin phase execution." },
-        { label: "Revise", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
-        { label: "Cancel", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root "${state.root}"`, description: "Cancel this workflow." }
+        { label: "Approve plan and start coordinator execution", intent: "approve", command: commands[0] ?? "", description: "Accept the plan; execution remains coordinator-managed and starts only through the execution command." },
+        { label: "Revise plan", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
+        { label: "View full details", intent: "show plan", command: `leanrigor flow status ${state.id} --json --root ${quoteArg(state.root)}`, description: "Show full persisted workflow, plan, constraints, and provenance." },
+        { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${quoteArg(state.root)}`, description: "Cancel this workflow." }
       ],
       summary: {
-        phases: state.plan?.phases.map((candidate, index) => ({
+        workflow: {
+          id: state.id,
+          mode: state.mode,
+          planningSource: state.planningRun?.source ?? "unknown",
+          provider: state.planningRun?.provider ?? "unknown",
+          model: state.planningRun?.model,
+          phases: plan?.phases.length ?? 0
+        },
+        overallStrategy: {
+          implementationDivision: plan?.summary ?? "Sequential implementation plan.",
+          orderRationale: "Dependencies define execution order; each phase is independently reviewable before dependents unlock.",
+          architectureBoundaries: unique7(plan?.phases.flatMap((phase3) => phase3.expectedWriteAreas.map(architectureBoundaryForArea)) ?? []).filter(Boolean)
+        },
+        phases: plan?.phases.map((candidate, index) => ({
           number: index + 1,
           id: candidate.id,
           objective: candidate.objective,
+          rationale: candidate.rationale,
+          dependencies: candidate.dependencies,
+          expectedWriteAreas: candidate.expectedWriteAreas,
+          riskLevel: candidate.riskLevel,
+          modelTier: candidate.modelTier,
           status: candidate.status,
           validation: candidate.validationCommands
         })) ?? [],
-        validation: unique7(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+        executionStructure: readiness,
+        validationStrategy: {
+          perPhase: plan?.phases.map((phase3) => ({ phase: phase3.id, commands: phase3.validationCommands, criteria: phase3.acceptanceCriteria })) ?? [],
+          finalIntegratedChecks: unique7(plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+          completionEvidence: "Each phase must record changed files, validation evidence, criteria evidence, assumptions, risks, and scope deviations before dependent phases proceed."
+        },
         approvedConstraints: state.constraints?.effective.map((constraint) => ({ text: constraint.text, source: constraint.source })) ?? state.triage?.constraints.mustNot ?? [],
         approvedOverrides: state.constraints?.userOverrides ?? [],
         execution: {
           provider: "auto",
-          workspace: "isolated phase worktree",
+          resolvedProvider: "resolved at coordinator dispatch",
+          mode: "coordinator-managed",
+          workspace: "isolated Git worktree outside the main checkout",
+          workspaceRationale: "External worktrees avoid nested Git repositories, recursive search/build traversal, and main working-tree status pollution.",
+          mainWorkingTree: "remains untouched",
           manualExecution: "not selected",
           implementationStarted: false
         }
@@ -26948,6 +27114,28 @@ function executingReadinessSummary(state) {
     recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : void 0,
     otherDependencyReadyPhases: dependencyReady.slice(1).map((phase2) => ({ id: phase2.id, objective: phase2.objective }))
   };
+}
+function planExecutionStructure(state) {
+  const phases = state.plan?.phases ?? [];
+  const independent = phases.filter((phase2) => phase2.dependencies.length === 0).map((phase2) => phase2.id);
+  const recommended = phases.find((phase2) => phase2.dependencies.length === 0);
+  return {
+    planType: independent.length > 1 ? "parallel-candidates" : "sequential",
+    dependencies: phases.map((phase2) => ({ phase: phase2.id, dependsOn: phase2.dependencies })),
+    independentPhases: independent,
+    outOfOrderExecution: independent.length > 1 ? "Possible only for dependency-ready phases without write conflicts and with explicit execution selection." : "Not applicable; follow dependency order.",
+    recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : void 0
+  };
+}
+function architectureBoundaryForArea(area) {
+  const normalised = area.replace(/\\/g, "/").toLowerCase();
+  if (normalised.startsWith("src/core/")) return "src/core";
+  if (normalised.startsWith("src/cli/")) return "src/cli";
+  if (normalised.startsWith("src/config/")) return "src/config";
+  if (normalised.startsWith("src/adapters/")) return normalised.split("/").slice(0, 3).join("/");
+  if (normalised.startsWith("tests/")) return "tests";
+  if (/^(docs|readme\.md|commands|methodology)\b/.test(normalised)) return "docs";
+  return area;
 }
 function phaseRepairBudget(state) {
   if (state.mode === "fast") return 1;
@@ -27168,11 +27356,16 @@ function phaseWorkerPrompt(input) {
     ...input.validationExpectations.map((command) => `- ${command}`),
     "",
     "Workspace preparation:",
+    input.workspacePreparation?.worktreePath ? `- Worktree path: ${input.workspacePreparation.worktreePath}` : void 0,
+    input.workspacePreparation?.repositoryIdentity ? `- Repository identity: ${input.workspacePreparation.repositoryIdentity}` : void 0,
+    input.workspacePreparation?.basis?.branch || input.workspacePreparation?.basis?.commit ? `- Basis: ${[input.workspacePreparation.basis.branch, input.workspacePreparation.basis.commit].filter(Boolean).join(" @ ")}` : void 0,
     `- Prepared: ${input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "yes" : "no"}`,
     input.workspacePreparation ? `- Package manager: ${input.workspacePreparation.packageManager ?? "unknown"}` : "- Package manager: unknown",
     input.workspacePreparation ? `- Dependencies: ${input.workspacePreparation.dependencies}` : "- Dependencies: unknown",
+    input.workspacePreparation ? `- Validation commands available: ${input.workspacePreparation.validationCommandsAvailable === false ? "no" : "yes"}` : "- Validation commands available: unknown",
     input.workspacePreparation?.bootstrapCommand ? `- Bootstrap command: ${input.workspacePreparation.bootstrapCommand}` : "- Bootstrap command: none",
     input.workspacePreparation ? `- Bootstrap result: ${input.workspacePreparation.status}` : "- Bootstrap result: unknown",
+    input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "- Workspace status: prepared. Do not install dependencies unless LeanRigor explicitly marks preparation incomplete." : void 0,
     input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status) ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result." : void 0,
     "",
     "Constraints:",
@@ -27870,9 +28063,13 @@ async function preparePhaseWorkspace(args) {
   if (!await exists2(packageJson)) {
     return preparation({
       status: "available",
+      worktreePath: args.workspacePath,
+      repositoryIdentity: args.repositoryIdentity,
+      basis: args.basis,
       packageManager: "none",
       dependencies: "not_applicable",
       bootstrapRequired: false,
+      validationCommandsAvailable: args.validationCommands.length === 0,
       reason: "No package.json was detected in the phase workspace.",
       checkedAt,
       evidence: ["package.json absent"]
@@ -27883,9 +28080,13 @@ async function preparePhaseWorkspace(args) {
   if (!hasDeclaredDependencies(packageJsonData)) {
     return preparation({
       status: "available",
+      worktreePath: args.workspacePath,
+      repositoryIdentity: args.repositoryIdentity,
+      basis: args.basis,
       packageManager: manager.packageManager,
       dependencies: "not_applicable",
       bootstrapRequired: false,
+      validationCommandsAvailable: true,
       reason: "package.json declares no installable dependencies.",
       checkedAt,
       evidence: manager.evidence
@@ -27895,9 +28096,13 @@ async function preparePhaseWorkspace(args) {
   if (dependenciesAvailable) {
     return preparation({
       status: "available",
+      worktreePath: args.workspacePath,
+      repositoryIdentity: args.repositoryIdentity,
+      basis: args.basis,
       packageManager: manager.packageManager,
       dependencies: "available",
       bootstrapRequired: false,
+      validationCommandsAvailable: true,
       reason: "Existing workspace dependencies are available.",
       checkedAt,
       evidence: manager.evidence
@@ -27906,9 +28111,13 @@ async function preparePhaseWorkspace(args) {
   const command = manager.bootstrapCommand ?? fallbackBootstrapCommand();
   const result = preparation({
     status: args.config.execution.dependencyBootstrap === "auto-lockfile" && manager.lockfilePreserving ? "prepared" : "blocked",
+    worktreePath: args.workspacePath,
+    repositoryIdentity: args.repositoryIdentity,
+    basis: args.basis,
     packageManager: manager.packageManager,
     dependencies: "missing",
     bootstrapRequired: true,
+    validationCommandsAvailable: false,
     bootstrapCommand: command,
     approvalRequired: args.config.execution.dependencyBootstrap !== "auto-lockfile" || !manager.lockfilePreserving,
     reason: manager.lockfilePreserving ? "Dependencies are missing in the isolated phase worktree; a lockfile-preserving bootstrap is required before provider dispatch." : "Dependencies are missing in the isolated phase worktree and no lockfile-preserving bootstrap was detected.",
@@ -27953,6 +28162,9 @@ async function dependenciesUsable(workspacePath, validationCommands) {
 function preparation(args) {
   return {
     ...args,
+    worktreePath: args.worktreePath,
+    repositoryIdentity: args.repositoryIdentity,
+    basis: args.basis,
     bootstrapCommand: args.bootstrapCommand?.join(" "),
     approvalRequired: args.approvalRequired ?? false,
     commandRisk: {
@@ -28071,6 +28283,8 @@ var ExecutionCoordinator = class {
         const preparation2 = await preparePhaseWorkspace({
           workspacePath: workspace.path,
           repositoryRoot: withWorkspace.git.context.repositoryRoot,
+          repositoryIdentity: withWorkspace.git.context.repositoryIdentity,
+          basis: { branch: workspace.branch, commit: workspace.baseCommit },
           validationCommands: phase2.validationCommands,
           config: this.config
         });
@@ -28788,7 +29002,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.18");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.19");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

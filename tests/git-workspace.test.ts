@@ -47,6 +47,8 @@ describe("Git worktree isolation and integration", () => {
     expect(secondPreflight.ok).toBe(true);
     expect(firstPreflight.workspaceRoot).not.toBe(secondPreflight.workspaceRoot);
     expect(firstPreflight.workspaceRoot).toContain(".leanrigor-worktrees");
+    expect(path.basename(firstPreflight.workspaceRoot!)).toMatch(/^same-[a-f0-9]{12}$/);
+    expect(path.basename(secondPreflight.workspaceRoot!)).toMatch(/^same-[a-f0-9]{12}$/);
     expect(path.relative(first, firstPreflight.workspaceRoot!)).toMatch(/^\.\./);
     expect(path.relative(second, secondPreflight.workspaceRoot!)).toMatch(/^\.\./);
   });

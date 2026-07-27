@@ -153,10 +153,10 @@ leanrigor.config.json       committed repository policy, when a team adds one
 Workspace-backed workflows create LeanRigor-owned worktrees outside the source repository by default:
 
 ```text
-<repository-parent>/.leanrigor-worktrees/<repository-name>/<workflow-id>/
+<repository-parent>/.leanrigor-worktrees/<repository-name>-<repository-path-hash>/<workflow-id>/
 ```
 
-The user's original working tree is not stashed, reset, rebased, or modified by workspace operations.
+The hash is derived from the canonical repository path so multiple clones with the same directory name do not collide. The user's original working tree is not stashed, reset, rebased, or modified by workspace operations.
 
 ## Configuration summary
 

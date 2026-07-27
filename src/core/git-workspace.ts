@@ -25,6 +25,7 @@ export interface GitPreflightResult {
   code?: string;
   operation?: string;
   repositoryRoot?: string;
+  repositoryIdentity?: string;
   gitCommonDir?: string;
   baseCommit?: string;
   originalHead?: string;
@@ -129,7 +130,8 @@ export async function preflightGitRepository(root: string, config: LeanRigorConf
     return { ok: false, code: "nested_repository_ambiguous", repositoryRoot, gitCommonDir, message: nested.join(", ") };
   }
 
-  const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config);
+  const repositoryIdentity = repositoryIdentityFor(repositoryRoot);
+  const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config, repositoryIdentity);
   if (isPathInside(workspaceRoot, repositoryRoot) && !isPathInside(workspaceRoot, gitCommonDir)) {
     return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot };
   }
@@ -148,6 +150,7 @@ export async function preflightGitRepository(root: string, config: LeanRigorConf
   return {
     ok: true,
     repositoryRoot,
+    repositoryIdentity,
     gitCommonDir,
     baseCommit: originalHead,
     originalHead,
@@ -191,6 +194,7 @@ export async function ensureIntegrationWorkspace(state: SequentialWorkflowState,
 
   const context: WorkflowGitContext = existing?.context ?? {
     repositoryRoot: preflight.repositoryRoot!,
+    repositoryIdentity: preflight.repositoryIdentity!,
     gitCommonDir: preflight.gitCommonDir!,
     baseCommit: preflight.baseCommit!,
     originalHead: preflight.originalHead!,
@@ -534,6 +538,11 @@ export async function cleanupOwnedWorkspaces(state: SequentialWorkflowState, mod
       report.needsReview.push(workspace.path);
       continue;
     }
+    if (isSamePath(workspace.path, state.git.context.repositoryRoot) || isPathInside(state.git.context.repositoryRoot, workspace.path)) {
+      report.retainedWorktrees.push({ path: workspace.path, reason: "cleanup target overlaps the main repository checkout" });
+      report.needsReview.push(workspace.path);
+      continue;
+    }
     const dirty = await worktreeDirty(workspace.path);
     if (dirty) {
       report.retainedWorktrees.push({ path: workspace.path, reason: "workspace contains unrecorded changes" });
@@ -668,10 +677,20 @@ function sanitizeRefSegment(value: string): string {
     .replace(/\.lock$/i, "-lock") || "workspace";
 }
 
-function resolveWorkspaceRoot(repositoryRoot: string, config: LeanRigorConfig): string {
+function resolveWorkspaceRoot(repositoryRoot: string, config: LeanRigorConfig, repositoryIdentity = repositoryIdentityFor(repositoryRoot)): string {
   if (config.execution.workspaceRoot) return path.resolve(repositoryRoot, config.execution.workspaceRoot);
-  const identity = createHash("sha256").update(path.resolve(repositoryRoot)).digest("hex").slice(0, 12);
+  const identity = safeIdentitySegment(repositoryIdentity);
   return path.join(path.dirname(repositoryRoot), ".leanrigor-worktrees", `${path.basename(repositoryRoot)}-${identity}`);
+}
+
+function repositoryIdentityFor(repositoryRoot: string): string {
+  return `root-sha256:${createHash("sha256").update(path.resolve(repositoryRoot)).digest("hex")}`;
+}
+
+function safeIdentitySegment(repositoryIdentity: string): string {
+  return (repositoryIdentity.includes(":") ? repositoryIdentity.split(":").at(-1)! : repositoryIdentity)
+    .replace(/[^a-f0-9]/gi, "")
+    .slice(0, 12) || createHash("sha256").update(repositoryIdentity).digest("hex").slice(0, 12);
 }
 
 async function writeOwnershipMetadata(workflowRoot: string, metadata: OwnershipMetadata): Promise<void> {
@@ -846,6 +865,10 @@ function timestamp(): string {
 function isPathInside(child: string, parent: string): boolean {
   const relative = path.relative(path.resolve(parent), path.resolve(child));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isSamePath(left: string, right: string): boolean {
+  return path.resolve(left) === path.resolve(right);
 }
 
 async function pathExists(target: string): Promise<boolean> {

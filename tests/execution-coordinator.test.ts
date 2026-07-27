@@ -6,6 +6,7 @@ import { ExecutionCoordinator, detectCodeIntelligence } from "../src/core/execut
 import { completePhase, integrationStatus } from "../src/core/flow.js";
 import type { ExecutionProvider } from "../src/core/execution/provider.js";
 import type { PhaseExecutionInput, PhaseExecutionResult } from "../src/core/execution/types.js";
+import { phaseWorkerPrompt } from "../src/core/execution/prompt.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("execution coordinator", () => {
@@ -199,8 +200,19 @@ describe("execution coordinator", () => {
     expect(capturedInput).toMatchObject({
       phaseId: "phase-a",
       leaseOwnerId: lease.ownerId,
-      selectedMode: "standard"
+      selectedMode: "standard",
+      workspacePreparation: {
+        status: "available",
+        packageManager: "npm",
+        dependencies: "not_applicable",
+        worktreePath: expect.stringContaining("phase-a"),
+        repositoryIdentity: expect.stringMatching(/^root-sha256:/),
+        validationCommandsAvailable: true
+      }
     });
+    const prompt = phaseWorkerPrompt(capturedInput!);
+    expect(prompt).toContain("Workspace status: prepared");
+    expect(prompt).toContain("Do not install dependencies unless LeanRigor explicitly marks preparation incomplete");
     expect(lease.ownerType).toBe("agent");
     await expect(completePhase({
       root: harness.root,

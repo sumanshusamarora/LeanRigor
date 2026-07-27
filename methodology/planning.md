@@ -29,6 +29,9 @@ Include, scaled to mode:
 - Avoid vague phases such as "implement feature" or "update tests".
 - Do not include implementation details that inspection has not supported.
 - Keep phase count proportional to mode and risk.
+- Treat the approved effective constraint set as authoritative. Do not
+  reintroduce removed triage assumptions, and do not add work that contradicts
+  an explicit user override.
 
 ## Mode Expectations
 
@@ -66,3 +69,6 @@ Rigorous:
   in the plan, not hidden inside generic implementation phases.
 - If an approved assumption fails during execution, record the scope change and
   use `needs_replan` rather than continuing on an invalid plan.
+- If deterministic plan validation reports a constraint contradiction, repair
+  only the named invalid fields while preserving valid phase content. If the
+  contradiction cannot be repaired, stop before approval.

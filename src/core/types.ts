@@ -248,6 +248,11 @@ export interface PlanningDiagnostic {
   path: Array<string | number>;
   code: string;
   message: string;
+  contradictionType?: string;
+  affectedPhase?: string;
+  effectiveConstraint?: string;
+  repairAttempt?: "same-model" | "deterministic-normalisation" | "none";
+  resolution?: "repaired" | "blocked" | "fallback";
 }
 
 export interface WorkflowState {
@@ -439,6 +444,7 @@ export interface PhaseCompletionRecord {
 
 export interface WorkflowGitContext {
   repositoryRoot: string;
+  repositoryIdentity?: string;
   gitCommonDir: string;
   baseCommit: string;
   originalHead: string;
@@ -476,10 +482,17 @@ export interface PhaseWorkspace {
 
 export interface WorkspacePreparation {
   status: WorkspacePreparationStatus;
+  worktreePath?: string;
+  repositoryIdentity?: string;
+  basis?: {
+    branch?: string;
+    commit?: string;
+  };
   packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "none" | "unknown";
   dependencies: "available" | "missing" | "not_applicable" | "unknown";
   bootstrapRequired: boolean;
   bootstrapCommand?: string;
+  validationCommandsAvailable?: boolean;
   commandRisk: {
     localWrite: boolean;
     network: boolean;

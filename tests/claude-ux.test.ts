@@ -62,9 +62,10 @@ describe("Claude conversational workflow UX support", () => {
     expect(next.label).toBe("Plan approval");
     expect(next.pendingAction).toBe("Select an approval action or type a response.");
     expect(next.approvalActions).toBeDefined();
-    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve");
-    expect(next.approvalActions?.find((a) => a.intent === "revise")?.label).toBe("Revise");
-    expect(next.approvalActions?.find((a) => a.intent === "cancel")?.label).toBe("Cancel");
+    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve plan and start coordinator execution");
+    expect(next.approvalActions?.find((a) => a.intent === "revise")?.label).toBe("Revise plan");
+    expect(next.approvalActions?.find((a) => a.intent === "show plan")?.label).toBe("View full details");
+    expect(next.approvalActions?.find((a) => a.intent === "cancel")?.label).toBe("Cancel workflow");
   });
 
   it("/leanrigor:start resumes one active workflow", async () => {
@@ -340,13 +341,16 @@ describe("approval actions", () => {
 
     expect(next.label).toBe("Plan approval");
     expect(next.approvalActions).toBeDefined();
-    expect(next.approvalActions).toHaveLength(3);
+    expect(next.approvalActions).toHaveLength(4);
 
     const approve = next.approvalActions?.find((a) => a.intent === "approve");
     expect(approve?.command).toContain("leanrigor flow approve-plan");
 
     const revise = next.approvalActions?.find((a) => a.intent === "revise");
     expect(revise?.command).toContain("leanrigor flow revise-plan");
+
+    const details = next.approvalActions?.find((a) => a.intent === "show plan");
+    expect(details?.command).toContain("leanrigor flow status");
 
     const cancel = next.approvalActions?.find((a) => a.intent === "cancel");
     expect(cancel?.command).toContain("leanrigor flow cancel");
