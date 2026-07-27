@@ -229,12 +229,15 @@ Uninstall removes only LeanRigor-owned, unmodified assets and LeanRigor-specific
 `leanrigor-triage`:
 
 - uses the configured `small` capability tier;
-- has read-only inspection tools;
-- returns one schema-constrained `TriageOutput`;
+- has no repository-navigation tools during normal recommendation;
+- returns one schema-constrained `ModelTriageRecommendation`;
 - recommends but does not execute;
 - never has final safety authority.
 
-The runtime validates the output, retries malformed output once, applies deterministic policy, and falls back to deterministic local triage when necessary.
+The runtime builds deterministic evidence first, validates the recommendation,
+repairs malformed output once, optionally runs a separate targeted inspection
+with explicit path and byte budgets, applies deterministic policy, and falls
+back to deterministic local triage when necessary.
 
 ## Git protection hook
 

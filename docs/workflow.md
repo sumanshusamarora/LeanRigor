@@ -85,13 +85,23 @@ than normal user-facing output.
 
 ## Triage
 
-`flow start` runs the existing triage runner. Model-backed triage is used when
-configured, output is schema-validated, deterministic policy overrides are
-mandatory, malformed output is retried once, and fallback is deterministic.
+`flow start` runs the evidence-driven triage runner. LeanRigor first creates a
+bounded deterministic evidence packet. Model-backed triage then produces a
+tool-free recommendation from that packet; it does not receive repository
+navigation tools during normal triage. Deterministic policy makes the final mode
+decision, malformed recommendation output receives one repair attempt, and
+fallback is deterministic.
 
-Triage persists mode, risk, complexity, escalation reasons, assumptions,
-clarification, provider/source, attempts, and warnings. Triage does not create a
-detailed implementation plan and does not edit implementation files.
+Additional repository inspection is separate from recommendation. It only runs
+for concrete questions with explicit allowed paths, read and byte budgets, and a
+fact-only result schema. Failed inspection leaves unresolved evidence unknown,
+and policy handles the result conservatively.
+
+Triage persists mode, risk, complexity, deterministic evidence, model
+recommendation, policy decision, targeted inspection diagnostics, escalation
+reasons, assumptions, clarification, provider/source, attempts, and warnings.
+Triage does not create a detailed implementation plan and does not edit
+implementation files.
 
 ## Gates
 

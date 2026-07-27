@@ -587,6 +587,75 @@
           ]
         }
       }
+    },
+    "budgets": {
+      "type": "object",
+      "properties": {
+        "clarificationQuestions": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3
+        },
+        "options": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 3
+        },
+        "reviewRounds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        },
+        "repairRounds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "triageCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "default": 2
+        },
+        "triageRecommendationMaxTurns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 2
+        },
+        "triageRecommendationRepairAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 1
+        },
+        "triageInspectionMaxTurns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        },
+        "triageInspectionMaxReads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "default": 4
+        },
+        "triageInspectionMaxBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 262144,
+          "default": 30000
+        },
+        "triageInspectionTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 600,
+          "default": 120
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

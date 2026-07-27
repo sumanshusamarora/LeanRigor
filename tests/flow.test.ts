@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
-import { assessTask } from "../src/core/assessment.js";
 import {
   answerClarification,
   approveApproach,
@@ -29,7 +28,7 @@ import {
 } from "../src/core/flow.js";
 import type { PlanningProvider } from "../src/core/planning-runner.js";
 import type { TriageProvider } from "../src/core/triage-runner.js";
-import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
+import type { CriterionCompletionEvidence, ModelTriageRecommendation, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
 import { workflowNextSummary } from "../src/core/ux.js";
 import recoveredRejectedPlan from "./fixtures/recovered-rejected-plan.json" with { type: "json" };
 
@@ -359,15 +358,14 @@ describe("sequential workflow orchestration", () => {
   it("preserves approved constraints in deterministic fallback planning principles", async () => {
     const root = await tempRepo();
     const config = defaultConfig();
-    const triage = assessTask("Implement GitHub issue #12: deterministic test-obligation planning and evidence gates.", config);
-    triage.constraints.mustNot = [
+    const constraints = [
       "Break loadability for existing persisted workflows",
       "Allow phase completion without mandatory obligation evidence"
     ];
     const provider: TriageProvider = {
       name: "fake-triage",
-      async classify() {
-        return { raw: triage, provider: "fake-triage", model: "triage-test-model" };
+      async recommend() {
+        return { raw: recommendation({ constraints }), provider: "fake-triage", model: "triage-test-model" };
       }
     };
     const started = await startFlow({
@@ -992,6 +990,32 @@ function metCriteria(phase: WorkflowPhase): CriterionCompletionEvidence[] {
     status: "met",
     evidence: [`Evidence recorded for ${phase.id}: ${criterion}`]
   }));
+}
+
+function recommendation(overrides: Partial<ModelTriageRecommendation> = {}): ModelTriageRecommendation {
+  return {
+    version: 1,
+    complexity: "medium",
+    ambiguity: "low",
+    blastRadius: "medium",
+    risks: {
+      architecturalImpact: "low",
+      securityRisk: "none",
+      dataIntegrityRisk: "none",
+      operationalRisk: "none"
+    },
+    recommendedMode: "standard",
+    confidence: 0.8,
+    parallelism: "sequential",
+    constraints: [],
+    approachSummary: "Implement deterministic test-obligation planning and evidence gates.",
+    needsAdditionalInspection: false,
+    inspectionQuestions: [],
+    evidenceReferences: [],
+    taskType: "feature",
+    clarification: { required: false, question: null, reason: null },
+    ...overrides
+  };
 }
 
 function validationEvidenceFor(phase: WorkflowPhase, status: "passed" | "failed" | "skipped"): ValidationEvidence[] {

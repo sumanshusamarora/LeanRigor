@@ -66,13 +66,21 @@ Prompt output cannot override deterministic blockers or narrate a workflow into 
 
 Automatic triage is enabled by default. The triage path:
 
-1. gathers the request, repository policy, repository metadata, detected instruction files, and bounded inspection results;
-2. asks the configured triage provider for a fixed `TriageOutput`;
-3. schema-validates the result;
-4. retries malformed output once;
-5. applies deterministic repository-policy overrides;
-6. falls back to deterministic local triage when provider triage is unavailable or invalid;
-7. persists the model recommendation, final mode, override reason, provider, attempts, warnings, assumptions, and blocking clarification.
+1. gathers a versioned deterministic evidence packet from the request,
+   explicitly named paths, bounded repository metadata, package manifests,
+   policy state, and Git status metadata;
+2. asks the configured triage provider for one tool-free
+   `ModelTriageRecommendation`;
+3. validates the structured result and allows one repair for malformed output;
+4. optionally runs a separate targeted inspection only for concrete questions
+   with explicit allowed paths and read/byte budgets;
+5. reruns the tool-free recommendation when inspection adds verified facts;
+6. applies deterministic repository-policy overrides as the final authority;
+7. falls back to deterministic local triage when provider recommendation is
+   unavailable or invalid;
+8. persists deterministic evidence, model recommendation, policy decision,
+   final mode, override reasons, provider provenance, inspection diagnostics,
+   attempts, warnings, assumptions, and blocking clarification.
 
 Complexity and risk are independent. Fast requires positive evidence of low risk. Rigorous requires an explicit policy trigger such as security, migrations, public contracts, production infrastructure, data integrity, concurrency, destructive operations, or high blast radius.
 

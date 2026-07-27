@@ -170,6 +170,19 @@ Important settings include:
 
 Model output recommends a mode. Deterministic policy applies the final decision.
 
+Dedicated triage budgets live under `budgets`:
+
+- `triageRecommendationMaxTurns`: safety bound for the normal tool-free
+  recommendation call;
+- `triageRecommendationRepairAttempts`: small allowance for malformed structured
+  recommendation output;
+- `triageInspectionMaxTurns`, `triageInspectionMaxReads`,
+  `triageInspectionMaxBytes`, and `triageInspectionTimeoutSeconds`: separate
+  bounds for optional targeted fact inspection.
+
+These budgets do not grant normal triage repository tools. They cap each stage
+after deterministic evidence collection has already bounded the discovery work.
+
 ## Review, testing, and completion gates
 
 Default review levels:

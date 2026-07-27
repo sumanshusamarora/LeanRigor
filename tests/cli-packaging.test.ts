@@ -40,7 +40,7 @@ describe("CLI packaging and init regressions", () => {
   it("falls back deterministically after malformed model triage", async () => {
     const provider: TriageProvider = {
       name: "broken-model",
-      async classify() {
+      async recommend() {
         return { provider: "broken-model", model: "haiku", raw: { workflow: { finalMode: "invalid" } } };
       }
     };
@@ -48,6 +48,6 @@ describe("CLI packaging and init regressions", () => {
     const result = await runTriage({ request: "Fix the typo in the README documentation", root: await tempRepo(), config: defaultConfig(), provider });
     expect(result.source).toBe("deterministic-fallback");
     expect(result.output.workflow.finalMode).toBe("fast");
-    expect(result.warnings.join("\n")).toMatch(/Model triage attempt 1 failed/);
+    expect(result.warnings.join("\n")).toMatch(/Model triage recommendation attempt 1 failed/);
   });
 });

@@ -4,23 +4,26 @@ Use the configured `small` model tier. The adapter resolves this to a concrete m
 
 ## Purpose
 
-Classify the request and recommend the next workflow. Do not implement, edit files, run tests, create a detailed plan, launch agents, or commit.
+Classify the request from LeanRigor's deterministic evidence packet and
+recommend the next workflow. Do not inspect the repository, implement, edit
+files, run tests, create a detailed plan, launch agents, or commit.
 
 ## Required output
 
-Return only JSON matching the `TriageOutput` schema in `src/core/triage-schema.ts`.
+Return only JSON matching the `ModelTriageRecommendation` schema in
+`src/core/triage-schema.ts`.
 
 The output must contain:
 
 - one-sentence task summary;
 - task type;
 - separate complexity, ambiguity, blast-radius, architecture, security, data-integrity, and operational assessments;
-- model recommendation and final policy-selected mode;
+- model recommendation only;
 - confidence from 0 to 1;
 - sequential or candidate parallelism;
 - review and test levels;
 - at most one blocking clarification question;
-- at most five inspection objectives;
+- concrete additional-inspection questions only when materially justified;
 - at most three escalation reasons;
 - at most three assumptions;
 - explicit constraints.
@@ -34,7 +37,8 @@ The output must contain:
 5. Bug fixes normally require Standard mode with targeted regression validation.
 6. A difficult read-only investigation may remain Standard.
 7. Recommend only whether parallelism is a candidate. The execution-graph skill makes the final task split.
-8. Request inspection objectives, not invented filenames.
+8. Request targeted inspection only through structured questions with exact
+   allowed paths. Do not ask for broad repository analysis.
 9. Ask only one blocking question, and only when its answer could change scope, architecture, compatibility, safety, mode, or acceptance criteria.
 10. Do not produce implementation advice or an execution plan.
 
@@ -46,4 +50,7 @@ The output must contain:
 
 ## Validation and fallback
 
-The orchestrator validates the response and then applies deterministic repository policy. Invalid output may be retried once with the validation error. A second failure falls back to Standard unless a known high-risk trigger requires Rigorous.
+The orchestrator validates the response and then applies deterministic
+repository policy. Invalid output may receive one structured repair request.
+Provider failure falls back to deterministic local triage unless a known
+high-risk trigger requires Rigorous.

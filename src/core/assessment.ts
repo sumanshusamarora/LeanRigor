@@ -1,5 +1,6 @@
 import type { LeanRigorConfig } from "../config/schema.js";
-import type { TriageOutput, WorkflowMode } from "./types.js";
+import { explicitRigorousTriggers, materialUnknowns } from "./triage-evidence.js";
+import type { ModelTriageRecommendation, TriageEvidencePacket, TriageOutput, WorkflowMode } from "./types.js";
 import { defaultReviewLevel, defaultTestLevel } from "./review-policy.js";
 import { triageOutputSchema } from "./triage-schema.js";
 
@@ -21,6 +22,25 @@ function includesAny(value: string, terms: string[]): boolean {
 function conciseSummary(request: string): string {
   const clean = request.trim().replace(/\s+/g, " ");
   return clean.length <= 220 ? clean : `${clean.slice(0, 217)}...`;
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function maxNonZero(a: Exclude<TriageOutput["assessment"]["architecturalImpact"], "none">, b: Exclude<TriageOutput["assessment"]["architecturalImpact"], "none">): Exclude<TriageOutput["assessment"]["architecturalImpact"], "none"> {
+  const rank = { low: 1, medium: 2, high: 3 };
+  return rank[a] >= rank[b] ? a : b;
+}
+
+function triageTargets(evidence: TriageEvidencePacket, recommendation: ModelTriageRecommendation, taskType: TriageOutput["task"]["type"], maxTargets: number): string[] {
+  const questionTargets = recommendation.inspectionQuestions.map((question) => question.question);
+  if (questionTargets.length > 0) return questionTargets.slice(0, maxTargets);
+  const explicitTargets = evidence.request.explicitlyNamedPaths;
+  if (explicitTargets.length > 0) return explicitTargets.slice(0, maxTargets);
+  if (taskType === "documentation") return ["README.md", "docs/**"].slice(0, maxTargets);
+  if (taskType === "bug") return ["current failing behaviour", "nearest implementation boundary", "existing regression tests"].slice(0, maxTargets);
+  return ["relevant implementation boundary", "existing patterns", "nearby tests"].slice(0, maxTargets);
 }
 
 export function assessTask(request: string, config: LeanRigorConfig): TriageOutput {
@@ -148,6 +168,153 @@ export function applyPolicyOverrides(input: TriageOutput, config: LeanRigorConfi
   output.workflow.testLevel = defaultTestLevel(finalMode, output.task.type);
 
   return validateTriageOutput(output);
+}
+
+export function deterministicRecommendationFromEvidence(evidence: TriageEvidencePacket, config: LeanRigorConfig): ModelTriageRecommendation {
+  const baseline = assessTask(evidence.request.text, config);
+  return {
+    version: 1,
+    complexity: baseline.assessment.complexity,
+    ambiguity: baseline.assessment.ambiguity,
+    blastRadius: baseline.assessment.blastRadius,
+    risks: {
+      architecturalImpact: baseline.assessment.architecturalImpact,
+      securityRisk: evidence.changeSignals.security === true ? "high" : baseline.assessment.securityRisk,
+      dataIntegrityRisk: evidence.changeSignals.dataIntegrity === true || evidence.changeSignals.migration === true ? "high" : baseline.assessment.dataIntegrityRisk,
+      operationalRisk: evidence.changeSignals.productionInfrastructure === true ? "high" : baseline.assessment.operationalRisk
+    },
+    recommendedMode: baseline.workflow.modelRecommendation,
+    confidence: baseline.workflow.confidence,
+    parallelism: baseline.workflow.parallelism,
+    constraints: baseline.constraints.mustNot,
+    approachSummary: baseline.task.summary,
+    needsAdditionalInspection: false,
+    inspectionQuestions: [],
+    evidenceReferences: evidence.deterministicFindings.slice(0, 8).map((finding) => finding.key),
+    taskType: baseline.task.type,
+    clarification: baseline.clarification
+  };
+}
+
+export function recommendationToTriageOutput(args: {
+  request: string;
+  evidence: TriageEvidencePacket;
+  recommendation: ModelTriageRecommendation;
+  config: LeanRigorConfig;
+}): { output: TriageOutput; policyDecision: { finalMode: WorkflowMode; overrideReasons: string[]; fastEligible: boolean } } {
+  const recommendation = args.recommendation;
+  const taskType = recommendation.taskType ?? args.evidence.changeSignals.taskType ?? "unknown";
+  const explicitTriggers = explicitRigorousTriggers(args.evidence);
+  const escalationReasons = unique([
+    ...explicitTriggers.map((trigger) => `Deterministic high-risk trigger detected: ${trigger}.`),
+    ...recommendation.evidenceReferences
+      .filter((reference) => /risk|migration|security|production|contract/i.test(reference))
+      .map((reference) => `Model referenced ${reference}.`)
+  ]).slice(0, args.config.triage.maxEscalationReasons);
+
+  const constraints = unique([
+    ...recommendation.constraints,
+    "modify unrelated behaviour",
+    "commit, push, deploy, or write to production without explicit approval"
+  ]).slice(0, 6);
+
+  const preliminary: TriageOutput = {
+    version: 1,
+    task: {
+      type: taskType,
+      summary: conciseSummary(recommendation.approachSummary || args.request)
+    },
+    assessment: {
+      complexity: recommendation.complexity,
+      ambiguity: recommendation.ambiguity,
+      blastRadius: recommendation.blastRadius,
+      architecturalImpact: maxNonZero(recommendation.risks.architecturalImpact, explicitTriggers.length > 0 ? "high" : "low"),
+      securityRisk: args.evidence.changeSignals.security === true ? "high" : recommendation.risks.securityRisk,
+      dataIntegrityRisk: args.evidence.changeSignals.dataIntegrity === true || args.evidence.changeSignals.migration === true ? "high" : recommendation.risks.dataIntegrityRisk,
+      operationalRisk: args.evidence.changeSignals.productionInfrastructure === true ? "high" : recommendation.risks.operationalRisk
+    },
+    workflow: {
+      modelRecommendation: recommendation.recommendedMode,
+      finalMode: recommendation.recommendedMode,
+      confidence: recommendation.confidence,
+      parallelism: recommendation.parallelism,
+      reviewLevel: defaultReviewLevel(recommendation.recommendedMode, recommendation.parallelism === "candidate"),
+      testLevel: defaultTestLevel(recommendation.recommendedMode, taskType),
+      overridden: false,
+      overrideReason: null
+    },
+    clarification: recommendation.clarification ?? {
+      required: args.request.trim().length < 12,
+      question: args.request.trim().length < 12 ? "What specific behaviour or outcome should change?" : null,
+      reason: args.request.trim().length < 12 ? "The request is too brief to determine scope and acceptance criteria safely." : null
+    },
+    inspection: {
+      required: recommendation.needsAdditionalInspection,
+      targets: triageTargets(args.evidence, recommendation, taskType, args.config.triage.maxInspectionTargets)
+    },
+    escalationReasons,
+    assumptions: ["Verified evidence is authoritative; unresolved material risks remain conservative."].slice(0, args.config.triage.maxAssumptions),
+    constraints: { mustNot: constraints }
+  };
+
+  return applyEvidencePolicy(preliminary, args.evidence, args.config);
+}
+
+function applyEvidencePolicy(input: TriageOutput, evidence: TriageEvidencePacket, config: LeanRigorConfig): { output: TriageOutput; policyDecision: { finalMode: WorkflowMode; overrideReasons: string[]; fastEligible: boolean } } {
+  const output = structuredClone(input);
+  const overrideReasons: string[] = [];
+  const explicitTriggers = explicitRigorousTriggers(evidence);
+  const unknowns = materialUnknowns(evidence);
+  const highRisk = output.assessment.securityRisk === "high"
+    || output.assessment.dataIntegrityRisk === "high"
+    || output.assessment.operationalRisk === "high"
+    || explicitTriggers.length > 0;
+
+  let finalMode: WorkflowMode = output.workflow.modelRecommendation;
+  if (config.workflow.defaultMode !== "adaptive") {
+    finalMode = config.workflow.defaultMode as WorkflowMode;
+    overrideReasons.push(`Repository configuration forces ${finalMode} mode.`);
+  } else if (explicitTriggers.length > 0 && finalMode !== "rigorous") {
+    finalMode = "rigorous";
+    overrideReasons.push(`Deterministic policy escalated explicit rigorous trigger(s): ${explicitTriggers.join(", ")}.`);
+  } else if (highRisk && finalMode !== "rigorous") {
+    finalMode = "rigorous";
+    overrideReasons.push("Deterministic policy escalated a high-risk task to rigorous mode.");
+  }
+
+  const fastEligible = output.assessment.ambiguity === "low"
+    && output.assessment.blastRadius === "low"
+    && output.assessment.securityRisk === "none"
+    && output.assessment.dataIntegrityRisk === "none"
+    && output.assessment.operationalRisk === "none"
+    && output.assessment.architecturalImpact === "low"
+    && unknowns.length === 0;
+
+  if (finalMode === "fast" && config.triage.fastRequiresPositiveEvidence && !fastEligible) {
+    finalMode = "standard";
+    const reason = unknowns.length > 0
+      ? `Fast mode blocked because material risk remains unknown: ${unknowns.join(", ")}.`
+      : "Fast mode requires positive evidence of low ambiguity, low blast radius, and no material risk.";
+    overrideReasons.push(reason);
+  }
+
+  output.workflow.finalMode = finalMode;
+  output.workflow.overridden = finalMode !== output.workflow.modelRecommendation;
+  output.workflow.overrideReason = output.workflow.overridden ? overrideReasons[0] ?? "Deterministic policy changed the model recommendation." : null;
+  output.workflow.reviewLevel = highRisk
+    ? config.review.highRiskPaths
+    : finalMode === "fast"
+      ? config.review.fast
+      : finalMode === "standard"
+        ? config.review.standard
+        : config.review.rigorous;
+  output.workflow.testLevel = defaultTestLevel(finalMode, output.task.type);
+  output.escalationReasons = unique([...output.escalationReasons, ...overrideReasons]).slice(0, config.triage.maxEscalationReasons);
+
+  return {
+    output: validateTriageOutput(output),
+    policyDecision: { finalMode, overrideReasons, fastEligible }
+  };
 }
 
 export function validateTriageOutput(value: unknown): TriageOutput {

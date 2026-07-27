@@ -145,7 +145,7 @@ A provider process exiting successfully does **not** complete a phase. LeanRigor
 
 - Fast, Standard, and Rigorous workflow modes.
 - Complexity and workflow risk assessed separately.
-- Model-backed triage with schema validation, one retry, deterministic policy overrides, and deterministic fallback.
+- Evidence-driven model triage with tool-free recommendations, optional targeted inspection, deterministic policy overrides, and deterministic fallback.
 - Explicit approach and plan approvals where required.
 - Portable model tiers: `small`, `medium`, `large`, and `inherit`.
 - Repository policy minimums that personal configuration cannot weaken.

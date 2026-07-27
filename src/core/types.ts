@@ -10,6 +10,8 @@ export type ReviewLevel = "sanity" | "integrated" | "deep" | "specialist";
 export type TestLevel = "none" | "sanity" | "targeted" | "package" | "full";
 export type ParallelismRecommendation = "sequential" | "candidate";
 export type CriterionStatus = "met" | "not_met" | "uncertain" | "not_applicable";
+export type TriageFactConfidence = "verified" | "inferred" | "unknown";
+export type TriageSignalValue = boolean | "unknown";
 export type CompletionGateDecision = "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
 export type IntegrationWorkspaceStatus =
   | "not_created"
@@ -116,6 +118,97 @@ export interface TriageOutput {
 /** @deprecated Prefer TriageOutput. Kept as an alias for early integrations. */
 export type TaskAssessment = TriageOutput;
 
+export interface TriageFinding {
+  key: string;
+  value: string | number | boolean | "unknown" | string[];
+  confidence: TriageFactConfidence;
+  source: string;
+  detail?: string;
+}
+
+export interface TriageQuestion {
+  id: string;
+  question: string;
+  reason: string;
+  allowedPaths?: string[];
+}
+
+export interface TriageEvidencePacket {
+  version: 1;
+  request: {
+    text: string;
+    referencedIssue?: string;
+    explicitlyNamedPaths: string[];
+  };
+  repository: {
+    root: string;
+    languages: string[];
+    packageManager?: string;
+    projectType?: string;
+    hasTests?: TriageSignalValue;
+    hasMigrations?: TriageSignalValue;
+    hasInfrastructure?: TriageSignalValue;
+  };
+  changeSignals: {
+    taskType?: TriageOutput["task"]["type"];
+    namedBoundaries: string[];
+    publicContract: TriageSignalValue;
+    schemaChange: TriageSignalValue;
+    migration: TriageSignalValue;
+    security: TriageSignalValue;
+    concurrency: TriageSignalValue;
+    destructiveOperation: TriageSignalValue;
+    productionInfrastructure: TriageSignalValue;
+    dataIntegrity: TriageSignalValue;
+    externalIntegration: TriageSignalValue;
+  };
+  deterministicFindings: TriageFinding[];
+  unresolvedQuestions: TriageQuestion[];
+}
+
+export interface RiskAssessment {
+  architecturalImpact: Exclude<RiskLevel, "none">;
+  securityRisk: RiskLevel;
+  dataIntegrityRisk: RiskLevel;
+  operationalRisk: RiskLevel;
+}
+
+export interface ModelTriageRecommendation {
+  version: 1;
+  complexity: Complexity;
+  ambiguity: Exclude<RiskLevel, "none">;
+  blastRadius: Exclude<RiskLevel, "none">;
+  risks: RiskAssessment;
+  recommendedMode: WorkflowMode;
+  confidence: number;
+  parallelism: ParallelismRecommendation;
+  constraints: string[];
+  approachSummary: string;
+  needsAdditionalInspection: boolean;
+  inspectionQuestions: TriageQuestion[];
+  evidenceReferences: string[];
+  taskType?: TriageOutput["task"]["type"];
+  clarification?: {
+    required: boolean;
+    question: string | null;
+    reason: string | null;
+  };
+}
+
+export interface TriageInspectionRequest {
+  questions: TriageQuestion[];
+  allowedPaths: string[];
+  maxReads: number;
+  maxBytes: number;
+}
+
+export interface TriageInspectionResult {
+  version: 1;
+  findings: TriageFinding[];
+  evidenceReferences: string[];
+  exhaustedBudget: boolean;
+}
+
 export interface ReflectionRecord {
   trigger: "preflight" | "scope-expansion" | "architecture-change" | "failed-repair" | "integration-conflict" | "manual";
   finding: string;
@@ -169,6 +262,19 @@ export interface WorkflowState {
     attempts: number;
     fallbackReason?: string;
     warnings: string[];
+    evidence?: TriageEvidencePacket;
+    recommendation?: ModelTriageRecommendation;
+    policyDecision?: {
+      finalMode: WorkflowMode;
+      overrideReasons: string[];
+      fastEligible: boolean;
+    };
+    inspection?: {
+      used: boolean;
+      request?: TriageInspectionRequest;
+      result?: TriageInspectionResult;
+      failureReason?: string;
+    };
   };
   planningRun?: {
     source: "model" | "deterministic-fallback";
@@ -511,6 +617,19 @@ export interface SequentialWorkflowState {
     attempts: number;
     fallbackReason?: string;
     warnings: string[];
+    evidence?: TriageEvidencePacket;
+    recommendation?: ModelTriageRecommendation;
+    policyDecision?: {
+      finalMode: WorkflowMode;
+      overrideReasons: string[];
+      fastEligible: boolean;
+    };
+    inspection?: {
+      used: boolean;
+      request?: TriageInspectionRequest;
+      result?: TriageInspectionResult;
+      failureReason?: string;
+    };
   };
   constraints?: WorkflowConstraints;
   planningRun?: {

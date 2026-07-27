@@ -1,10 +1,14 @@
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCliPlanningProvider } from "../src/adapters/claude/planning-provider.js";
-import { ClaudeCliTriageProvider, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
+import { buildTriagePrompt, ClaudeCliTriageProvider, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
 import { defaultConfig } from "../src/config/defaults.js";
 import { assessTask } from "../src/core/assessment.js";
 import type { PlanningProviderInput } from "../src/core/planning-runner.js";
-import type { ExecutionPlan } from "../src/core/types.js";
+import { collectTriageEvidence } from "../src/core/triage-evidence.js";
+import type { ExecutionPlan, ModelTriageRecommendation } from "../src/core/types.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -34,15 +38,66 @@ describe("Claude provider model tier fallback", () => {
     const calls: string[][] = [];
     const provider = new ClaudeCliTriageProvider(commandRunner({
       failModels: ["haiku"],
-      output: assessTask("Fix the broken assignment API regression", config),
+      output: recommendation(),
       calls
     }));
 
-    const result = await provider.classify("Fix the broken assignment API regression", process.cwd(), config);
+    const result = await provider.recommend({
+      request: "Fix the broken assignment API regression",
+      root: process.cwd(),
+      config,
+      evidence: await collectTriageEvidence({ request: "Fix the broken assignment API regression", root: process.cwd(), config })
+    });
 
     expect(modelArgs(calls)).toEqual(["haiku", "sonnet"]);
     expect(result.model).toBe("sonnet");
-    expect(result.warnings?.join("\n")).toContain("triage tier 'small'");
+    expect(result.warnings?.join("\n")).toContain("triage recommendation tier 'small'");
+  });
+
+  it("runs normal triage recommendation without repository tools", async () => {
+    clearModelEnv();
+    const config = defaultConfig();
+    const calls: string[][] = [];
+    const provider = new ClaudeCliTriageProvider(commandRunner({
+      failModels: [],
+      output: recommendation(),
+      calls
+    }));
+
+    await provider.recommend({
+      request: "Fix typo in README",
+      root: process.cwd(),
+      config,
+      evidence: await collectTriageEvidence({ request: "Fix typo in README", root: process.cwd(), config })
+    });
+
+    const args = calls[0] ?? [];
+    expect(args).toContain("--bare");
+    expect(args).toContain("--max-turns");
+    expect(args[args.indexOf("--max-turns") + 1]).toBe("2");
+    expect(args.join(" ")).toContain("Read,Glob,Grep,Bash");
+    expect(args).not.toContain("--allowedTools");
+  });
+
+  it("prefers plugin-owned triage prompt assets over target repository sources", async () => {
+    const config = defaultConfig();
+    const root = await mkdtemp(path.join(os.tmpdir(), "leanrigor-target-"));
+    const pluginRoot = await mkdtemp(path.join(os.tmpdir(), "leanrigor-plugin-"));
+    await mkdir(path.join(root, "internal-skills", "triage-task"), { recursive: true });
+    await mkdir(path.join(pluginRoot, "internal-skills", "triage-task"), { recursive: true });
+    await writeFile(path.join(root, "internal-skills", "triage-task", "SKILL.md"), "TARGET_REPO_SKILL", "utf8");
+    await writeFile(path.join(pluginRoot, "internal-skills", "triage-task", "SKILL.md"), "PLUGIN_OWNED_SKILL", "utf8");
+    vi.stubEnv("CLAUDE_PLUGIN_ROOT", pluginRoot);
+
+    const prompt = await buildTriagePrompt({
+      request: "Fix typo in README",
+      root,
+      config,
+      evidence: await collectTriageEvidence({ request: "Fix typo in README", root, config })
+    });
+
+    expect(prompt).toContain("PLUGIN_OWNED_SKILL");
+    expect(prompt).not.toContain("TARGET_REPO_SKILL");
   });
 
   it("tries planning fallback tiers down to inherited Claude default", async () => {
@@ -97,6 +152,31 @@ describe("Claude provider model tier fallback", () => {
     expect(result.warnings?.join("\n")).toContain("max_turns_reached");
   });
 });
+
+function recommendation(): ModelTriageRecommendation {
+  return {
+    version: 1,
+    complexity: "medium",
+    ambiguity: "low",
+    blastRadius: "medium",
+    risks: {
+      architecturalImpact: "low",
+      securityRisk: "none",
+      dataIntegrityRisk: "none",
+      operationalRisk: "none"
+    },
+    recommendedMode: "standard",
+    confidence: 0.8,
+    parallelism: "sequential",
+    constraints: [],
+    approachSummary: "Implement the requested change.",
+    needsAdditionalInspection: false,
+    inspectionQuestions: [],
+    evidenceReferences: [],
+    taskType: "feature",
+    clarification: { required: false, question: null, reason: null }
+  };
+}
 
 function clearModelEnv(): void {
   for (const key of [

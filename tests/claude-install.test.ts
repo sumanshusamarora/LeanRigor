@@ -268,15 +268,19 @@ describe("Claude plugin triage agent model tier", () => {
     expect(agent).toContain("model: claude-haiku-custom-id");
   });
 
-  it("triage agent specifies only read-only tools", async () => {
+  it("triage agent does not receive repository-navigation tools", async () => {
     const root = await tempRepo();
     await new ClaudeAdapter().install(root, defaultConfig());
 
     const agent = await readFile(path.join(root, ".claude", "agents", "leanrigor-triage.md"), "utf8");
-    expect(agent).toContain("tools: Read, Glob, Grep");
-    expect(agent).not.toContain("Bash");
-    expect(agent).not.toContain("Write");
-    expect(agent).not.toContain("Edit");
+    const frontmatter = agent.split("---")[1] ?? "";
+    expect(frontmatter).toContain("tools:");
+    expect(frontmatter).not.toContain("Read");
+    expect(frontmatter).not.toContain("Glob");
+    expect(frontmatter).not.toContain("Grep");
+    expect(frontmatter).not.toContain("Bash");
+    expect(frontmatter).not.toContain("Write");
+    expect(frontmatter).not.toContain("Edit");
   });
 });
 

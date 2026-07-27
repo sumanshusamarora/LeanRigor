@@ -481,7 +481,20 @@ const workflowStateSchema = z.object({
     model: z.string().optional(),
     attempts: z.number().int(),
     fallbackReason: z.string().optional(),
-    warnings: z.array(z.string())
+    warnings: z.array(z.string()),
+    evidence: boundedRecord.optional(),
+    recommendation: boundedRecord.optional(),
+    policyDecision: z.object({
+      finalMode: z.enum(["fast", "standard", "rigorous"]),
+      overrideReasons: z.array(z.string()),
+      fastEligible: z.boolean()
+    }).optional(),
+    inspection: z.object({
+      used: z.boolean(),
+      request: boundedRecord.optional(),
+      result: boundedRecord.optional(),
+      failureReason: z.string().optional()
+    }).optional()
   }).optional(),
   constraints: workflowConstraintsSchema.optional(),
   planningRun: z.object({
@@ -1476,7 +1489,11 @@ async function applyTriageResult(
     model: triageRun.model,
     attempts: triageRun.attempts,
     fallbackReason: triageRun.fallbackReason,
-    warnings: triageRun.warnings
+    warnings: triageRun.warnings,
+    evidence: triageRun.evidence,
+    recommendation: triageRun.recommendation,
+    policyDecision: triageRun.policyDecision,
+    inspection: triageRun.inspection
   };
   next.constraints = initialiseWorkflowConstraints(triage, config, next.revision, "triage_completed");
   next.mode = triage.workflow.finalMode;

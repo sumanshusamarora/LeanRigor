@@ -76,7 +76,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.16");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.17");
 
 program.command("setup")
   .alias("init")
@@ -350,7 +350,18 @@ program.command("triage")
     });
     const assessment = result.output;
     await saveWorkflow(root, { version: 1, request, mode: assessment.workflow.finalMode, assessment,
-      triageRun: { source: result.source, provider: result.provider, model: result.model, attempts: result.attempts, fallbackReason: result.fallbackReason, warnings: result.warnings },
+      triageRun: {
+        source: result.source,
+        provider: result.provider,
+        model: result.model,
+        attempts: result.attempts,
+        fallbackReason: result.fallbackReason,
+        warnings: result.warnings,
+        evidence: result.evidence,
+        recommendation: result.recommendation,
+        policyDecision: result.policyDecision,
+        inspection: result.inspection
+      },
       currentPhase: assessment.clarification.required ? "clarification" : "planning", decisions: [], updatedAt: new Date().toISOString() });
     console.log(JSON.stringify(result, null, 2));
   });
@@ -1101,6 +1112,10 @@ function printFlowState(state: SequentialWorkflowState): void {
       attempts: state.triageRun?.attempts,
       fallbackReason: state.triageRun?.fallbackReason,
       warnings: state.triageRun?.warnings,
+      evidence: state.triageRun?.evidence,
+      recommendation: state.triageRun?.recommendation,
+      policyDecision: state.triageRun?.policyDecision,
+      targetedInspection: state.triageRun?.inspection,
       reasons: state.triage.escalationReasons,
       assumptions: state.triage.assumptions,
       overrideReason: state.triage.workflow.overrideReason,
@@ -1214,6 +1229,13 @@ function printHumanStatus(state: SequentialWorkflowState): void {
     `Request: ${state.request}`,
     `Mode: ${labelMode(state.mode)}`,
     `State: ${state.state}`,
+    state.triage ? `Triage: ${state.triage.task.summary}` : undefined,
+    state.triage ? `Risk: complexity ${state.triage.assessment.complexity}, blast radius ${state.triage.assessment.blastRadius}, security ${state.triage.assessment.securityRisk}, data ${state.triage.assessment.dataIntegrityRisk}, ops ${state.triage.assessment.operationalRisk}` : undefined,
+    state.triageRun ? `Model recommendation: ${state.triageRun.source === "model" ? "succeeded" : "unavailable; deterministic policy used"} via ${state.triageRun.provider}${state.triageRun.model ? ` (${state.triageRun.model})` : ""}` : undefined,
+    state.triageRun?.inspection ? `Targeted inspection: ${state.triageRun.inspection.used ? state.triageRun.inspection.failureReason ? `failed - ${state.triageRun.inspection.failureReason}` : "used" : "not used"}` : undefined,
+    state.triage?.workflow.overrideReason ? `Policy override: ${state.triage.workflow.overrideReason}` : undefined,
+    state.triage?.constraints.mustNot.length ? `Constraints: ${state.triage.constraints.mustNot.join("; ")}` : undefined,
+    state.approach ? `Recommended approach: ${state.approach.proposed}` : undefined,
     phase ? `Current phase: ${phase.id} - ${phase.objective}` : undefined,
     phase ? `Completion gate: ${phase.completion?.decision ?? (["leased", "running", "completion_pending"].includes(phase.status) ? "pending" : "not started")}` : undefined,
     phase ? `Repair attempts: ${phase.repairAttempts.length}/${phaseRepairBudget(state)}` : undefined,
