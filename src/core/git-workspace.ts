@@ -132,9 +132,6 @@ export async function preflightGitRepository(root: string, config: LeanRigorConf
 
   const repositoryIdentity = repositoryIdentityFor(repositoryRoot);
   const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config, repositoryIdentity);
-  if (isPathInside(workspaceRoot, repositoryRoot) && !isPathInside(workspaceRoot, gitCommonDir)) {
-    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot };
-  }
   if (workspaceRoot.length > config.execution.maxWorkspacePathLength) {
     return { ok: false, code: "workspace_path_too_long", repositoryRoot, gitCommonDir, workspaceRoot };
   }
@@ -143,6 +140,13 @@ export async function preflightGitRepository(root: string, config: LeanRigorConf
     .then(() => true)
     .catch(() => false);
   if (!writable) return { ok: false, code: "workspace_root_not_writable", repositoryRoot, gitCommonDir, workspaceRoot };
+  const canonicalWorkspaceRoot = await canonical(workspaceRoot);
+  if (isSamePath(canonicalWorkspaceRoot, repositoryRoot) || isPathInside(canonicalWorkspaceRoot, repositoryRoot) || isPathInside(repositoryRoot, canonicalWorkspaceRoot)) {
+    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot: canonicalWorkspaceRoot };
+  }
+  if (isSamePath(canonicalWorkspaceRoot, gitCommonDir) || isPathInside(canonicalWorkspaceRoot, gitCommonDir) || isPathInside(gitCommonDir, canonicalWorkspaceRoot)) {
+    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot: canonicalWorkspaceRoot };
+  }
 
   const dirty = (await git(repositoryRoot, ["status", "--porcelain=v1", "--untracked-files=all"])).trim();
   if (dirty) warnings.push("User working tree has local changes outside the LeanRigor workflow baseline.");

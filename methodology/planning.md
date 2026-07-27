@@ -49,7 +49,8 @@ Standard:
 - Identify integration boundaries.
 - Split materially distinct implementation, consumer, coverage, and
   documentation outcomes.
-- Include compatibility and likely failure modes.
+- Include compatibility and likely failure modes unless the approved effective
+  constraint set explicitly says backward compatibility is not required.
 - Include targeted tests or package/module checks.
 
 Rigorous:

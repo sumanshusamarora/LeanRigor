@@ -268,6 +268,49 @@ describe("sequential workflow orchestration", () => {
     });
   });
 
+  it("treats an approved compatibility waiver as authoritative over triage compatibility requirements", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const legacy = await loadFlowState(root, started.id);
+    legacy.triage!.constraints.mustNot = ["Preserve backward compatibility"];
+    legacy.constraints = undefined;
+    await saveFlowState(root, legacy, { expectedRevision: legacy.revision });
+    let observedConstraintSet: unknown;
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: {
+        name: "capturing-planner",
+        async plan(input) {
+          observedConstraintSet = input.effectiveConstraintSet;
+          return { raw: compactPlan("Implement the approved API behavior with required tests."), provider: "capturing-planner" };
+        }
+      },
+      providerSelection: "auto"
+    }, {
+      add: ["Backward compatibility is not required for this workflow", "Tests must be updated", "All checks must pass"]
+    });
+
+    expect(planned.constraints?.original.map((constraint) => constraint.text)).toEqual(["Preserve backward compatibility"]);
+    expect(planned.constraints?.effective.map((constraint) => constraint.text)).toEqual([
+      "Backward compatibility is not required for this workflow",
+      "Tests must be updated",
+      "All checks must pass"
+    ]);
+    expect(observedConstraintSet).toMatchObject({
+      triage: ["Preserve backward compatibility"],
+      userAdditions: [
+        "Backward compatibility is not required for this workflow",
+        "Tests must be updated",
+        "All checks must pass"
+      ],
+      finalEffective: [
+        "Backward compatibility is not required for this workflow",
+        "Tests must be updated",
+        "All checks must pass"
+      ]
+    });
+  });
+
   it("does not allow user removals to delete policy-owned mandatory constraints", async () => {
     const root = await tempRepo();
     const config = { ...defaultConfig(), instructions: ["Completion evidence is mandatory."] };
@@ -282,6 +325,57 @@ describe("sequential workflow orchestration", () => {
 
     expect(planned.constraints?.policy.map((constraint) => constraint.text)).toEqual(["Completion evidence is mandatory."]);
     expect(planned.constraints?.effective.map((constraint) => constraint.text)).toContain("Completion evidence is mandatory.");
+  });
+
+  it("rejects user compatibility waivers that contradict policy-owned compatibility requirements", async () => {
+    const root = await tempRepo();
+    const config = { ...defaultConfig(), instructions: ["Preserve backward compatibility."] };
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config });
+
+    await expect(approveApproach(root, started.id, config, undefined, {
+      provider: planningProviderFrom([compactPlan("Implement the approved API behavior with tests.")]),
+      providerSelection: "auto"
+    }, {
+      add: ["Backward compatibility is not required for this workflow"]
+    })).rejects.toThrow(/policy-owned constraint\(s\) still require it/i);
+  });
+
+  it("passes the structured effective constraint set to plan revision and repair", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([compactPlan("Implement the approved API behavior with tests.")]),
+      providerSelection: "auto"
+    }, {
+      add: ["Backward compatibility is not required", "Tests must be updated", "All checks must pass"]
+    });
+    let plannedConstraintSet: unknown;
+    let repairConstraintSet: unknown;
+    const contradictory = compactPlan("Implement the backward-compatible API behavior.") as Record<string, unknown>;
+    (contradictory.phases as Array<Record<string, unknown>>)[0]!.rationale = "This phase performs a backward-compatible migration.";
+    const repaired = compactPlan("Implement the approved API behavior with required tests.");
+
+    const revised = await revisePlan(root, planned.id, "Keep the plan narrow.", defaultConfig(), undefined, {
+      provider: {
+        name: "capturing-revision-planner",
+        async plan(input) {
+          plannedConstraintSet = input.effectiveConstraintSet;
+          return { raw: contradictory, provider: "capturing-revision-planner", model: "planner-test-model" };
+        },
+        async repair(input) {
+          repairConstraintSet = input.effectiveConstraintSet;
+          return { raw: repaired, provider: "capturing-revision-planner", model: "planner-test-model" };
+        }
+      },
+      providerSelection: "auto"
+    });
+
+    expect(revised.state).toBe("awaiting_plan_approval");
+    expect(plannedConstraintSet).toMatchObject({
+      userAdditions: ["Backward compatibility is not required", "Tests must be updated", "All checks must pass"],
+      finalEffective: expect.arrayContaining(["Backward compatibility is not required", "Tests must be updated", "All checks must pass"])
+    });
+    expect(repairConstraintSet).toEqual(plannedConstraintSet);
   });
 
   it("blocks approval when a model plan contradicts an approved compatibility override and repair fails", async () => {

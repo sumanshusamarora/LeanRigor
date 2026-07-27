@@ -22728,14 +22728,18 @@ async function preflightGitRepository(root, config2) {
   }
   const repositoryIdentity = repositoryIdentityFor(repositoryRoot);
   const workspaceRoot = resolveWorkspaceRoot(repositoryRoot, config2, repositoryIdentity);
-  if (isPathInside(workspaceRoot, repositoryRoot) && !isPathInside(workspaceRoot, gitCommonDir)) {
-    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot };
-  }
   if (workspaceRoot.length > config2.execution.maxWorkspacePathLength) {
     return { ok: false, code: "workspace_path_too_long", repositoryRoot, gitCommonDir, workspaceRoot };
   }
   const writable = await mkdir6(workspaceRoot, { recursive: true }).then(() => access3(workspaceRoot, constants2.W_OK)).then(() => true).catch(() => false);
   if (!writable) return { ok: false, code: "workspace_root_not_writable", repositoryRoot, gitCommonDir, workspaceRoot };
+  const canonicalWorkspaceRoot = await canonical(workspaceRoot);
+  if (isSamePath(canonicalWorkspaceRoot, repositoryRoot) || isPathInside(canonicalWorkspaceRoot, repositoryRoot) || isPathInside(repositoryRoot, canonicalWorkspaceRoot)) {
+    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot: canonicalWorkspaceRoot };
+  }
+  if (isSamePath(canonicalWorkspaceRoot, gitCommonDir) || isPathInside(canonicalWorkspaceRoot, gitCommonDir) || isPathInside(gitCommonDir, canonicalWorkspaceRoot)) {
+    return { ok: false, code: "dangerous_workspace_root", repositoryRoot, gitCommonDir, workspaceRoot: canonicalWorkspaceRoot };
+  }
   const dirty = (await git(repositoryRoot, ["status", "--porcelain=v1", "--untracked-files=all"])).trim();
   if (dirty) warnings.push("User working tree has local changes outside the LeanRigor workflow baseline.");
   return {
@@ -25051,7 +25055,7 @@ async function approveApproach(root, workflowId2, config2, mutation, planning, c
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
-    next.constraints = applyApprovalConstraintChanges(next, constraintChanges);
+    next.constraints = applyApprovalConstraintChanges(next, config2 ?? defaultConfig(), constraintChanges);
     next.approach = { ...state.approach, approved: true };
     appendEvent(next, "approach_approved", approvalConstraintSummary(next.constraints));
     return withPlan(next, config2, planning);
@@ -25095,6 +25099,7 @@ async function revisePlan(root, workflowId2, feedback, config2, mutation, planni
       triage,
       config: config2,
       constraints: effectiveConstraintTexts(next, triage, config2 ?? defaultConfig()),
+      constraintSet: effectiveConstraintSet(next, triage, config2 ?? defaultConfig()),
       constraintAudit: next.constraints?.audit ?? [],
       revisionRequests,
       provider: planning?.provider,
@@ -25726,9 +25731,9 @@ function initialiseWorkflowConstraints(triage, config2, workflowRevision, transi
     effective: []
   });
 }
-function applyApprovalConstraintChanges(state, changes) {
+function applyApprovalConstraintChanges(state, config2, changes) {
   if (!state.triage) throw new WorkflowStateError("Cannot approve approach before triage completes.");
-  const base = state.constraints ?? initialiseWorkflowConstraints(state.triage, defaultConfig(), state.revision, "legacy_state_loaded");
+  const base = state.constraints ?? initialiseWorkflowConstraints(state.triage, config2, state.revision, "legacy_state_loaded");
   const next = structuredClone(base);
   const now = timestamp2();
   const revision = state.revision;
@@ -25760,7 +25765,15 @@ function applyApprovalConstraintChanges(state, changes) {
 function recomputeConstraints(model) {
   const removals = model.userRemovals.map((change) => change.text);
   const overrideTargets = model.userOverrides.map((change) => change.target).filter((target) => Boolean(target));
-  const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions]).filter((record2) => record2.source === "policy" || record2.source === "user" || !removals.some((target) => constraintMatches(record2.text, target))).filter((record2) => record2.source === "policy" || record2.source === "user" || !overrideTargets.some((target) => constraintMatches(record2.text, target)));
+  const compatibilityWaivers = [
+    ...model.userAdditions.map((record2) => record2.text),
+    ...model.userOverrides.map((change) => change.text)
+  ].filter(isBackwardCompatibilityNotRequired);
+  const policyCompatibilityRequirements = model.policy.filter((record2) => requiresBackwardCompatibility(record2.text));
+  if (compatibilityWaivers.length > 0 && policyCompatibilityRequirements.length > 0) {
+    throw new WorkflowStateError(`Cannot waive backward compatibility because policy-owned constraint(s) still require it: ${policyCompatibilityRequirements.map((record2) => record2.text).join("; ")}`);
+  }
+  const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions]).filter((record2) => record2.source === "policy" || record2.source === "user" || !removals.some((target) => constraintMatches(record2.text, target))).filter((record2) => record2.source === "policy" || record2.source === "user" || !overrideTargets.some((target) => constraintMatches(record2.text, target))).filter((record2) => record2.source !== "triage" || compatibilityWaivers.length === 0 || !requiresBackwardCompatibility(record2.text));
   return {
     ...model,
     original: uniqueRecords(model.original),
@@ -29002,7 +29015,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.19");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.20");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

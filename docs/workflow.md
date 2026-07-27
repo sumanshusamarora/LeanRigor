@@ -134,8 +134,11 @@ additions, removals, overrides, audit entries, and final effective constraints.
 Planning receives an authoritative structured constraint set with policy,
 triage, user additions, user removals, user overrides, and the final effective
 constraints. Removed triage constraints and explicit overrides are validated
-before a plan can be presented for approval. Policy-owned mandatory safety
-constraints remain active and cannot be silently removed by user deltas.
+before a plan can be presented for approval. A user-approved compatibility
+waiver removes triage-level compatibility requirements from the final effective
+set, but policy-owned compatibility requirements are not silently removed and
+must be resolved explicitly. Policy-owned mandatory safety constraints remain
+active and cannot be silently removed by user deltas.
 
 ## Planning
 
@@ -338,8 +341,9 @@ Git worktrees. The default root is:
 
 The short hash is derived from the canonical repository path so separate clones
 with the same directory name do not collide. `execution.workspaceRoot` can
-override the location, but LeanRigor rejects roots nested inside the repository
-unless they are inside Git's administrative common directory.
+override the location, but LeanRigor canonicalizes configured roots and rejects
+locations that are the repository, contain the repository, are nested inside
+the repository, or overlap Git's administrative common directory.
 
 `integrate-phase`:
 

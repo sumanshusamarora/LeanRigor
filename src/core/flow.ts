@@ -688,7 +688,7 @@ export async function approveApproach(
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
-    next.constraints = applyApprovalConstraintChanges(next, constraintChanges);
+    next.constraints = applyApprovalConstraintChanges(next, config ?? defaultConfig(), constraintChanges);
     next.approach = { ...state.approach, approved: true };
     appendEvent(next, "approach_approved", approvalConstraintSummary(next.constraints));
     return withPlan(next, config, planning);
@@ -735,6 +735,7 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
       triage,
       config,
       constraints: effectiveConstraintTexts(next, triage, config ?? defaultConfig()),
+      constraintSet: effectiveConstraintSet(next, triage, config ?? defaultConfig()),
       constraintAudit: next.constraints?.audit ?? [],
       revisionRequests,
       provider: planning?.provider,
@@ -1549,9 +1550,9 @@ function initialiseWorkflowConstraints(triage: TriageOutput, config: LeanRigorCo
   });
 }
 
-function applyApprovalConstraintChanges(state: SequentialWorkflowState, changes?: ApprovalConstraintChanges): WorkflowConstraints {
+function applyApprovalConstraintChanges(state: SequentialWorkflowState, config: LeanRigorConfig, changes?: ApprovalConstraintChanges): WorkflowConstraints {
   if (!state.triage) throw new WorkflowStateError("Cannot approve approach before triage completes.");
-  const base = state.constraints ?? initialiseWorkflowConstraints(state.triage, defaultConfig(), state.revision, "legacy_state_loaded");
+  const base = state.constraints ?? initialiseWorkflowConstraints(state.triage, config, state.revision, "legacy_state_loaded");
   const next: WorkflowConstraints = structuredClone(base);
   const now = timestamp();
   const revision = state.revision;
@@ -1585,9 +1586,18 @@ function applyApprovalConstraintChanges(state: SequentialWorkflowState, changes?
 function recomputeConstraints(model: WorkflowConstraints): WorkflowConstraints {
   const removals = model.userRemovals.map((change) => change.text);
   const overrideTargets = model.userOverrides.map((change) => change.target).filter((target): target is string => Boolean(target));
+  const compatibilityWaivers = [
+    ...model.userAdditions.map((record) => record.text),
+    ...model.userOverrides.map((change) => change.text)
+  ].filter(isBackwardCompatibilityNotRequired);
+  const policyCompatibilityRequirements = model.policy.filter((record) => requiresBackwardCompatibility(record.text));
+  if (compatibilityWaivers.length > 0 && policyCompatibilityRequirements.length > 0) {
+    throw new WorkflowStateError(`Cannot waive backward compatibility because policy-owned constraint(s) still require it: ${policyCompatibilityRequirements.map((record) => record.text).join("; ")}`);
+  }
   const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions])
     .filter((record) => record.source === "policy" || record.source === "user" || !removals.some((target) => constraintMatches(record.text, target)))
-    .filter((record) => record.source === "policy" || record.source === "user" || !overrideTargets.some((target) => constraintMatches(record.text, target)));
+    .filter((record) => record.source === "policy" || record.source === "user" || !overrideTargets.some((target) => constraintMatches(record.text, target)))
+    .filter((record) => record.source !== "triage" || compatibilityWaivers.length === 0 || !requiresBackwardCompatibility(record.text));
   return {
     ...model,
     original: uniqueRecords(model.original),

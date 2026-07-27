@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -51,6 +51,36 @@ describe("Git worktree isolation and integration", () => {
     expect(path.basename(secondPreflight.workspaceRoot!)).toMatch(/^same-[a-f0-9]{12}$/);
     expect(path.relative(first, firstPreflight.workspaceRoot!)).toMatch(/^\.\./);
     expect(path.relative(second, secondPreflight.workspaceRoot!)).toMatch(/^\.\./);
+  });
+
+  it("rejects configured workspace roots that canonicalize inside the main checkout", async () => {
+    const root = await gitRepo();
+    const link = path.join(await mkdtemp(path.join(tmpdir(), "leanrigor-workspace-link-")), "linked-root");
+    await symlink(root, link);
+    const config = defaultConfig();
+    config.execution.workspaceRoot = link;
+
+    const preflight = await gitPreflight(root, config);
+
+    expect(preflight).toMatchObject({
+      ok: false,
+      code: "dangerous_workspace_root"
+    });
+  });
+
+  it("supports configured workspace roots with spaces outside the main checkout", async () => {
+    const root = await gitRepo();
+    const workspaceRoot = path.join(await mkdtemp(path.join(tmpdir(), "leanrigor workspace root ")), "external worktrees");
+    const config = defaultConfig();
+    config.execution.workspaceRoot = workspaceRoot;
+
+    const preflight = await gitPreflight(root, config);
+
+    expect(preflight).toMatchObject({
+      ok: true,
+      workspaceRoot
+    });
+    expect(path.relative(root, preflight.workspaceRoot!)).toMatch(/^\.\./);
   });
 
   it("isolates a phase workspace, integrates approved changes, and preserves the original dirty worktree", async () => {
