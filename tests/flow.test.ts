@@ -435,6 +435,20 @@ describe("sequential workflow orchestration", () => {
     await expect(completePhase({ root, workflowId: state.id, phaseId: "phase-1" })).rejects.toThrow(/Invalid transition/);
   });
 
+  it("blocks phase completion when the caller does not hold the persisted lease", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    const executing = await approvePlan(root, started.id);
+    const running = await startPhase(root, executing.id, "phase-1", { ownerId: "owner-a" });
+
+    await expect(completePhase({
+      root,
+      workflowId: running.id,
+      phaseId: "phase-1",
+      mutation: { ownerId: "owner-b" }
+    })).rejects.toThrow(/completion requires an active lease held by owner-b/);
+  });
+
   it("persists plan revisions before approval", async () => {
     const root = await tempRepo();
     const state = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
@@ -474,6 +488,50 @@ describe("sequential workflow orchestration", () => {
 
     expect(gated.plan?.phases[0]?.status).toBe("needs_review");
     expect(gated.plan?.phases[0]?.completion?.dependentPhasesMayProceed).toBe(false);
+  });
+
+  it("uses effective approved constraints when evaluating completion evidence", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const executing = await approvePlan(root, (await approveApproach(root, started.id, defaultConfig(), undefined, undefined, {
+      add: ["Backward compatibility is not required", "Tests must be updated", "All checks must pass"]
+    })).id);
+    const running = await startPhase(root, executing.id, "phase-1");
+    const phase = running.plan!.phases[0]!;
+    for (const evidence of validationEvidenceFor(phase, "passed")) {
+      await recordValidation({
+        root,
+        workflowId: running.id,
+        phaseId: phase.id,
+        command: evidence.command,
+        exitStatus: evidence.exitStatus,
+        result: evidence.result,
+        skipped: evidence.skipped,
+        skippedReason: evidence.skippedReason
+      });
+    }
+
+    const completed = await completePhase({
+      root,
+      workflowId: running.id,
+      phaseId: phase.id,
+      config: defaultConfig(),
+      criteria: phase.acceptanceCriteria.map((criterion) => ({
+        criterion,
+        status: "met",
+        evidence: ["All new fields .optional() to preserve backward compatibility."]
+      })),
+      filesChanged: ["src/api.ts"],
+      commandsRun: phase.validationCommands
+    });
+
+    expect(completed.plan?.phases[0]?.status).toBe("needs_review");
+    expect(completed.plan?.phases[0]?.completion?.approvedConstraints).toEqual(expect.arrayContaining([
+      "Backward compatibility is not required",
+      "Tests must be updated",
+      "All checks must pass"
+    ]));
+    expect(completed.plan?.phases[0]?.completion?.reason).toContain("backward compatibility is not required");
   });
 
   it("failed phase validation moves to needs_repair and keeps dependents locked", async () => {

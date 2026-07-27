@@ -249,7 +249,7 @@ export class ExecutionCoordinator {
           phaseId: record.phaseId,
           config: this.config,
           blockedReason: result.summary,
-          mutation: { ownerId: record.leaseOwnerId }
+          mutation: { ownerId: record.leaseOwnerId, ownerType: "system" }
         });
         await this.updateRecord(record.phaseId, { status: "blocked", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint });
         return "blocked";
@@ -267,7 +267,7 @@ export class ExecutionCoordinator {
         scopeDeviations: result.scopeDeviations.map((deviation) => deviation.path ? `${deviation.path}: ${deviation.reason}` : deviation.reason),
         assumptions: result.assumptions,
         remainingRisks: result.remainingRisks,
-        mutation: { ownerId: record.leaseOwnerId }
+        mutation: { ownerId: record.leaseOwnerId, ownerType: "system" }
       });
       await this.updateRecord(record.phaseId, { status: "result_recorded", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint, providerSession: updateSessionStatus(record.providerSession, "completed", this.now()) });
       return "result_recorded";
@@ -417,6 +417,7 @@ export class ExecutionCoordinator {
       timeoutSeconds: this.config.execution.workerTimeoutSeconds,
       userRequest: state.request,
       planContext: state.plan.summary,
+      approvedConstraints: state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? [],
       safetyInstructions: [
         "Use only the assigned phase workspace.",
         "Return structured result evidence; LeanRigor will decide whether the phase is accepted.",
@@ -472,7 +473,7 @@ export class ExecutionCoordinator {
       workflowId: state.id,
       revision: state.revision,
       state: state.state,
-      executionMode: records.length > 0 ? "coordinator" : "manual",
+      executionMode: "coordinator",
       provider: this.provider.id,
       runningPhase: activePhase?.id,
       lastProviderStatus: latestRecord ? `${latestRecord.phaseId}: ${latestRecord.status}` : undefined,

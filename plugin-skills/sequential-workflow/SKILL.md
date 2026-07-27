@@ -135,6 +135,10 @@ The following typed responses remain supported as a fallback:
 
 - `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, adding `--add-constraint`, `--remove-constraint`, or `--override-constraint "<old> => <new>"` for any user-supplied constraint changes, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
 - `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, then use coordinator execution with `flow execute-next --provider auto` or `flow execution-poll --provider auto`. Do not begin manual lease/start/workspace execution unless the user explicitly selected manual execution.
+- `show status` during execution: render the persisted `recommendedNextPhase`
+  as the primary action. Show `otherDependencyReadyPhases` separately as
+  available only after explicit user choice. Do not replace Phase 2 with Phase
+  4 merely because both are dependency-ready.
 - `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> "<feedback>"`, rerender the updated approach summary, and ask for approval again. Do not start planning.
 - `revise ...` at `awaiting_plan_approval`: use `flow revise-plan <workflow-id> "<feedback>" --provider auto` unless deterministic planning was explicitly requested.
 - `reject because ...`: reject the approach with the supplied reason.
@@ -182,6 +186,11 @@ when all phases are integrated, and the final integrated review gate. Stop only
 when the coordinator reports a user gate, repair, conflict, final review,
 commit proposal, or a real error.
 
+Coordinator-owned leases are completed by the coordinator only. Do not infer,
+probe, or reuse a provider lease owner string from status output to run
+`phase-complete` directly. If the coordinator cannot collect a provider result,
+present the recorded provider failure and the allowed recovery choices.
+
 In manual mode before implementation, read the current workflow revision and use a stable owner
 ID for this Claude session. Acquire/start a phase lease for one ready phase and
 create its phase workspace. Before editing, verify that the current directory
@@ -192,10 +201,14 @@ workspace or explicitly record skipped validation with a reason.
 
 Before submitting phase completion evidence, retrieve the exact evidence contract
 with `flow evidence-template <workflowId> <phaseId>`. Write the evidence JSON file
-conforming to the template — every field in the template must be present. Then
-submit criterion evidence, Git workspace evidence, validation, assumptions, risks, and
-scope deviations with `flow phase-complete` as the same owner. Follow the
-returned gate decision; Claude must not unlock the next phase itself.
+conforming to the template — every field in the template must be present,
+including workflow ID, workflow revision, and phase ID. Store evidence in the
+workflow-owned artifact location from `artifactPath` or pass that file to
+`flow phase-complete --evidence-file`; do not use arbitrary `/tmp` paths across
+retries. Then submit criterion evidence, Git workspace evidence, validation,
+assumptions, risks, and scope deviations with `flow phase-complete` as the same
+manual owner. Follow the returned gate decision; Claude must not unlock the
+next phase itself.
 
 After a phase gate passes, integrate the approved phase into the LeanRigor
 integration worktree. After all required phases are integrated, run combined

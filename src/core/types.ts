@@ -322,6 +322,12 @@ export interface PhaseCompletionRecord {
   timestamp: string;
   workflowRevision: number;
   leaseOwnerId?: string;
+  approvedConstraints?: string[];
+  evidenceArtifact?: {
+    path: string;
+    sourcePath?: string;
+    recordedAt: string;
+  };
   gitEvidence?: PhaseGitEvidence;
 }
 

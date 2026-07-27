@@ -13,6 +13,7 @@ import {
   recordValidation,
   resumeFlow,
   reviseApproach,
+  saveFlowState,
   startFlow,
   startPhase
 } from "../src/core/flow.js";
@@ -25,6 +26,29 @@ async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-ux-"));
   await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
   return root;
+}
+
+function phase(id: string, objective: string, dependencies: string[], status: WorkflowPhase["status"]): WorkflowPhase {
+  return {
+    id,
+    objective,
+    rationale: "Test phase.",
+    dependencies,
+    dependsOn: dependencies,
+    expectedReadAreas: ["src/example.ts"],
+    expectedWriteAreas: ["src/example.ts"],
+    expectedFilesOrAreas: ["src/example.ts"],
+    acceptanceCriteria: [`${objective} is complete.`],
+    validationCommands: ["npm test"],
+    riskLevel: "medium",
+    modelTier: "medium",
+    status,
+    filesChanged: [],
+    commandsRun: [],
+    validationResults: [],
+    scopeDeviations: [],
+    repairAttempts: []
+  };
 }
 
 describe("Claude conversational workflow UX support", () => {
@@ -118,6 +142,34 @@ describe("Claude conversational workflow UX support", () => {
       label: "Phase execution",
       userDecisionRequired: false
     });
+  });
+
+  it("recommends the next plan-order phase while showing other dependency-ready phases separately", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const planned = await approveApproach(root, started.id, defaultConfig());
+    const executing = await approvePlan(root, planned.id);
+    const state = await resumeFlow(root, executing.id);
+    state.plan!.phases = [
+      phase("phase-1", "Phase 1", [], "completed"),
+      phase("phase-2", "Phase 2", ["phase-1"], "ready"),
+      phase("phase-3", "Phase 3", ["phase-2"], "planned"),
+      phase("phase-4", "Phase 4", ["phase-1"], "ready")
+    ];
+    await saveFlowState(root, state, { expectedRevision: state.revision });
+
+    const next = workflowNextSummary(await resumeFlow(root, state.id));
+
+    expect(next.summary).toMatchObject({
+      phase: "phase-2",
+      recommendedNextPhase: { id: "phase-2", objective: "Phase 2" },
+      otherDependencyReadyPhases: [{ id: "phase-4", objective: "Phase 4" }],
+      planOrderPrimary: true
+    });
+    expect(next.pendingAction).toContain("Execute recommended next phase phase-2");
+    expect(next.pendingAction).toContain("Other dependency-ready phases require explicit selection");
+    expect(next.troubleshooting.internalOperations).toContain("execute-next");
+    expect(next.troubleshooting.internalOperations).not.toContain("phase-start");
   });
 
   it("/leanrigor:plan can show an existing plan without creating duplicates", async () => {

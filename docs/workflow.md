@@ -75,7 +75,7 @@ than normal user-facing output.
 | `awaiting_approach_approval` | Standard/Rigorous approach gate is pending. | `flow approve-approach` or `flow reject-approach`. |
 | `planning` | Sequential plan is being generated. | Internal transition to plan approval. |
 | `awaiting_plan_approval` | Phased plan is ready but implementation is blocked. | `flow approve-plan` or `flow revise-plan`. |
-| `executing` | One or more phases may be ready in the DAG; default dispatch remains one phase at a time. | Start/lease a ready phase, record validation, submit completion evidence, repair, review, or replan. |
+| `executing` | One or more phases may be dependency-ready in the DAG; the first plan-order ready phase is the recommended next phase for Standard/Rigorous workflows. | Coordinator dispatch via `flow execute-next`; out-of-order ready phases require explicit user choice. |
 | `validating` | All phase gates passed; final validation/review is still required. | `flow record-validation`, then review. |
 | `reviewing` | Final integrated review is being recorded. | `flow record-review`. |
 | `awaiting_commit_approval` | Review passed and a commit proposal exists. | Inspect proposal; optionally `flow complete`. |
@@ -153,6 +153,12 @@ UI, and a large custom process manager. Higher `execution.maxParallelPhases`
 values are honored by the execution coordinator when a provider supports the
 contract safely.
 
+Execution status distinguishes the `recommendedNextPhase` from
+`otherDependencyReadyPhases`. Standard and Rigorous workflows preserve plan
+order as the primary CTA; a later independent ready phase may be displayed as
+available, but it must not replace the next plan-order phase unless the user
+explicitly selects out-of-order execution.
+
 Planning methodology is loaded from `methodology/planning.md` plus the current
 mode overlay. Plans should include the desired outcome, inspected current
 behavior, approach, affected boundaries, acceptance criteria, validation
@@ -195,7 +201,9 @@ planned -> ready -> leased/running -> targeted validation -> completion gate
 
 A phase does not transition directly from ready execution to completed. A ready
 phase must be leased to an explicit owner, and completion must be submitted by
-that same owner while the lease is active. The next dependent phase unlocks only
+that same owner while the lease is active. Provider-owned leases are completed
+through the coordinator; a CLI caller cannot bypass ownership by copying or
+guessing the provider lease owner string. The next dependent phase unlocks only
 when the completion gate returns `completed`.
 
 When Git workspaces are enabled, the implementation step happens in the
@@ -383,6 +391,7 @@ eligible.
 Completion evidence persists:
 
 - original objective;
+- final approved effective constraints;
 - every acceptance criterion with `met`, `not_met`, `uncertain`, or
   `not_applicable`;
 - concise evidence for each criterion;
@@ -392,10 +401,16 @@ Completion evidence persists:
 - assumptions introduced during execution;
 - remaining risks;
 - dependent-phase readiness;
+- workflow-owned evidence artifact path, when an evidence file is supplied;
 - timestamp and workflow revision.
 
 Completion evidence must not include chain of thought or verbose
-self-reflection.
+self-reflection. Evidence files supplied to `flow phase-complete
+--evidence-file` must exist, parse as JSON, match the workflow and phase when
+those fields are present, and match the current workflow revision when
+`workflowRevision` is present. LeanRigor copies accepted evidence files into
+`.leanrigor/workflows/<workflow-id>/artifacts/`; arbitrary `/tmp` paths should
+not be used as durable evidence across retries or sessions.
 
 Example evidence file:
 

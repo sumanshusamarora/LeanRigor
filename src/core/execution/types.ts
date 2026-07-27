@@ -98,6 +98,7 @@ export interface PhaseExecutionInput {
   timeoutSeconds: number;
   userRequest: string;
   planContext: string;
+  approvedConstraints: string[];
   safetyInstructions: string[];
   previousCheckpoint?: PhaseWorkspaceCheckpoint;
   workspacePreparation?: WorkspacePreparation;

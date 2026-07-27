@@ -284,6 +284,7 @@ function input(workspacePath: string): PhaseExecutionInput {
     phaseId: "phase-api",
     objective: "Implement API.",
     acceptanceCriteria: ["API works."],
+    approvedConstraints: [],
     dependencies: [],
     selectedMode: "standard",
     modelTier: "medium",

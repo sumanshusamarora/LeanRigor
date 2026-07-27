@@ -34,6 +34,7 @@ export function phaseWorkerPrompt(input: PhaseExecutionInput): string {
       : undefined,
     "",
     "Constraints:",
+    ...input.approvedConstraints.map((constraint) => `- Approved constraint: ${constraint}`),
     ...input.safetyInstructions.map((instruction) => `- ${instruction}`),
     `- Allowed write scope is limited to the assigned workspace and declared write areas.`,
     `- Do not commit, push, merge, deploy, or modify files outside the assigned workspace.`,

@@ -3,7 +3,9 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ExecutionCoordinator, detectCodeIntelligence } from "../src/core/execution/coordinator.js";
-import { integrationStatus } from "../src/core/flow.js";
+import { completePhase, integrationStatus } from "../src/core/flow.js";
+import type { ExecutionProvider } from "../src/core/execution/provider.js";
+import type { PhaseExecutionInput, PhaseExecutionResult } from "../src/core/execution/types.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("execution coordinator", () => {
@@ -139,6 +141,7 @@ describe("execution coordinator", () => {
     const state = await currentState(harness);
     const workspace = state.git?.phaseWorkspaces["phase-a"];
 
+    expect(result.executionMode).toBe("coordinator");
     expect(result.dispatched).toEqual([]);
     expect(workspace?.preparation).toMatchObject({
       status: "blocked",
@@ -150,6 +153,61 @@ describe("execution coordinator", () => {
     });
     expect(state.execution.records["phase-a"]).toBeUndefined();
     await expect(readFile(path.join(workspace!.path, "src", "a.ts"), "utf8")).rejects.toThrow();
+  });
+
+  it("hands the persisted execution owner to the provider and rejects direct spoofed provider completion", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": { edits: [{ path: "src/a.ts", content: "unused\n" }], validation: [{ command: "npm test", exitCode: 0 }] }
+      }
+    });
+    let capturedInput: PhaseExecutionInput | undefined;
+    const provider: ExecutionProvider = {
+      id: "capturing-provider",
+      async capabilities() {
+        return { parallel: false, cancellation: true, heartbeats: true, structuredResults: true, diagnostics: [] };
+      },
+      async dispatch(input) {
+        capturedInput = input;
+        return {
+          providerId: "capturing-provider",
+          providerExecutionId: "provider-run-1",
+          workflowId: input.workflowId,
+          phaseId: input.phaseId,
+          leaseOwnerId: input.leaseOwnerId,
+          workspacePath: input.workspacePath,
+          startedAt: new Date().toISOString(),
+          lastKnownStatus: "running"
+        };
+      },
+      async getStatus() {
+        return { status: "running" };
+      },
+      async collectResult(): Promise<PhaseExecutionResult> {
+        throw new Error("not used");
+      },
+      async cancel() {}
+    };
+    const coordinator = new ExecutionCoordinator({ root: harness.root, workflowId: harness.workflow.id, config: harness.config, provider });
+
+    const dispatched = await coordinator.dispatchReady();
+    const state = await currentState(harness);
+    const lease = state.phaseLeases["phase-a"]!;
+
+    expect(dispatched.dispatched).toHaveLength(1);
+    expect(capturedInput).toMatchObject({
+      phaseId: "phase-a",
+      leaseOwnerId: lease.ownerId,
+      selectedMode: "standard"
+    });
+    expect(lease.ownerType).toBe("agent");
+    await expect(completePhase({
+      root: harness.root,
+      workflowId: harness.workflow.id,
+      phaseId: "phase-a",
+      mutation: { ownerId: lease.ownerId }
+    })).rejects.toThrow(/owned by an execution provider/);
   });
 
   it("times out a running phase, cancels the provider, and preserves the dirty workspace", async () => {

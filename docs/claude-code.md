@@ -81,7 +81,12 @@ Shows or advances the current approach and plan. It can accept revision feedback
 
 ### `/leanrigor:status`
 
-Reports the persisted workflow state, selected mode, current phase, provider status, completion gate, integration status, validation status, pending user decision, blocker, and next safe action.
+Reports the persisted workflow state, selected mode, current phase, provider
+status, completion gate, integration status, validation status, pending user
+decision, blocker, and next safe action. During execution it keeps the
+plan-order `recommendedNextPhase` separate from
+`otherDependencyReadyPhases`; later ready phases are not the primary action
+unless the user explicitly selects out-of-order execution.
 
 ### `/leanrigor:review`
 
@@ -114,6 +119,9 @@ The `ExecutionCoordinator`:
 - advances to final integrated review.
 
 Provider process success alone does not complete a phase.
+Provider-owned phase leases are completed through the coordinator. The
+interactive Claude session must not infer, probe, or reuse the provider lease
+owner string to call `phase-complete` directly.
 
 Current providers:
 
@@ -127,7 +135,10 @@ Current providers:
 Manual fallback requires explicit user selection after a provider dispatch
 failure or configuration choice. The active Claude session may implement a phase
 only inside the LeanRigor-assigned phase workspace. It must run or explicitly
-skip declared validation and submit persisted completion evidence.
+skip declared validation and submit persisted completion evidence using the
+workflow-owned artifact path returned by `flow evidence-template`. Evidence
+files must include workflow/phase identity and should not live in arbitrary
+temporary paths across retries.
 
 Manual mode does not allow editing in the user's original working tree when Git workspaces are enabled.
 

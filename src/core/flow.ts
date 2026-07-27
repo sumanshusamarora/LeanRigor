@@ -192,6 +192,12 @@ const phaseCompletionRecordSchema = z.object({
   timestamp: z.string(),
   workflowRevision: z.number().int().min(0),
   leaseOwnerId: z.string().optional(),
+  approvedConstraints: z.array(z.string()).optional(),
+  evidenceArtifact: z.object({
+    path: z.string().min(1),
+    sourcePath: z.string().min(1).optional(),
+    recordedAt: z.string()
+  }).optional(),
   gitEvidence: phaseGitEvidenceSchema.optional()
 });
 
@@ -758,6 +764,7 @@ export async function completePhase(args: {
   scopeDeviations?: string[];
   assumptions?: string[];
   remainingRisks?: string[];
+  evidenceArtifact?: PhaseCompletionRecord["evidenceArtifact"];
   blockedReason?: string;
   requestedRepairScope?: string;
   modelDecision?: CompletionGateDecision;
@@ -777,6 +784,9 @@ export async function completePhase(args: {
     if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
       throw new InvalidTransitionError(`Phase ${phase.id} completion requires an active lease held by ${ownerId}.`);
     }
+    if (lease.ownerType === "agent" && args.mutation?.ownerType !== "system") {
+      throw new InvalidTransitionError(`Phase ${phase.id} is owned by an execution provider; completion must be submitted through the coordinator.`);
+    }
     const inspected = await inspectPhaseWorkspaceChanges(next, phase, ownerId);
     phase.status = "completion_pending";
     phase.filesChanged = unique([...phase.filesChanged, ...(args.filesChanged ?? []), ...(inspected?.changedFiles ?? [])]);
@@ -795,6 +805,7 @@ export async function completePhase(args: {
       criteria: args.criteria,
       assumptions: args.assumptions,
       remainingRisks: args.remainingRisks,
+      evidenceArtifact: args.evidenceArtifact,
       blockedReason: args.blockedReason,
       requestedRepairScope: args.requestedRepairScope,
       config: args.config,
@@ -2296,6 +2307,7 @@ function buildCompletionRecord(args: {
   criteria?: CriterionCompletionEvidence[];
   assumptions?: string[];
   remainingRisks?: string[];
+  evidenceArtifact?: PhaseCompletionRecord["evidenceArtifact"];
   blockedReason?: string;
   requestedRepairScope?: string;
   config?: LeanRigorConfig;
@@ -2303,12 +2315,14 @@ function buildCompletionRecord(args: {
 }): PhaseCompletionRecord {
   const criteria = normaliseCriteria(args.phase, args.criteria);
   const validation = summarisePhaseValidation(args.phase, args.state.mode, args.config);
+  const approvedConstraints = args.state.constraints?.effective.map((constraint) => constraint.text) ?? args.state.triage?.constraints.mustNot ?? [];
   const policy = decideCompletionGate({
     phase: args.phase,
     criteria,
     validationStatus: validation.status,
     blockedReason: args.blockedReason,
     remainingRisks: args.remainingRisks ?? [],
+    approvedConstraints,
     config: args.config,
     mode: args.state.mode
   });
@@ -2328,7 +2342,9 @@ function buildCompletionRecord(args: {
     repairAttempt: args.phase.repairAttempts.length,
     timestamp: timestamp(),
     workflowRevision: args.state.revision,
-    leaseOwnerId: args.leaseOwnerId
+    leaseOwnerId: args.leaseOwnerId,
+    approvedConstraints,
+    evidenceArtifact: args.evidenceArtifact
   };
 }
 
@@ -2377,6 +2393,7 @@ function decideCompletionGate(args: {
   validationStatus: PhaseCompletionRecord["validation"]["status"];
   blockedReason?: string;
   remainingRisks: string[];
+  approvedConstraints: string[];
   config?: LeanRigorConfig;
   mode: WorkflowMode;
 }): { decision: CompletionGateDecision; reason?: string } {
@@ -2384,6 +2401,8 @@ function decideCompletionGate(args: {
     return { decision: "completed", reason: "Completion gate is disabled by configuration." };
   }
   if (args.blockedReason) return { decision: "blocked", reason: args.blockedReason };
+  const contradictoryEvidence = completionEvidenceContradiction(args.criteria, args.approvedConstraints);
+  if (contradictoryEvidence) return { decision: "needs_review", reason: contradictoryEvidence };
   const materialDeviation = args.phase.scopeDeviations.find((deviation) => isMaterialScopeDeviation(deviation));
   if (materialDeviation) return { decision: "needs_replan", reason: materialDeviation };
   const highRiskDeviation = args.phase.scopeDeviations.find((deviation) => isReviewScopeDeviation(deviation));
@@ -2401,6 +2420,15 @@ function decideCompletionGate(args: {
   const criticalRisk = args.remainingRisks.find((risk) => /\b(critical|severe|data loss|security|unsafe)\b/i.test(risk));
   if (criticalRisk) return { decision: "needs_review", reason: `Critical remaining risk: ${criticalRisk}` };
   return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };
+}
+
+function completionEvidenceContradiction(criteria: CriterionCompletionEvidence[], approvedConstraints: string[]): string | undefined {
+  if (!approvedConstraints.some(isBackwardCompatibilityNotRequired)) return undefined;
+  const evidenceText = criteria.flatMap((criterion) => [criterion.criterion, ...criterion.evidence]).join("\n").toLowerCase();
+  if (requiresBackwardCompatibility(evidenceText) || /\boptional\(\).*compat|\bcompat.*optional\(\)|all new fields .*optional/i.test(evidenceText)) {
+    return "Completion evidence contradicts the approved override that backward compatibility is not required.";
+  }
+  return undefined;
 }
 
 export type FileClassification = "documentation" | "runtime" | "config" | "test" | "other";

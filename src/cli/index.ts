@@ -67,7 +67,8 @@ import {
   getEvidenceTemplate
 } from "../core/flow.js";
 import { RevisionConflictError } from "../core/workflow-store.js";
-import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowMode } from "../core/types.js";
+import type { CriterionCompletionEvidence, SequentialWorkflowState, WorkflowMode, WorkflowPhase } from "../core/types.js";
+import { completionEvidenceArtifactPath, persistCompletionEvidenceArtifact, readCompletionEvidenceFile } from "../core/completion-evidence.js";
 import { ClaudeCliExecutionProvider } from "../core/execution/claude-provider.js";
 import { ExecutionCoordinator } from "../core/execution/coordinator.js";
 import type { ExecutionProvider } from "../core/execution/provider.js";
@@ -75,7 +76,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.15");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.16");
 
 program.command("setup")
   .alias("init")
@@ -537,7 +538,8 @@ flow.command("phase-complete")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "phase lease owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
-    const evidence = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
+    const evidence = options.evidenceFile ? await readCompletionEvidenceFile(options.root, workflowId, phaseId, options.evidenceFile) : {};
+    const evidenceArtifact = options.evidenceFile ? await persistCompletionEvidenceArtifact(options.root, workflowId, phaseId, options.evidenceFile) : undefined;
     const config = await effectiveRepositoryConfig(options.root);
     printFlowState(await completePhase({
       root: options.root,
@@ -551,6 +553,7 @@ flow.command("phase-complete")
       scopeDeviations: uniqueCli([...(evidence.scopeDeviations ?? []), ...options.deviation]),
       assumptions: uniqueCli([...(evidence.assumptions ?? []), ...options.assumption]),
       remainingRisks: uniqueCli([...(evidence.remainingRisks ?? []), ...options.risk]),
+      evidenceArtifact,
       blockedReason: options.blockedReason ?? evidence.blockedReason,
       requestedRepairScope: evidence.requestedRepairScope,
       modelDecision: evidence.modelDecision,
@@ -570,7 +573,14 @@ flow.command("evidence-template")
     const phase = state.plan.phases.find((candidate) => candidate.id === phaseId);
     if (!phase) throw new Error(`Unknown phase: ${phaseId}`);
     const template = getEvidenceTemplate(phase);
-    console.log(JSON.stringify(template, null, 2));
+    console.log(JSON.stringify({
+      ...template,
+      workflowId: state.id,
+      workflowRevision: state.revision,
+      phaseId,
+      generatedAt: new Date().toISOString(),
+      artifactPath: completionEvidenceArtifactPath(options.root, state.id, phaseId)
+    }, null, 2));
   });
 
 flow.command("ready")
@@ -1141,7 +1151,9 @@ function printFlowState(state: SequentialWorkflowState): void {
         reason: phase.completion.reason,
         criteria: summariseCriteria(phase.completion.criteria),
         validation: phase.completion.validation.status,
-        dependentPhasesMayProceed: phase.completion.dependentPhasesMayProceed
+        dependentPhasesMayProceed: phase.completion.dependentPhasesMayProceed,
+        approvedConstraints: phase.completion.approvedConstraints,
+        evidenceArtifact: phase.completion.evidenceArtifact
       } : undefined,
       repairAttempts: phase.repairAttempts.length,
       scopeDeviations: phase.scopeDeviations
@@ -1184,6 +1196,7 @@ function printFlowState(state: SequentialWorkflowState): void {
         partialProgressAccepted: false
       } : undefined
     })),
+    phaseReadiness: phaseReadinessStatus(state),
     currentPhase: currentPhaseStatus(state),
     next: workflowNextSummary(state),
     nextValidCommands: nextActions(state),
@@ -1329,6 +1342,22 @@ function currentPhaseStatus(state: SequentialWorkflowState): unknown {
   return active ? formatPhaseStatus(state, active.id) : undefined;
 }
 
+function phaseReadinessStatus(state: SequentialWorkflowState): unknown {
+  if (state.state !== "executing" || !state.plan) return undefined;
+  const schedule = readyPhases(state);
+  const byId = new Map(state.plan.phases.map((phase) => [phase.id, phase]));
+  const dependencyReady = schedule.readyPhases
+    .filter((phase) => phase.blockedBy.length === 0)
+    .map((phase) => byId.get(phase.phaseId))
+    .filter((phase): phase is WorkflowPhase => Boolean(phase));
+  const recommended = dependencyReady[0];
+  return {
+    recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : null,
+    otherDependencyReadyPhases: dependencyReady.slice(1).map((phase) => ({ id: phase.id, objective: phase.objective })),
+    policy: "Plan order is the primary CTA for Standard and Rigorous workflows; out-of-order ready phases require explicit user selection."
+  };
+}
+
 function formatPhaseStatus(state: SequentialWorkflowState, phaseId: string): unknown {
   const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!phase) return undefined;
@@ -1370,40 +1399,6 @@ function mutationOptions(options: { expectedRevision?: string; owner?: string })
   return {
     expectedRevision: options.expectedRevision === undefined ? undefined : Number.parseInt(options.expectedRevision, 10),
     ownerId: options.owner ?? "cli"
-  };
-}
-
-interface CompletionEvidenceFile {
-  criteria?: CriterionCompletionEvidence[];
-  filesChanged?: string[];
-  commandsRun?: string[];
-  validation?: Array<Partial<ValidationEvidence> & { command: string; result?: string; exitStatus?: number | null; skipped?: boolean; skippedReason?: string }>;
-  scopeDeviations?: string[];
-  assumptions?: string[];
-  remainingRisks?: string[];
-  blockedReason?: string;
-  requestedRepairScope?: string;
-  modelDecision?: "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
-}
-
-async function readCompletionEvidence(file: string): Promise<Omit<CompletionEvidenceFile, "validation"> & { validation?: ValidationEvidence[] }> {
-  const raw = JSON.parse(await readFile(path.resolve(file), "utf8")) as CompletionEvidenceFile;
-  return {
-    ...raw,
-    validation: raw.validation?.map((entry) => {
-      const skipped = Boolean(entry.skipped);
-      const exitStatus = skipped ? null : entry.exitStatus ?? 0;
-      return {
-        phaseId: entry.phaseId,
-        command: entry.command,
-        exitStatus,
-        result: entry.result ?? (skipped ? "Validation skipped." : "Validation command recorded."),
-        status: skipped ? "skipped" : exitStatus === 0 ? "passed" : "failed",
-        skipped,
-        skippedReason: entry.skippedReason,
-        timestamp: entry.timestamp ?? new Date().toISOString()
-      };
-    })
   };
 }
 

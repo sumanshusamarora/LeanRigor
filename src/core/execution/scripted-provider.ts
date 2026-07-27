@@ -169,6 +169,7 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
         phaseId: handle.phaseId,
         objective: "",
         acceptanceCriteria: result.criterionEvidence.map((criterion) => criterion.criterion),
+        approvedConstraints: [],
         dependencies: [],
         selectedMode: "standard",
         modelTier: "inherit",

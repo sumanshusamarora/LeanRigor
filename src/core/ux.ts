@@ -1,4 +1,4 @@
-import { listFlows, nextActions, resumeFlow } from "./flow.js";
+import { listFlows, nextActions, readyPhases, resumeFlow } from "./flow.js";
 import type { CommitPlan, SequentialWorkflowState, WorkflowLifecycleState, WorkflowMode, WorkflowPhase } from "./types.js";
 
 export interface WorkflowListSummary {
@@ -153,12 +153,15 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
   }
   if (state.state === "executing" && phase) {
     const needsIntervention = ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status);
+    const readiness = executingReadinessSummary(state);
     return {
       ...base,
       label: needsIntervention ? "Phase completion review" : "Phase execution",
       userDecisionRequired: needsIntervention,
       pendingDecision: needsIntervention ? phase.completion?.reason ?? "The active phase needs intervention." : null,
-      pendingAction: phaseNextAction(phase.status),
+      pendingAction: phase.status === "ready" && readiness.recommendedNextPhase
+        ? `Execute recommended next phase ${readiness.recommendedNextPhase.id}. Other dependency-ready phases require explicit selection.`
+        : phaseNextAction(phase.status),
       allowedIntents: phaseIntents(phase.status),
       approvalActions: needsIntervention ? phaseApprovalActions(state, phase) : undefined,
       summary: {
@@ -169,7 +172,10 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         criteria: phase.completion ? summariseCriteria(phase.completion.criteria) : undefined,
         validation: phase.completion?.validation.status ?? "pending",
         repairAttempts: phase.repairAttempts.length,
-        scopeDeviations: phase.scopeDeviations
+        scopeDeviations: phase.scopeDeviations,
+        recommendedNextPhase: readiness.recommendedNextPhase,
+        otherDependencyReadyPhases: readiness.otherDependencyReadyPhases,
+        planOrderPrimary: state.mode === "standard" || state.mode === "rigorous"
       }
     };
   }
@@ -231,6 +237,23 @@ export function currentPhaseObject(state: SequentialWorkflowState): WorkflowPhas
   return state.plan?.phases.find((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending")
     ?? state.plan?.phases.find((phase) => phase.status === "ready")
     ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
+}
+
+function executingReadinessSummary(state: SequentialWorkflowState): {
+  recommendedNextPhase?: { id: string; objective: string };
+  otherDependencyReadyPhases: Array<{ id: string; objective: string }>;
+} {
+  const schedule = readyPhases(state);
+  const byId = new Map(state.plan?.phases.map((phase) => [phase.id, phase]) ?? []);
+  const dependencyReady = schedule.readyPhases
+    .filter((phase) => phase.blockedBy.length === 0)
+    .map((phase) => byId.get(phase.phaseId))
+    .filter((phase): phase is WorkflowPhase => Boolean(phase));
+  const recommended = dependencyReady[0];
+  return {
+    recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : undefined,
+    otherDependencyReadyPhases: dependencyReady.slice(1).map((phase) => ({ id: phase.id, objective: phase.objective }))
+  };
 }
 
 export function phaseRepairBudget(state: SequentialWorkflowState): number {
@@ -323,7 +346,7 @@ function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "revise-approach", "status", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
-  if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
   if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["revise-plan", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];

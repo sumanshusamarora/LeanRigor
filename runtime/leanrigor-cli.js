@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path21 = __require("node:path");
+    var path22 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path21.resolve(baseDir, baseName);
+          const localBin = path22.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path21.extname(baseName))) return void 0;
+          if (sourceExt.includes(path22.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path21.resolve(
-            path21.dirname(resolvedScriptPath),
+          executableDir = path22.resolve(
+            path22.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path21.basename(
+            const legacyName = path22.basename(
               this._scriptPath,
-              path21.extname(this._scriptPath)
+              path22.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path21.extname(executableFile));
+        launchWithNode = sourceExt.includes(path22.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path21.basename(filename, path21.extname(filename));
+        this._name = path22.basename(filename, path22.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path22) {
-        if (path22 === void 0) return this._executableDir;
-        this._executableDir = path22;
+      executableDir(path23) {
+        if (path23 === void 0) return this._executableDir;
+        this._executableDir = path23;
         return this;
       }
       /**
@@ -3864,10 +3864,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path21) {
-  if (!path21)
+function getElementAtPath(obj, path22) {
+  if (!path22)
     return obj;
-  return path21.reduce((acc, key) => acc?.[key], obj);
+  return path22.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4195,11 +4195,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path21, issues) {
+function prefixIssues(path22, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path21);
+    iss.path.unshift(path22);
     return iss;
   });
 }
@@ -4416,16 +4416,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path21 = []) => {
+  const processError = (error52, path22 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path21, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path22, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else {
-        const fullpath = [...path21, ...issue2.path];
+        const fullpath = [...path22, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4452,17 +4452,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path21 = []) => {
+  const processError = (error52, path22 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path21, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path22, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else {
-        const fullpath = [...path21, ...issue2.path];
+        const fullpath = [...path22, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4494,8 +4494,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path21 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path21) {
+  const path22 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path22) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17925,13 +17925,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path21 = ref.slice(1).split("/").filter(Boolean);
-  if (path21.length === 0) {
+  const path22 = ref.slice(1).split("/").filter(Boolean);
+  if (path22.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path21[0] === defsKey) {
-    const key = path21[1];
+  if (path22[0] === defsKey) {
+    const key = path22[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -19606,8 +19606,8 @@ var {
 } = import_index.default;
 
 // src/cli/index.ts
-import { readFile as readFile15 } from "node:fs/promises";
-import path20 from "node:path";
+import { readFile as readFile16 } from "node:fs/promises";
+import path21 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -23910,6 +23910,12 @@ var phaseCompletionRecordSchema = external_exports.object({
   timestamp: external_exports.string(),
   workflowRevision: external_exports.number().int().min(0),
   leaseOwnerId: external_exports.string().optional(),
+  approvedConstraints: external_exports.array(external_exports.string()).optional(),
+  evidenceArtifact: external_exports.object({
+    path: external_exports.string().min(1),
+    sourcePath: external_exports.string().min(1).optional(),
+    recordedAt: external_exports.string()
+  }).optional(),
   gitEvidence: phaseGitEvidenceSchema.optional()
 });
 var phaseWorkspaceSchema = external_exports.object({
@@ -24413,6 +24419,9 @@ async function completePhase(args) {
     if (!lease || lease.releasedAt || lease.ownerId !== ownerId || Date.parse(lease.expiresAt) <= Date.now()) {
       throw new InvalidTransitionError(`Phase ${phase2.id} completion requires an active lease held by ${ownerId}.`);
     }
+    if (lease.ownerType === "agent" && args.mutation?.ownerType !== "system") {
+      throw new InvalidTransitionError(`Phase ${phase2.id} is owned by an execution provider; completion must be submitted through the coordinator.`);
+    }
     const inspected = await inspectPhaseWorkspaceChanges(next, phase2, ownerId);
     phase2.status = "completion_pending";
     phase2.filesChanged = unique3([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
@@ -24430,6 +24439,7 @@ async function completePhase(args) {
       criteria: args.criteria,
       assumptions: args.assumptions,
       remainingRisks: args.remainingRisks,
+      evidenceArtifact: args.evidenceArtifact,
       blockedReason: args.blockedReason,
       requestedRepairScope: args.requestedRepairScope,
       config: args.config,
@@ -25658,12 +25668,14 @@ function buildCommitPlan(state) {
 function buildCompletionRecord(args) {
   const criteria = normaliseCriteria(args.phase, args.criteria);
   const validation = summarisePhaseValidation(args.phase, args.state.mode, args.config);
+  const approvedConstraints = args.state.constraints?.effective.map((constraint) => constraint.text) ?? args.state.triage?.constraints.mustNot ?? [];
   const policy = decideCompletionGate({
     phase: args.phase,
     criteria,
     validationStatus: validation.status,
     blockedReason: args.blockedReason,
     remainingRisks: args.remainingRisks ?? [],
+    approvedConstraints,
     config: args.config,
     mode: args.state.mode
   });
@@ -25683,7 +25695,9 @@ function buildCompletionRecord(args) {
     repairAttempt: args.phase.repairAttempts.length,
     timestamp: timestamp2(),
     workflowRevision: args.state.revision,
-    leaseOwnerId: args.leaseOwnerId
+    leaseOwnerId: args.leaseOwnerId,
+    approvedConstraints,
+    evidenceArtifact: args.evidenceArtifact
   };
 }
 function normaliseCriteria(phase2, supplied) {
@@ -25726,6 +25740,8 @@ function decideCompletionGate(args) {
     return { decision: "completed", reason: "Completion gate is disabled by configuration." };
   }
   if (args.blockedReason) return { decision: "blocked", reason: args.blockedReason };
+  const contradictoryEvidence = completionEvidenceContradiction(args.criteria, args.approvedConstraints);
+  if (contradictoryEvidence) return { decision: "needs_review", reason: contradictoryEvidence };
   const materialDeviation = args.phase.scopeDeviations.find((deviation) => isMaterialScopeDeviation(deviation));
   if (materialDeviation) return { decision: "needs_replan", reason: materialDeviation };
   const highRiskDeviation = args.phase.scopeDeviations.find((deviation) => isReviewScopeDeviation(deviation));
@@ -25743,6 +25759,14 @@ function decideCompletionGate(args) {
   const criticalRisk = args.remainingRisks.find((risk2) => /\b(critical|severe|data loss|security|unsafe)\b/i.test(risk2));
   if (criticalRisk) return { decision: "needs_review", reason: `Critical remaining risk: ${criticalRisk}` };
   return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };
+}
+function completionEvidenceContradiction(criteria, approvedConstraints) {
+  if (!approvedConstraints.some(isBackwardCompatibilityNotRequired)) return void 0;
+  const evidenceText = criteria.flatMap((criterion) => [criterion.criterion, ...criterion.evidence]).join("\n").toLowerCase();
+  if (requiresBackwardCompatibility(evidenceText) || /\boptional\(\).*compat|\bcompat.*optional\(\)|all new fields .*optional/i.test(evidenceText)) {
+    return "Completion evidence contradicts the approved override that backward compatibility is not required.";
+  }
+  return void 0;
 }
 function classifyFilePath(raw) {
   const file2 = raw.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\s*\((modified|added|deleted|renamed|new file|untracked)\)\s*$/i, "").trim();
@@ -26151,12 +26175,13 @@ function workflowNextSummary(state) {
   }
   if (state.state === "executing" && phase2) {
     const needsIntervention = ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status);
+    const readiness = executingReadinessSummary(state);
     return {
       ...base,
       label: needsIntervention ? "Phase completion review" : "Phase execution",
       userDecisionRequired: needsIntervention,
       pendingDecision: needsIntervention ? phase2.completion?.reason ?? "The active phase needs intervention." : null,
-      pendingAction: phaseNextAction(phase2.status),
+      pendingAction: phase2.status === "ready" && readiness.recommendedNextPhase ? `Execute recommended next phase ${readiness.recommendedNextPhase.id}. Other dependency-ready phases require explicit selection.` : phaseNextAction(phase2.status),
       allowedIntents: phaseIntents(phase2.status),
       approvalActions: needsIntervention ? phaseApprovalActions(state, phase2) : void 0,
       summary: {
@@ -26167,7 +26192,10 @@ function workflowNextSummary(state) {
         criteria: phase2.completion ? summariseCriteria(phase2.completion.criteria) : void 0,
         validation: phase2.completion?.validation.status ?? "pending",
         repairAttempts: phase2.repairAttempts.length,
-        scopeDeviations: phase2.scopeDeviations
+        scopeDeviations: phase2.scopeDeviations,
+        recommendedNextPhase: readiness.recommendedNextPhase,
+        otherDependencyReadyPhases: readiness.otherDependencyReadyPhases,
+        planOrderPrimary: state.mode === "standard" || state.mode === "rigorous"
       }
     };
   }
@@ -26226,6 +26254,16 @@ function workflowNextSummary(state) {
 }
 function currentPhaseObject(state) {
   return state.plan?.phases.find((phase2) => phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending") ?? state.plan?.phases.find((phase2) => phase2.status === "ready") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
+}
+function executingReadinessSummary(state) {
+  const schedule = readyPhases(state);
+  const byId = new Map(state.plan?.phases.map((phase2) => [phase2.id, phase2]) ?? []);
+  const dependencyReady = schedule.readyPhases.filter((phase2) => phase2.blockedBy.length === 0).map((phase2) => byId.get(phase2.phaseId)).filter((phase2) => Boolean(phase2));
+  const recommended = dependencyReady[0];
+  return {
+    recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : void 0,
+    otherDependencyReadyPhases: dependencyReady.slice(1).map((phase2) => ({ id: phase2.id, objective: phase2.objective }))
+  };
 }
 function phaseRepairBudget(state) {
   if (state.mode === "fast") return 1;
@@ -26312,7 +26350,7 @@ function internalOperationsFor(state) {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "revise-approach", "status", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
-  if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
   if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["revise-plan", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
@@ -26340,12 +26378,74 @@ function quoteArg(value) {
   return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
 }
 
+// src/core/completion-evidence.ts
+import { mkdir as mkdir9, readFile as readFile13, writeFile as writeFile8 } from "node:fs/promises";
+import path16 from "node:path";
+async function readCompletionEvidenceFile(root, workflowId2, phaseId, file2) {
+  const resolved = path16.resolve(file2);
+  let rawText;
+  try {
+    rawText = await readFile13(resolved, "utf8");
+  } catch (error51) {
+    throw new Error(`Completion evidence file is unavailable: ${resolved}`, { cause: error51 });
+  }
+  let raw;
+  try {
+    raw = JSON.parse(rawText);
+  } catch (error51) {
+    throw new Error(`Completion evidence file is not valid JSON: ${resolved}`, { cause: error51 });
+  }
+  validateCompletionEvidenceFile(raw, await resumeFlow(root, workflowId2), phaseId, resolved);
+  return {
+    ...raw,
+    validation: raw.validation?.map((entry) => {
+      const skipped = Boolean(entry.skipped);
+      const exitStatus = skipped ? null : entry.exitStatus ?? 0;
+      return {
+        phaseId: entry.phaseId,
+        command: entry.command,
+        exitStatus,
+        result: entry.result ?? (skipped ? "Validation skipped." : "Validation command recorded."),
+        status: skipped ? "skipped" : exitStatus === 0 ? "passed" : "failed",
+        skipped,
+        skippedReason: entry.skippedReason,
+        timestamp: entry.timestamp ?? (/* @__PURE__ */ new Date()).toISOString()
+      };
+    })
+  };
+}
+function validateCompletionEvidenceFile(raw, state, phaseId, file2) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Completion evidence file must contain a JSON object: ${file2}`);
+  const meaningfulKeys = Object.keys(raw).filter((key) => !key.startsWith("_"));
+  if (meaningfulKeys.length === 0) throw new Error(`Completion evidence file is empty: ${file2}`);
+  if (raw.workflowId && raw.workflowId !== state.id) throw new Error(`Completion evidence workflowId ${raw.workflowId} does not match ${state.id}.`);
+  if (raw.phaseId && raw.phaseId !== phaseId) throw new Error(`Completion evidence phaseId ${raw.phaseId} does not match ${phaseId}.`);
+  if (raw.workflowRevision !== void 0 && raw.workflowRevision !== state.revision) {
+    throw new Error(`Completion evidence revision ${raw.workflowRevision} is stale; current workflow revision is ${state.revision}.`);
+  }
+  if (raw.criteria !== void 0 && !Array.isArray(raw.criteria)) throw new Error("Completion evidence criteria must be an array.");
+  if (raw.validation !== void 0 && !Array.isArray(raw.validation)) throw new Error("Completion evidence validation must be an array.");
+}
+async function persistCompletionEvidenceArtifact(root, workflowId2, phaseId, file2) {
+  const sourcePath = path16.resolve(file2);
+  const raw = await readFile13(sourcePath, "utf8");
+  const artifactPath = completionEvidenceArtifactPath(root, workflowId2, phaseId);
+  const artifactDir = path16.dirname(artifactPath);
+  await mkdir9(artifactDir, { recursive: true });
+  await writeFile8(artifactPath, raw.endsWith("\n") ? raw : `${raw}
+`, "utf8");
+  return { path: artifactPath, sourcePath, recordedAt: (/* @__PURE__ */ new Date()).toISOString() };
+}
+function completionEvidenceArtifactPath(root, workflowId2, phaseId) {
+  return path16.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
+}
+
 // src/core/execution/claude-provider.ts
 init_models();
 import { execFile as execFile2, spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { mkdir as mkdir9, open as open3, readFile as readFile13, rename as rename3, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
-import path16 from "node:path";
+import { mkdir as mkdir10, open as open3, readFile as readFile14, rename as rename3, stat as stat3, writeFile as writeFile9 } from "node:fs/promises";
+import path17 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/execution/errors.ts
@@ -26392,6 +26492,7 @@ function phaseWorkerPrompt(input) {
     input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status) ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result." : void 0,
     "",
     "Constraints:",
+    ...input.approvedConstraints.map((constraint) => `- Approved constraint: ${constraint}`),
     ...input.safetyInstructions.map((instruction) => `- ${instruction}`),
     `- Allowed write scope is limited to the assigned workspace and declared write areas.`,
     `- Do not commit, push, merge, deploy, or modify files outside the assigned workspace.`,
@@ -26483,11 +26584,11 @@ var ClaudeCliExecutionProvider = class {
       resume: canResume
     });
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path16.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
-    await mkdir9(artifactDir, { recursive: true });
-    const statusPath = path16.join(artifactDir, "status.json");
-    const stdoutPath = path16.join(artifactDir, "stdout.json");
-    const stderrPath = path16.join(artifactDir, "stderr.txt");
+    const artifactDir = path17.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    await mkdir10(artifactDir, { recursive: true });
+    const statusPath = path17.join(artifactDir, "status.json");
+    const stdoutPath = path17.join(artifactDir, "stdout.json");
+    const stderrPath = path17.join(artifactDir, "stderr.txt");
     const providerMetadata = {
       command: this.options.command ?? "claude",
       safeArgs,
@@ -26608,8 +26709,8 @@ var ClaudeCliExecutionProvider = class {
       const status = await readCollectibleStatus(handle);
       if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
       if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
-      const stdout = await readFile13(metadata.stdoutPath, "utf8").catch(() => "");
-      const stderr = await readFile13(metadata.stderrPath, "utf8").catch(() => "");
+      const stdout = await readFile14(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile14(metadata.stderrPath, "utf8").catch(() => "");
       if (status?.status === "failed") {
         return failureResult(handle, metadata, stdout, stderr, status, "Claude CLI exited before returning a successful provider result.");
       }
@@ -26645,7 +26746,7 @@ ${stderr}`;
 };
 async function writeStatus(statusPath, status) {
   const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile8(tempPath, `${JSON.stringify(status, null, 2)}
+  await writeFile9(tempPath, `${JSON.stringify(status, null, 2)}
 `, "utf8");
   await rename3(tempPath, statusPath);
 }
@@ -26654,7 +26755,7 @@ async function readPersistedStatus(handle) {
   if (!metadata) return void 0;
   try {
     await stat3(metadata.statusPath);
-    return JSON.parse(await readFile13(metadata.statusPath, "utf8"));
+    return JSON.parse(await readFile14(metadata.statusPath, "utf8"));
   } catch {
     return void 0;
   }
@@ -27070,18 +27171,18 @@ function redact(value) {
 // src/core/execution/coordinator.ts
 import { execFile as execFile4 } from "node:child_process";
 import { stat as stat4 } from "node:fs/promises";
-import path18 from "node:path";
+import path19 from "node:path";
 import { promisify as promisify4 } from "node:util";
 
 // src/core/workspace-preparation.ts
 import { execFile as execFile3 } from "node:child_process";
-import { access as access3, constants as constants2, lstat as lstat2, readFile as readFile14 } from "node:fs/promises";
-import path17 from "node:path";
+import { access as access3, constants as constants2, lstat as lstat2, readFile as readFile15 } from "node:fs/promises";
+import path18 from "node:path";
 import { promisify as promisify3 } from "node:util";
 var execFileAsync3 = promisify3(execFile3);
 async function preparePhaseWorkspace(args) {
   const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const packageJson = path17.join(args.workspacePath, "package.json");
+  const packageJson = path18.join(args.workspacePath, "package.json");
   if (!await exists(packageJson)) {
     return preparation({
       status: "available",
@@ -27145,10 +27246,10 @@ async function preparePhaseWorkspace(args) {
 }
 async function detectPackageManager(workspacePath, packageJson = {}) {
   const declared = typeof packageJson.packageManager === "string" ? packageJson.packageManager : "";
-  if (await exists(path17.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
-  if (await exists(path17.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
-  if (await exists(path17.join(workspacePath, "bun.lockb")) || await exists(path17.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
-  if (await exists(path17.join(workspacePath, "package-lock.json")) || await exists(path17.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
+  if (await exists(path18.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
+  if (await exists(path18.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
+  if (await exists(path18.join(workspacePath, "bun.lockb")) || await exists(path18.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
+  if (await exists(path18.join(workspacePath, "package-lock.json")) || await exists(path18.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
   return { packageManager: "npm", bootstrapCommand: ["npm", "install"], lockfilePreserving: false, evidence: evidence("package.json without lockfile", declared) };
 }
 function hasDeclaredDependencies(packageJson) {
@@ -27158,10 +27259,10 @@ function hasDeclaredDependencies(packageJson) {
   });
 }
 async function dependenciesUsable(workspacePath, validationCommands) {
-  if (!await exists(path17.join(workspacePath, "node_modules"))) return false;
+  if (!await exists(path18.join(workspacePath, "node_modules"))) return false;
   const toolNames = validationCommands.flatMap((command) => command.match(/\b(vitest|jest|tsc|eslint|tsx|vite|webpack|rollup)\b/g) ?? []);
   for (const tool of new Set(toolNames)) {
-    if (!await executableExists(path17.join(workspacePath, "node_modules", ".bin", tool))) return false;
+    if (!await executableExists(path18.join(workspacePath, "node_modules", ".bin", tool))) return false;
   }
   return true;
 }
@@ -27184,7 +27285,7 @@ function fallbackBootstrapCommand() {
 }
 async function readPackageJson(workspacePath) {
   try {
-    return JSON.parse(await readFile14(path17.join(workspacePath, "package.json"), "utf8"));
+    return JSON.parse(await readFile15(path18.join(workspacePath, "package.json"), "utf8"));
   } catch {
     return {};
   }
@@ -27192,7 +27293,7 @@ async function readPackageJson(workspacePath) {
 async function manifestIdentity(workspacePath) {
   const names = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
   const parts = await Promise.all(names.map(async (name) => {
-    const file2 = path17.join(workspacePath, name);
+    const file2 = path18.join(workspacePath, name);
     try {
       const stats = await lstat2(file2);
       return `${name}:${stats.size}:${stats.mtimeMs}`;
@@ -27427,7 +27528,7 @@ var ExecutionCoordinator = class {
           phaseId: record2.phaseId,
           config: this.config,
           blockedReason: result.summary,
-          mutation: { ownerId: record2.leaseOwnerId }
+          mutation: { ownerId: record2.leaseOwnerId, ownerType: "system" }
         });
         await this.updateRecord(record2.phaseId, { status: "blocked", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint });
         return "blocked";
@@ -27445,7 +27546,7 @@ var ExecutionCoordinator = class {
         scopeDeviations: result.scopeDeviations.map((deviation) => deviation.path ? `${deviation.path}: ${deviation.reason}` : deviation.reason),
         assumptions: result.assumptions,
         remainingRisks: result.remainingRisks,
-        mutation: { ownerId: record2.leaseOwnerId }
+        mutation: { ownerId: record2.leaseOwnerId, ownerType: "system" }
       });
       await this.updateRecord(record2.phaseId, { status: "result_recorded", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint, providerSession: updateSessionStatus(record2.providerSession, "completed", this.now()) });
       return "result_recorded";
@@ -27584,6 +27685,7 @@ var ExecutionCoordinator = class {
       timeoutSeconds: this.config.execution.workerTimeoutSeconds,
       userRequest: state.request,
       planContext: state.plan.summary,
+      approvedConstraints: state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? [],
       safetyInstructions: [
         "Use only the assigned phase workspace.",
         "Return structured result evidence; LeanRigor will decide whether the phase is accepted.",
@@ -27632,7 +27734,7 @@ var ExecutionCoordinator = class {
       workflowId: state.id,
       revision: state.revision,
       state: state.state,
-      executionMode: records.length > 0 ? "coordinator" : "manual",
+      executionMode: "coordinator",
       provider: this.provider.id,
       runningPhase: activePhase?.id,
       lastProviderStatus: latestRecord ? `${latestRecord.phaseId}: ${latestRecord.status}` : void 0,
@@ -27779,8 +27881,8 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
   if (await codeGraphUsable(workspacePath)) {
     return { codegraph: "exact-worktree", note: "CodeGraph index is available for the exact assigned phase worktree." };
   }
-  const root = path18.resolve(repositoryRoot);
-  const workspace = path18.resolve(workspacePath);
+  const root = path19.resolve(repositoryRoot);
+  const workspace = path19.resolve(workspacePath);
   if (root !== workspace && await codeGraphUsable(root)) {
     return { codegraph: "root-advisory", note: "CodeGraph is available only for the repository root; results may not match this phase worktree." };
   }
@@ -27788,7 +27890,7 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
 }
 async function codeGraphUsable(target) {
   try {
-    await stat4(path18.join(target, ".codegraph"));
+    await stat4(path19.join(target, ".codegraph"));
   } catch {
     return false;
   }
@@ -27827,8 +27929,8 @@ function errorDetails(error51) {
 
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { mkdir as mkdir10, rm as rm3, writeFile as writeFile9 } from "node:fs/promises";
-import path19 from "node:path";
+import { mkdir as mkdir11, rm as rm3, writeFile as writeFile10 } from "node:fs/promises";
+import path20 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -27924,17 +28026,17 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path19.resolve(workspacePath, edit.path);
-      const relative = path19.relative(workspacePath, target);
-      if (relative.startsWith("..") || path19.isAbsolute(relative)) {
+      const target = path20.resolve(workspacePath, edit.path);
+      const relative = path20.relative(workspacePath, target);
+      if (relative.startsWith("..") || path20.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir10(path19.dirname(target), { recursive: true });
-      await writeFile9(target, edit.content ?? "", "utf8");
+      await mkdir11(path20.dirname(target), { recursive: true });
+      await writeFile10(target, edit.content ?? "", "utf8");
     }
   }
   executionFromHandle(handle) {
@@ -27948,6 +28050,7 @@ var ScriptedExecutionProvider = class {
         phaseId: handle.phaseId,
         objective: "",
         acceptanceCriteria: result.criterionEvidence.map((criterion) => criterion.criterion),
+        approvedConstraints: [],
         dependencies: [],
         selectedMode: "standard",
         modelTier: "inherit",
@@ -28001,7 +28104,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.15");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.16");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -28018,11 +28121,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path20.join(root, ".leanrigor", "config.json");
+    const configPath = path21.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path20.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path21.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -28284,7 +28387,8 @@ flow.command("phase-start").argument("<workflow-id>").argument("[phase-id]").opt
   printFlowState(await startPhase(options.root, workflowId2, phaseId, { ...mutationOptions(options), config: await effectiveRepositoryConfig(options.root) }));
 });
 flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--evidence-file <path>", "JSON completion evidence file").option("--files <files>", "comma-separated files changed").option("--command <command>", "command run during the phase", collect, []).option("--deviation <deviation>", "scope deviation to record", collect, []).option("--assumption <assumption>", "assumption introduced during execution", collect, []).option("--risk <risk>", "remaining risk", collect, []).option("--blocked-reason <reason>", "external blocker preventing completion").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "phase lease owner ID", "cli").action(async (workflowId2, phaseId, options) => {
-  const evidence2 = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
+  const evidence2 = options.evidenceFile ? await readCompletionEvidenceFile(options.root, workflowId2, phaseId, options.evidenceFile) : {};
+  const evidenceArtifact = options.evidenceFile ? await persistCompletionEvidenceArtifact(options.root, workflowId2, phaseId, options.evidenceFile) : void 0;
   const config2 = await effectiveRepositoryConfig(options.root);
   printFlowState(await completePhase({
     root: options.root,
@@ -28298,6 +28402,7 @@ flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").
     scopeDeviations: uniqueCli([...evidence2.scopeDeviations ?? [], ...options.deviation]),
     assumptions: uniqueCli([...evidence2.assumptions ?? [], ...options.assumption]),
     remainingRisks: uniqueCli([...evidence2.remainingRisks ?? [], ...options.risk]),
+    evidenceArtifact,
     blockedReason: options.blockedReason ?? evidence2.blockedReason,
     requestedRepairScope: evidence2.requestedRepairScope,
     modelDecision: evidence2.modelDecision,
@@ -28310,7 +28415,14 @@ flow.command("evidence-template").argument("<workflow-id>").argument("<phase-id>
   const phase2 = state.plan.phases.find((candidate) => candidate.id === phaseId);
   if (!phase2) throw new Error(`Unknown phase: ${phaseId}`);
   const template = getEvidenceTemplate(phase2);
-  console.log(JSON.stringify(template, null, 2));
+  console.log(JSON.stringify({
+    ...template,
+    workflowId: state.id,
+    workflowRevision: state.revision,
+    phaseId,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    artifactPath: completionEvidenceArtifactPath(options.root, state.id, phaseId)
+  }, null, 2));
 });
 flow.command("ready").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured ready phase schedule").action(async (workflowId2, options) => {
   const schedule = readyPhases(await resumeFlow(options.root, workflowId2), await effectiveRepositoryConfig(options.root));
@@ -28650,7 +28762,9 @@ function printFlowState(state) {
         reason: phase2.completion.reason,
         criteria: summariseCriteria2(phase2.completion.criteria),
         validation: phase2.completion.validation.status,
-        dependentPhasesMayProceed: phase2.completion.dependentPhasesMayProceed
+        dependentPhasesMayProceed: phase2.completion.dependentPhasesMayProceed,
+        approvedConstraints: phase2.completion.approvedConstraints,
+        evidenceArtifact: phase2.completion.evidenceArtifact
       } : void 0,
       repairAttempts: phase2.repairAttempts.length,
       scopeDeviations: phase2.scopeDeviations
@@ -28693,6 +28807,7 @@ function printFlowState(state) {
         partialProgressAccepted: false
       } : void 0
     })),
+    phaseReadiness: phaseReadinessStatus(state),
     currentPhase: currentPhaseStatus(state),
     next: workflowNextSummary(state),
     nextValidCommands: nextActions(state),
@@ -28753,7 +28868,7 @@ async function executionProvider(providerName, scriptFile, config2) {
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 async function scriptedExecutionProvider(scriptFile) {
-  const scripts = scriptFile ? JSON.parse(await readFile15(path20.resolve(scriptFile), "utf8")) : {};
+  const scripts = scriptFile ? JSON.parse(await readFile16(path21.resolve(scriptFile), "utf8")) : {};
   return new ScriptedExecutionProvider(scripts);
 }
 async function runCoordinatorCommand(root, workflowId2, providerName, scriptFile, run) {
@@ -28819,6 +28934,18 @@ function currentPhaseStatus(state) {
   const active = state.plan?.phases.find((phase2) => phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending") ?? state.plan?.phases.find((phase2) => phase2.status === "ready") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
   return active ? formatPhaseStatus(state, active.id) : void 0;
 }
+function phaseReadinessStatus(state) {
+  if (state.state !== "executing" || !state.plan) return void 0;
+  const schedule = readyPhases(state);
+  const byId = new Map(state.plan.phases.map((phase2) => [phase2.id, phase2]));
+  const dependencyReady = schedule.readyPhases.filter((phase2) => phase2.blockedBy.length === 0).map((phase2) => byId.get(phase2.phaseId)).filter((phase2) => Boolean(phase2));
+  const recommended = dependencyReady[0];
+  return {
+    recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : null,
+    otherDependencyReadyPhases: dependencyReady.slice(1).map((phase2) => ({ id: phase2.id, objective: phase2.objective })),
+    policy: "Plan order is the primary CTA for Standard and Rigorous workflows; out-of-order ready phases require explicit user selection."
+  };
+}
 function formatPhaseStatus(state, phaseId) {
   const phase2 = state.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!phase2) return void 0;
@@ -28857,26 +28984,6 @@ function mutationOptions(options) {
   return {
     expectedRevision: options.expectedRevision === void 0 ? void 0 : Number.parseInt(options.expectedRevision, 10),
     ownerId: options.owner ?? "cli"
-  };
-}
-async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile15(path20.resolve(file2), "utf8"));
-  return {
-    ...raw,
-    validation: raw.validation?.map((entry) => {
-      const skipped = Boolean(entry.skipped);
-      const exitStatus = skipped ? null : entry.exitStatus ?? 0;
-      return {
-        phaseId: entry.phaseId,
-        command: entry.command,
-        exitStatus,
-        result: entry.result ?? (skipped ? "Validation skipped." : "Validation command recorded."),
-        status: skipped ? "skipped" : exitStatus === 0 ? "passed" : "failed",
-        skipped,
-        skippedReason: entry.skippedReason,
-        timestamp: entry.timestamp ?? (/* @__PURE__ */ new Date()).toISOString()
-      };
-    })
   };
 }
 function collect(value, previous) {

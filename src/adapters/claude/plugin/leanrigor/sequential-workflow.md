@@ -98,9 +98,16 @@ Rules:
   records, and present only persisted gates. Use `--provider scripted` only when
   the user explicitly requests scripted/deterministic execution. Do not
   implement phase edits yourself and do not edit the original working tree.
+- During execution status, render the persisted `recommendedNextPhase` as the
+  primary action. Show `otherDependencyReadyPhases` separately and start one
+  only after explicit user choice. Do not replace Phase 2 with Phase 4 merely
+  because both are dependency-ready.
 - If provider dispatch cannot start, present explicit recovery choices: retry
   the configured provider, use another available provider, switch to manual
   execution, or cancel the workflow. Do not silently switch provider or mode.
+- Coordinator-owned leases are completed by the coordinator only. Do not infer,
+  probe, or reuse a provider lease owner string from status output to run
+  `phase-complete` directly.
 - Use `execution.mode = manual` only after the user explicitly selects manual
   execution. In manual mode, initialize the integration workspace, then start one
   ready phase internally with a stable session owner, phase lease, and phase
@@ -117,7 +124,9 @@ Rules:
   workflow is complete. Report the persisted state and the exact blocker.
 - Read the current revision before mutating. Run or skip declared validation
   with a reason in the phase workspace, then submit phase completion evidence as
-  the same lease owner.
+  the same manual lease owner. Retrieve `flow evidence-template`, keep workflow
+  ID, workflow revision, and phase ID in the file, and use the workflow-owned
+  artifact path from `artifactPath` instead of arbitrary `/tmp` paths.
 - After the phase gate passes, integrate the approved phase into the LeanRigor
   integration worktree. Run combined validation in the integration worktree
   before final integrated review.
