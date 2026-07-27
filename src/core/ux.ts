@@ -76,14 +76,16 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
   };
 
   if (state.state === "awaiting_clarification") {
+    const question = state.clarification?.question ?? "What specific behaviour should change?";
+    const reason = state.clarification?.reason;
     return {
       ...base,
       label: "Clarification",
       userDecisionRequired: true,
       pendingDecision: "Answer the single blocking clarification question.",
-      pendingAction: state.clarification?.question ?? "What specific behaviour should change?",
+      pendingAction: question,
       allowedIntents: ["answer", "cancel", "show status"],
-      summary: { reason: state.clarification?.reason }
+      summary: { question, reason }
     };
   }
   if (state.state === "awaiting_approach_approval") {

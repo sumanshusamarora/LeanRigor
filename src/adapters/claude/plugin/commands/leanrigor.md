@@ -32,6 +32,10 @@ AskUserQuestion selector contract at every decision gate.
    The post-triage approach selector options are exactly `Approve approach and
    create plan`, `Revise approach`, `View workflow details`, and `Cancel
    workflow`; state that no implementation has started.
+   At `awaiting_clarification`, render `Question: <persisted question>`
+   verbatim and `Why this matters: <persisted reason>` when present. Do not
+   replace the question with the reason or leave a blank prompt after "before
+   continuing".
 6. After user approval, invoke the transition internally and continue to the
    next meaningful gate before replying. If the user changes constraints while
    approving the approach, convert those changes to structured flags such as

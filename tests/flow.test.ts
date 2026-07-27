@@ -117,6 +117,13 @@ describe("sequential workflow orchestration", () => {
 
     expect(state.state).toBe("awaiting_clarification");
     expect(state.clarification?.question).toBe("What specific behaviour or outcome should change?");
+    expect(workflowNextSummary(state)).toMatchObject({
+      label: "Clarification",
+      pendingAction: "What specific behaviour or outcome should change?",
+      summary: {
+        question: "What specific behaviour or outcome should change?"
+      }
+    });
 
     const answered = await answerClarification({
       root,

@@ -129,6 +129,29 @@ order:
    workflow state.
 4. `Cancel workflow` — Stop this workflow without starting implementation.
 
+For the clarification gate (`state: awaiting_clarification`), render the
+persisted question explicitly and verbatim before waiting for the user's answer:
+
+```text
+Workflow created and triaged
+
+Workflow: <id>
+Request: <request>
+Mode: <Fast|Standard|Rigorous>
+
+Triage clarification
+
+Question: <next.summary.question or clarification.question>
+
+Why this matters: <next.summary.reason or clarification.reason>
+```
+
+Do not replace the question with the reason. Do not end with a blank prompt
+after "before continuing". If `AskUserQuestion` is available, ask exactly the
+persisted question there as well; otherwise ask for a free-form answer in plain
+language. The answer must be recorded through `flow answer <workflow-id>
+"<answer>" --provider auto`.
+
 ### Free-form fallback
 
 The following typed responses remain supported as a fallback:

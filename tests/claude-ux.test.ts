@@ -278,6 +278,20 @@ describe("Claude conversational workflow UX support", () => {
       expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
     }
   });
+
+  it("shared guidance requires clarification questions to be displayed verbatim", async () => {
+    const marketplace = await readFile(path.join(repoRoot, "plugin-skills", "sequential-workflow", "SKILL.md"), "utf8");
+    const local = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
+    const command = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "commands", "leanrigor.md"), "utf8");
+    const startCommand = await readFile(path.join(repoRoot, "commands", "start.md"), "utf8");
+
+    for (const content of [marketplace, local, command, startCommand]) {
+      expect(content).toContain("awaiting_clarification");
+      expect(content).toContain("Question:");
+      expect(content).toContain("Why this matters:");
+      expect(content).toMatch(/Do not\s+replace the question with the reason/);
+    }
+  });
 });
 
 describe("approval actions", () => {

@@ -38,6 +38,10 @@ Behaviour:
    user-supplied approval constraint changes. Do not use
    `--provider deterministic` unless the user explicitly asks for deterministic
    planning. Continue to the next meaningful gate before responding.
+   At `awaiting_clarification`, render `Question: <persisted question>`
+   verbatim and `Why this matters: <persisted reason>` when present. Do not
+   replace the question with the reason or leave a blank prompt after "before
+   continuing".
 6. For plan revisions, invoke
    `flow revise-plan <workflow-id> "<feedback>" --provider auto` internally.
    Preserve any explicit user request for deterministic planning.

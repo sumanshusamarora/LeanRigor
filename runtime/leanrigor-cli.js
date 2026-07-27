@@ -26780,14 +26780,16 @@ function workflowNextSummary(state) {
     }
   };
   if (state.state === "awaiting_clarification") {
+    const question = state.clarification?.question ?? "What specific behaviour should change?";
+    const reason = state.clarification?.reason;
     return {
       ...base,
       label: "Clarification",
       userDecisionRequired: true,
       pendingDecision: "Answer the single blocking clarification question.",
-      pendingAction: state.clarification?.question ?? "What specific behaviour should change?",
+      pendingAction: question,
       allowedIntents: ["answer", "cancel", "show status"],
-      summary: { reason: state.clarification?.reason }
+      summary: { question, reason }
     };
   }
   if (state.state === "awaiting_approach_approval") {
@@ -28786,7 +28788,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.17");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.18");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
