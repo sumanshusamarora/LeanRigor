@@ -180,6 +180,8 @@ if (!marketplaceWorkflowFm["allowed-tools"]?.includes("AskUserQuestion")) fail("
 if (!marketplaceWorkflowSkill.includes("methodology/core.md")) fail("marketplace workflow skill must reference shared methodology/core.md");
 if (!marketplaceWorkflowSkill.includes("methodology/modes/<fast|standard|rigorous>.md")) fail("marketplace workflow skill must reference mode overlays");
 if (!marketplaceWorkflowSkill.includes("mandatory whenever the tool is available")) fail("marketplace workflow skill must require AskUserQuestion when available");
+if (!marketplaceWorkflowSkill.includes("same assistant turn")) fail("marketplace workflow skill must require same-turn AskUserQuestion selectors");
+if (!marketplaceWorkflowSkill.includes("\"multiSelect\": false")) fail("marketplace workflow skill must document AskUserQuestion selector payload shape");
 if (!marketplaceWorkflowSkill.includes("genuinely unavailable")) fail("marketplace workflow skill must restrict text fallback to genuine AskUserQuestion unavailability");
 if (!marketplaceWorkflowSkill.includes("Do not use `ExitPlanMode` as a substitute")) fail("marketplace workflow skill must prohibit ExitPlanMode as LeanRigor approval");
 for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
@@ -195,6 +197,8 @@ const localWorkflow = await readFile(path.join(root, "src", "adapters", "claude"
 if (!localWorkflow.includes(".claude/leanrigor/methodology/core.md")) fail("project-local workflow reference must use installed methodology path");
 if (!localWorkflow.includes(".claude/leanrigor/methodology/modes/<fast|standard|rigorous>.md")) fail("project-local workflow reference must use installed mode overlays");
 if (!localWorkflow.includes("mandatory whenever the tool is available")) fail("project-local workflow must require AskUserQuestion when available");
+if (!localWorkflow.includes("same assistant turn")) fail("project-local workflow must require same-turn AskUserQuestion selectors");
+if (!localWorkflow.includes("multiSelect")) fail("project-local workflow must document AskUserQuestion selector payload shape");
 if (!localWorkflow.includes("genuinely unavailable")) fail("project-local workflow must restrict text fallback to genuine AskUserQuestion unavailability");
 if (!localWorkflow.includes("Do not use `ExitPlanMode` as a substitute")) fail("project-local workflow must prohibit ExitPlanMode as LeanRigor approval");
 for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {

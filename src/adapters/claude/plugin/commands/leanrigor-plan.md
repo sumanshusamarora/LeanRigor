@@ -23,12 +23,19 @@ AskUserQuestion selector contract at every decision gate.
    planning only when explicitly requested or when model planning falls back with
    a recorded reason.
 4. If no active workflow exists and `$ARGUMENTS` is a request, start one with
-   `leanrigor flow start "$ARGUMENTS" --provider auto`.
+   `leanrigor flow start "$ARGUMENTS" --provider auto`, then inspect the
+   returned `next` object when present or immediately read `leanrigor flow next
+   --json` when it is absent. If `next.approvalActions` exists, call
+   `AskUserQuestion` in the same assistant turn before replying.
 5. If the user gives revision feedback, revise the persisted plan internally
    with `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
    and render the revised phases.
 
 Do not modify implementation files from this command. Do not show raw CLI
 commands except for troubleshooting or explicit user request.
+Approval selectors must use the `questions[0].question`,
+`questions[0].header`, `questions[0].options`, and
+`questions[0].multiSelect = false` AskUserQuestion shape, with option labels
+and descriptions copied from persisted `approvalActions` in order.
 
 $ARGUMENTS

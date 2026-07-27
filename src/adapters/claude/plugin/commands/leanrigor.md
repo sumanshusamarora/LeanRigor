@@ -18,11 +18,13 @@ AskUserQuestion selector contract at every decision gate.
    internally to find the current gate.
 2. If `$ARGUMENTS` is a new request and no active workflow exists, start the
    workflow internally with `leanrigor flow start "$ARGUMENTS" --provider auto`,
-   then render from the returned `next` object when present or immediately read
-   `leanrigor flow next --json` when it is absent. Do not end the turn from raw
-   `flow start` JSON. Do not use `--provider deterministic` unless the user
-   explicitly asks for deterministic triage. LeanRigor lazily creates
-   `.leanrigor/` and its `.gitignore` on first use — no explicit init is needed.
+   then inspect the returned `next` object when present or immediately read
+   `leanrigor flow next --json` when it is absent. If `next.approvalActions`
+   exists, call `AskUserQuestion` in the same assistant turn before replying.
+   Do not end the turn from raw `flow start` JSON or from a summary-only triage
+   report. Do not use `--provider deterministic` unless the user explicitly asks
+   for deterministic triage. LeanRigor lazily creates `.leanrigor/` and its
+   `.gitignore` on first use — no explicit init is needed.
 3. If one active workflow exists, resume it and interpret `$ARGUMENTS` as a
    natural-language response when present.
 4. If multiple active workflows exist, present the selection and ask the user
@@ -62,5 +64,9 @@ AskUserQuestion selector contract at every decision gate.
 
 Normal output must not ask users to copy-paste LeanRigor CLI commands. Show
 commands only in troubleshooting fallback or when explicitly requested.
+Approval selectors must use the `questions[0].question`,
+`questions[0].header`, `questions[0].options`, and
+`questions[0].multiSelect = false` AskUserQuestion shape, with option labels
+and descriptions copied from persisted `approvalActions` in order.
 
 $ARGUMENTS

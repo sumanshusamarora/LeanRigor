@@ -273,10 +273,29 @@ describe("Claude conversational workflow UX support", () => {
       expect(content).toContain("No implementation has started");
       expect(content).toContain("Do not render an ordinary text question");
       expect(content).toMatch(/Fall back to a numbered list|numbered list.*when.*AskUserQuestion.*genuinely unavailable/);
+      expect(content).toMatch(/same\s+assistant\s+turn/);
+      expect(content).toMatch(/A prose summary is\s+not a decision gate by itself/);
+      expect(content).toContain("multiSelect");
       expect(content).toContain("deterministic");
       expect(content).toMatch(/remains the[\s]*authority/);
       expect(content).toContain("Do not infer approval from conversational tone");
       expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
+    }
+  });
+
+  it("start and plan commands prohibit summary-only staged gate output", async () => {
+    const files = [
+      path.join(repoRoot, "commands", "start.md"),
+      path.join(repoRoot, "commands", "plan.md"),
+      path.join(repoRoot, "src", "adapters", "claude", "plugin", "commands", "leanrigor.md"),
+      path.join(repoRoot, "src", "adapters", "claude", "plugin", "commands", "leanrigor-plan.md")
+    ];
+
+    for (const file of files) {
+      const content = await readFile(file, "utf8");
+      expect(content).toContain("next.approvalActions");
+      expect(content).toMatch(/same\s+assistant\s+turn/);
+      expect(content).toMatch(/summary-only triage\s+report|multiSelect = false/);
     }
   });
 

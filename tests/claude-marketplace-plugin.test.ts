@@ -163,11 +163,14 @@ describe("Claude marketplace plugin manifests", () => {
   it("pins marketplace conversational starts to auto triage", async () => {
     const content = await readFile(path.join(repoRoot, "commands", "start.md"), "utf8");
     expect(content).toContain("flow start \"$ARGUMENTS\" --provider auto");
-    expect(content).toContain("Do not use `--provider deterministic` unless the user");
+    expect(content).toMatch(/Do not use\s+`--provider deterministic` unless the user/);
     expect(content).toContain("flow approve-approach <workflow-id> --provider auto");
     expect(content).toContain("flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
     expect(content).toContain("flow execute-next --provider auto");
     expect(content).toContain("flow execution-poll --provider auto");
+    expect(content).toContain("next.approvalActions");
+    expect(content).toMatch(/same\s+assistant\s+turn/);
+    expect(content).toMatch(/summary-only triage\s+report/);
   });
 
   it("declares AskUserQuestion availability for marketplace command turns", async () => {
@@ -186,6 +189,9 @@ describe("Claude marketplace plugin manifests", () => {
     const fm = frontmatter(content);
     expect(fm["allowed-tools"]).toContain("AskUserQuestion");
     expect(content).toContain("mandatory whenever the tool is available");
+    expect(content).toMatch(/same\s+assistant\s+turn/);
+    expect(content).toMatch(/A prose summary is\s+not a decision gate by itself/);
+    expect(content).toContain("\"multiSelect\": false");
     expect(content).toContain("genuinely unavailable");
     expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
   });
@@ -214,10 +220,15 @@ describe("Claude marketplace plugin manifests", () => {
     expect(startContent).toContain("leanrigor flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
     expect(startContent).toContain("flow execute-next --provider auto");
     expect(startContent).toContain("flow execution-poll --provider auto");
+    expect(startContent).toContain("next.approvalActions");
+    expect(startContent).toMatch(/same\s+assistant\s+turn/);
+    expect(startContent).toMatch(/summary-only triage\s+report/);
     expect(workflowContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
     expect(workflowContent).toContain("leanrigor flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
     expect(workflowContent).toContain("leanrigor flow execute-next --provider auto");
     expect(workflowContent).toContain("leanrigor flow execution-poll --provider auto");
+    expect(workflowContent).toMatch(/A prose summary is\s+not a decision gate by itself/);
+    expect(workflowContent).toContain("multiSelect");
   });
 
   it("hook paths resolve through CLAUDE_PLUGIN_ROOT", async () => {

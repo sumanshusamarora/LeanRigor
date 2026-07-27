@@ -16,11 +16,13 @@ Behaviour:
 
 1. Read active workflow selection with `flow active --json`.
 2. If `$ARGUMENTS` is a new coding request and no active workflow exists, start
-   a workflow with `flow start "$ARGUMENTS" --provider auto`, then render from
-   the returned `next` object when present or immediately read `flow next
-   --json` when it is absent. Do not end the turn from raw `flow start` JSON.
-   Do not use `--provider deterministic` unless the user explicitly asks for
-   deterministic triage.
+   a workflow with `flow start "$ARGUMENTS" --provider auto`, then inspect the
+   returned `next` object when present or immediately read `flow next --json`
+   when it is absent. If `next.approvalActions` exists, call `AskUserQuestion`
+   in the same assistant turn before replying. Do not end the turn from raw
+   `flow start` JSON or from a summary-only triage report. Do not use
+   `--provider deterministic` unless the user explicitly asks for deterministic
+   triage.
 3. If one active workflow exists, resume it and interpret `$ARGUMENTS` as a
    natural-language response when present.
 4. If multiple active workflows exist, use `AskUserQuestion` for the workflow
@@ -65,6 +67,9 @@ is available. Do not render an ordinary text question first. Fall back to
 numbered choices only when the tool is genuinely unavailable. Never infer
 approval from conversational tone. Do not use
 `ExitPlanMode` as a substitute for LeanRigor approval.
+Use the selector input shape `questions[0].question`, `questions[0].header`,
+`questions[0].options`, and `questions[0].multiSelect = false`, with option
+labels and descriptions copied from persisted `approvalActions` in order.
 
 Never compensate for an unavailable workflow transition by narrating that the
 workflow is complete. Report the persisted state and the exact blocker.

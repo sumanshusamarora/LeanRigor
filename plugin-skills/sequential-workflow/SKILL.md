@@ -85,13 +85,38 @@ persisted phases exist.
 
 ## Approval Actions
 
-When `flow next --json` returns `approvalActions`, call the `AskUserQuestion`
-tool to present a structured selector. This is mandatory whenever the tool is available.
-Map each action's `label` to the option label and `description` to
-the option description. Use a short header (max 12 chars) derived from the
-current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for
-multi-workflow selection. Do not render an ordinary text question such as
-"Approve or reject this approach?" before calling the selector.
+When `flow start` or `flow next --json` returns `next.approvalActions`, call
+the `AskUserQuestion` tool in the same assistant turn to present a structured
+selector. This is mandatory whenever the tool is available. A prose summary is
+not a decision gate by itself, and the turn must not end after the summary while
+`approvalActions` are pending. Map each action's `label` to the option label
+and `description` to the option description. Use a short header (max 12 chars)
+derived from the current gate: "Approach", "Plan", "Commit", "Phase", or
+"Workflow" for multi-workflow selection. Do not render an ordinary text
+question such as "Approve or reject this approach?" before calling the
+selector.
+
+Use this `AskUserQuestion` input shape for approval selectors:
+
+```json
+{
+  "questions": [
+    {
+      "question": "What should LeanRigor do next?",
+      "header": "Approach",
+      "options": [
+        { "label": "<approvalActions[0].label>", "description": "<approvalActions[0].description>" }
+      ],
+      "multiSelect": false
+    }
+  ]
+}
+```
+
+Replace `header` with the current gate header and include every persisted
+`approvalActions` option in order. After the tool returns, match the selected
+label to the persisted action and run that action's deterministic transition
+internally.
 
 Fall back to a numbered list of explicit choices only when `AskUserQuestion` is
 genuinely unavailable in the current Claude Code environment. Each action has a
@@ -118,8 +143,8 @@ Recommended approach
 No implementation has started. Your approval is required before planning.
 ```
 
-Then call `AskUserQuestion` with one concise question and these options in
-order:
+Then call `AskUserQuestion` in the same turn with one concise question and
+these options in order:
 
 1. `Approve approach and create plan` — Continue to model-assisted planning
    using the approved triage constraints.
