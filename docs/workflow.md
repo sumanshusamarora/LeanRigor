@@ -102,8 +102,13 @@ Fast mode skips the separate approach gate only when the task is obvious,
 unambiguous, low blast radius, and has no security, data, operational, or
 architecture risk. All modes require plan approval before implementation.
 
-Standard and Rigorous mode require approach approval before planning. Rejection
-blocks the workflow rather than silently choosing a different path.
+Standard and Rigorous mode require approach approval before planning. The
+post-triage gate presents `Approve approach and create plan`, `Revise approach`,
+`View workflow details`, and `Cancel workflow`. Approval starts planning only
+after the explicit transition succeeds. Approach revision feedback is persisted
+with `flow revise-approach` and the workflow remains at the approach gate.
+Cancellation records a cancelled workflow without deleting worktrees or
+repository files.
 
 ## Planning
 

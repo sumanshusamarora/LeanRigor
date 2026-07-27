@@ -60,11 +60,12 @@ LeanRigor may pause at two approval gates before implementation begins:
 
 ### Approach approval (Standard and Rigorous modes)
 
-Before a detailed plan is generated, Standard and Rigorous workflows may present an **approach summary**: the proposed strategy, primary risks, alternatives considered, and validation approach. Reply:
+Before a detailed plan is generated, Standard and Rigorous workflows may present an **approach summary**: the proposed strategy, primary risks, alternatives considered, validation approach, and a clear note that no implementation has started. Reply:
 
 - `approve` — accept the approach; LeanRigor generates the phased plan.
-- `revise the approach to …` — provide feedback for a revised approach.
-- `reject because …` — cancel the workflow with a recorded reason.
+- `revise the approach to …` — persist feedback or new constraints, then review the updated approach gate.
+- `show status` / `view details` — inspect persisted triage, policy, provenance, and workflow state without changing it.
+- `cancel` — cancel the workflow without starting implementation.
 
 Fast mode skips approach approval because the task is clearly bounded.
 

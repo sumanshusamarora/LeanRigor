@@ -72,8 +72,10 @@ persisted phases exist.
 - One active workflow: resume it.
 - No active workflow: start only when the user supplied a request. Invoke
   `flow start "$ARGUMENTS" --provider auto` so automatic triage can call Claude
-  when available. Use `--provider deterministic` only when the user explicitly
-  requests deterministic triage.
+  when available. Render from the returned `next` object when present or
+  immediately read `flow next --json` when it is absent. Do not end the turn
+  from raw `flow start` JSON. Use `--provider deterministic` only when the user
+  explicitly requests deterministic triage.
 - Multiple active workflows: use `AskUserQuestion` to let the user choose among
   them (header: "Workflow"). Show ID, request, state, mode, and updated time in
   each option description. Do not render an ordinary text question first. Fall
@@ -96,13 +98,45 @@ genuinely unavailable in the current Claude Code environment. Each action has a
 deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response.
 Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 
+For the post-triage approach gate, render a compact summary before the selector:
+
+```text
+Workflow created and triaged
+
+Workflow: <id>
+Mode: <Fast|Standard|Rigorous>
+
+Assessment
+<complexity, ambiguity, risk, blast radius, and concise explanation where available>
+
+Key constraints
+<persisted triage constraints and explicit revision feedback>
+
+Recommended approach
+<persisted recommended approach>
+
+No implementation has started. Your approval is required before planning.
+```
+
+Then call `AskUserQuestion` with one concise question and these options in
+order:
+
+1. `Approve approach and create plan` — Continue to model-assisted planning
+   using the approved triage constraints.
+2. `Revise approach` — Let me provide changes or additional constraints before
+   planning.
+3. `View workflow details` — Show full triage, policy, provenance, and current
+   workflow state.
+4. `Cancel workflow` — Stop this workflow without starting implementation.
+
 ### Free-form fallback
 
 The following typed responses remain supported as a fallback:
 
 - `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
 - `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, initialize the integration workspace, read the new revision, inspect ready phases, and begin one ready phase through the internal lease/start/workspace path.
-- `revise ...`: revise the current approach/plan when that gate is active. For plan revisions, use `flow revise-plan <workflow-id> "<feedback>" --provider auto` unless deterministic planning was explicitly requested.
+- `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> "<feedback>"`, rerender the updated approach summary, and ask for approval again. Do not start planning.
+- `revise ...` at `awaiting_plan_approval`: use `flow revise-plan <workflow-id> "<feedback>" --provider auto` unless deterministic planning was explicitly requested.
 - `reject because ...`: reject the approach with the supplied reason.
 - `cancel`: cancel the workflow after confirming intent when destructive to progress.
 - `show plan` / `show status`: render persisted plan/status.

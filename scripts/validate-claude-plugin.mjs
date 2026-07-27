@@ -182,6 +182,11 @@ if (!marketplaceWorkflowSkill.includes("methodology/modes/<fast|standard|rigorou
 if (!marketplaceWorkflowSkill.includes("mandatory whenever the tool is available")) fail("marketplace workflow skill must require AskUserQuestion when available");
 if (!marketplaceWorkflowSkill.includes("genuinely unavailable")) fail("marketplace workflow skill must restrict text fallback to genuine AskUserQuestion unavailability");
 if (!marketplaceWorkflowSkill.includes("Do not use `ExitPlanMode` as a substitute")) fail("marketplace workflow skill must prohibit ExitPlanMode as LeanRigor approval");
+for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
+  if (!marketplaceWorkflowSkill.includes(option)) fail(`marketplace workflow skill must document post-triage option: ${option}`);
+}
+if (!marketplaceWorkflowSkill.includes("No implementation has started")) fail("marketplace workflow skill must state that no implementation has started at the approach gate");
+if (!/Do not end the turn\s+from raw `flow start` JSON/.test(marketplaceWorkflowSkill)) fail("marketplace workflow skill must prohibit report-only flow-start handling");
 for (const file of methodologyFiles.filter((file) => !file.startsWith("modes/"))) {
   if (!marketplaceWorkflowSkill.includes(`methodology/${file}`)) fail(`marketplace workflow skill must reference methodology/${file}`);
 }
@@ -192,6 +197,11 @@ if (!localWorkflow.includes(".claude/leanrigor/methodology/modes/<fast|standard|
 if (!localWorkflow.includes("mandatory whenever the tool is available")) fail("project-local workflow must require AskUserQuestion when available");
 if (!localWorkflow.includes("genuinely unavailable")) fail("project-local workflow must restrict text fallback to genuine AskUserQuestion unavailability");
 if (!localWorkflow.includes("Do not use `ExitPlanMode` as a substitute")) fail("project-local workflow must prohibit ExitPlanMode as LeanRigor approval");
+for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
+  if (!localWorkflow.includes(option)) fail(`project-local workflow must document post-triage option: ${option}`);
+}
+if (!localWorkflow.includes("No implementation has started")) fail("project-local workflow must state that no implementation has started at the approach gate");
+if (!/Do not end the turn\s+from raw `flow start` JSON/.test(localWorkflow)) fail("project-local workflow must prohibit report-only flow-start handling");
 
 try {
   const runtime = await stat(path.join(root, "runtime", "leanrigor-cli.js"));

@@ -205,6 +205,7 @@ export interface ApproachRecommendation {
   alternatives: string[];
   primaryRisks: string[];
   validationStrategy: string[];
+  revisionRequests?: Array<{ feedback: string; timestamp: string }>;
   rejectedReason?: string;
 }
 

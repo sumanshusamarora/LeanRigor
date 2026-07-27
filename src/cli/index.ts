@@ -52,6 +52,7 @@ import {
   rejectApproach,
   releasePhase,
   resumeFlow,
+  reviseApproach,
   revisePlan,
   readyPhases,
   startFlow,
@@ -74,7 +75,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.13");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.14");
 
 program.command("setup")
   .alias("init")
@@ -464,6 +465,16 @@ flow.command("reject-approach")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
     printFlowState(await rejectApproach(options.root, workflowId, options.reason, mutationOptions(options)));
+  });
+
+flow.command("revise-approach")
+  .argument("<workflow-id>")
+  .argument("<feedback>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, feedback, options) => {
+    printFlowState(await reviseApproach(options.root, workflowId, feedback, mutationOptions(options)));
   });
 
 flow.command("approve-plan")
@@ -1141,6 +1152,7 @@ function printFlowState(state: SequentialWorkflowState): void {
       } : undefined
     })),
     currentPhase: currentPhaseStatus(state),
+    next: workflowNextSummary(state),
     nextValidCommands: nextActions(state),
     updatedAt: state.updatedAt
   }, null, 2));

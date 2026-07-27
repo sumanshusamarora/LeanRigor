@@ -60,7 +60,9 @@ Primary conversational workflow entry point. It:
 
 1. discovers and resumes an active workflow or starts one from the supplied request;
 2. presents triage, final mode, risk, assumptions, and one blocking clarification when required;
-3. presents approach approval for Standard and Rigorous work;
+3. presents a post-triage approach gate for Standard and Rigorous work with
+   approve, revise, view-details, and cancel actions, and states that no
+   implementation has started;
 4. creates and presents the phased plan for explicit approval;
 5. advances provider-driven coordinator execution or the approved manual fallback;
 6. reports persisted phase-gate outcomes rather than model confidence;

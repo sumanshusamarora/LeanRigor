@@ -63,7 +63,8 @@ npx leanrigor init --adapter claude >/dev/null
 HOOK=.claude/leanrigor/protect-git.sh
 test -x "$HOOK"
 npx leanrigor doctor --adapter claude | tee doctor.out
-grep -q "protect-git.sh: current and executable" doctor.out
+grep -q "Git protection hook:" doctor.out
+grep -q "current and executable" doctor.out
 
 printf '%s\n' '{"command":"git commit -m blocked"}' | sh "$HOOK" >/tmp/leanrigor-hook.out 2>/tmp/leanrigor-hook.err && {
   log "Hook did not block git commit."

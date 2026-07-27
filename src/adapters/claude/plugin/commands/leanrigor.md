@@ -18,8 +18,10 @@ AskUserQuestion selector contract at every decision gate.
    internally to find the current gate.
 2. If `$ARGUMENTS` is a new request and no active workflow exists, start the
    workflow internally with `leanrigor flow start "$ARGUMENTS" --provider auto`,
-   then render the next gate. Do not use `--provider deterministic` unless the
-   user explicitly asks for deterministic triage. LeanRigor lazily creates
+   then render from the returned `next` object when present or immediately read
+   `leanrigor flow next --json` when it is absent. Do not end the turn from raw
+   `flow start` JSON. Do not use `--provider deterministic` unless the user
+   explicitly asks for deterministic triage. LeanRigor lazily creates
    `.leanrigor/` and its `.gitignore` on first use — no explicit init is needed.
 3. If one active workflow exists, resume it and interpret `$ARGUMENTS` as a
    natural-language response when present.
@@ -27,6 +29,9 @@ AskUserQuestion selector contract at every decision gate.
    to choose.
 5. Render distinct `Approach approval`, `Plan approval`, `Phase completion
    review`, `Final integrated review`, and `Commit proposal` states.
+   The post-triage approach selector options are exactly `Approve approach and
+   create plan`, `Revise approach`, `View workflow details`, and `Cancel
+   workflow`; state that no implementation has started.
 6. After user approval, invoke the transition internally and continue to the
    next meaningful gate before replying. For approach approval, use
    `leanrigor flow approve-approach <workflow-id> --provider auto` so plan

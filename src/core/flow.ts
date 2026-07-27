@@ -449,6 +449,7 @@ const workflowStateSchema = z.object({
     alternatives: z.array(z.string()),
     primaryRisks: z.array(z.string()),
     validationStrategy: z.array(z.string()),
+    revisionRequests: z.array(z.object({ feedback: z.string().min(1), timestamp: z.string() })).optional(),
     rejectedReason: z.string().optional()
   }).optional(),
   plan: planSchema.optional(),
@@ -601,6 +602,21 @@ export async function rejectApproach(root: string, workflowId: string, reason: s
     next.blockers = [`Approach rejected: ${reason}`];
     return transition(next, "blocked", "Approach rejected; workflow blocked pending a new request or manual restart.");
   }, { ...mutation, operation: "reject_approach" });
+}
+
+export async function reviseApproach(root: string, workflowId: string, feedback: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
+  return updateFlowState(root, workflowId, (state) => {
+    assertState(state, ["awaiting_approach_approval"]);
+    if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
+    const next = structuredClone(state);
+    next.approach = {
+      ...state.approach,
+      approved: false,
+      revisionRequests: [...state.approach.revisionRequests ?? [], { feedback, timestamp: timestamp() }]
+    };
+    appendEvent(next, "approach_revision_requested", "Approach revision feedback recorded.");
+    return transition(next, "awaiting_approach_approval", "Approach revision feedback recorded; approval is still required before planning.");
+  }, { ...mutation, operation: "revise_approach" });
 }
 
 export async function revisePlan(root: string, workflowId: string, feedback: string, config?: LeanRigorConfig, mutation?: MutationOptions, planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
@@ -1416,7 +1432,7 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
     root: planning.root,
     triage: state.triage,
     config,
-    revisionRequests: planning.plan?.revisionRequests ?? [],
+    revisionRequests: [...(planning.approach?.revisionRequests ?? []), ...(planning.plan?.revisionRequests ?? [])],
     provider: planningOptions?.provider,
     providerSelection: planningOptions?.providerSelection
   });

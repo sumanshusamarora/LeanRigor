@@ -24147,6 +24147,7 @@ var workflowStateSchema = external_exports.object({
     alternatives: external_exports.array(external_exports.string()),
     primaryRisks: external_exports.array(external_exports.string()),
     validationStrategy: external_exports.array(external_exports.string()),
+    revisionRequests: external_exports.array(external_exports.object({ feedback: external_exports.string().min(1), timestamp: external_exports.string() })).optional(),
     rejectedReason: external_exports.string().optional()
   }).optional(),
   plan: planSchema.optional(),
@@ -24270,6 +24271,20 @@ async function rejectApproach(root, workflowId2, reason, mutation) {
     next.blockers = [`Approach rejected: ${reason}`];
     return transition(next, "blocked", "Approach rejected; workflow blocked pending a new request or manual restart.");
   }, { ...mutation, operation: "reject_approach" });
+}
+async function reviseApproach(root, workflowId2, feedback, mutation) {
+  return updateFlowState(root, workflowId2, (state) => {
+    assertState(state, ["awaiting_approach_approval"]);
+    if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
+    const next = structuredClone(state);
+    next.approach = {
+      ...state.approach,
+      approved: false,
+      revisionRequests: [...state.approach.revisionRequests ?? [], { feedback, timestamp: timestamp2() }]
+    };
+    appendEvent(next, "approach_revision_requested", "Approach revision feedback recorded.");
+    return transition(next, "awaiting_approach_approval", "Approach revision feedback recorded; approval is still required before planning.");
+  }, { ...mutation, operation: "revise_approach" });
 }
 async function revisePlan(root, workflowId2, feedback, config2, mutation, planning) {
   return updateFlowState(root, workflowId2, async (state) => {
@@ -24903,7 +24918,7 @@ async function withPlan(state, config2, planningOptions) {
     root: planning.root,
     triage: state.triage,
     config: config2,
-    revisionRequests: planning.plan?.revisionRequests ?? [],
+    revisionRequests: [...planning.approach?.revisionRequests ?? [], ...planning.plan?.revisionRequests ?? []],
     provider: planningOptions?.provider,
     providerSelection: planningOptions?.providerSelection
   });
@@ -25843,24 +25858,33 @@ function workflowNextSummary(state) {
     };
   }
   if (state.state === "awaiting_approach_approval") {
-    const commands = nextActions(state);
+    const root = quoteArg(state.root);
     return {
       ...base,
       label: "Approach approval",
       userDecisionRequired: true,
-      pendingDecision: "Approve this approach, request changes, reject it, or cancel.",
-      pendingAction: "Select an approval action or type a response.",
-      allowedIntents: ["approve", "looks good", "continue", "revise", "reject", "cancel", "show status"],
+      pendingDecision: "Choose the next post-triage action. No implementation has started.",
+      pendingAction: "Select an action. Approval is required before planning can begin.",
+      allowedIntents: ["approve", "looks good", "continue", "revise", "view details", "show status", "cancel"],
       approvalActions: [
-        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the proposed approach and continue to plan generation." },
-        { label: "Revise", intent: "revise", command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root "${state.root}"`, description: "Request changes to the approach with specific feedback." },
-        { label: "Reject", intent: "reject", command: commands[1] ?? "", description: "Reject the approach with a reason. The workflow will be blocked." }
+        { label: "Approve approach and create plan", intent: "approve", command: `leanrigor flow approve-approach ${state.id} --provider auto --root ${root}`, description: "Continue to model-assisted planning using the approved triage constraints." },
+        { label: "Revise approach", intent: "revise", command: `leanrigor flow revise-approach ${state.id} "<feedback>" --root ${root}`, description: "Let me provide changes or additional constraints before planning." },
+        { label: "View workflow details", intent: "view details", command: `leanrigor flow status ${state.id} --root ${root}`, description: "Show full triage, policy, provenance, and current workflow state." },
+        { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Stop this workflow without starting implementation." }
       ],
       summary: {
+        task: state.triage?.task,
+        assessment: state.triage?.assessment,
+        constraints: state.triage?.constraints,
+        escalationReasons: state.triage?.escalationReasons ?? [],
+        assumptions: state.triage?.assumptions ?? [],
+        warnings: state.triageRun?.warnings ?? [],
         proposed: state.approach?.proposed,
         preferredBecause: state.approach?.preferredBecause,
         risks: state.approach?.primaryRisks ?? [],
-        validation: state.approach?.validationStrategy ?? []
+        validation: state.approach?.validationStrategy ?? [],
+        revisionRequests: state.approach?.revisionRequests ?? [],
+        noImplementationStarted: true
       }
     };
   }
@@ -26051,7 +26075,7 @@ function phaseApprovalActions(state, phase2) {
 }
 function internalOperationsFor(state) {
   if (state.state === "awaiting_clarification") return ["answer"];
-  if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
+  if (state.state === "awaiting_approach_approval") return ["approve-approach", "revise-approach", "status", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
   if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
@@ -27571,7 +27595,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.13");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.14");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -27827,6 +27851,9 @@ flow.command("approve-approach").argument("<workflow-id>").option("--root <path>
 });
 flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reason <reason>", "reason for rejection").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await rejectApproach(options.root, workflowId2, options.reason, mutationOptions(options)));
+});
+flow.command("revise-approach").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
+  printFlowState(await reviseApproach(options.root, workflowId2, feedback, mutationOptions(options)));
 });
 flow.command("approve-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await approvePlan(options.root, workflowId2, mutationOptions(options)));
@@ -28232,6 +28259,7 @@ function printFlowState(state) {
       } : void 0
     })),
     currentPhase: currentPhaseStatus(state),
+    next: workflowNextSummary(state),
     nextValidCommands: nextActions(state),
     updatedAt: state.updatedAt
   }, null, 2));

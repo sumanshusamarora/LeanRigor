@@ -275,6 +275,43 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.triage.fallbackReason).toBeUndefined();
   });
 
+  it("returns post-triage selector state from marketplace flow start", async () => {
+    const repo = path.join(await tempDir("leanrigor marketplace selector repo "), "repo");
+    await mkdir(repo, { recursive: true });
+
+    const result = await run(path.join(repoRoot, "bin", "leanrigor"), ["flow", "start", "Fix the broken assignment API regression", "--root", repo], {
+      cwd: repo,
+      env: { CLAUDE_PLUGIN_ROOT: repoRoot, PATH: await fakeClaudePath() }
+    });
+
+    expect(result.code).toBe(0);
+    const state = JSON.parse(result.stdout) as {
+      state: string;
+      plan?: unknown;
+      next?: {
+        label: string;
+        pendingDecision: string;
+        approvalActions: Array<{ label: string; intent: string; command: string; description: string }>;
+        summary: { noImplementationStarted?: boolean; assessment?: unknown; constraints?: unknown };
+      };
+    };
+    expect(state.state).toBe("awaiting_approach_approval");
+    expect(state.plan).toBeUndefined();
+    expect(state.next?.label).toBe("Approach approval");
+    expect(state.next?.pendingDecision).toContain("No implementation has started");
+    expect(state.next?.summary.noImplementationStarted).toBe(true);
+    expect(state.next?.summary.assessment).toBeDefined();
+    expect(state.next?.summary.constraints).toBeDefined();
+    expect(state.next?.approvalActions.map((action) => action.label)).toEqual([
+      "Approve approach and create plan",
+      "Revise approach",
+      "View workflow details",
+      "Cancel workflow"
+    ]);
+    expect(state.next?.approvalActions.find((action) => action.intent === "approve")?.command).toContain("--provider auto");
+    expect(state.next?.approvalActions.find((action) => action.intent === "revise")?.command).toContain("flow revise-approach");
+  });
+
   it("defaults marketplace approach approval to model-backed auto planning", async () => {
     const repo = path.join(await tempDir("leanrigor marketplace planning repo "), "repo");
     await mkdir(repo, { recursive: true });

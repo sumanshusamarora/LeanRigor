@@ -12,6 +12,7 @@ import {
   recordReview,
   recordValidation,
   resumeFlow,
+  reviseApproach,
   startFlow,
   startPhase
 } from "../src/core/flow.js";
@@ -89,6 +90,21 @@ describe("Claude conversational workflow UX support", () => {
     expect(next.summary.phases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "phase-1" })
     ]));
+  });
+
+  it("approach revision records feedback without starting planning", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+
+    const revised = await reviseApproach(root, started.id, "Keep the change API-only and avoid test fixture churn.");
+    const next = workflowNextSummary(revised);
+
+    expect(revised.state).toBe("awaiting_approach_approval");
+    expect(revised.plan).toBeUndefined();
+    expect(revised.approach?.approved).toBe(false);
+    expect(revised.approach?.revisionRequests?.[0]?.feedback).toContain("API-only");
+    expect((next.summary.revisionRequests as Array<{ feedback: string }>)[0]?.feedback).toContain("API-only");
+    expect(next.pendingDecision).toContain("No implementation has started");
   });
 
   it("plan approval transitions internally to phase execution", async () => {
@@ -200,6 +216,8 @@ describe("Claude conversational workflow UX support", () => {
     for (const content of [marketplace, local]) {
       expect(content).toContain("AskUserQuestion");
       expect(content).toContain("mandatory");
+      expect(content).toContain("Approve approach and create plan");
+      expect(content).toContain("No implementation has started");
       expect(content).toContain("Do not render an ordinary text question");
       expect(content).toMatch(/Fall back to a numbered list|numbered list.*when.*AskUserQuestion.*genuinely unavailable/);
       expect(content).toContain("deterministic");
@@ -218,21 +236,34 @@ describe("approval actions", () => {
 
     expect(next.label).toBe("Approach approval");
     expect(next.approvalActions).toBeDefined();
-    expect(next.approvalActions).toHaveLength(3);
+    expect(next.approvalActions).toHaveLength(4);
 
     const approve = next.approvalActions?.find((a) => a.intent === "approve");
     expect(approve).toBeDefined();
-    expect(approve?.label).toBe("Approve");
+    expect(approve?.label).toBe("Approve approach and create plan");
     expect(approve?.command).toContain("leanrigor flow approve-approach");
+    expect(approve?.command).toContain("--provider auto");
 
     const revise = next.approvalActions?.find((a) => a.intent === "revise");
     expect(revise).toBeDefined();
-    expect(revise?.label).toBe("Revise");
+    expect(revise?.label).toBe("Revise approach");
+    expect(revise?.command).toContain("leanrigor flow revise-approach");
 
-    const reject = next.approvalActions?.find((a) => a.intent === "reject");
-    expect(reject).toBeDefined();
-    expect(reject?.label).toBe("Reject");
-    expect(reject?.command).toContain("leanrigor flow reject-approach");
+    const details = next.approvalActions?.find((a) => a.intent === "view details");
+    expect(details).toBeDefined();
+    expect(details?.label).toBe("View workflow details");
+    expect(details?.command).toContain("leanrigor flow status");
+
+    const cancel = next.approvalActions?.find((a) => a.intent === "cancel");
+    expect(cancel).toBeDefined();
+    expect(cancel?.label).toBe("Cancel workflow");
+    expect(cancel?.command).toContain("leanrigor flow cancel");
+
+    expect(next.summary).toMatchObject({
+      noImplementationStarted: true,
+      assessment: expect.objectContaining({ complexity: expect.any(String) }),
+      constraints: expect.objectContaining({ mustNot: expect.any(Array) })
+    });
   });
 
   it("presents approval actions for plan approval", async () => {
@@ -298,7 +329,7 @@ describe("approval actions", () => {
 
     expect(next.allowedIntents).toContain("approve");
     expect(next.allowedIntents).toContain("revise");
-    expect(next.allowedIntents).toContain("reject");
+    expect(next.allowedIntents).toContain("view details");
     expect(next.allowedIntents).toContain("cancel");
   });
 
@@ -309,8 +340,8 @@ describe("approval actions", () => {
 
     // The gate must require a user decision
     expect(next.userDecisionRequired).toBe(true);
-    // Actions exist but none auto-approved
-    expect(next.approvalActions?.every((a) => !a.command.includes("--auto"))).toBe(true);
+    expect(started.plan).toBeUndefined();
+    expect(next.summary.noImplementationStarted).toBe(true);
   });
 });
 

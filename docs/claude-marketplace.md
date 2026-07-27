@@ -118,11 +118,16 @@ Expected result:
 
 - `/leanrigor:init` reports marketplace mode and current assets.
 - The approach gate appears as a native `AskUserQuestion` selector with
-  `Approve`, `Revise`, and `Reject`; Claude does not first print an ordinary
+  `Approve approach and create plan`, `Revise approach`, `View workflow
+  details`, and `Cancel workflow`; Claude does not first print an ordinary
   question such as `Approve or reject this approach?`.
-- Selecting `Approve` invokes the internal LeanRigor transition and the plan
+- The summary states that no implementation has started.
+- Selecting `View workflow details` renders persisted state without mutating it.
+- Selecting `Revise approach` records feedback with `flow revise-approach` and
+  returns to the approach gate without planning.
+- Selecting `Approve approach and create plan` invokes the internal LeanRigor transition and the plan
   gate appears as a native selector with `Approve`, `Revise`, and `Cancel`.
-- Selecting `Cancel` cancels only the disposable workflow.
+- Selecting `Cancel workflow` cancels only the disposable workflow.
 
 To smoke active-workflow conflict selection, seed two active workflows in the
 same disposable repository with the LeanRigor runtime, then run

@@ -87,24 +87,33 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     };
   }
   if (state.state === "awaiting_approach_approval") {
-    const commands = nextActions(state);
+    const root = quoteArg(state.root);
     return {
       ...base,
       label: "Approach approval",
       userDecisionRequired: true,
-      pendingDecision: "Approve this approach, request changes, reject it, or cancel.",
-      pendingAction: "Select an approval action or type a response.",
-      allowedIntents: ["approve", "looks good", "continue", "revise", "reject", "cancel", "show status"],
+      pendingDecision: "Choose the next post-triage action. No implementation has started.",
+      pendingAction: "Select an action. Approval is required before planning can begin.",
+      allowedIntents: ["approve", "looks good", "continue", "revise", "view details", "show status", "cancel"],
       approvalActions: [
-        { label: "Approve", intent: "approve", command: commands[0] ?? "", description: "Accept the proposed approach and continue to plan generation." },
-        { label: "Revise", intent: "revise", command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root "${state.root}"`, description: "Request changes to the approach with specific feedback." },
-        { label: "Reject", intent: "reject", command: commands[1] ?? "", description: "Reject the approach with a reason. The workflow will be blocked." }
+        { label: "Approve approach and create plan", intent: "approve", command: `leanrigor flow approve-approach ${state.id} --provider auto --root ${root}`, description: "Continue to model-assisted planning using the approved triage constraints." },
+        { label: "Revise approach", intent: "revise", command: `leanrigor flow revise-approach ${state.id} "<feedback>" --root ${root}`, description: "Let me provide changes or additional constraints before planning." },
+        { label: "View workflow details", intent: "view details", command: `leanrigor flow status ${state.id} --root ${root}`, description: "Show full triage, policy, provenance, and current workflow state." },
+        { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Stop this workflow without starting implementation." }
       ],
       summary: {
+        task: state.triage?.task,
+        assessment: state.triage?.assessment,
+        constraints: state.triage?.constraints,
+        escalationReasons: state.triage?.escalationReasons ?? [],
+        assumptions: state.triage?.assumptions ?? [],
+        warnings: state.triageRun?.warnings ?? [],
         proposed: state.approach?.proposed,
         preferredBecause: state.approach?.preferredBecause,
         risks: state.approach?.primaryRisks ?? [],
-        validation: state.approach?.validationStrategy ?? []
+        validation: state.approach?.validationStrategy ?? [],
+        revisionRequests: state.approach?.revisionRequests ?? [],
+        noImplementationStarted: true
       }
     };
   }
@@ -304,7 +313,7 @@ function phaseApprovalActions(state: SequentialWorkflowState, phase: WorkflowPha
 
 function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_clarification") return ["answer"];
-  if (state.state === "awaiting_approach_approval") return ["approve-approach", "reject-approach", "cancel"];
+  if (state.state === "awaiting_approach_approval") return ["approve-approach", "revise-approach", "status", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
   if (state.state === "executing") return ["ready", "lease-phase", "phase-start", "record-validation", "phase-complete", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];

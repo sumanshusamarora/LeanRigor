@@ -69,16 +69,21 @@ Rules:
 - One active workflow: resume it.
 - No active workflow: start only when the user supplied a request. Invoke
   `leanrigor flow start "$ARGUMENTS" --provider auto` so automatic triage can
-  call Claude when available. Use `--provider deterministic` only when the user
-  explicitly requests deterministic triage.
+  call Claude when available. Render from the returned `next` object when
+  present or immediately read `leanrigor flow next --json` when it is absent.
+  Do not end the turn from raw `flow start` JSON. Use `--provider
+  deterministic` only when the user explicitly requests deterministic triage.
 - Multiple active workflows: use `AskUserQuestion` to let the user choose among them (header: "Workflow"). Show ID, request, state, mode, and updated time in each option description. Do not render an ordinary text question first. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable.
 - When `flow next --json` returns `approvalActions`, call the `AskUserQuestion` tool to present a structured selector. This is mandatory whenever the tool is available. Map each action's `label` to the option label and `description` to the option description. Use a short header (max 12 chars) derived from the current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for multi-workflow selection. Do not render an ordinary text question such as "Approve or reject this approach?" before calling the selector. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable. Each action has a deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response. Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
+- At the post-triage approach gate, render a compact `Workflow created and triaged` summary with workflow ID, mode, assessment, key constraints, recommended approach, and `No implementation has started. Your approval is required before planning.` Then call `AskUserQuestion` with exactly these options in order: `Approve approach and create plan`, `Revise approach`, `View workflow details`, `Cancel workflow`.
 - Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
 - Approval at approach immediately generates and renders the actual phased plan
   through `leanrigor flow approve-approach <workflow-id> --provider auto`, so
   Claude-backed planning is attempted when available. Use deterministic planning
   only when explicitly requested or when the provider falls back with a recorded
   reason.
+- Approach revisions use `leanrigor flow revise-approach <workflow-id>
+  "<feedback>"`, then rerender the approach summary without starting planning.
 - Plan revisions use
   `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
   unless deterministic planning was explicitly requested.
