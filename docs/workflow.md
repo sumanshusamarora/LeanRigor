@@ -159,6 +159,13 @@ Provider results are evidence, not authority. A provider can return
 passes. Provider diagnostics are bounded and persisted without full transcripts
 or hidden reasoning.
 
+Execution attempts may also persist provider-session provenance and a bounded
+worktree checkpoint. On provider failure, max turns, max budget, interruption,
+or malformed output, LeanRigor records tracked changes, untracked files,
+deletions, and a bounded diff summary. That partial work remains in the phase
+worktree for repair or review, but it is not accepted, committed, merged,
+discarded, or integrated automatically.
+
 Each phase lifecycle is:
 
 ```text

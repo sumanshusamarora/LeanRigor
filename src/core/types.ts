@@ -1,3 +1,5 @@
+import type { PhaseWorkspaceCheckpoint, ProviderSessionRef } from "./execution/types.js";
+
 export type WorkflowMode = "fast" | "standard" | "rigorous";
 export type Complexity = "low" | "medium" | "high";
 export type RiskLevel = "none" | "low" | "medium" | "high";
@@ -412,6 +414,8 @@ export interface PhaseExecutionRecord {
   resultSummary?: string;
   diagnostics?: Record<string, unknown>;
   providerMetadata?: Record<string, unknown>;
+  providerSession?: ProviderSessionRef;
+  checkpoint?: PhaseWorkspaceCheckpoint;
 }
 
 export interface WorkflowExecutionState {

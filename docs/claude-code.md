@@ -100,7 +100,10 @@ The `ExecutionCoordinator`:
 - derives scheduler-approved phases;
 - acquires leases and creates assigned phase worktrees;
 - dispatches through an `ExecutionProvider`;
-- persists execution handles, status, heartbeat, timeout, and cancellation state;
+- persists execution handles, provider-session provenance, status, heartbeat,
+  timeout, and cancellation state;
+- preserves bounded partial-diff checkpoints on provider failure without
+  accepting, committing, merging, or integrating the work;
 - collects structured results;
 - submits validation and completion evidence;
 - invokes deterministic completion gates;
@@ -113,6 +116,8 @@ Provider process success alone does not complete a phase.
 Current providers:
 
 - `scripted` — deterministic provider used for automated disposable-Git testing.
+- `claude-cli` — bounded external Claude CLI worker for authenticated live
+  smoke testing; native Claude subagents are not implemented in this provider.
 - `claude-cli` — prototype provider that runs authenticated Claude Code CLI print mode inside the assigned phase worktree.
 
 ### Manual fallback
@@ -248,7 +253,7 @@ From a source checkout with an authenticated Claude CLI:
 scripts/smoke-claude-cli-execution.sh
 ```
 
-The smoke script creates a disposable repository, prepares LeanRigor assets, verifies the hook and diagnostics, runs coordinator execution through the `claude-cli` provider, polls persisted state through completion and integration, records final review, confirms a commit proposal exists, and confirms no final user commit or push occurred.
+The smoke script creates a disposable repository, prepares LeanRigor assets, verifies the hook and diagnostics, runs coordinator execution through the `claude-cli` provider, polls persisted state through completion and integration, records final review, confirms a commit proposal exists, and confirms no final user commit or push occurred. Provider-session IDs appear in diagnostics separately from the LeanRigor workflow ID.
 
 This live-provider smoke is not run in ordinary CI.
 

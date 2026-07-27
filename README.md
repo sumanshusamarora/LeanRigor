@@ -164,8 +164,8 @@ A provider process exiting successfully does **not** complete a phase. LeanRigor
 
 - Provider-neutral `ExecutionCoordinator` and `ExecutionProvider` boundary.
 - Deterministic scripted provider and disposable real-Git test harness.
-- Persisted dispatch, polling, heartbeat, timeout, cancellation, recovery, result collection, completion-gate, integration, and final-review progression.
-- Claude CLI execution provider prototype for authenticated headless smoke testing.
+- Persisted dispatch, provider-session provenance, polling, heartbeat, timeout, cancellation, recovery, partial-diff checkpoints, result collection, completion-gate, integration, and final-review progression.
+- Bounded Claude CLI execution provider prototype for authenticated headless smoke testing with preserved partial progress on provider failure.
 
 ### Claude Code integration
 

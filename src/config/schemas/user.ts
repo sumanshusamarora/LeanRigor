@@ -34,7 +34,12 @@ export const userConfigSchema = z.object({
     phaseLeaseTimeoutSeconds: z.number().int().min(5).max(86400).optional(),
     workflowLockTimeoutSeconds: z.number().int().min(1).max(3600).optional(),
     parallelism: z.number().int().min(1).max(16).optional(),
-    verbosity: z.enum(["quiet", "normal", "verbose"]).optional()
+    verbosity: z.enum(["quiet", "normal", "verbose"]).optional(),
+    workerControls: z.object({
+      environment: z.enum(["bare", "safe-mode", "default"]).optional(),
+      repeatedReadWarningThreshold: z.number().int().min(1).max(20).optional(),
+      largeToolOutputBytes: z.number().int().min(1024).max(1048576).optional()
+    }).optional()
   }).prefault({}),
 
   /** Machine-specific paths. */

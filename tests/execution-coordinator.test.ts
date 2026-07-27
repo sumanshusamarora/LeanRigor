@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { ExecutionCoordinator } from "../src/core/execution/coordinator.js";
+import { ExecutionCoordinator, detectCodeIntelligence } from "../src/core/execution/coordinator.js";
 import { integrationStatus } from "../src/core/flow.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
@@ -138,8 +139,49 @@ describe("execution coordinator", () => {
 
     expect(result.nextAction).toBe("review");
     expect(state.execution.records["phase-a"]?.status).toBe("timed_out");
+    expect(state.execution.records["phase-a"]?.checkpoint).toMatchObject({
+      dirty: true,
+      changedFiles: ["src/a.ts"],
+      note: expect.stringContaining("not accepted")
+    });
     expect(state.plan?.phases[0]?.status).toBe("needs_review");
     await expect(readFile(path.join(workspace, "src", "a.ts"), "utf8")).resolves.toBe("partial\n");
+  });
+
+  it("captures tracked, untracked, and deleted partial changes on provider failure without accepting them", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/**"])],
+      scripts: {
+        "phase-a": {
+          edits: [
+            { path: "src/shared.txt", delete: true },
+            { path: "src/new.ts", content: "export const value = 1;\n" },
+            { path: "notes.txt", content: "partial note\n" }
+          ],
+          result: "failed",
+          summary: "error_max_turns"
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    const result = await harness.coordinator.poll();
+    const state = await currentState(harness);
+    const record = state.execution.records["phase-a"];
+
+    expect(result.nextAction).toBe("review");
+    expect(record?.status).toBe("failed");
+    expect(record?.checkpoint).toMatchObject({
+      dirty: true,
+      trackedModified: [],
+      deletedFiles: ["src/shared.txt"],
+      untrackedFiles: ["notes.txt", "src/new.ts"]
+    });
+    expect(record?.checkpoint?.diffSummary.text).toContain("src/shared.txt");
+    expect(record?.diagnostics).toMatchObject({ partialProgressPreserved: true, partialProgressAccepted: false });
+    expect(state.plan?.phases[0]?.status).toBe("needs_review");
+    expect(state.git?.integration.integratedPhaseIds).toEqual([]);
+    await expect(readFile(path.join(state.git!.phaseWorkspaces["phase-a"]!.path, "notes.txt"), "utf8")).resolves.toBe("partial note\n");
   });
 
   it("recovers after restart by polling a persisted execution handle with the same provider", async () => {
@@ -174,5 +216,24 @@ describe("execution coordinator", () => {
     expect(state.git?.integration.integratedPhaseIds).toEqual(["phase-good"]);
     expect(state.execution.records["phase-bad"]?.status).toBe("failed");
     expect(result.nextAction).toBe("review");
+  });
+
+  it("distinguishes CodeGraph support for exact worktrees, root-advisory indexes, and unavailable indexes", async () => {
+    const bin = await mkdtemp(path.join(tmpdir(), "leanrigor-codegraph-bin-"));
+    const originalPath = process.env.PATH;
+    await writeFile(path.join(bin, "codegraph"), "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(path.join(bin, "codegraph"), 0o755);
+    process.env.PATH = `${bin}${path.delimiter}${originalPath ?? ""}`;
+    try {
+      const root = await mkdtemp(path.join(tmpdir(), "leanrigor-codegraph-root-"));
+      const phase = await mkdtemp(path.join(tmpdir(), "leanrigor-codegraph-phase-"));
+      await mkdir(path.join(root, ".codegraph"));
+
+      expect(await detectCodeIntelligence(root, root)).toMatchObject({ codegraph: "exact-worktree" });
+      expect(await detectCodeIntelligence(phase, root)).toMatchObject({ codegraph: "root-advisory" });
+      expect(await detectCodeIntelligence(phase, phase)).toMatchObject({ codegraph: "unavailable" });
+    } finally {
+      process.env.PATH = originalPath;
+    }
   });
 });

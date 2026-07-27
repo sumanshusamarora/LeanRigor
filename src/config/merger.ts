@@ -247,6 +247,12 @@ export function applyUserConfig(
     config.execution.workflowLockTimeoutSeconds = user.execution.workflowLockTimeoutSeconds;
   if (user.execution?.parallelism !== undefined)
     config.execution.maxParallelPhases = user.execution.parallelism;
+  if (user.execution?.workerControls?.environment !== undefined)
+    config.execution.workerControls.environment = user.execution.workerControls.environment;
+  if (user.execution?.workerControls?.repeatedReadWarningThreshold !== undefined)
+    config.execution.workerControls.repeatedReadWarningThreshold = user.execution.workerControls.repeatedReadWarningThreshold;
+  if (user.execution?.workerControls?.largeToolOutputBytes !== undefined)
+    config.execution.workerControls.largeToolOutputBytes = user.execution.workerControls.largeToolOutputBytes;
   if (user.paths?.workspaceRoot !== undefined)
     config.execution.workspaceRoot = user.paths.workspaceRoot;
 

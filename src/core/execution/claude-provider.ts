@@ -1,7 +1,10 @@
 import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { resolveModelTier } from "../../config/models.js";
+import type { LeanRigorConfig } from "../../config/schema.js";
 import { ExecutionError } from "./errors.js";
 import type { ExecutionProvider } from "./provider.js";
 import { phaseWorkerPrompt } from "./prompt.js";
@@ -20,14 +23,20 @@ interface ClaudeExecution {
 
 interface PersistedClaudeMetadata {
   command: string;
-  args?: string[];
+  safeArgs?: string[];
   maxTurns: number;
   permissionMode: string;
+  environmentMode: "bare" | "safe-mode" | "default";
   pid?: number;
   artifactDir: string;
   statusPath: string;
   stdoutPath: string;
   stderrPath: string;
+  sessionId?: string;
+  resumeMode?: "fresh" | "same-session" | "compact-retry";
+  resolvedModel?: string;
+  toolEnforcement: string;
+  workerControls?: PhaseExecutionInput["workerControls"];
 }
 
 interface PersistedClaudeStatus {
@@ -45,17 +54,21 @@ export interface ClaudeCliExecutionProviderOptions {
   maxTurns?: number;
   model?: string;
   permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "manual" | "bypassPermissions";
+  environmentMode?: "bare" | "safe-mode" | "default";
+  config?: LeanRigorConfig;
 }
 
 export class ClaudeCliExecutionProvider implements ExecutionProvider {
   readonly id = "claude-cli";
   private executions = new Map<string, ClaudeExecution>();
+  private providerVersion?: string;
 
   constructor(private readonly options: ClaudeCliExecutionProviderOptions = {}) {}
 
   async capabilities(): Promise<ExecutionCapabilities> {
     try {
-      await execFileAsync(this.options.command ?? "claude", ["--version"], { timeout: 5000 });
+      const version = await execFileAsync(this.options.command ?? "claude", ["--version"], { timeout: 5000, encoding: "utf8" }) as { stdout: string; stderr: string };
+      this.providerVersion = (version.stdout || version.stderr).trim() || undefined;
     } catch (error) {
       throw new ExecutionError("provider_unavailable", "Claude CLI is not available on PATH.", { cause: error instanceof Error ? error.message : String(error) });
     }
@@ -65,27 +78,43 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       heartbeats: false,
       maxConcurrent: 1,
       structuredResults: true,
-      diagnostics: ["claude CLI print mode", "JSON result parsing"]
+      sessions: { persistent: true, resume: true, fork: true },
+      diagnostics: ["claude CLI print mode", "JSON result parsing", "persistent session IDs", "bounded worker environment"]
     };
   }
 
   async dispatch(input: PhaseExecutionInput): Promise<ExecutionHandle> {
     const executionId = `claude-${input.workflowId}-${input.phaseId}-${Date.now()}`;
-    const prompt = `${phaseWorkerPrompt(input)}\n\nReturn exactly one machine-readable final JSON object matching this schema. Do not include prose outside the final JSON object. Do not include hidden reasoning. Use the validation array for command evidence only:\n${JSON.stringify(exampleResult(input), null, 2)}`;
-    const args = [
-      "-p",
+    const canResume = input.resume?.mode === "same-session"
+      && input.resume.providerSession?.providerId === this.id
+      && input.resume.providerSession.workflowId === input.workflowId
+      && input.resume.providerSession.phaseId === input.phaseId
+      && input.resume.providerSession.workingDirectory === input.workspacePath
+      && input.resume.providerSession.resumePermitted;
+    const sessionId = canResume ? input.resume!.providerSession!.sessionId : randomUUID();
+    const resumeMode = canResume ? "same-session" : input.resume ? "compact-retry" : "fresh";
+    const prompt = resumeMode === "same-session" ? resumePrompt(input) : phaseWorkerPrompt(input);
+    const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
+    const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
+    const permissionMode = this.options.permissionMode ?? "bypassPermissions";
+    const resolved = resolveClaudeModel(input, this.options);
+    const args = buildClaudeArgs({
       prompt,
-      "--output-format",
-      "json",
-      "--json-schema",
-      JSON.stringify(phaseExecutionResultJsonSchema()),
-      "--max-turns",
-      String(this.options.maxTurns ?? 12),
-      "--permission-mode",
-      this.options.permissionMode ?? "bypassPermissions",
-      "--no-session-persistence"
-    ];
-    if (this.options.model) args.push("--model", this.options.model);
+      maxTurns,
+      permissionMode,
+      environmentMode,
+      model: resolved.model,
+      sessionId,
+      resume: canResume
+    });
+    const safeArgs = buildSafeArgs({
+      maxTurns,
+      permissionMode,
+      environmentMode,
+      model: resolved.model,
+      sessionId,
+      resume: canResume
+    });
     const startedAt = new Date().toISOString();
     const artifactDir = path.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
     await mkdir(artifactDir, { recursive: true });
@@ -94,13 +123,19 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     const stderrPath = path.join(artifactDir, "stderr.txt");
     const providerMetadata: PersistedClaudeMetadata = {
       command: this.options.command ?? "claude",
-      args,
-      maxTurns: this.options.maxTurns ?? 12,
-      permissionMode: this.options.permissionMode ?? "bypassPermissions",
+      safeArgs,
+      maxTurns,
+      permissionMode,
+      environmentMode,
       artifactDir,
       statusPath,
       stdoutPath,
-      stderrPath
+      stderrPath,
+      sessionId,
+      resumeMode,
+      resolvedModel: resolved.model,
+      toolEnforcement: permissionMode === "bypassPermissions" ? "allowedTools_not_assumed_under_bypass" : "allowedTools_requested",
+      workerControls: input.workerControls
     };
     const handle: ExecutionHandle = {
       providerId: this.id,
@@ -111,7 +146,26 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       workspacePath: input.workspacePath,
       startedAt,
       lastKnownStatus: "running",
-      providerMetadata: providerMetadata as unknown as Record<string, unknown>
+      providerMetadata: providerMetadata as unknown as Record<string, unknown>,
+      providerSession: {
+        providerId: this.id,
+        sessionId,
+        workflowId: input.workflowId,
+        phaseId: input.phaseId,
+        executionAttemptId: executionId,
+        workingDirectory: input.workspacePath,
+        createdAt: canResume ? input.resume!.providerSession!.createdAt : startedAt,
+        updatedAt: startedAt,
+        status: "running",
+        requestedTier: input.modelTier,
+        resolvedModel: resolved.model,
+        providerVersion: this.providerVersion,
+        safeCliArgs: safeArgs,
+        resumePermitted: true,
+        resumedFromSessionId: canResume ? sessionId : undefined,
+        replacementReason: resumeMode === "compact-retry" ? input.resume?.failureReason : undefined
+      },
+      nativeSessionId: sessionId
     };
     const controller = new AbortController();
     const stdout = await open(stdoutPath, "w");
@@ -121,7 +175,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       detached: true,
       stdio: ["ignore", stdout.fd, stderr.fd],
       signal: controller.signal,
-      env: { ...process.env, CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1" }
+      env: boundedClaudeEnv(process.env)
     });
     await stdout.close();
     await stderr.close();
@@ -172,7 +226,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
         return { status: "completed", heartbeatAt: new Date().toISOString(), diagnostics: { ...persisted.diagnostics, pid: persisted.pid, statusInferredFromPid: true } };
       }
       const metadata = claudeMetadata(handle);
-      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? new Date().toISOString() : persisted.completedAt, diagnostics: { ...persisted.diagnostics, artifactDir: metadata?.artifactDir } };
+      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? new Date().toISOString() : persisted.completedAt, diagnostics: { ...persisted.diagnostics, artifactDir: metadata?.artifactDir, sessionId: metadata?.sessionId, resumeMode: metadata?.resumeMode } };
     }
     const execution = this.executions.get(handle.providerExecutionId);
     if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
@@ -192,14 +246,15 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       const stdout = await readFile(metadata.stdoutPath, "utf8").catch(() => "");
       const stderr = await readFile(metadata.stderrPath, "utf8").catch(() => "");
       if (status?.status === "failed") {
-        throw withArtifactDiagnostics(new ExecutionError("provider_process_exited", "Claude CLI exited before returning a successful provider result."), handle, metadata, stdout, stderr, status);
+        return failureResult(handle, metadata, stdout, stderr, status, "Claude CLI exited before returning a successful provider result.");
       }
       try {
-        return parseClaudeResult(stdout, stderr);
+        const result = parseClaudeResult(stdout, stderr);
+        return { ...result, providerDiagnostics: { ...result.providerDiagnostics, ...artifactDiagnostics(handle, metadata, stdout, stderr, status) } };
       } catch (error) {
         const message = `${error instanceof Error ? error.message : String(error)}\n${stdout}\n${stderr}`;
         if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
-        throw withArtifactDiagnostics(error, handle, metadata, stdout, stderr, status);
+        return failureResult(handle, metadata, stdout, stderr, status, error instanceof Error ? error.message : String(error), { providerErrorCode: errorCode(error), ...errorDetailsFromUnknown(error) });
       }
     }
     const execution = this.executions.get(handle.providerExecutionId);
@@ -274,6 +329,123 @@ function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
       // Process already exited.
     }
   }
+}
+
+function buildClaudeArgs(args: {
+  prompt: string;
+  maxTurns: number;
+  permissionMode: string;
+  environmentMode: "bare" | "safe-mode" | "default";
+  model?: string;
+  sessionId: string;
+  resume: boolean;
+}): string[] {
+  const cliArgs: string[] = [];
+  if (args.environmentMode === "bare") cliArgs.push("--bare");
+  if (args.environmentMode === "safe-mode") cliArgs.push("--safe-mode");
+  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p", args.prompt);
+  else cliArgs.push("-p", args.prompt, "--session-id", args.sessionId);
+  cliArgs.push(
+    "--output-format",
+    "json",
+    "--json-schema",
+    JSON.stringify(phaseExecutionResultJsonSchema()),
+    "--max-turns",
+    String(args.maxTurns),
+    "--permission-mode",
+    args.permissionMode,
+    "--tools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--allowedTools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--disallowedTools",
+    "WebFetch,WebSearch,Task",
+    "--strict-mcp-config",
+    "--mcp-config",
+    JSON.stringify({ mcpServers: {} }),
+    "--disable-slash-commands",
+    "--setting-sources",
+    "user"
+  );
+  if (args.model) cliArgs.push("--model", args.model);
+  return cliArgs;
+}
+
+function buildSafeArgs(args: {
+  maxTurns: number;
+  permissionMode: string;
+  environmentMode: "bare" | "safe-mode" | "default";
+  model?: string;
+  sessionId: string;
+  resume: boolean;
+}): string[] {
+  const safe: string[] = [];
+  if (args.environmentMode === "bare") safe.push("--bare");
+  if (args.environmentMode === "safe-mode") safe.push("--safe-mode");
+  if (args.resume) safe.push("--resume", args.sessionId, "-p", "[compact-resume-prompt]");
+  else safe.push("-p", "[bounded-phase-prompt]", "--session-id", args.sessionId);
+  safe.push(
+    "--output-format",
+    "json",
+    "--json-schema",
+    "[phase-execution-result-schema]",
+    "--max-turns",
+    String(args.maxTurns),
+    "--permission-mode",
+    args.permissionMode,
+    "--tools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--allowedTools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--disallowedTools",
+    "WebFetch,WebSearch,Task",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "{\"mcpServers\":{}}",
+    "--disable-slash-commands",
+    "--setting-sources",
+    "user"
+  );
+  if (args.model) safe.push("--model", args.model);
+  return safe;
+}
+
+function maxTurnsForMode(mode: PhaseExecutionInput["selectedMode"]): number {
+  if (mode === "fast") return 8;
+  if (mode === "rigorous") return 16;
+  return 12;
+}
+
+function resolveClaudeModel(input: PhaseExecutionInput, options: ClaudeCliExecutionProviderOptions): { model?: string } {
+  if (options.model) return { model: options.model };
+  if (!options.config) return {};
+  const resolved = resolveModelTier(input.modelTier, "claude", options.config);
+  return { model: resolved.resolvedModel };
+}
+
+function resumePrompt(input: PhaseExecutionInput): string {
+  return [
+    "LeanRigor compact resume request",
+    `Workflow: ${input.workflowId}`,
+    `Phase: ${input.phaseId}`,
+    `Workspace: ${input.workspacePath}`,
+    `Objective: ${input.objective}`,
+    input.resume ? `Recoverable failure: ${input.resume.failureReason}` : undefined,
+    input.previousCheckpoint ? `Existing changed files: ${input.previousCheckpoint.changedFiles.join(", ") || "(none)"}` : undefined,
+    input.previousCheckpoint?.diffSummary.text ? `Bounded diff summary:\n${input.previousCheckpoint.diffSummary.text}` : undefined,
+    "Remaining acceptance criteria:",
+    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    "Validation commands:",
+    ...input.validationExpectations.map((command) => `- ${command}`),
+    "Continue from the existing session and worktree. Do not restart broad repository discovery. Return only the JSON object required by the supplied json-schema."
+  ].filter((line): line is string => line !== undefined).join("\n");
+}
+
+function boundedClaudeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1"
+  };
 }
 
 export function parseClaudeResult(stdout: string, stderr: string): PhaseExecutionResult {
@@ -409,37 +581,165 @@ function phaseExecutionResultJsonSchema(): Record<string, unknown> {
   };
 }
 
-function withArtifactDiagnostics(error: unknown, handle: ExecutionHandle, metadata: PersistedClaudeMetadata, stdout: string, stderr: string, status: PersistedClaudeStatus | undefined): ExecutionError {
-  const base = error instanceof ExecutionError
-    ? error
-    : new ExecutionError("result_malformed", error instanceof Error ? error.message : String(error));
-  return new ExecutionError(base.code, base.message, {
-    ...base.details,
+function failureResult(handle: ExecutionHandle, metadata: PersistedClaudeMetadata, stdout: string, stderr: string, status: PersistedClaudeStatus | undefined, summary: string, details: Record<string, unknown> = {}): PhaseExecutionResult {
+  const message = `${summary}\n${stdout}\n${stderr}`;
+  if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
+  try {
+    const parsed = parseClaudeResult(stdout, stderr);
+    if (parsed.status !== "completed") {
+      return { ...parsed, providerDiagnostics: { ...parsed.providerDiagnostics, ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details } };
+    }
+  } catch {
+    // Preserve the provider failure envelope below.
+  }
+  const diagnostics = { ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details };
+  const terminalReason = typeof diagnostics.providerErrorCode === "string" ? diagnostics.providerErrorCode : typeof diagnostics.terminalReason === "string" ? diagnostics.terminalReason : "provider_process_exited";
+  return {
+    status: "failed",
+    summary: `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`,
+    changedFiles: [],
+    validation: [],
+    criterionEvidence: [],
+    assumptions: [],
+    scopeDeviations: [],
+    remainingRisks: [],
+    providerDiagnostics: diagnostics
+  };
+}
+
+function artifactDiagnostics(handle: ExecutionHandle, metadata: PersistedClaudeMetadata, stdout: string, stderr: string, status: PersistedClaudeStatus | undefined): Record<string, unknown> {
+  const envelope = parseClaudeDiagnostics(stdout);
+  return redactDiagnostics({
     providerExecutionId: handle.providerExecutionId,
     artifactDir: metadata.artifactDir,
     statusPath: metadata.statusPath,
     stdoutPath: metadata.stdoutPath,
     stderrPath: metadata.stderrPath,
+    sessionId: metadata.sessionId ?? envelope.sessionId,
+    resumeMode: metadata.resumeMode,
+    resolvedModel: metadata.resolvedModel,
+    maxTurns: metadata.maxTurns,
+    permissionMode: metadata.permissionMode,
+    environmentMode: metadata.environmentMode,
+    toolEnforcement: metadata.toolEnforcement,
+    safeArgs: metadata.safeArgs,
+    workerControls: metadata.workerControls,
     exitCode: status?.exitCode,
     signal: status?.signal,
+    terminalReason: envelope.terminalReason,
+    stopReason: envelope.stopReason,
+    turnCount: envelope.turnCount,
+    usage: envelope.usage,
+    modelUsage: envelope.modelUsage,
+    costUsd: envelope.costUsd,
     stdoutExcerpt: redact(stdout).slice(0, 1000),
     stderrExcerpt: redact(stderr).slice(0, 1000),
-    nextStep: `Inspect ${metadata.artifactDir} and rerun leanrigor flow execution-poll ${handle.workflowId} --provider claude-cli after repairing provider output.`
+    partialProgressAccepted: false
   });
 }
 
+function parseClaudeDiagnostics(stdout: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const toolCounts: Record<string, number> = {};
+  const readCounts: Record<string, number> = {};
+  const largeToolResults: Array<{ toolUseId?: string; bytes: number }> = [];
+  let toolIndex = 0;
+  let firstEditToolIndex: number | undefined;
+  for (const envelope of parseClaudeOutputLenient(stdout)) {
+    if (!envelope || typeof envelope !== "object") continue;
+    const record = envelope as Record<string, unknown>;
+    if (typeof record.session_id === "string") out.sessionId = record.session_id;
+    if (typeof record.sessionId === "string") out.sessionId = record.sessionId;
+    if (typeof record.subtype === "string") out.terminalReason = record.subtype;
+    if (typeof record.stop_reason === "string") out.stopReason = record.stop_reason;
+    if (typeof record.num_turns === "number") out.turnCount = record.num_turns;
+    if (typeof record.total_cost_usd === "number") out.costUsd = record.total_cost_usd;
+    if (record.usage && typeof record.usage === "object") out.usage = record.usage;
+    if (record.modelUsage && typeof record.modelUsage === "object") out.modelUsage = record.modelUsage;
+    if (record.is_error === true && typeof record.result === "string" && !out.terminalReason) out.terminalReason = compactReason(record.result);
+    for (const tool of toolUsesFromEnvelope(record)) {
+      toolIndex += 1;
+      toolCounts[tool.name] = (toolCounts[tool.name] ?? 0) + 1;
+      if ((tool.name === "Edit" || tool.name === "MultiEdit" || tool.name === "Write") && firstEditToolIndex === undefined) firstEditToolIndex = toolIndex;
+      if (tool.name === "Read" && tool.filePath) readCounts[tool.filePath] = (readCounts[tool.filePath] ?? 0) + 1;
+    }
+    for (const result of toolResultsFromEnvelope(record)) {
+      if (result.bytes > 32768) largeToolResults.push(result);
+    }
+  }
+  const repeatedReads = Object.entries(readCounts).filter(([, count]) => count > 2).map(([file, count]) => ({ file, count }));
+  if (Object.keys(toolCounts).length > 0) out.toolCounts = toolCounts;
+  if (repeatedReads.length > 0) out.repeatedReads = repeatedReads;
+  if (largeToolResults.length > 0) out.largeToolResults = largeToolResults;
+  if (firstEditToolIndex !== undefined) out.firstEditToolIndex = firstEditToolIndex;
+  return out;
+}
 
-function exampleResult(input: PhaseExecutionInput): PhaseExecutionResult {
-  return {
-    status: "completed",
-    summary: "Verified: concise summary of implemented work. Inferred: any bounded inferences. Unverified: any unverified claims.",
-    changedFiles: ["relative/path.ts"],
-    validation: input.validationExpectations.map((command) => ({ command, exitCode: 0, status: "passed", result: "concise result" })),
-    criterionEvidence: input.acceptanceCriteria.map((criterion) => ({ criterion, status: "met", evidence: ["specific evidence"] })),
-    assumptions: [],
-    scopeDeviations: [],
-    remainingRisks: []
-  };
+function toolUsesFromEnvelope(record: Record<string, unknown>): Array<{ name: string; filePath?: string }> {
+  const message = record.message;
+  const content = message && typeof message === "object" ? (message as { content?: unknown }).content : record.content;
+  if (!Array.isArray(content)) return [];
+  const out: Array<{ name: string; filePath?: string }> = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    if (entry.type !== "tool_use" || typeof entry.name !== "string") continue;
+    const input = entry.input && typeof entry.input === "object" ? entry.input as Record<string, unknown> : {};
+    const filePath = typeof input.file_path === "string" ? input.file_path : typeof input.path === "string" ? input.path : undefined;
+    out.push({ name: entry.name, filePath });
+  }
+  return out;
+}
+
+function toolResultsFromEnvelope(record: Record<string, unknown>): Array<{ toolUseId?: string; bytes: number }> {
+  const content = record.content;
+  if (!Array.isArray(content)) return [];
+  const out: Array<{ toolUseId?: string; bytes: number }> = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item as Record<string, unknown>;
+    if (entry.type !== "tool_result") continue;
+    const text = typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content ?? "");
+    out.push({ toolUseId: typeof entry.tool_use_id === "string" ? entry.tool_use_id : undefined, bytes: Buffer.byteLength(text) });
+  }
+  return out;
+}
+
+function parseClaudeOutputLenient(stdout: string): unknown[] {
+  const trimmed = stdout.trim();
+  if (!trimmed) return [];
+  try {
+    return [JSON.parse(trimmed)];
+  } catch {
+    const out: unknown[] = [];
+    for (const line of trimmed.split(/\r?\n/)) {
+      const candidate = line.trim();
+      if (!candidate.startsWith("{")) continue;
+      try {
+        out.push(JSON.parse(candidate));
+      } catch {
+        // Ignore malformed metadata lines.
+      }
+    }
+    return out;
+  }
+}
+
+function compactReason(reason: string): string {
+  const compact = reason.replace(/\s+/g, " ").trim();
+  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return "error_max_turns";
+  if (/budget|cost|spend/i.test(compact)) return "error_max_budget_usd";
+  return compact.slice(0, 120);
+}
+
+function errorDetailsFromUnknown(error: unknown): Record<string, unknown> {
+  if (!error || typeof error !== "object") return {};
+  const details = (error as { details?: unknown }).details;
+  return details && typeof details === "object" ? details as Record<string, unknown> : {};
+}
+
+function errorCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : undefined;
 }
 
 function emptyResult(status: PhaseExecutionResult["status"], summary: string): PhaseExecutionResult {

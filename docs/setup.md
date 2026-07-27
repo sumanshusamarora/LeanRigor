@@ -126,7 +126,11 @@ leanrigor flow execute-next <workflow-id> --provider claude-cli --json --root /p
 leanrigor flow execution-poll <workflow-id> --provider claude-cli --json --root /path/to/repository
 ```
 
-For the full disposable smoke scenario:
+The provider runs bounded Claude CLI workers, records the Claude session ID
+separately from the LeanRigor workflow ID, and preserves partial worktree
+changes on recoverable failures without accepting or integrating them.
+
+For the full live smoke scenario:
 
 ```bash
 scripts/smoke-claude-cli-execution.sh

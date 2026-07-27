@@ -7,7 +7,7 @@ import { ClaudeAdapter, cleanupProjectLocalAssets, type CleanupScope } from "../
 import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
 import { ClaudeCliPlanningProvider } from "../adapters/claude/planning-provider.js";
 import { runTriage, type TriageProviderSelection } from "../core/triage-runner.js";
-import { leanRigorConfigSchema } from "../config/schema.js";
+import { leanRigorConfigSchema, type LeanRigorConfig } from "../config/schema.js";
 import type { UninstallReport } from "../adapters/types.js";
 import { resolveEffectiveConfig, formatEffectiveConfig } from "../config/resolver.js";
 import { claudeDefaultsBlurb } from "../config/model-display.js";
@@ -74,7 +74,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.12");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.13");
 
 program.command("setup")
   .alias("init")
@@ -1121,7 +1121,24 @@ function printFlowState(state: SequentialWorkflowState): void {
       workspacePath: record.workspacePath,
       heartbeatAt: record.heartbeatAt,
       completedAt: record.completedAt,
-      resultSummary: record.resultSummary
+      resultSummary: record.resultSummary,
+      providerSession: record.providerSession ? {
+        provider: record.providerSession.providerId,
+        sessionId: record.providerSession.sessionId,
+        executionAttemptId: record.providerSession.executionAttemptId,
+        workingDirectory: record.providerSession.workingDirectory,
+        status: record.providerSession.status,
+        resumePermitted: record.providerSession.resumePermitted,
+        resolvedModel: record.providerSession.resolvedModel
+      } : undefined,
+      checkpoint: record.checkpoint ? {
+        capturedAt: record.checkpoint.capturedAt,
+        dirty: record.checkpoint.dirty,
+        changedFiles: record.checkpoint.changedFiles,
+        untrackedFiles: record.checkpoint.untrackedFiles,
+        deletedFiles: record.checkpoint.deletedFiles,
+        partialProgressAccepted: false
+      } : undefined
     })),
     currentPhase: currentPhaseStatus(state),
     nextValidCommands: nextActions(state),
@@ -1151,7 +1168,7 @@ function printHumanStatus(state: SequentialWorkflowState): void {
 
 async function executionCoordinator(root: string, workflowId: string, providerName: string, scriptFile?: string): Promise<{ coordinator: ExecutionCoordinator; providerFallbackReason?: string }> {
   const config = await effectiveRepositoryConfig(root);
-  const selected = await executionProvider(providerName, scriptFile);
+  const selected = await executionProvider(providerName, scriptFile, config);
   return {
     coordinator: new ExecutionCoordinator({
       root,
@@ -1168,9 +1185,9 @@ async function effectiveRepositoryConfig(root: string) {
   return (await resolveEffectiveConfig(root)).values;
 }
 
-async function executionProvider(providerName: string, scriptFile?: string): Promise<{ provider: ExecutionProvider; fallbackReason?: string }> {
+async function executionProvider(providerName: string, scriptFile?: string, config?: LeanRigorConfig): Promise<{ provider: ExecutionProvider; fallbackReason?: string }> {
   if (providerName === "auto") {
-    const provider = new ClaudeCliExecutionProvider();
+    const provider = new ClaudeCliExecutionProvider({ config });
     try {
       await provider.capabilities();
       return { provider };
@@ -1182,7 +1199,7 @@ async function executionProvider(providerName: string, scriptFile?: string): Pro
     }
   }
   if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
-  if (providerName === "claude" || providerName === "claude-cli") return { provider: new ClaudeCliExecutionProvider() };
+  if (providerName === "claude" || providerName === "claude-cli") return { provider: new ClaudeCliExecutionProvider({ config }) };
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 
@@ -1224,6 +1241,7 @@ function printCoordinatorResult(result: CoordinatorResult, json: boolean): void 
     result.dispatched.length > 0 ? `Dispatched: ${result.dispatched.map((item) => `${item.phaseId} (${item.provider})`).join(", ")}` : undefined,
     result.running.length > 0 ? `Running: ${result.running.map((item) => `${item.phaseId} (${item.status})`).join(", ")}` : undefined,
     result.completed.length > 0 ? `Completed evidence: ${result.completed.map((item) => item.phaseId).join(", ")}` : undefined,
+    result.providerSessions && result.providerSessions.length > 0 ? `Provider sessions: ${result.providerSessions.map((item) => `${item.phaseId} ${item.provider}:${item.sessionId} (${item.status}${item.resumePermitted ? ", resumable" : ""})`).join("; ")}` : undefined,
     result.blocked.length > 0 ? `Blocked: ${result.blocked.map((item) => `${item.phaseId}: ${item.reason}`).join("; ")}` : undefined,
     `Next action: ${result.nextValidAction ?? result.nextAction}`
   ].filter((line): line is string => Boolean(line));

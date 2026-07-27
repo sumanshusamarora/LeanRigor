@@ -20,7 +20,63 @@ export interface ExecutionCapabilities {
   heartbeats: boolean;
   maxConcurrent?: number;
   structuredResults: boolean;
+  sessions?: {
+    persistent: boolean;
+    resume: boolean;
+    fork?: boolean;
+  };
   diagnostics: string[];
+}
+
+export type ProviderSessionStatus =
+  | "created"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "expired"
+  | "unavailable";
+
+export interface ProviderSessionRef {
+  providerId: string;
+  sessionId: string;
+  workflowId: string;
+  phaseId: string;
+  executionAttemptId: string;
+  workingDirectory: string;
+  createdAt: string;
+  updatedAt: string;
+  status: ProviderSessionStatus;
+  requestedTier?: ModelProfile;
+  resolvedModel?: string;
+  providerVersion?: string;
+  safeCliArgs?: string[];
+  resumePermitted: boolean;
+  resumedFromSessionId?: string;
+  replacementReason?: string;
+}
+
+export interface PhaseWorkspaceCheckpoint {
+  capturedAt: string;
+  workspacePath: string;
+  dirty: boolean;
+  trackedModified: string[];
+  untrackedFiles: string[];
+  deletedFiles: string[];
+  changedFiles: string[];
+  diffSummary: {
+    text: string;
+    bytes: number;
+    truncated: boolean;
+  };
+  validationCommands: string[];
+  validationResults: Array<{
+    command: string;
+    status?: string;
+    exitCode?: number | null;
+    result?: string;
+  }>;
+  note: string;
 }
 
 export interface PhaseExecutionInput {
@@ -43,6 +99,24 @@ export interface PhaseExecutionInput {
   userRequest: string;
   planContext: string;
   safetyInstructions: string[];
+  previousCheckpoint?: PhaseWorkspaceCheckpoint;
+  resume?: {
+    providerSession?: ProviderSessionRef;
+    failureReason: string;
+    attempt: number;
+    mode: "same-session" | "compact-retry";
+  };
+  codeIntelligence?: {
+    codegraph: "exact-worktree" | "root-advisory" | "unavailable";
+    note?: string;
+  };
+  workerControls?: {
+    maxDiscoveryTurns: number;
+    reservedValidationTurns: number;
+    reservedFinalResultTurns: number;
+    repeatedReadWarningThreshold: number;
+    largeToolOutputBytes: number;
+  };
 }
 
 export interface ExecutionHandle {
@@ -55,6 +129,7 @@ export interface ExecutionHandle {
   startedAt: string;
   lastKnownStatus: PhaseExecutionRecordStatus;
   providerMetadata?: Record<string, unknown>;
+  providerSession?: ProviderSessionRef;
   nativeSessionId?: string;
 }
 
@@ -106,6 +181,17 @@ export interface CoordinatorPhaseSummary {
   status: PhaseExecutionRecordStatus;
 }
 
+export interface ProviderSessionSummary {
+  phaseId: string;
+  provider: string;
+  providerExecutionId: string;
+  sessionId: string;
+  workingDirectory: string;
+  status: ProviderSessionStatus;
+  resumePermitted: boolean;
+  resolvedModel?: string;
+}
+
 export interface CoordinatorResult {
   workflowId: string;
   revision: number;
@@ -122,6 +208,7 @@ export interface CoordinatorResult {
   nextValidAction?: ExecutionNextAction;
   running: CoordinatorPhaseSummary[];
   completed: CoordinatorPhaseSummary[];
+  providerSessions?: ProviderSessionSummary[];
   blocked: Array<{ phaseId: string; reason: string }>;
   dispatched: DispatchSummary[];
   nextAction: ExecutionNextAction;

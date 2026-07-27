@@ -286,6 +286,48 @@ const phaseLeaseSchema = z.object({
 
 const boundedRecord = z.record(z.string(), z.unknown()).default({}).transform((value) => boundDiagnosticObject(value));
 
+const providerSessionSchema = z.object({
+  providerId: z.string().min(1),
+  sessionId: z.string().min(1),
+  workflowId: z.string().min(1),
+  phaseId: z.string().min(1),
+  executionAttemptId: z.string().min(1),
+  workingDirectory: z.string().min(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  status: z.enum(["created", "running", "completed", "failed", "cancelled", "expired", "unavailable"]),
+  requestedTier: modelProfileSchema.optional(),
+  resolvedModel: z.string().optional(),
+  providerVersion: z.string().optional(),
+  safeCliArgs: z.array(z.string()).optional(),
+  resumePermitted: z.boolean().default(false),
+  resumedFromSessionId: z.string().optional(),
+  replacementReason: z.string().optional()
+});
+
+const phaseWorkspaceCheckpointSchema = z.object({
+  capturedAt: z.string(),
+  workspacePath: z.string().min(1),
+  dirty: z.boolean(),
+  trackedModified: z.array(z.string()),
+  untrackedFiles: z.array(z.string()),
+  deletedFiles: z.array(z.string()),
+  changedFiles: z.array(z.string()),
+  diffSummary: z.object({
+    text: z.string().max(32768),
+    bytes: z.number().int().min(0),
+    truncated: z.boolean()
+  }),
+  validationCommands: z.array(z.string()),
+  validationResults: z.array(z.object({
+    command: z.string(),
+    status: z.string().optional(),
+    exitCode: z.number().int().nullable().optional(),
+    result: z.string().max(1000).optional()
+  })),
+  note: z.string().max(1000)
+});
+
 const phaseExecutionRecordSchema = z.object({
   phaseId: z.string().min(1),
   providerId: z.string().min(1),
@@ -298,7 +340,9 @@ const phaseExecutionRecordSchema = z.object({
   completedAt: z.string().optional(),
   resultSummary: z.string().max(4000).optional(),
   diagnostics: boundedRecord.optional(),
-  providerMetadata: boundedRecord.optional()
+  providerMetadata: boundedRecord.optional(),
+  providerSession: providerSessionSchema.optional(),
+  checkpoint: phaseWorkspaceCheckpointSchema.optional()
 });
 
 const workflowExecutionStateSchema = z.object({

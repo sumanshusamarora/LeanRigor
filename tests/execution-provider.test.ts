@@ -106,7 +106,7 @@ describe("Claude CLI execution provider", () => {
     expect(handle.providerMetadata).toMatchObject({ stdoutPath: expect.any(String), stderrPath: expect.any(String), statusPath: expect.any(String) });
   });
 
-  it("does not treat process exit alone as a completed phase result", async () => {
+  it("returns a failed result for process output without structured phase evidence", async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
     const command = await fakeClaude(workspace, "not-json");
     const provider = new ClaudeCliExecutionProvider({ command });
@@ -114,11 +114,13 @@ describe("Claude CLI execution provider", () => {
     const restarted = new ClaudeCliExecutionProvider({ command });
 
     await waitForTerminalStatus(restarted, handle);
+    const result = await restarted.collectResult(handle);
 
-    await expect(restarted.collectResult(handle)).rejects.toMatchObject({ code: "provider_protocol_error" });
+    expect(result.status).toBe("failed");
+    expect(result.providerDiagnostics).toMatchObject({ providerErrorCode: "provider_protocol_error", partialProgressAccepted: false });
   });
 
-  it("rejects non-zero Claude process exits", async () => {
+  it("returns a failed result for non-zero Claude process exits", async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
     const command = await fakeClaude(workspace, phaseResultJson(), 1);
     const provider = new ClaudeCliExecutionProvider({ command });
@@ -126,8 +128,10 @@ describe("Claude CLI execution provider", () => {
     const restarted = new ClaudeCliExecutionProvider({ command });
 
     await waitForTerminalStatus(restarted, handle);
+    const result = await restarted.collectResult(handle);
 
-    await expect(restarted.collectResult(handle)).rejects.toMatchObject({ code: "provider_process_exited" });
+    expect(result.status).toBe("failed");
+    expect(result.providerDiagnostics).toMatchObject({ exitCode: 1, partialProgressAccepted: false });
   });
 
   it("includes execution artifact diagnostics on parse failure", async () => {
@@ -139,16 +143,136 @@ describe("Claude CLI execution provider", () => {
     const restarted = new ClaudeCliExecutionProvider({ command });
 
     await waitForTerminalStatus(restarted, handle);
+    const result = await restarted.collectResult(handle);
 
-    await expect(restarted.collectResult(handle)).rejects.toMatchObject({
-      code: "result_malformed",
-      details: {
+    expect(result).toMatchObject({
+      status: "failed",
+      providerDiagnostics: {
         providerExecutionId: handle.providerExecutionId,
+        providerErrorCode: "result_malformed",
         artifactDir: expect.stringContaining(path.join(".leanrigor", "executions")),
         stdoutExcerpt: expect.stringContaining("permission_denials"),
-        stderrExcerpt: "",
-        nextStep: expect.stringContaining("execution-poll")
+        stderrExcerpt: ""
       }
+    });
+  });
+
+  it("persists a provider session separately from the LeanRigor workflow id and bounds the CLI environment", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, phaseResultJson());
+    const provider = new ClaudeCliExecutionProvider({ command, maxTurns: 6 });
+    const handle = await provider.dispatch(input(workspace));
+    const metadata = handle.providerMetadata as { safeArgs?: string[]; args?: string[] };
+
+    expect(handle.workflowId).toBe("lr-test");
+    expect(handle.providerSession?.sessionId).toEqual(expect.any(String));
+    expect(handle.providerSession?.sessionId).not.toBe(handle.workflowId);
+    expect(handle.providerSession).toMatchObject({
+      providerId: "claude-cli",
+      workflowId: "lr-test",
+      phaseId: "phase-api",
+      executionAttemptId: handle.providerExecutionId,
+      workingDirectory: workspace,
+      resumePermitted: true
+    });
+    expect(metadata.args).toBeUndefined();
+    expect(metadata.safeArgs).toContain("--bare");
+    expect(metadata.safeArgs).toContain("--strict-mcp-config");
+    expect(metadata.safeArgs).toContain("--mcp-config");
+    expect(metadata.safeArgs).not.toContain("--no-session-persistence");
+    expect(metadata.safeArgs).toContain("[bounded-phase-prompt]");
+    expect(metadata.safeArgs?.join(" ")).not.toContain("Implement API.");
+  });
+
+  it("resumes only a matching provider session in the same worktree", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, phaseResultJson());
+    const prior = {
+      providerId: "claude-cli",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      workflowId: "lr-test",
+      phaseId: "phase-api",
+      executionAttemptId: "attempt-1",
+      workingDirectory: workspace,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+      status: "failed" as const,
+      resumePermitted: true
+    };
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch({
+      ...input(workspace),
+      resume: { providerSession: prior, failureReason: "error_max_turns", attempt: 2, mode: "same-session" }
+    });
+    const metadata = handle.providerMetadata as { safeArgs?: string[]; resumeMode?: string };
+
+    expect(handle.providerSession?.sessionId).toBe(prior.sessionId);
+    expect(handle.providerSession?.executionAttemptId).toBe(handle.providerExecutionId);
+    expect(metadata.resumeMode).toBe("same-session");
+    expect(metadata.safeArgs).toContain("--resume");
+    expect(metadata.safeArgs).not.toContain("[bounded-phase-prompt]");
+    expect(metadata.safeArgs).toContain("[compact-resume-prompt]");
+  });
+
+  it("uses a fresh compact retry when a prior session points at another worktree", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, phaseResultJson());
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch({
+      ...input(workspace),
+      resume: {
+        providerSession: {
+          providerId: "claude-cli",
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          workflowId: "lr-test",
+          phaseId: "phase-api",
+          executionAttemptId: "attempt-1",
+          workingDirectory: path.join(workspace, "other"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+          status: "failed",
+          resumePermitted: true
+        },
+        failureReason: "cwd mismatch",
+        attempt: 2,
+        mode: "same-session"
+      }
+    });
+    const metadata = handle.providerMetadata as { safeArgs?: string[]; resumeMode?: string };
+
+    expect(handle.providerSession?.sessionId).not.toBe("11111111-1111-4111-8111-111111111111");
+    expect(metadata.resumeMode).toBe("compact-retry");
+    expect(metadata.safeArgs).toContain("--session-id");
+    expect(metadata.safeArgs).not.toContain("--resume");
+  });
+
+  it("reports exact max-turn diagnostics from Claude error envelopes", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const envelope = JSON.stringify({
+      type: "result",
+      subtype: "error_max_turns",
+      is_error: true,
+      num_turns: 13,
+      total_cost_usd: 3.29,
+      usage: { input_tokens: 651779, output_tokens: 547 },
+      modelUsage: { opus: { inputTokens: 651779, outputTokens: 547 } },
+      session_id: "22222222-2222-4222-8222-222222222222",
+      result: "Max turns reached"
+    });
+    const command = await fakeClaude(workspace, envelope, 1);
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch(input(workspace));
+    const restarted = new ClaudeCliExecutionProvider({ command });
+
+    await waitForTerminalStatus(restarted, handle);
+    const result = await restarted.collectResult(handle);
+
+    expect(result.status).toBe("failed");
+    expect(result.providerDiagnostics).toMatchObject({
+      terminalReason: "error_max_turns",
+      turnCount: 13,
+      costUsd: 3.29,
+      usage: { input_tokens: 651779, output_tokens: 547 }
     });
   });
 });

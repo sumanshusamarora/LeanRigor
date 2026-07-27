@@ -214,6 +214,12 @@ Important execution settings:
 | `execution.retainIntegrationWorktree` | `true` | Preserve integration workspace by default |
 | `execution.integrationTransferStrategy` | `internal-commit` | Current controlled transfer strategy |
 | `execution.internalCommitSigning` | `disabled` | Use `git-config` when internal commits must be signed |
+| `execution.workerControls.environment` | `bare` | Claude worker environment mode: `bare`, `safe-mode`, or `default` |
+| `execution.workerControls.maxDiscoveryTurns.fast|standard|rigorous` | `1|2|4` | Mode-aware discovery budget used in worker prompts and diagnostics |
+| `execution.workerControls.reservedValidationTurns.fast|standard|rigorous` | `1|1|2` | Turns reserved for validation near the end of a phase |
+| `execution.workerControls.reservedFinalResultTurns.fast|standard|rigorous` | `1|1|1` | Turns reserved for final structured output |
+| `execution.workerControls.repeatedReadWarningThreshold` | `2` | Repeated-file-read diagnostic threshold |
+| `execution.workerControls.largeToolOutputBytes` | `32768` | Target bound for large worker tool output summaries |
 
 Built-in scheduling-sensitive paths include package manifests and lockfiles, `tsconfig*.json`, `.git/**`, `.github/**`, `migrations/**`, `schema/**`, and `infra/**`.
 

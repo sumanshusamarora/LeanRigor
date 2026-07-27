@@ -127,7 +127,27 @@ export const leanRigorConfigSchema = z.object({
     integrationTransferStrategy: z.enum(["internal-commit"]).default("internal-commit"),
     workspaceBranchPrefix: z.string().regex(/^[A-Za-z0-9._/-]+$/).default("leanrigor"),
     maxWorkspacePathLength: z.number().int().min(80).max(1024).default(220),
-    internalCommitSigning: z.enum(["disabled", "git-config"]).default("disabled")
+    internalCommitSigning: z.enum(["disabled", "git-config"]).default("disabled"),
+    workerControls: z.object({
+      environment: z.enum(["bare", "safe-mode", "default"]).default("bare"),
+      maxDiscoveryTurns: z.object({
+        fast: z.number().int().min(0).max(20).default(1),
+        standard: z.number().int().min(0).max(20).default(2),
+        rigorous: z.number().int().min(0).max(20).default(4)
+      }).prefault({}),
+      reservedValidationTurns: z.object({
+        fast: z.number().int().min(0).max(10).default(1),
+        standard: z.number().int().min(0).max(10).default(1),
+        rigorous: z.number().int().min(0).max(10).default(2)
+      }).prefault({}),
+      reservedFinalResultTurns: z.object({
+        fast: z.number().int().min(1).max(10).default(1),
+        standard: z.number().int().min(1).max(10).default(1),
+        rigorous: z.number().int().min(1).max(10).default(1)
+      }).prefault({}),
+      repeatedReadWarningThreshold: z.number().int().min(1).max(20).default(2),
+      largeToolOutputBytes: z.number().int().min(1024).max(1048576).default(32768)
+    }).prefault({})
   }).prefault({}),
   git: z.object({
     autoCommit: z.boolean().default(false),
