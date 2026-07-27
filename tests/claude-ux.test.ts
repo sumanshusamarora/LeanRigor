@@ -262,7 +262,7 @@ describe("approval actions", () => {
     expect(next.summary).toMatchObject({
       noImplementationStarted: true,
       assessment: expect.objectContaining({ complexity: expect.any(String) }),
-      constraints: expect.objectContaining({ mustNot: expect.any(Array) })
+      constraints: expect.objectContaining({ effective: expect.any(Array), original: expect.any(Array), audit: expect.any(Array) })
     });
   });
 

@@ -30,6 +30,7 @@ import {
 import type { PlanningProvider } from "../src/core/planning-runner.js";
 import type { TriageProvider } from "../src/core/triage-runner.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
+import { workflowNextSummary } from "../src/core/ux.js";
 import recoveredRejectedPlan from "./fixtures/recovered-rejected-plan.json" with { type: "json" };
 
 async function tempRepo(): Promise<string> {
@@ -170,6 +171,65 @@ describe("sequential workflow orchestration", () => {
     expect(planned.plan?.phases).toHaveLength(1);
     expect(planned.plan?.phases[0]?.objective).toBe("Implement issue-specific test obligation planning.");
     expect(planned.plan?.phases[0]?.status).toBe("planned");
+  });
+
+  it("persists approval constraint additions and removals before planning", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const legacy = await loadFlowState(root, started.id);
+    legacy.triage!.constraints.mustNot = ["Preserve backward compatibility"];
+    legacy.constraints = undefined;
+    await saveFlowState(root, legacy, { expectedRevision: legacy.revision });
+    let observedConstraints: string[] = [];
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: {
+        name: "capturing-planner",
+        async plan(input) {
+          observedConstraints = input.effectiveConstraints ?? [];
+          return { raw: compactPlan("Implement the approved API behavior without compatibility constraints."), provider: "capturing-planner" };
+        }
+      },
+      providerSelection: "auto"
+    }, {
+      remove: ["Preserve backward compatibility"],
+      add: ["Backward compatibility is not required for this workflow", "Tests must be updated", "All checks must pass"]
+    });
+
+    expect(planned.constraints?.original.map((constraint) => constraint.text)).toEqual(["Preserve backward compatibility"]);
+    expect(planned.constraints?.userRemovals.map((change) => change.text)).toEqual(["Preserve backward compatibility"]);
+    expect(planned.constraints?.effective.map((constraint) => constraint.text)).toEqual([
+      "Backward compatibility is not required for this workflow",
+      "Tests must be updated",
+      "All checks must pass"
+    ]);
+    expect(observedConstraints).toEqual(planned.constraints?.effective.map((constraint) => constraint.text));
+    expect(workflowNextSummary(planned).summary).toMatchObject({
+      approvedConstraints: expect.arrayContaining([
+        { text: "Tests must be updated", source: "user" },
+        { text: "All checks must pass", source: "user" }
+      ]),
+      execution: { provider: "auto", workspace: "isolated phase worktree", manualExecution: "not selected", implementationStarted: false }
+    });
+  });
+
+  it("does not present a model plan that contradicts an approved compatibility override", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const contradictory = compactPlan("Implement the backward-compatible API behavior.") as Record<string, unknown>;
+    (contradictory.phases as Array<Record<string, unknown>>)[0]!.rationale = "This phase preserves backward compatibility.";
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([contradictory]),
+      providerSelection: "auto"
+    }, {
+      add: ["Backward compatibility is not required", "Tests must be updated", "All checks must pass"]
+    });
+
+    const renderedPlan = JSON.stringify(planned.plan);
+    expect(planned.planningRun?.source).toBe("deterministic-fallback");
+    expect(planned.planningRun?.diagnostics?.some((diagnostic) => diagnostic.code === "constraint.contradiction.backward_compatibility")).toBe(true);
+    expect(renderedPlan).not.toMatch(/backward-compatible|preserves backward compatibility/i);
   });
 
   it("accepts the recovered rejected model plan without false-positive boundary diagnostics", async () => {
@@ -321,9 +381,9 @@ describe("sequential workflow orchestration", () => {
       providerSelection: "deterministic"
     });
 
-    expect(planned.plan?.principles.join("\n")).toMatch(/Constraint: must not/i);
-    expect(planned.plan?.principles.join("\n")).toContain("Constraint: must not Break loadability for existing persisted workflows");
-    expect(planned.plan?.principles.join("\n")).toContain("Constraint: must not Allow phase completion without mandatory obligation evidence");
+    expect(planned.plan?.principles.join("\n")).toMatch(/Constraint:/i);
+    expect(planned.plan?.principles.join("\n")).toContain("Constraint: Break loadability for existing persisted workflows");
+    expect(planned.plan?.principles.join("\n")).toContain("Constraint: Allow phase completion without mandatory obligation evidence");
   });
 
   it("requires stronger gates and phases for Rigorous work", async () => {

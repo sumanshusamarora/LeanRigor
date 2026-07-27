@@ -67,7 +67,10 @@ export type PhaseExecutionRecordStatus =
   | "timed_out"
   | "blocked"
   | "collecting"
-  | "result_recorded";
+    | "result_recorded";
+export type ConstraintSource = "policy" | "triage" | "user";
+export type ConstraintAction = "add" | "remove" | "override";
+export type WorkspacePreparationStatus = "available" | "prepared" | "blocked" | "failed";
 
 export interface TriageOutput {
   version: 1;
@@ -209,6 +212,35 @@ export interface ApproachRecommendation {
   rejectedReason?: string;
 }
 
+export interface WorkflowConstraintRecord {
+  id: string;
+  text: string;
+  source: ConstraintSource;
+  createdAt: string;
+  workflowRevision: number;
+  transition: string;
+}
+
+export interface WorkflowConstraintChange {
+  source: ConstraintSource;
+  action: ConstraintAction;
+  text: string;
+  target?: string;
+  timestamp: string;
+  workflowRevision: number;
+  transition: string;
+}
+
+export interface WorkflowConstraints {
+  original: WorkflowConstraintRecord[];
+  policy: WorkflowConstraintRecord[];
+  userAdditions: WorkflowConstraintRecord[];
+  userRemovals: WorkflowConstraintChange[];
+  userOverrides: WorkflowConstraintChange[];
+  effective: WorkflowConstraintRecord[];
+  audit: WorkflowConstraintChange[];
+}
+
 export interface WorkflowPhase {
   id: string;
   objective: string;
@@ -327,6 +359,26 @@ export interface PhaseWorkspace {
   createdAt: string;
   updatedAt: string;
   status: PhaseWorkspaceStatus;
+  preparation?: WorkspacePreparation;
+}
+
+export interface WorkspacePreparation {
+  status: WorkspacePreparationStatus;
+  packageManager?: "npm" | "pnpm" | "yarn" | "bun" | "none" | "unknown";
+  dependencies: "available" | "missing" | "not_applicable" | "unknown";
+  bootstrapRequired: boolean;
+  bootstrapCommand?: string;
+  commandRisk: {
+    localWrite: boolean;
+    network: boolean;
+    lifecycleScripts: boolean;
+    lockfilePreserving: boolean;
+    manifestMutationExpected: boolean;
+  };
+  approvalRequired: boolean;
+  reason: string;
+  checkedAt: string;
+  evidence: string[];
 }
 
 export interface PhaseGitEvidence {
@@ -454,6 +506,7 @@ export interface SequentialWorkflowState {
     fallbackReason?: string;
     warnings: string[];
   };
+  constraints?: WorkflowConstraints;
   planningRun?: {
     source: "model" | "deterministic-fallback";
     provider: string;

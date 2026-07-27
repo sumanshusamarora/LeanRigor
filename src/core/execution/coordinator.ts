@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../../config/schema.js";
+import { preparePhaseWorkspace } from "../workspace-preparation.js";
 import {
   completePhase,
   heartbeatPhase,
@@ -92,7 +93,18 @@ export class ExecutionCoordinator {
         const withWorkspace = await workspaceCreatePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId, config: this.config, mutation: { ownerId } });
         const workspace = withWorkspace.git?.phaseWorkspaces[phase.id];
         if (!workspace) throw new Error(`Phase ${phase.id} workspace was not created.`);
-        const input = await this.inputForPhase(withWorkspace, phase.id, workspace.path, ownerId);
+        const preparation = await preparePhaseWorkspace({
+          workspacePath: workspace.path,
+          repositoryRoot: withWorkspace.git!.context.repositoryRoot,
+          validationCommands: phase.validationCommands,
+          config: this.config
+        });
+        await this.persistWorkspacePreparation(phase.id, preparation);
+        if (preparation.status === "blocked" || preparation.status === "failed") {
+          throw new Error(`Workspace preparation ${preparation.status}: ${preparation.reason}${preparation.bootstrapCommand ? ` Required command: ${preparation.bootstrapCommand}` : ""}`);
+        }
+        const preparedState = await loadFlowState(this.root, this.workflowId);
+        const input = await this.inputForPhase(preparedState, phase.id, workspace.path, ownerId);
         const handle = await this.provider.dispatch(input);
         await this.persistHandle(handle);
         dispatched.push({ phaseId: phase.id, provider: handle.providerId, status: "running", workspacePath: workspace.path, leaseOwnerId: ownerId });
@@ -309,6 +321,18 @@ export class ExecutionCoordinator {
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_record_update" });
   }
 
+  private async persistWorkspacePreparation(phaseId: string, preparation: NonNullable<WorkflowPhase["workspace"]>["preparation"]): Promise<void> {
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const workspace = state.git?.phaseWorkspaces[phaseId];
+      if (workspace) {
+        state.git!.phaseWorkspaces[phaseId] = { ...workspace, preparation, updatedAt: this.now() };
+        const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+        if (phase?.workspace) phase.workspace = state.git!.phaseWorkspaces[phaseId];
+      }
+      return state;
+    }, { ownerId: this.coordinatorId, ownerType: "system", operation: "workspace_prepare_phase" });
+  }
+
   private async reserveResumeDispatch(phaseId: string, ownerId: string): Promise<void> {
     await updateFlowState(this.root, this.workflowId, (state) => {
       const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
@@ -396,9 +420,13 @@ export class ExecutionCoordinator {
       safetyInstructions: [
         "Use only the assigned phase workspace.",
         "Return structured result evidence; LeanRigor will decide whether the phase is accepted.",
-        "Do not commit, push, merge, deploy, or edit outside the workspace."
+        "Do not commit, push, merge, deploy, or edit outside the workspace.",
+        phase.workspace?.preparation?.dependencies === "available"
+          ? "Workspace dependencies were prepared by LeanRigor before dispatch."
+          : "Do not install dependencies. If dependencies are unavailable, stop and return blocked status with the missing command."
       ],
       previousCheckpoint: previousCheckpoint.dirty ? previousCheckpoint : undefined,
+      workspacePreparation: phase.workspace?.preparation,
       resume,
       codeIntelligence: await detectCodeIntelligence(workspacePath, state.git.context.repositoryRoot),
       workerControls: workerControlsForMode(this.config, state.mode)

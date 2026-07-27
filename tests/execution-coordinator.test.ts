@@ -120,6 +120,38 @@ describe("execution coordinator", () => {
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
   });
 
+  it("blocks provider dispatch when dependency preparation requires approval", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": { edits: [{ path: "src/a.ts", content: "provider should not run\n" }], validation: [{ command: "npm test", exitCode: 0 }] }
+      }
+    });
+    await writeFile(path.join(harness.root, "package.json"), JSON.stringify({
+      scripts: { test: "vitest run" },
+      devDependencies: { vitest: "^3.2.0" }
+    }));
+    await writeFile(path.join(harness.root, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": { devDependencies: { vitest: "^3.2.0" } } } }));
+    await harness.git(["add", "package.json", "package-lock.json"]);
+    await harness.git(["commit", "-m", "add locked dependencies"]);
+
+    const result = await harness.coordinator.dispatchReady();
+    const state = await currentState(harness);
+    const workspace = state.git?.phaseWorkspaces["phase-a"];
+
+    expect(result.dispatched).toEqual([]);
+    expect(workspace?.preparation).toMatchObject({
+      status: "blocked",
+      packageManager: "npm",
+      dependencies: "missing",
+      bootstrapRequired: true,
+      bootstrapCommand: "npm ci",
+      approvalRequired: true
+    });
+    expect(state.execution.records["phase-a"]).toBeUndefined();
+    await expect(readFile(path.join(workspace!.path, "src", "a.ts"), "utf8")).rejects.toThrow();
+  });
+
   it("times out a running phase, cancels the provider, and preserves the dirty workspace", async () => {
     let now = new Date("2026-01-01T00:00:00.000Z");
     const harness = await createExecutionHarness({

@@ -1,4 +1,4 @@
-import type { CriterionCompletionEvidence, ModelProfile, PhaseExecutionRecordStatus, ValidationEvidence, WorkflowMode } from "../types.js";
+import type { CriterionCompletionEvidence, ModelProfile, PhaseExecutionRecordStatus, ValidationEvidence, WorkflowMode, WorkspacePreparation } from "../types.js";
 
 export type ExecutionStatusState = "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out" | "blocked" | "unknown";
 export type ExecutionNextAction =
@@ -100,6 +100,7 @@ export interface PhaseExecutionInput {
   planContext: string;
   safetyInstructions: string[];
   previousCheckpoint?: PhaseWorkspaceCheckpoint;
+  workspacePreparation?: WorkspacePreparation;
   resume?: {
     providerSession?: ProviderSessionRef;
     failureReason: string;

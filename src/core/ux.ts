@@ -104,7 +104,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
       summary: {
         task: state.triage?.task,
         assessment: state.triage?.assessment,
-        constraints: state.triage?.constraints,
+        constraints: state.constraints ?? state.triage?.constraints,
         escalationReasons: state.triage?.escalationReasons ?? [],
         assumptions: state.triage?.assumptions ?? [],
         warnings: state.triageRun?.warnings ?? [],
@@ -139,7 +139,15 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
           status: candidate.status,
           validation: candidate.validationCommands
         })) ?? [],
-        validation: unique(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? [])
+        validation: unique(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+        approvedConstraints: state.constraints?.effective.map((constraint) => ({ text: constraint.text, source: constraint.source })) ?? state.triage?.constraints.mustNot ?? [],
+        approvedOverrides: state.constraints?.userOverrides ?? [],
+        execution: {
+          provider: "auto",
+          workspace: "isolated phase worktree",
+          manualExecution: "not selected",
+          implementationStarted: false
+        }
       }
     };
   }

@@ -508,6 +508,13 @@
           ],
           "default": "disabled"
         },
+        "dependencyBootstrap": {
+          "enum": [
+            "block",
+            "auto-lockfile"
+          ],
+          "default": "block"
+        },
         "workerControls": {
           "type": "object",
           "properties": {

@@ -33,8 +33,11 @@ AskUserQuestion selector contract at every decision gate.
    create plan`, `Revise approach`, `View workflow details`, and `Cancel
    workflow`; state that no implementation has started.
 6. After user approval, invoke the transition internally and continue to the
-   next meaningful gate before replying. For approach approval, use
-   `leanrigor flow approve-approach <workflow-id> --provider auto` so plan
+   next meaningful gate before replying. If the user changes constraints while
+   approving the approach, convert those changes to structured flags such as
+   `--add-constraint`, `--remove-constraint`, or `--override-constraint`; do not
+   keep them only in conversation. For approach approval, use
+   `leanrigor flow approve-approach <workflow-id> --provider auto ...` so plan
    generation can call Claude when available. Do not use
    `--provider deterministic` unless the user explicitly asks for deterministic
    planning.
@@ -46,7 +49,10 @@ AskUserQuestion selector contract at every decision gate.
    `flow execution-poll --provider auto`) and render only persisted
    coordinator gates. Do not use `--provider scripted` unless the user explicitly
    asks for scripted/deterministic execution. Do not implement phase edits in
-   the original working tree.
+   the original working tree. If provider dispatch fails, present explicit
+   choices: retry the configured provider, use another available provider,
+   switch to manual execution, or cancel. Manual execution requires explicit
+   user selection.
 9. Never compensate for an unavailable workflow transition by narrating that the
    workflow is complete. Report the persisted state and the exact blocker.
 

@@ -124,7 +124,10 @@ Current providers:
 
 ### Manual fallback
 
-When coordinator execution is unavailable or explicitly disabled, the active Claude session may implement a phase only inside the LeanRigor-assigned phase workspace. It must run or explicitly skip declared validation and submit persisted completion evidence.
+Manual fallback requires explicit user selection after a provider dispatch
+failure or configuration choice. The active Claude session may implement a phase
+only inside the LeanRigor-assigned phase workspace. It must run or explicitly
+skip declared validation and submit persisted completion evidence.
 
 Manual mode does not allow editing in the user's original working tree when Git workspaces are enabled.
 
@@ -141,6 +144,12 @@ LeanRigor uses:
 The user's original branch, index, unstaged files, untracked files, stash, and checkout are not modified by workspace operations.
 
 Textual conflicts are detected and persisted for explicit repair. LeanRigor never resolves them by automatically choosing `ours` or `theirs`.
+
+Default worktrees are placed outside the repository root under a
+collision-resistant `<repo-name>-<repository-path-hash>` directory. Before
+provider dispatch, LeanRigor records workspace-preparation state. Missing
+dependencies block by default with the exact bootstrap command and risk summary;
+providers must not improvise package installation.
 
 ## Marketplace plugin assets
 

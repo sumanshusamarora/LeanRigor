@@ -110,6 +110,20 @@ with `flow revise-approach` and the workflow remains at the approach gate.
 Cancellation records a cancelled workflow without deleting worktrees or
 repository files.
 
+Approach approval may include structured constraint changes:
+
+```bash
+leanrigor flow approve-approach <workflow-id> \
+  --add-constraint "Tests must be updated" \
+  --add-constraint "All checks must pass" \
+  --remove-constraint "Preserve backward compatibility"
+```
+
+LeanRigor persists original triage constraints, policy constraints, user
+additions, removals, overrides, audit entries, and final effective constraints.
+Planning receives only the effective set. Removed constraints and explicit
+overrides are validated before a plan can be presented for approval.
+
 ## Planning
 
 Plans are DAGs sized by functional outcome and dependency boundary. Default
@@ -154,10 +168,11 @@ launched and monitored.
 The execution coordinator is the single control layer for provider-driven
 phase work. It reads current state, asks the scheduler for eligible phases,
 honors `execution.maxParallelPhases`, acquires phase leases, creates phase
-worktrees, dispatches workers through a provider, persists execution handles,
-polls status, refreshes healthy leases, collects structured results, submits
-completion evidence, invokes completion gates, integrates accepted phases, and
-runs combined validation when the DAG reaches that deterministic point.
+worktrees, prepares the workspace, dispatches workers through a provider,
+persists execution handles, polls status, refreshes healthy leases, collects
+structured results, submits completion evidence, invokes completion gates,
+integrates accepted phases, and runs combined validation when the DAG reaches
+that deterministic point.
 
 Provider results are evidence, not authority. A provider can return
 `completed`, but the phase is accepted only if the LeanRigor completion gate
@@ -253,9 +268,20 @@ Runtime paths are explicit:
 - `execution.mode = coordinator`: use `flow execute-next` and
   `flow execution-poll`; Claude monitors persisted gates and does not implement
   phase edits itself.
-- `execution.mode = manual`: fallback when no provider is configured; Claude
-  may implement a phase only in the LeanRigor-assigned phase workspace and must
-  submit persisted completion evidence.
+- Provider `auto` resolves to the configured provider or fails clearly with
+  recovery choices. LeanRigor does not silently substitute scripted or manual
+  execution.
+- `execution.mode = manual`: available only after explicit user selection;
+  Claude may implement a phase only in the LeanRigor-assigned phase workspace
+  and must submit persisted completion evidence.
+
+Before dispatch, workspace preparation records package-manager detection,
+dependency availability, any bootstrap command, command risk, approval
+requirements, and evidence. Existing dependencies proceed. Missing JavaScript
+dependencies block by default with the exact lockfile-preserving command, such
+as `npm ci` when `package-lock.json` is present. Automatic bootstrap is allowed
+only by `execution.dependencyBootstrap = "auto-lockfile"` and must preserve
+manifests and lockfiles; otherwise provider dispatch stops before implementation.
 
 ## Integration Workspace
 
@@ -265,6 +291,18 @@ from the current integration head that contains their dependencies. If the
 integration head advances before another phase is integrated, LeanRigor checks
 the recorded phase base and applies the approved internal commit through the
 controlled integration path rather than silently rebasing.
+
+By default, worktrees live outside the repository root to avoid unsafe nested
+Git worktrees. The default root is:
+
+```text
+<repo-parent>/.leanrigor-worktrees/<repo-name>-<repository-path-hash>
+```
+
+The short hash is derived from the canonical repository path so separate clones
+with the same directory name do not collide. `execution.workspaceRoot` can
+override the location, but LeanRigor rejects roots nested inside the repository
+unless they are inside Git's administrative common directory.
 
 `integrate-phase`:
 

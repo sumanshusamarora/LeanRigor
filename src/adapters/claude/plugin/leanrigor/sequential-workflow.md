@@ -79,9 +79,13 @@ Rules:
 - Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
 - Approval at approach immediately generates and renders the actual phased plan
   through `leanrigor flow approve-approach <workflow-id> --provider auto`, so
-  Claude-backed planning is attempted when available. Use deterministic planning
-  only when explicitly requested or when the provider falls back with a recorded
-  reason.
+  Claude-backed planning is attempted when available. If the user approves with
+  constraint changes, include structured flags on that transition:
+  `--add-constraint "<constraint>"`, `--remove-constraint "<constraint>"`, or
+  `--override-constraint "<old> => <new>"`. Do not acknowledge constraint
+  changes conversationally unless they were passed to LeanRigor. Use
+  deterministic planning only when explicitly requested or when the provider
+  falls back with a recorded reason.
 - Approach revisions use `leanrigor flow revise-approach <workflow-id>
   "<feedback>"`, then rerender the approach summary without starting planning.
 - Plan revisions use
@@ -94,9 +98,12 @@ Rules:
   records, and present only persisted gates. Use `--provider scripted` only when
   the user explicitly requests scripted/deterministic execution. Do not
   implement phase edits yourself and do not edit the original working tree.
-- Use `execution.mode = manual` only when no configured provider/workspace path
-  is available. In manual mode, initialize the integration workspace, then start
-  one ready phase internally with a stable session owner, phase lease, and phase
+- If provider dispatch cannot start, present explicit recovery choices: retry
+  the configured provider, use another available provider, switch to manual
+  execution, or cancel the workflow. Do not silently switch provider or mode.
+- Use `execution.mode = manual` only after the user explicitly selects manual
+  execution. In manual mode, initialize the integration workspace, then start one
+  ready phase internally with a stable session owner, phase lease, and phase
   workspace.
 - `continue` must not bypass `needs_repair`, `needs_review`, or `needs_replan`.
 - Ask one concise clarification for ambiguous responses.

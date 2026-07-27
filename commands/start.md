@@ -33,7 +33,9 @@ Behaviour:
    `Cancel workflow`; state that no implementation has started. After explicit
    approach approval, invoke
    `flow approve-approach <workflow-id> --provider auto` internally so plan
-   generation can call Claude when available. Do not use
+   generation can call Claude when available. Include `--add-constraint`,
+   `--remove-constraint`, or `--override-constraint "<old> => <new>"` for any
+   user-supplied approval constraint changes. Do not use
    `--provider deterministic` unless the user explicitly asks for deterministic
    planning. Continue to the next meaningful gate before responding.
 6. For plan revisions, invoke
@@ -46,9 +48,11 @@ Behaviour:
    the user explicitly asks for a scripted/deterministic execution provider. Do
    not edit the original working tree or implement the phase directly in
    coordinator mode.
-8. Use `execution.mode = manual` only when no execution provider/workspace path
-   is available. In manual mode, work only in the active phase workspace and
-   record validation/completion evidence before presenting a phase gate.
+8. If provider dispatch cannot start, present explicit recovery choices:
+   retry configured provider, use another available provider, switch to manual
+   execution, or cancel. Use `execution.mode = manual` only after explicit user
+   selection. In manual mode, work only in the active phase workspace and record
+   validation/completion evidence before presenting a phase gate.
 9. Render the persisted final review and commit proposal conversationally. Never commit or
    push automatically.
 

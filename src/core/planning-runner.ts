@@ -30,6 +30,8 @@ export interface PlanningProviderInput {
   root: string;
   config: LeanRigorConfig;
   triage: TriageOutput;
+  effectiveConstraints?: string[];
+  constraintChanges?: unknown;
   deterministicPlan: ExecutionPlan;
   revisionRequests: ExecutionPlan["revisionRequests"];
 }

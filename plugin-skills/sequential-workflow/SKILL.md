@@ -133,8 +133,8 @@ order:
 
 The following typed responses remain supported as a fallback:
 
-- `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
-- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, initialize the integration workspace, read the new revision, inspect ready phases, and begin one ready phase through the internal lease/start/workspace path.
+- `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, adding `--add-constraint`, `--remove-constraint`, or `--override-constraint "<old> => <new>"` for any user-supplied constraint changes, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
+- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, then use coordinator execution with `flow execute-next --provider auto` or `flow execution-poll --provider auto`. Do not begin manual lease/start/workspace execution unless the user explicitly selected manual execution.
 - `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> "<feedback>"`, rerender the updated approach summary, and ask for approval again. Do not start planning.
 - `revise ...` at `awaiting_plan_approval`: use `flow revise-plan <workflow-id> "<feedback>" --provider auto` unless deterministic planning was explicitly requested.
 - `reject because ...`: reject the approach with the supplied reason.
@@ -156,8 +156,11 @@ Execution mode is explicit:
   `flow execution-poll --provider auto`; use the scripted provider only when
   the user explicitly requests scripted/deterministic execution. Claude must
   not implement phase edits itself and must not edit the original working tree.
-- `execution.mode = manual`: fallback for environments without a configured
-  provider. Claude may perform phase work manually, but only in the
+- If provider dispatch cannot start, present explicit choices: retry configured
+  provider, use another available provider, switch to manual execution, or
+  cancel. Do not silently substitute providers or modes.
+- `execution.mode = manual`: available only after explicit user selection.
+  Claude may perform phase work manually, but only in the
   LeanRigor-assigned phase workspace and only through persisted
   phase-completion gates.
 

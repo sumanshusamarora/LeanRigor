@@ -33,6 +33,8 @@ import type {
   ApproachRecommendation,
   CommitPlan,
   CompletionGateDecision,
+  ConstraintAction,
+  ConstraintSource,
   CriterionCompletionEvidence,
   ExecutionGraph,
   ExecutionPlan,
@@ -44,6 +46,9 @@ import type {
   SequentialWorkflowState,
   TriageOutput,
   ValidationEvidence,
+  WorkflowConstraintChange,
+  WorkflowConstraintRecord,
+  WorkflowConstraints,
   WorkflowLifecycleState,
   WorkflowMode,
   WorkflowEvent,
@@ -79,6 +84,8 @@ const modelProfileSchema = z.enum(["small", "medium", "large", "inherit"]);
 const criterionStatusSchema = z.enum(["met", "not_met", "uncertain", "not_applicable"]);
 const completionDecisionSchema = z.enum(["completed", "needs_repair", "needs_review", "needs_replan", "blocked"]);
 const phaseStatusSchema = z.enum(["planned", "ready", "leased", "running", "completion_pending", "completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
+const constraintSourceSchema = z.enum(["policy", "triage", "user"]);
+const constraintActionSchema = z.enum(["add", "remove", "override"]);
 
 const triageSchema = z.object({
   version: z.literal(1),
@@ -196,7 +203,25 @@ const phaseWorkspaceSchema = z.object({
   baseCommit: z.string().min(1),
   createdAt: z.string(),
   updatedAt: z.string(),
-  status: z.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"])
+  status: z.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"]),
+  preparation: z.object({
+    status: z.enum(["available", "prepared", "blocked", "failed"]),
+    packageManager: z.enum(["npm", "pnpm", "yarn", "bun", "none", "unknown"]).optional(),
+    dependencies: z.enum(["available", "missing", "not_applicable", "unknown"]),
+    bootstrapRequired: z.boolean(),
+    bootstrapCommand: z.string().optional(),
+    commandRisk: z.object({
+      localWrite: z.boolean(),
+      network: z.boolean(),
+      lifecycleScripts: z.boolean(),
+      lockfilePreserving: z.boolean(),
+      manifestMutationExpected: z.boolean()
+    }),
+    approvalRequired: z.boolean(),
+    reason: z.string(),
+    checkedAt: z.string(),
+    evidence: z.array(z.string())
+  }).optional()
 });
 
 const phaseSchema = z.object({
@@ -350,6 +375,35 @@ const workflowExecutionStateSchema = z.object({
   records: z.record(z.string(), phaseExecutionRecordSchema).default({})
 }).default({ records: {} });
 
+const constraintRecordSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  source: constraintSourceSchema,
+  createdAt: z.string(),
+  workflowRevision: z.number().int().min(0),
+  transition: z.string().min(1)
+});
+
+const constraintChangeSchema = z.object({
+  source: constraintSourceSchema,
+  action: constraintActionSchema,
+  text: z.string().min(1),
+  target: z.string().min(1).optional(),
+  timestamp: z.string(),
+  workflowRevision: z.number().int().min(0),
+  transition: z.string().min(1)
+});
+
+const workflowConstraintsSchema = z.object({
+  original: z.array(constraintRecordSchema).default([]),
+  policy: z.array(constraintRecordSchema).default([]),
+  userAdditions: z.array(constraintRecordSchema).default([]),
+  userRemovals: z.array(constraintChangeSchema).default([]),
+  userOverrides: z.array(constraintChangeSchema).default([]),
+  effective: z.array(constraintRecordSchema).default([]),
+  audit: z.array(constraintChangeSchema).default([])
+});
+
 const workflowEventSchema = z.object({
   eventId: z.string().min(1),
   timestamp: z.string(),
@@ -423,6 +477,7 @@ const workflowStateSchema = z.object({
     fallbackReason: z.string().optional(),
     warnings: z.array(z.string())
   }).optional(),
+  constraints: workflowConstraintsSchema.optional(),
   planningRun: z.object({
     source: z.enum(["model", "deterministic-fallback"]),
     provider: z.string(),
@@ -507,6 +562,12 @@ export interface FlowStartOptions {
   providerSelection?: TriageProviderSelection;
 }
 
+export interface ApprovalConstraintChanges {
+  add?: string[];
+  remove?: string[];
+  override?: Array<{ target: string; text: string }>;
+}
+
 export async function startFlow(options: FlowStartOptions): Promise<SequentialWorkflowState> {
   const root = path.resolve(options.root);
   const now = timestamp();
@@ -583,13 +644,21 @@ export async function answerClarification(args: {
   }, { ...args.mutation, operation: "answer_clarification" });
 }
 
-export async function approveApproach(root: string, workflowId: string, config?: LeanRigorConfig, mutation?: MutationOptions, planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
+export async function approveApproach(
+  root: string,
+  workflowId: string,
+  config?: LeanRigorConfig,
+  mutation?: MutationOptions,
+  planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection },
+  constraintChanges?: ApprovalConstraintChanges
+): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, async (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
+    next.constraints = applyApprovalConstraintChanges(next, constraintChanges);
     next.approach = { ...state.approach, approved: true };
-    appendEvent(next, "approach_approved", "Approach approved.");
+    appendEvent(next, "approach_approved", approvalConstraintSummary(next.constraints));
     return withPlan(next, config, planning);
   }, { ...mutation, operation: "approve_approach" });
 }
@@ -633,6 +702,8 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
       root: next.root,
       triage,
       config,
+      constraints: effectiveConstraintTexts(next, triage, config ?? defaultConfig()),
+      constraintAudit: next.constraints?.audit ?? [],
       revisionRequests,
       provider: planning?.provider,
       providerSelection: planning?.providerSelection
@@ -1350,14 +1421,11 @@ export function nextActions(state: SequentialWorkflowState): string[] {
       if (replan) return [`leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       return active
         ? [
-          ...(state.git?.phaseWorkspaces[active.id] ? [] : [`leanrigor flow workspace-create-phase ${id} ${active.id} --owner "${state.phaseLeases[active.id]?.ownerId ?? DEFAULT_OWNER_ID}" --root "${state.root}"`]),
-          `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
-          `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
+          `leanrigor flow execution-poll ${id} --provider auto --root "${state.root}"`
         ]
         : [
-          ...(state.git ? [] : [`leanrigor flow workspace-init ${id} --root "${state.root}"`]),
-          `leanrigor flow ready ${id} --root "${state.root}"`,
-          `leanrigor flow phase-start ${id} --root "${state.root}"`
+          `leanrigor flow execute-next ${id} --provider auto --root "${state.root}"`,
+          `leanrigor flow execution-status ${id} --provider auto --root "${state.root}"`
         ];
     }
     case "validating":
@@ -1399,6 +1467,7 @@ async function applyTriageResult(
     fallbackReason: triageRun.fallbackReason,
     warnings: triageRun.warnings
   };
+  next.constraints = initialiseWorkflowConstraints(triage, config, next.revision, "triage_completed");
   next.mode = triage.workflow.finalMode;
   next.blockers = [];
   appendEvent(next, "triage_completed", `Triage completed in ${next.mode} mode.`);
@@ -1424,6 +1493,141 @@ function enforceOneClarification(triage: TriageOutput, clarificationAlreadyAnswe
   return next;
 }
 
+function initialiseWorkflowConstraints(triage: TriageOutput, config: LeanRigorConfig, workflowRevision: number, transitionName: string): WorkflowConstraints {
+  const createdAt = timestamp();
+  const original = unique(triage.constraints.mustNot).map((text) => constraintRecord(text, "triage", createdAt, workflowRevision, transitionName));
+  const policy = unique(config.instructions).map((text) => constraintRecord(text, "policy", createdAt, workflowRevision, transitionName));
+  return recomputeConstraints({
+    original,
+    policy,
+    userAdditions: [],
+    userRemovals: [],
+    userOverrides: [],
+    audit: [],
+    effective: []
+  });
+}
+
+function applyApprovalConstraintChanges(state: SequentialWorkflowState, changes?: ApprovalConstraintChanges): WorkflowConstraints {
+  if (!state.triage) throw new WorkflowStateError("Cannot approve approach before triage completes.");
+  const base = state.constraints ?? initialiseWorkflowConstraints(state.triage, defaultConfig(), state.revision, "legacy_state_loaded");
+  const next: WorkflowConstraints = structuredClone(base);
+  const now = timestamp();
+  const revision = state.revision;
+
+  for (const text of changes?.remove ?? []) {
+    const clean = cleanConstraint(text);
+    if (!clean) throw new WorkflowStateError("Cannot remove an empty constraint.");
+    const change = constraintChange("remove", clean, undefined, now, revision);
+    next.userRemovals.push(change);
+    next.audit.push(change);
+  }
+  for (const override of changes?.override ?? []) {
+    const target = cleanConstraint(override.target);
+    const text = cleanConstraint(override.text);
+    if (!target || !text) throw new WorkflowStateError("Constraint overrides require both target and replacement text.");
+    const change = constraintChange("override", text, target, now, revision);
+    next.userOverrides.push(change);
+    next.userAdditions.push(constraintRecord(text, "user", now, revision, "approve_approach"));
+    next.audit.push(change);
+  }
+  for (const text of changes?.add ?? []) {
+    const clean = cleanConstraint(text);
+    if (!clean) throw new WorkflowStateError("Cannot add an empty constraint.");
+    const change = constraintChange("add", clean, undefined, now, revision);
+    next.userAdditions.push(constraintRecord(clean, "user", now, revision, "approve_approach"));
+    next.audit.push(change);
+  }
+  return recomputeConstraints(next);
+}
+
+function recomputeConstraints(model: WorkflowConstraints): WorkflowConstraints {
+  const removals = model.userRemovals.map((change) => change.text);
+  const overrideTargets = model.userOverrides.map((change) => change.target).filter((target): target is string => Boolean(target));
+  const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions])
+    .filter((record) => record.source === "user" || !removals.some((target) => constraintMatches(record.text, target)))
+    .filter((record) => record.source === "user" || !overrideTargets.some((target) => constraintMatches(record.text, target)));
+  return {
+    ...model,
+    original: uniqueRecords(model.original),
+    policy: uniqueRecords(model.policy),
+    userAdditions: uniqueRecords(model.userAdditions),
+    effective: uniqueRecords(effective)
+  };
+}
+
+function constraintRecord(text: string, source: ConstraintSource, createdAt: string, workflowRevision: number, transitionName: string): WorkflowConstraintRecord {
+  const clean = cleanConstraint(text);
+  return {
+    id: `${source}:${hashText(clean).slice(0, 16)}`,
+    text: clean,
+    source,
+    createdAt,
+    workflowRevision,
+    transition: transitionName
+  };
+}
+
+function constraintChange(action: ConstraintAction, text: string, target: string | undefined, timestampValue: string, workflowRevision: number): WorkflowConstraintChange {
+  return {
+    source: "user",
+    action,
+    text,
+    target,
+    timestamp: timestampValue,
+    workflowRevision,
+    transition: "approve_approach"
+  };
+}
+
+function effectiveConstraintTexts(state: SequentialWorkflowState, triage: TriageOutput, config: LeanRigorConfig): string[] {
+  const constraints = state.constraints ?? initialiseWorkflowConstraints(triage, config, state.revision, "legacy_state_loaded");
+  return constraints.effective.map((constraint) => constraint.text);
+}
+
+function approvalConstraintSummary(constraints: WorkflowConstraints): string {
+  const changes = constraints.audit.filter((change) => change.transition === "approve_approach");
+  if (changes.length === 0) return "Approach approved.";
+  return `Approach approved with ${changes.length} constraint change${changes.length === 1 ? "" : "s"}.`;
+}
+
+function cleanConstraint(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function normaliseConstraint(text: string): string {
+  return cleanConstraint(text).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(the|a|an|must|should|shall|to|be|is|are)\b/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function constraintMatches(candidate: string, target: string): boolean {
+  const left = normaliseConstraint(candidate);
+  const right = normaliseConstraint(target);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left) || compatibilityConstraint(left) && compatibilityConstraint(right);
+}
+
+function compatibilityConstraint(normalised: string): boolean {
+  return /\bbackward compatibility\b|\bbackwards compatibility\b|\bbackward compatible\b|\bbackwards compatible\b/.test(normalised);
+}
+
+function uniqueRecords(records: WorkflowConstraintRecord[]): WorkflowConstraintRecord[] {
+  const seen = new Set<string>();
+  const result: WorkflowConstraintRecord[] = [];
+  for (const record of records) {
+    const key = `${record.source}:${normaliseConstraint(record.text)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(record);
+  }
+  return result;
+}
+
+function hashText(text: string): string {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+
 async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig, planningOptions?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
   if (!state.triage) throw new WorkflowStateError("Cannot plan before triage completes.");
   const planning = transition(state, "planning", "Sequential plan generation started.");
@@ -1432,6 +1636,8 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
     root: planning.root,
     triage: state.triage,
     config,
+    constraints: effectiveConstraintTexts(planning, state.triage, config ?? defaultConfig()),
+    constraintAudit: planning.constraints?.audit ?? [],
     revisionRequests: [...(planning.approach?.revisionRequests ?? []), ...(planning.plan?.revisionRequests ?? [])],
     provider: planningOptions?.provider,
     providerSelection: planningOptions?.providerSelection
@@ -1469,7 +1675,7 @@ function buildApproach(triage: TriageOutput, config: LeanRigorConfig): ApproachR
   };
 }
 
-function buildPlan(request: string, triage: TriageOutput, root: string, config?: LeanRigorConfig, options?: { revisionRequests?: ExecutionPlan["revisionRequests"] }): ExecutionPlan {
+function buildPlan(request: string, triage: TriageOutput, root: string, config?: LeanRigorConfig, options?: { revisionRequests?: ExecutionPlan["revisionRequests"]; constraints?: string[] }): ExecutionPlan {
   const mode = triage.workflow.finalMode;
   const validationCommands = defaultValidationCommands(root, mode, triage);
   const targets = triage.inspection.targets.length > 0 ? triage.inspection.targets : ["relevant implementation boundary", "nearby tests"];
@@ -1486,11 +1692,13 @@ function buildPlan(request: string, triage: TriageOutput, root: string, config?:
     summary: revisionNote
       ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})`
       : `Sequential plan for: ${request.trim()}`,
-    principles: planningPrinciples(triage),
+    principles: planningPrinciples(triage, options?.constraints),
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
   const issues = validatePlanQuality(plan, mode, config);
+  const constraintIssues = validatePlanConstraintConsistency(plan, options?.constraints ?? triage.constraints.mustNot);
+  if (constraintIssues.length > 0) throw new WorkflowStateError(`Generated plan contradicted approved constraints: ${constraintIssues.map((issue) => issue.message).join("; ")}`);
   if (issues.length > 0) throw new WorkflowStateError(`Generated plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
   return plan;
 }
@@ -1500,12 +1708,15 @@ async function generatePlan(args: {
   root: string;
   triage: TriageOutput;
   config?: LeanRigorConfig;
+  constraints?: string[];
+  constraintAudit?: WorkflowConstraintChange[];
   revisionRequests: ExecutionPlan["revisionRequests"];
   provider?: PlanningProvider;
   providerSelection?: TriageProviderSelection;
 }): Promise<PlanningRunResult> {
   const config = args.config ?? defaultConfig();
   const deterministicPlan = buildPlan(args.request, args.triage, args.root, config, {
+    constraints: args.constraints,
     revisionRequests: args.revisionRequests
   });
   return runPlanning({
@@ -1514,17 +1725,19 @@ async function generatePlan(args: {
       root: args.root,
       config,
       triage: args.triage,
+      effectiveConstraints: args.constraints ?? args.triage.constraints.mustNot,
+      constraintChanges: args.constraintAudit ?? [],
       deterministicPlan,
       revisionRequests: args.revisionRequests
     },
     provider: args.provider,
     providerSelection: args.providerSelection,
-    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config, args.revisionRequests),
+    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config, args.revisionRequests, args.constraints ?? args.triage.constraints.mustNot),
     normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics)
   });
 }
 
-function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorConfig, revisionRequests: ExecutionPlan["revisionRequests"]): ExecutionPlan {
+function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorConfig, revisionRequests: ExecutionPlan["revisionRequests"], constraints: string[]): ExecutionPlan {
   const parsedResult = modelPlanSchema.safeParse(raw);
   if (!parsedResult.success) throw new PlanningValidationError(zodDiagnostics(parsedResult.error, "schema"));
   const parsed = parsedResult.data;
@@ -1554,6 +1767,7 @@ function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorCo
   if (!checkedResult.success) throw new PlanningValidationError(zodDiagnostics(checkedResult.error, "schema"));
   const checked = checkedResult.data as ExecutionPlan;
   const diagnostics = validatePlanQualityDetailed(checked, mode, config);
+  diagnostics.push(...validatePlanConstraintConsistency(checked, constraints));
   if (diagnostics.length > 0) throw new PlanningValidationError(diagnostics);
   return checked;
 }
@@ -1593,18 +1807,67 @@ function zodDiagnostics(error: z.ZodError, stage: PlanDiagnostic["stage"]): Plan
   }));
 }
 
-function planningPrinciples(triage?: TriageOutput): string[] {
+function planningPrinciples(triage?: TriageOutput, constraints?: string[]): string[] {
   const principles = [
     "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
     "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
     "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
     "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
-    "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
+    "Phase execution is dispatched through the configured execution coordinator unless manual execution was explicitly selected."
   ];
   return unique([
     ...principles,
-    ...(triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: must not ${constraint}`)
+    ...((constraints ?? triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: ${constraint}`))
   ]);
+}
+
+function validatePlanConstraintConsistency(plan: ExecutionPlan, constraints: string[]): PlanDiagnostic[] {
+  const diagnostics: PlanDiagnostic[] = [];
+  const effective = constraints.map(cleanConstraint).filter(Boolean);
+  if (effective.length === 0) return diagnostics;
+  const planText = [
+    plan.summary,
+    ...plan.principles,
+    ...plan.phases.flatMap((phase) => [
+      phase.objective,
+      phase.rationale,
+      ...phase.acceptanceCriteria,
+      ...phase.validationCommands
+    ])
+  ].join("\n").toLowerCase();
+
+  if (effective.some(isBackwardCompatibilityNotRequired) && requiresBackwardCompatibility(planText)) {
+    diagnostics.push(planDiagnostic(
+      "quality",
+      ["plan"],
+      "constraint.contradiction.backward_compatibility",
+      "Plan contradicts the approved override that backward compatibility is not required."
+    ));
+  }
+  for (const constraint of effective) {
+    if (/tests? must be updated|tests? must be added|update tests/i.test(constraint) && !planTextIncludes(planText, ["test", "coverage", "regression"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.tests", "Plan does not reflect the approved constraint that tests must be updated."));
+    }
+    if (/all (configured )?checks must pass|all checks pass/i.test(constraint) && !planTextIncludes(planText, ["check", "validation", "typecheck", "test", "lint"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.checks", "Plan does not reflect the approved constraint that all checks must pass."));
+    }
+  }
+  return diagnostics;
+}
+
+function isBackwardCompatibilityNotRequired(constraint: string): boolean {
+  return /backward[s]? compatibility .*not required|backward-compatible .*not required|compatibility .*not required/i.test(constraint)
+    || /not require .*backward[s]? compatibility/i.test(constraint);
+}
+
+function requiresBackwardCompatibility(text: string): boolean {
+  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b/.test(text);
+  if (!mentionsCompatibility) return false;
+  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b/.test(text);
+}
+
+function planTextIncludes(text: string, terms: string[]): boolean {
+  return terms.some((term) => text.includes(term));
 }
 
 function planningRunMetadata(run: PlanningRunResult): SequentialWorkflowState["planningRun"] {

@@ -35,6 +35,22 @@ describe("Git worktree isolation and integration", () => {
     expect(preflight.baseCommit).toMatch(/[a-f0-9]{40}/);
   });
 
+  it("uses collision-resistant default workspace roots outside same-name clones", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "leanrigor-same-name-"));
+    const first = await gitRepoAt(path.join(parent, "a", "same"));
+    const second = await gitRepoAt(path.join(parent, "b", "same"));
+
+    const firstPreflight = await gitPreflight(first, defaultConfig());
+    const secondPreflight = await gitPreflight(second, defaultConfig());
+
+    expect(firstPreflight.ok).toBe(true);
+    expect(secondPreflight.ok).toBe(true);
+    expect(firstPreflight.workspaceRoot).not.toBe(secondPreflight.workspaceRoot);
+    expect(firstPreflight.workspaceRoot).toContain(".leanrigor-worktrees");
+    expect(path.relative(first, firstPreflight.workspaceRoot!)).toMatch(/^\.\./);
+    expect(path.relative(second, secondPreflight.workspaceRoot!)).toMatch(/^\.\./);
+  });
+
   it("isolates a phase workspace, integrates approved changes, and preserves the original dirty worktree", async () => {
     const root = await gitRepo();
     await writeFile(path.join(root, "README.md"), "user dirty change\n");
@@ -130,6 +146,17 @@ describe("Git worktree isolation and integration", () => {
 
 async function gitRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-git-"));
+  await initializeGitRepo(root);
+  return root;
+}
+
+async function gitRepoAt(root: string): Promise<string> {
+  await mkdirp(root);
+  await initializeGitRepo(root);
+  return root;
+}
+
+async function initializeGitRepo(root: string): Promise<void> {
   await git(root, ["init"]);
   await git(root, ["checkout", "-b", "main"]);
   await git(root, ["config", "user.name", "Test User"]);
@@ -140,7 +167,6 @@ async function gitRepo(): Promise<string> {
   await writeFile(path.join(root, "src", "shared.txt"), "base\n");
   await git(root, ["add", "."]);
   await git(root, ["commit", "-m", "initial"]);
-  return root;
 }
 
 async function workflowWithPlan(root: string, plan: ExecutionPlan): Promise<SequentialWorkflowState> {

@@ -445,7 +445,7 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.phaseProgress[0]?.objective).toBe("Implement model-backed planning for issue-specific obligations.");
   });
 
-  it("reports execution auto fallback when Claude is unavailable before dispatch", async () => {
+  it("reports execution auto provider unavailability without silent fallback", async () => {
     const repo = await tempDir("leanrigor-execution-auto-fallback-");
     const started = await run(process.execPath, [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "start", "Fix a typo in README documentation", "--provider", "deterministic", "--root", repo], {
       cwd: repo
@@ -458,10 +458,9 @@ describe("Claude marketplace plugin runtime", () => {
       env: { PATH: await pathWithoutClaude() }
     });
 
-    expect(result.code).toBe(0);
-    const status = JSON.parse(result.stdout) as { provider: string; providerFallbackReason?: string };
-    expect(status.provider).toBe("scripted");
-    expect(status.providerFallbackReason).toMatch(/Claude execution provider unavailable before dispatch/);
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toMatch(/Configured execution provider unavailable before dispatch/);
+    expect(result.stderr).toMatch(/Recovery options: retry configured provider/);
   });
 });
 

@@ -128,6 +128,7 @@ export const leanRigorConfigSchema = z.object({
     workspaceBranchPrefix: z.string().regex(/^[A-Za-z0-9._/-]+$/).default("leanrigor"),
     maxWorkspacePathLength: z.number().int().min(80).max(1024).default(220),
     internalCommitSigning: z.enum(["disabled", "git-config"]).default("disabled"),
+    dependencyBootstrap: z.enum(["block", "auto-lockfile"]).default("block"),
     workerControls: z.object({
       environment: z.enum(["bare", "safe-mode", "default"]).default("bare"),
       maxDiscoveryTurns: z.object({

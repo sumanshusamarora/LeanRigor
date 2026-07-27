@@ -23,6 +23,16 @@ export function phaseWorkerPrompt(input: PhaseExecutionInput): string {
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
     "",
+    "Workspace preparation:",
+    `- Prepared: ${input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "yes" : "no"}`,
+    input.workspacePreparation ? `- Package manager: ${input.workspacePreparation.packageManager ?? "unknown"}` : "- Package manager: unknown",
+    input.workspacePreparation ? `- Dependencies: ${input.workspacePreparation.dependencies}` : "- Dependencies: unknown",
+    input.workspacePreparation?.bootstrapCommand ? `- Bootstrap command: ${input.workspacePreparation.bootstrapCommand}` : "- Bootstrap command: none",
+    input.workspacePreparation ? `- Bootstrap result: ${input.workspacePreparation.status}` : "- Bootstrap result: unknown",
+    input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status)
+      ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result."
+      : undefined,
+    "",
     "Constraints:",
     ...input.safetyInstructions.map((instruction) => `- ${instruction}`),
     `- Allowed write scope is limited to the assigned workspace and declared write areas.`,

@@ -670,7 +670,8 @@ function sanitizeRefSegment(value: string): string {
 
 function resolveWorkspaceRoot(repositoryRoot: string, config: LeanRigorConfig): string {
   if (config.execution.workspaceRoot) return path.resolve(repositoryRoot, config.execution.workspaceRoot);
-  return path.join(path.dirname(repositoryRoot), ".leanrigor-worktrees", path.basename(repositoryRoot));
+  const identity = createHash("sha256").update(path.resolve(repositoryRoot)).digest("hex").slice(0, 12);
+  return path.join(path.dirname(repositoryRoot), ".leanrigor-worktrees", `${path.basename(repositoryRoot)}-${identity}`);
 }
 
 async function writeOwnershipMetadata(workflowRoot: string, metadata: OwnershipMetadata): Promise<void> {

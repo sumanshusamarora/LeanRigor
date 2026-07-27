@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path20 = __require("node:path");
+    var path21 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path20.resolve(baseDir, baseName);
+          const localBin = path21.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path20.extname(baseName))) return void 0;
+          if (sourceExt.includes(path21.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path20.resolve(
-            path20.dirname(resolvedScriptPath),
+          executableDir = path21.resolve(
+            path21.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path20.basename(
+            const legacyName = path21.basename(
               this._scriptPath,
-              path20.extname(this._scriptPath)
+              path21.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path20.extname(executableFile));
+        launchWithNode = sourceExt.includes(path21.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path20.basename(filename, path20.extname(filename));
+        this._name = path21.basename(filename, path21.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path21) {
-        if (path21 === void 0) return this._executableDir;
-        this._executableDir = path21;
+      executableDir(path22) {
+        if (path22 === void 0) return this._executableDir;
+        this._executableDir = path22;
         return this;
       }
       /**
@@ -3864,10 +3864,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path20) {
-  if (!path20)
+function getElementAtPath(obj, path21) {
+  if (!path21)
     return obj;
-  return path20.reduce((acc, key) => acc?.[key], obj);
+  return path21.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4195,11 +4195,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path20, issues) {
+function prefixIssues(path21, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path20);
+    iss.path.unshift(path21);
     return iss;
   });
 }
@@ -4416,16 +4416,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path20 = []) => {
+  const processError = (error52, path21 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path20, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path21, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path20, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path20, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
       } else {
-        const fullpath = [...path20, ...issue2.path];
+        const fullpath = [...path21, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4452,17 +4452,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path20 = []) => {
+  const processError = (error52, path21 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path20, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path21, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path20, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path20, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path21, ...issue2.path]);
       } else {
-        const fullpath = [...path20, ...issue2.path];
+        const fullpath = [...path21, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4494,8 +4494,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path20 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path20) {
+  const path21 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path21) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17925,13 +17925,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path20 = ref.slice(1).split("/").filter(Boolean);
-  if (path20.length === 0) {
+  const path21 = ref.slice(1).split("/").filter(Boolean);
+  if (path21.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path20[0] === defsKey) {
-    const key = path20[1];
+  if (path21[0] === defsKey) {
+    const key = path21[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18831,6 +18831,7 @@ var init_schema = __esm({
         workspaceBranchPrefix: external_exports.string().regex(/^[A-Za-z0-9._/-]+$/).default("leanrigor"),
         maxWorkspacePathLength: external_exports.number().int().min(80).max(1024).default(220),
         internalCommitSigning: external_exports.enum(["disabled", "git-config"]).default("disabled"),
+        dependencyBootstrap: external_exports.enum(["block", "auto-lockfile"]).default("block"),
         workerControls: external_exports.object({
           environment: external_exports.enum(["bare", "safe-mode", "default"]).default("bare"),
           maxDiscoveryTurns: external_exports.object({
@@ -19605,8 +19606,8 @@ var {
 } = import_index.default;
 
 // src/cli/index.ts
-import { readFile as readFile14 } from "node:fs/promises";
-import path19 from "node:path";
+import { readFile as readFile15 } from "node:fs/promises";
+import path20 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -20879,11 +20880,16 @@ function buildPlanningPrompt(input) {
     "- A single architectural boundary is determined from expectedWriteAreas, not from words in the objective. Keep each phase within one production owner such as src/core, src/config, src/cli, or one adapter unless dependencies make the boundary explicit.",
     "- Migration, security, schema, compatibility, failure, concurrency, recovery, contract, and regression may be obligation categories. These words do not by themselves mean a phase mixes boundaries.",
     "- Every phase must include specific acceptance criteria, at least one validation command or check expectation, and bounded expected write areas.",
-    "- Preserve approved constraints from triage.constraints.mustNot and revisionRequests. Do not reintroduce assumptions or scope the user rejected.",
+    "- Preserve final approved effective constraints exactly. Do not reintroduce removed assumptions or scope the user rejected.",
+    "- If an effective constraint says backward compatibility is not required, do not describe any phase as backward-compatible or compatibility-preserving.",
     "User request:",
     input.request,
     "Triage output:",
     JSON.stringify(input.triage, null, 2),
+    "Final approved effective constraints:",
+    JSON.stringify(input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
+    "Constraint change audit:",
+    JSON.stringify(input.constraintChanges ?? [], null, 2),
     "Deterministic baseline plan:",
     JSON.stringify(input.deterministicPlan, null, 2)
   ].join("\n\n");
@@ -20902,6 +20908,8 @@ function buildPlanningRepairPrompt(input, request) {
     input.request,
     "Triage constraints and context:",
     JSON.stringify(input.triage, null, 2),
+    "Final approved effective constraints:",
+    JSON.stringify(input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
     "Diagnostics to repair:",
     JSON.stringify(request.diagnostics, null, 2),
     "Invalid plan:",
@@ -22289,18 +22297,18 @@ async function applyApprovedPhaseToIntegration(state, phaseId) {
   if (missingDependencies.length > 0) {
     throw new GitWorkspaceError("integration_order_violation", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
-  const evidence = phase2.completion.gitEvidence;
+  const evidence2 = phase2.completion.gitEvidence;
   const workspace = state.git.phaseWorkspaces[phaseId];
-  if (!workspace || workspace.path !== evidence.workspacePath) throw new GitWorkspaceError("phase_workspace_evidence_mismatch", "Phase workspace does not match approved Git evidence.");
-  if (evidence.validationCommitOrPatch) {
+  if (!workspace || workspace.path !== evidence2.workspacePath) throw new GitWorkspaceError("phase_workspace_evidence_mismatch", "Phase workspace does not match approved Git evidence.");
+  if (evidence2.validationCommitOrPatch) {
     const actual = (await git(workspace.path, ["rev-parse", "HEAD"])).trim();
-    if (actual !== evidence.validationCommitOrPatch) throw new GitWorkspaceError("phase_diff_identity_mismatch", "Phase workspace HEAD no longer matches approved Git evidence.");
+    if (actual !== evidence2.validationCommitOrPatch) throw new GitWorkspaceError("phase_diff_identity_mismatch", "Phase workspace HEAD no longer matches approved Git evidence.");
   }
   await requireCleanIntegrationWorkspace(state.git);
   const next = structuredClone(state);
   const gitState = next.git;
   gitState.integration.status = "integration_pending";
-  if (!evidence.validationCommitOrPatch) {
+  if (!evidence2.validationCommitOrPatch) {
     gitState.integration.integratedPhaseIds = stableUnique([...gitState.integration.integratedPhaseIds, phaseId]);
     gitState.phaseWorkspaces[phaseId] = { ...gitState.phaseWorkspaces[phaseId], status: "integrated", updatedAt: timestamp() };
     gitState.integration.status = "ready";
@@ -22308,7 +22316,7 @@ async function applyApprovedPhaseToIntegration(state, phaseId) {
     return { state: next, result: { ok: true, code: "integrated", phaseId, integrationHead: gitState.integration.headCommit } };
   }
   try {
-    await git(gitState.integration.path, ["cherry-pick", evidence.validationCommitOrPatch], { maxBuffer: MAX_GIT_OUTPUT });
+    await git(gitState.integration.path, ["cherry-pick", evidence2.validationCommitOrPatch], { maxBuffer: MAX_GIT_OUTPUT });
   } catch {
     const conflictingFiles = splitLines(await git(gitState.integration.path, ["diff", "--name-only", "--diff-filter=U"]).catch(() => "")).sort();
     gitState.integration.status = "blocked";
@@ -22366,9 +22374,9 @@ async function runIntegrationValidation(state) {
   await requireCleanIntegrationWorkspace(state.git);
   const startedAt = timestamp();
   const commands = stableUnique(state.plan.phases.flatMap((phase2) => phase2.validationCommands));
-  const evidence = [];
+  const evidence2 = [];
   if (commands.length === 0) {
-    evidence.push({
+    evidence2.push({
       command: "combined validation",
       exitStatus: null,
       result: "No workflow-level validation commands were declared.",
@@ -22380,7 +22388,7 @@ async function runIntegrationValidation(state) {
   } else {
     for (const command of commands) {
       const result = await runShellCommand(command, state.git.integration.path);
-      evidence.push({
+      evidence2.push({
         command,
         exitStatus: result.exitStatus,
         result: result.output.slice(0, 4e3),
@@ -22390,12 +22398,12 @@ async function runIntegrationValidation(state) {
       });
     }
   }
-  const failed = evidence.some((item) => item.status === "failed");
-  const skippedOnly = evidence.length > 0 && evidence.every((item) => item.status === "skipped");
+  const failed = evidence2.some((item) => item.status === "failed");
+  const skippedOnly = evidence2.length > 0 && evidence2.every((item) => item.status === "skipped");
   const next = structuredClone(state);
   next.git.integrationValidation = {
     integrationCommit: next.git.integration.headCommit,
-    commands: evidence,
+    commands: evidence2,
     startedAt,
     completedAt: timestamp(),
     status: failed ? "failed" : skippedOnly ? "skipped" : "passed"
@@ -22453,9 +22461,9 @@ async function recoverWorkspaceState(state) {
   const needsReview = [];
   if (!next.git) return { workflowId: next.id, facts: ["No Git workspace state is persisted."], needsReview, state: next };
   for (const workspace of Object.values(next.git.phaseWorkspaces)) {
-    const exists = await pathExists(workspace.path);
-    const owned = exists && await ownedWorktreeExists(workspace.path, next.id, "phase", workspace.phaseId);
-    if (!exists) {
+    const exists2 = await pathExists(workspace.path);
+    const owned = exists2 && await ownedWorktreeExists(workspace.path, next.id, "phase", workspace.phaseId);
+    if (!exists2) {
       facts.push(`Phase workspace missing: ${workspace.phaseId}`);
       workspace.status = "abandoned";
       needsReview.push(workspace.phaseId);
@@ -22502,9 +22510,9 @@ async function addWorktree(repositoryRoot, worktreePath, branch, startPoint, cre
   await git(repositoryRoot, args, { maxBuffer: MAX_GIT_OUTPUT });
 }
 async function ensureBranchAvailable(repositoryRoot, branch, alreadyOwned) {
-  const exists = await git(repositoryRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).then(() => true).catch(() => false);
-  if (exists && !alreadyOwned) throw new GitWorkspaceError("branch_collision", `Branch already exists and is not recorded as LeanRigor-owned: ${branch}`, { branch });
-  return exists;
+  const exists2 = await git(repositoryRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).then(() => true).catch(() => false);
+  if (exists2 && !alreadyOwned) throw new GitWorkspaceError("branch_collision", `Branch already exists and is not recorded as LeanRigor-owned: ${branch}`, { branch });
+  return exists2;
 }
 async function ensurePathAvailable(targetPath, workflowId2, workspaceType, phaseId) {
   if (!await pathExists(targetPath)) return;
@@ -22529,7 +22537,8 @@ function sanitizeRefSegment(value) {
 }
 function resolveWorkspaceRoot(repositoryRoot, config2) {
   if (config2.execution.workspaceRoot) return path12.resolve(repositoryRoot, config2.execution.workspaceRoot);
-  return path12.join(path12.dirname(repositoryRoot), ".leanrigor-worktrees", path12.basename(repositoryRoot));
+  const identity = createHash2("sha256").update(path12.resolve(repositoryRoot)).digest("hex").slice(0, 12);
+  return path12.join(path12.dirname(repositoryRoot), ".leanrigor-worktrees", `${path12.basename(repositoryRoot)}-${identity}`);
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
   const dir = path12.join(workflowRoot, ".leanrigor-owned-worktrees");
@@ -23799,6 +23808,8 @@ var modelProfileSchema = external_exports.enum(["small", "medium", "large", "inh
 var criterionStatusSchema = external_exports.enum(["met", "not_met", "uncertain", "not_applicable"]);
 var completionDecisionSchema = external_exports.enum(["completed", "needs_repair", "needs_review", "needs_replan", "blocked"]);
 var phaseStatusSchema = external_exports.enum(["planned", "ready", "leased", "running", "completion_pending", "completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
+var constraintSourceSchema = external_exports.enum(["policy", "triage", "user"]);
+var constraintActionSchema = external_exports.enum(["add", "remove", "override"]);
 var triageSchema = external_exports.object({
   version: external_exports.literal(1),
   task: external_exports.object({
@@ -23909,7 +23920,25 @@ var phaseWorkspaceSchema = external_exports.object({
   baseCommit: external_exports.string().min(1),
   createdAt: external_exports.string(),
   updatedAt: external_exports.string(),
-  status: external_exports.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"])
+  status: external_exports.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"]),
+  preparation: external_exports.object({
+    status: external_exports.enum(["available", "prepared", "blocked", "failed"]),
+    packageManager: external_exports.enum(["npm", "pnpm", "yarn", "bun", "none", "unknown"]).optional(),
+    dependencies: external_exports.enum(["available", "missing", "not_applicable", "unknown"]),
+    bootstrapRequired: external_exports.boolean(),
+    bootstrapCommand: external_exports.string().optional(),
+    commandRisk: external_exports.object({
+      localWrite: external_exports.boolean(),
+      network: external_exports.boolean(),
+      lifecycleScripts: external_exports.boolean(),
+      lockfilePreserving: external_exports.boolean(),
+      manifestMutationExpected: external_exports.boolean()
+    }),
+    approvalRequired: external_exports.boolean(),
+    reason: external_exports.string(),
+    checkedAt: external_exports.string(),
+    evidence: external_exports.array(external_exports.string())
+  }).optional()
 });
 var phaseSchema = external_exports.object({
   id: external_exports.string().min(1),
@@ -24052,6 +24081,32 @@ var workflowExecutionStateSchema = external_exports.object({
   coordinatorId: external_exports.string().optional(),
   records: external_exports.record(external_exports.string(), phaseExecutionRecordSchema).default({})
 }).default({ records: {} });
+var constraintRecordSchema = external_exports.object({
+  id: external_exports.string().min(1),
+  text: external_exports.string().min(1),
+  source: constraintSourceSchema,
+  createdAt: external_exports.string(),
+  workflowRevision: external_exports.number().int().min(0),
+  transition: external_exports.string().min(1)
+});
+var constraintChangeSchema = external_exports.object({
+  source: constraintSourceSchema,
+  action: constraintActionSchema,
+  text: external_exports.string().min(1),
+  target: external_exports.string().min(1).optional(),
+  timestamp: external_exports.string(),
+  workflowRevision: external_exports.number().int().min(0),
+  transition: external_exports.string().min(1)
+});
+var workflowConstraintsSchema = external_exports.object({
+  original: external_exports.array(constraintRecordSchema).default([]),
+  policy: external_exports.array(constraintRecordSchema).default([]),
+  userAdditions: external_exports.array(constraintRecordSchema).default([]),
+  userRemovals: external_exports.array(constraintChangeSchema).default([]),
+  userOverrides: external_exports.array(constraintChangeSchema).default([]),
+  effective: external_exports.array(constraintRecordSchema).default([]),
+  audit: external_exports.array(constraintChangeSchema).default([])
+});
 var workflowEventSchema = external_exports.object({
   eventId: external_exports.string().min(1),
   timestamp: external_exports.string(),
@@ -24121,6 +24176,7 @@ var workflowStateSchema = external_exports.object({
     fallbackReason: external_exports.string().optional(),
     warnings: external_exports.array(external_exports.string())
   }).optional(),
+  constraints: workflowConstraintsSchema.optional(),
   planningRun: external_exports.object({
     source: external_exports.enum(["model", "deterministic-fallback"]),
     provider: external_exports.string(),
@@ -24253,13 +24309,14 @@ Clarification answer: ${args.answer}`,
     return next;
   }, { ...args.mutation, operation: "answer_clarification" });
 }
-async function approveApproach(root, workflowId2, config2, mutation, planning) {
+async function approveApproach(root, workflowId2, config2, mutation, planning, constraintChanges) {
   return updateFlowState(root, workflowId2, async (state) => {
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
+    next.constraints = applyApprovalConstraintChanges(next, constraintChanges);
     next.approach = { ...state.approach, approved: true };
-    appendEvent(next, "approach_approved", "Approach approved.");
+    appendEvent(next, "approach_approved", approvalConstraintSummary(next.constraints));
     return withPlan(next, config2, planning);
   }, { ...mutation, operation: "approve_approach" });
 }
@@ -24300,6 +24357,8 @@ async function revisePlan(root, workflowId2, feedback, config2, mutation, planni
       root: next.root,
       triage,
       config: config2,
+      constraints: effectiveConstraintTexts(next, triage, config2 ?? defaultConfig()),
+      constraintAudit: next.constraints?.audit ?? [],
       revisionRequests,
       provider: planning?.provider,
       providerSelection: planning?.providerSelection
@@ -24358,10 +24417,10 @@ async function completePhase(args) {
     phase2.status = "completion_pending";
     phase2.filesChanged = unique3([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
     phase2.commandsRun = [...phase2.commandsRun, ...args.commandsRun ?? []];
-    for (const evidence of args.validation ?? []) {
-      validateWorkflowEvidence(evidence);
-      next.validation.push(evidence);
-      phase2.validationResults.push(evidence);
+    for (const evidence2 of args.validation ?? []) {
+      validateWorkflowEvidence(evidence2);
+      next.validation.push(evidence2);
+      phase2.validationResults.push(evidence2);
     }
     const detectedDeviations = detectScopeDeviations(phase2, args.config);
     phase2.scopeDeviations = unique3([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
@@ -24494,7 +24553,7 @@ async function repairPhase(args) {
 async function recordValidation(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing", "validating", "reviewing"]);
-    const evidence = {
+    const evidence2 = {
       phaseId: args.phaseId,
       command: args.command,
       exitStatus: args.skipped ? null : args.exitStatus ?? 0,
@@ -24504,12 +24563,12 @@ async function recordValidation(args) {
       skippedReason: args.skippedReason,
       timestamp: timestamp2()
     };
-    validateWorkflowEvidence(evidence);
+    validateWorkflowEvidence(evidence2);
     const next = structuredClone(state);
-    next.validation.push(evidence);
+    next.validation.push(evidence2);
     const phase2 = args.phaseId && next.plan ? phaseById2(next.plan, args.phaseId) : void 0;
-    if (phase2) phase2.validationResults.push(evidence);
-    appendEvent(next, "validation_recorded", `Validation recorded: ${evidence.command} (${evidence.status}).`, evidence.phaseId);
+    if (phase2) phase2.validationResults.push(evidence2);
+    appendEvent(next, "validation_recorded", `Validation recorded: ${evidence2.command} (${evidence2.status}).`, evidence2.phaseId);
     return next;
   }, { ...args.mutation, operation: "record_validation" });
 }
@@ -24847,13 +24906,10 @@ function nextActions(state) {
       if (review) return [`leanrigor flow phase-status ${id} ${review.id} --root "${state.root}"`, `leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       if (replan) return [`leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`];
       return active ? [
-        ...state.git?.phaseWorkspaces[active.id] ? [] : [`leanrigor flow workspace-create-phase ${id} ${active.id} --owner "${state.phaseLeases[active.id]?.ownerId ?? DEFAULT_OWNER_ID}" --root "${state.root}"`],
-        `leanrigor flow record-validation ${id} --phase ${active.id} --command "<command>" --exit 0 --result "<summary>" --root "${state.root}"`,
-        `leanrigor flow phase-complete ${id} ${active.id} --evidence-file "<path>" --root "${state.root}"`
+        `leanrigor flow execution-poll ${id} --provider auto --root "${state.root}"`
       ] : [
-        ...state.git ? [] : [`leanrigor flow workspace-init ${id} --root "${state.root}"`],
-        `leanrigor flow ready ${id} --root "${state.root}"`,
-        `leanrigor flow phase-start ${id} --root "${state.root}"`
+        `leanrigor flow execute-next ${id} --provider auto --root "${state.root}"`,
+        `leanrigor flow execution-status ${id} --provider auto --root "${state.root}"`
       ];
     }
     case "validating":
@@ -24889,6 +24945,7 @@ async function applyTriageResult(state, triageRun, config2, options = {}) {
     fallbackReason: triageRun.fallbackReason,
     warnings: triageRun.warnings
   };
+  next.constraints = initialiseWorkflowConstraints(triage, config2, next.revision, "triage_completed");
   next.mode = triage.workflow.finalMode;
   next.blockers = [];
   appendEvent(next, "triage_completed", `Triage completed in ${next.mode} mode.`);
@@ -24910,6 +24967,125 @@ function enforceOneClarification(triage, clarificationAlreadyAnswered) {
   next.assumptions = unique3([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
   return next;
 }
+function initialiseWorkflowConstraints(triage, config2, workflowRevision, transitionName) {
+  const createdAt = timestamp2();
+  const original = unique3(triage.constraints.mustNot).map((text) => constraintRecord(text, "triage", createdAt, workflowRevision, transitionName));
+  const policy = unique3(config2.instructions).map((text) => constraintRecord(text, "policy", createdAt, workflowRevision, transitionName));
+  return recomputeConstraints({
+    original,
+    policy,
+    userAdditions: [],
+    userRemovals: [],
+    userOverrides: [],
+    audit: [],
+    effective: []
+  });
+}
+function applyApprovalConstraintChanges(state, changes) {
+  if (!state.triage) throw new WorkflowStateError("Cannot approve approach before triage completes.");
+  const base = state.constraints ?? initialiseWorkflowConstraints(state.triage, defaultConfig(), state.revision, "legacy_state_loaded");
+  const next = structuredClone(base);
+  const now = timestamp2();
+  const revision = state.revision;
+  for (const text of changes?.remove ?? []) {
+    const clean = cleanConstraint(text);
+    if (!clean) throw new WorkflowStateError("Cannot remove an empty constraint.");
+    const change = constraintChange("remove", clean, void 0, now, revision);
+    next.userRemovals.push(change);
+    next.audit.push(change);
+  }
+  for (const override of changes?.override ?? []) {
+    const target = cleanConstraint(override.target);
+    const text = cleanConstraint(override.text);
+    if (!target || !text) throw new WorkflowStateError("Constraint overrides require both target and replacement text.");
+    const change = constraintChange("override", text, target, now, revision);
+    next.userOverrides.push(change);
+    next.userAdditions.push(constraintRecord(text, "user", now, revision, "approve_approach"));
+    next.audit.push(change);
+  }
+  for (const text of changes?.add ?? []) {
+    const clean = cleanConstraint(text);
+    if (!clean) throw new WorkflowStateError("Cannot add an empty constraint.");
+    const change = constraintChange("add", clean, void 0, now, revision);
+    next.userAdditions.push(constraintRecord(clean, "user", now, revision, "approve_approach"));
+    next.audit.push(change);
+  }
+  return recomputeConstraints(next);
+}
+function recomputeConstraints(model) {
+  const removals = model.userRemovals.map((change) => change.text);
+  const overrideTargets = model.userOverrides.map((change) => change.target).filter((target) => Boolean(target));
+  const effective = uniqueRecords([...model.policy, ...model.original, ...model.userAdditions]).filter((record2) => record2.source === "user" || !removals.some((target) => constraintMatches(record2.text, target))).filter((record2) => record2.source === "user" || !overrideTargets.some((target) => constraintMatches(record2.text, target)));
+  return {
+    ...model,
+    original: uniqueRecords(model.original),
+    policy: uniqueRecords(model.policy),
+    userAdditions: uniqueRecords(model.userAdditions),
+    effective: uniqueRecords(effective)
+  };
+}
+function constraintRecord(text, source, createdAt, workflowRevision, transitionName) {
+  const clean = cleanConstraint(text);
+  return {
+    id: `${source}:${hashText(clean).slice(0, 16)}`,
+    text: clean,
+    source,
+    createdAt,
+    workflowRevision,
+    transition: transitionName
+  };
+}
+function constraintChange(action, text, target, timestampValue, workflowRevision) {
+  return {
+    source: "user",
+    action,
+    text,
+    target,
+    timestamp: timestampValue,
+    workflowRevision,
+    transition: "approve_approach"
+  };
+}
+function effectiveConstraintTexts(state, triage, config2) {
+  const constraints = state.constraints ?? initialiseWorkflowConstraints(triage, config2, state.revision, "legacy_state_loaded");
+  return constraints.effective.map((constraint) => constraint.text);
+}
+function approvalConstraintSummary(constraints) {
+  const changes = constraints.audit.filter((change) => change.transition === "approve_approach");
+  if (changes.length === 0) return "Approach approved.";
+  return `Approach approved with ${changes.length} constraint change${changes.length === 1 ? "" : "s"}.`;
+}
+function cleanConstraint(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+function normaliseConstraint(text) {
+  return cleanConstraint(text).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(the|a|an|must|should|shall|to|be|is|are)\b/g, " ").replace(/\s+/g, " ").trim();
+}
+function constraintMatches(candidate, target) {
+  const left = normaliseConstraint(candidate);
+  const right = normaliseConstraint(target);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left) || compatibilityConstraint(left) && compatibilityConstraint(right);
+}
+function compatibilityConstraint(normalised) {
+  return /\bbackward compatibility\b|\bbackwards compatibility\b|\bbackward compatible\b|\bbackwards compatible\b/.test(normalised);
+}
+function uniqueRecords(records) {
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const record2 of records) {
+    const key = `${record2.source}:${normaliseConstraint(record2.text)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(record2);
+  }
+  return result;
+}
+function hashText(text) {
+  let hash2 = 0;
+  for (let i = 0; i < text.length; i += 1) hash2 = hash2 * 31 + text.charCodeAt(i) >>> 0;
+  return hash2.toString(16).padStart(8, "0");
+}
 async function withPlan(state, config2, planningOptions) {
   if (!state.triage) throw new WorkflowStateError("Cannot plan before triage completes.");
   const planning = transition(state, "planning", "Sequential plan generation started.");
@@ -24918,6 +25094,8 @@ async function withPlan(state, config2, planningOptions) {
     root: planning.root,
     triage: state.triage,
     config: config2,
+    constraints: effectiveConstraintTexts(planning, state.triage, config2 ?? defaultConfig()),
+    constraintAudit: planning.constraints?.audit ?? [],
     revisionRequests: [...planning.approach?.revisionRequests ?? [], ...planning.plan?.revisionRequests ?? []],
     provider: planningOptions?.provider,
     providerSelection: planningOptions?.providerSelection
@@ -24955,17 +25133,20 @@ function buildPlan(request, triage, root, config2, options) {
   const plan = {
     version: 1,
     summary: revisionNote ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})` : `Sequential plan for: ${request.trim()}`,
-    principles: planningPrinciples(triage),
+    principles: planningPrinciples(triage, options?.constraints),
     phases,
     revisionRequests: options?.revisionRequests ?? []
   };
   const issues = validatePlanQuality(plan, mode2, config2);
+  const constraintIssues = validatePlanConstraintConsistency(plan, options?.constraints ?? triage.constraints.mustNot);
+  if (constraintIssues.length > 0) throw new WorkflowStateError(`Generated plan contradicted approved constraints: ${constraintIssues.map((issue2) => issue2.message).join("; ")}`);
   if (issues.length > 0) throw new WorkflowStateError(`Generated plan did not satisfy phase-sizing rules: ${issues.join("; ")}`);
   return plan;
 }
 async function generatePlan(args) {
   const config2 = args.config ?? defaultConfig();
   const deterministicPlan = buildPlan(args.request, args.triage, args.root, config2, {
+    constraints: args.constraints,
     revisionRequests: args.revisionRequests
   });
   return runPlanning({
@@ -24974,16 +25155,18 @@ async function generatePlan(args) {
       root: args.root,
       config: config2,
       triage: args.triage,
+      effectiveConstraints: args.constraints ?? args.triage.constraints.mustNot,
+      constraintChanges: args.constraintAudit ?? [],
       deterministicPlan,
       revisionRequests: args.revisionRequests
     },
     provider: args.provider,
     providerSelection: args.providerSelection,
-    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config2, args.revisionRequests),
+    validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config2, args.revisionRequests, args.constraints ?? args.triage.constraints.mustNot),
     normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics)
   });
 }
-function validateModelPlan(raw, mode2, config2, revisionRequests) {
+function validateModelPlan(raw, mode2, config2, revisionRequests, constraints) {
   const parsedResult = modelPlanSchema.safeParse(raw);
   if (!parsedResult.success) throw new PlanningValidationError(zodDiagnostics(parsedResult.error, "schema"));
   const parsed = parsedResult.data;
@@ -25013,6 +25196,7 @@ function validateModelPlan(raw, mode2, config2, revisionRequests) {
   if (!checkedResult.success) throw new PlanningValidationError(zodDiagnostics(checkedResult.error, "schema"));
   const checked = checkedResult.data;
   const diagnostics = validatePlanQualityDetailed(checked, mode2, config2);
+  diagnostics.push(...validatePlanConstraintConsistency(checked, constraints));
   if (diagnostics.length > 0) throw new PlanningValidationError(diagnostics);
   return checked;
 }
@@ -25049,18 +25233,61 @@ function zodDiagnostics(error51, stage) {
     message: issue2.message
   }));
 }
-function planningPrinciples(triage) {
+function planningPrinciples(triage, constraints) {
   const principles = [
     "Execute one phase at a time; do not unlock a later phase until dependencies complete.",
     "Keep phases as small functional outcomes with one objective, a deliverable, criteria, bounded expected areas, and validation expectations.",
     "Run or explicitly skip declared validation, then submit criterion evidence for the completion gate.",
     "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
-    "Claude Code performs edits in the active coding session; LeanRigor persists state and gates."
+    "Phase execution is dispatched through the configured execution coordinator unless manual execution was explicitly selected."
   ];
   return unique3([
     ...principles,
-    ...(triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: must not ${constraint}`)
+    ...(constraints ?? triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: ${constraint}`)
   ]);
+}
+function validatePlanConstraintConsistency(plan, constraints) {
+  const diagnostics = [];
+  const effective = constraints.map(cleanConstraint).filter(Boolean);
+  if (effective.length === 0) return diagnostics;
+  const planText = [
+    plan.summary,
+    ...plan.principles,
+    ...plan.phases.flatMap((phase2) => [
+      phase2.objective,
+      phase2.rationale,
+      ...phase2.acceptanceCriteria,
+      ...phase2.validationCommands
+    ])
+  ].join("\n").toLowerCase();
+  if (effective.some(isBackwardCompatibilityNotRequired) && requiresBackwardCompatibility(planText)) {
+    diagnostics.push(planDiagnostic(
+      "quality",
+      ["plan"],
+      "constraint.contradiction.backward_compatibility",
+      "Plan contradicts the approved override that backward compatibility is not required."
+    ));
+  }
+  for (const constraint of effective) {
+    if (/tests? must be updated|tests? must be added|update tests/i.test(constraint) && !planTextIncludes(planText, ["test", "coverage", "regression"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.tests", "Plan does not reflect the approved constraint that tests must be updated."));
+    }
+    if (/all (configured )?checks must pass|all checks pass/i.test(constraint) && !planTextIncludes(planText, ["check", "validation", "typecheck", "test", "lint"])) {
+      diagnostics.push(planDiagnostic("quality", ["plan"], "constraint.missing.checks", "Plan does not reflect the approved constraint that all checks must pass."));
+    }
+  }
+  return diagnostics;
+}
+function isBackwardCompatibilityNotRequired(constraint) {
+  return /backward[s]? compatibility .*not required|backward-compatible .*not required|compatibility .*not required/i.test(constraint) || /not require .*backward[s]? compatibility/i.test(constraint);
+}
+function requiresBackwardCompatibility(text) {
+  const mentionsCompatibility = /\bbackward-compatible\b|\bbackwards-compatible\b|\bbackward compatibility\b|\bbackwards compatibility\b/.test(text);
+  if (!mentionsCompatibility) return false;
+  return !/\bnot required\b|\bnot needed\b|\bnot necessary\b|\bno backward[s]? compatibility\b/.test(text);
+}
+function planTextIncludes(text, terms) {
+  return terms.some((term) => text.includes(term));
 }
 function planningRunMetadata(run) {
   return {
@@ -25472,24 +25699,24 @@ function normaliseCriteria(phase2, supplied) {
 }
 function summarisePhaseValidation(phase2, mode2, config2) {
   const activeRepair = phase2.repairAttempts.find((attempt) => !attempt.outcome);
-  const commands = activeRepair ? phase2.validationResults.filter((evidence) => evidence.timestamp >= activeRepair.timestamp) : phase2.validationResults;
-  const skipped = commands.filter((evidence) => evidence.skipped).map((evidence) => ({
-    command: evidence.command,
-    reason: evidence.skippedReason ?? "No reason recorded."
+  const commands = activeRepair ? phase2.validationResults.filter((evidence2) => evidence2.timestamp >= activeRepair.timestamp) : phase2.validationResults;
+  const skipped = commands.filter((evidence2) => evidence2.skipped).map((evidence2) => ({
+    command: evidence2.command,
+    reason: evidence2.skippedReason ?? "No reason recorded."
   }));
-  if (commands.some((evidence) => evidence.status === "failed" || (evidence.exitStatus ?? 0) !== 0 && !evidence.skipped)) {
+  if (commands.some((evidence2) => evidence2.status === "failed" || (evidence2.exitStatus ?? 0) !== 0 && !evidence2.skipped)) {
     return { status: "failed", commands, skipped };
   }
   const expected = phase2.validationCommands;
-  const missing = expected.filter((command) => !commands.some((evidence) => sameCommand(evidence.command, command)));
+  const missing = expected.filter((command) => !commands.some((evidence2) => sameCommand(evidence2.command, command)));
   if (commands.length === 0 || missing.length > 0) {
     if (!gateRequiresValidation(config2)) return { status: "passed", commands, skipped };
     return { status: "missing", commands, skipped };
   }
-  if (commands.every((evidence) => evidence.status === "skipped")) {
+  if (commands.every((evidence2) => evidence2.status === "skipped")) {
     return { status: allowSkippedValidation(mode2, config2) ? "skipped" : "failed", commands, skipped };
   }
-  if (commands.some((evidence) => evidence.status === "skipped" && !allowSkippedValidation(mode2, config2))) {
+  if (commands.some((evidence2) => evidence2.status === "skipped" && !allowSkippedValidation(mode2, config2))) {
     return { status: "failed", commands, skipped };
   }
   return { status: "passed", commands, skipped };
@@ -25626,11 +25853,11 @@ function selectStartablePhase(state, phaseId) {
 function phaseById2(plan, id) {
   return plan.phases.find((phase2) => phase2.id === id);
 }
-function validateWorkflowEvidence(evidence) {
-  validationEvidenceSchema.parse(evidence);
+function validateWorkflowEvidence(evidence2) {
+  validationEvidenceSchema.parse(evidence2);
 }
 function hasValidationEvidence(state) {
-  return state.validation.some((evidence) => evidence.status === "passed" || evidence.status === "skipped");
+  return state.validation.some((evidence2) => evidence2.status === "passed" || evidence2.status === "skipped");
 }
 function canSkipApproachGate(triage) {
   return triage.workflow.finalMode === "fast" && triage.assessment.ambiguity === "low" && triage.assessment.blastRadius === "low" && triage.assessment.architecturalImpact === "low" && triage.assessment.securityRisk === "none" && triage.assessment.dataIntegrityRisk === "none" && triage.assessment.operationalRisk === "none";
@@ -25875,7 +26102,7 @@ function workflowNextSummary(state) {
       summary: {
         task: state.triage?.task,
         assessment: state.triage?.assessment,
-        constraints: state.triage?.constraints,
+        constraints: state.constraints ?? state.triage?.constraints,
         escalationReasons: state.triage?.escalationReasons ?? [],
         assumptions: state.triage?.assumptions ?? [],
         warnings: state.triageRun?.warnings ?? [],
@@ -25910,7 +26137,15 @@ function workflowNextSummary(state) {
           status: candidate.status,
           validation: candidate.validationCommands
         })) ?? [],
-        validation: unique4(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? [])
+        validation: unique4(state.plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+        approvedConstraints: state.constraints?.effective.map((constraint) => ({ text: constraint.text, source: constraint.source })) ?? state.triage?.constraints.mustNot ?? [],
+        approvedOverrides: state.constraints?.userOverrides ?? [],
+        execution: {
+          provider: "auto",
+          workspace: "isolated phase worktree",
+          manualExecution: "not selected",
+          implementationStarted: false
+        }
       }
     };
   }
@@ -25945,7 +26180,7 @@ function workflowNextSummary(state) {
       pendingAction: "Run the final integrated review and record the result.",
       allowedIntents: ["continue", "show status", "cancel"],
       summary: {
-        validation: state.validation.map((evidence) => ({ command: evidence.command, status: evidence.status, result: evidence.result })),
+        validation: state.validation.map((evidence2) => ({ command: evidence2.command, status: evidence2.status, result: evidence2.result })),
         review: state.review
       }
     };
@@ -26147,6 +26382,14 @@ function phaseWorkerPrompt(input) {
     "",
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
+    "",
+    "Workspace preparation:",
+    `- Prepared: ${input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "yes" : "no"}`,
+    input.workspacePreparation ? `- Package manager: ${input.workspacePreparation.packageManager ?? "unknown"}` : "- Package manager: unknown",
+    input.workspacePreparation ? `- Dependencies: ${input.workspacePreparation.dependencies}` : "- Dependencies: unknown",
+    input.workspacePreparation?.bootstrapCommand ? `- Bootstrap command: ${input.workspacePreparation.bootstrapCommand}` : "- Bootstrap command: none",
+    input.workspacePreparation ? `- Bootstrap result: ${input.workspacePreparation.status}` : "- Bootstrap result: unknown",
+    input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status) ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result." : void 0,
     "",
     "Constraints:",
     ...input.safetyInstructions.map((instruction) => `- ${instruction}`),
@@ -26825,10 +27068,149 @@ function redact(value) {
 }
 
 // src/core/execution/coordinator.ts
-import { execFile as execFile3 } from "node:child_process";
+import { execFile as execFile4 } from "node:child_process";
 import { stat as stat4 } from "node:fs/promises";
+import path18 from "node:path";
+import { promisify as promisify4 } from "node:util";
+
+// src/core/workspace-preparation.ts
+import { execFile as execFile3 } from "node:child_process";
+import { access as access3, constants as constants2, lstat as lstat2, readFile as readFile14 } from "node:fs/promises";
 import path17 from "node:path";
 import { promisify as promisify3 } from "node:util";
+var execFileAsync3 = promisify3(execFile3);
+async function preparePhaseWorkspace(args) {
+  const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const packageJson = path17.join(args.workspacePath, "package.json");
+  if (!await exists(packageJson)) {
+    return preparation({
+      status: "available",
+      packageManager: "none",
+      dependencies: "not_applicable",
+      bootstrapRequired: false,
+      reason: "No package.json was detected in the phase workspace.",
+      checkedAt,
+      evidence: ["package.json absent"]
+    });
+  }
+  const packageJsonData = await readPackageJson(args.workspacePath);
+  const manager = await detectPackageManager(args.workspacePath, packageJsonData);
+  if (!hasDeclaredDependencies(packageJsonData)) {
+    return preparation({
+      status: "available",
+      packageManager: manager.packageManager,
+      dependencies: "not_applicable",
+      bootstrapRequired: false,
+      reason: "package.json declares no installable dependencies.",
+      checkedAt,
+      evidence: manager.evidence
+    });
+  }
+  const dependenciesAvailable = await dependenciesUsable(args.workspacePath, args.validationCommands);
+  if (dependenciesAvailable) {
+    return preparation({
+      status: "available",
+      packageManager: manager.packageManager,
+      dependencies: "available",
+      bootstrapRequired: false,
+      reason: "Existing workspace dependencies are available.",
+      checkedAt,
+      evidence: manager.evidence
+    });
+  }
+  const command = manager.bootstrapCommand ?? fallbackBootstrapCommand();
+  const result = preparation({
+    status: args.config.execution.dependencyBootstrap === "auto-lockfile" && manager.lockfilePreserving ? "prepared" : "blocked",
+    packageManager: manager.packageManager,
+    dependencies: "missing",
+    bootstrapRequired: true,
+    bootstrapCommand: command,
+    approvalRequired: args.config.execution.dependencyBootstrap !== "auto-lockfile" || !manager.lockfilePreserving,
+    reason: manager.lockfilePreserving ? "Dependencies are missing in the isolated phase worktree; a lockfile-preserving bootstrap is required before provider dispatch." : "Dependencies are missing in the isolated phase worktree and no lockfile-preserving bootstrap was detected.",
+    checkedAt,
+    evidence: [...manager.evidence, "node_modules/.bin or declared validation tooling unavailable"]
+  });
+  if (result.status !== "prepared") return result;
+  const before = await manifestIdentity(args.workspacePath);
+  try {
+    const install = await execFileAsync3(command[0], command.slice(1), { cwd: args.workspacePath, encoding: "utf8", maxBuffer: 1024 * 1024 * 8 });
+    const after = await manifestIdentity(args.workspacePath);
+    if (before !== after) {
+      return { ...result, status: "failed", approvalRequired: true, reason: "Bootstrap changed package manifests or lockfiles; provider dispatch is blocked.", evidence: [...result.evidence, "manifest identity changed", `${install.stdout}${install.stderr}`.slice(0, 1e3)] };
+    }
+    return { ...result, status: "prepared", dependencies: "available", reason: "Lockfile-preserving dependency bootstrap completed.", evidence: [...result.evidence, "bootstrap exit status 0"] };
+  } catch (error51) {
+    return { ...result, status: "failed", approvalRequired: true, reason: `Dependency bootstrap failed: ${error51 instanceof Error ? error51.message : String(error51)}` };
+  }
+}
+async function detectPackageManager(workspacePath, packageJson = {}) {
+  const declared = typeof packageJson.packageManager === "string" ? packageJson.packageManager : "";
+  if (await exists(path17.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
+  if (await exists(path17.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
+  if (await exists(path17.join(workspacePath, "bun.lockb")) || await exists(path17.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
+  if (await exists(path17.join(workspacePath, "package-lock.json")) || await exists(path17.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
+  return { packageManager: "npm", bootstrapCommand: ["npm", "install"], lockfilePreserving: false, evidence: evidence("package.json without lockfile", declared) };
+}
+function hasDeclaredDependencies(packageJson) {
+  return ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].some((key) => {
+    const value = packageJson[key];
+    return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
+  });
+}
+async function dependenciesUsable(workspacePath, validationCommands) {
+  if (!await exists(path17.join(workspacePath, "node_modules"))) return false;
+  const toolNames = validationCommands.flatMap((command) => command.match(/\b(vitest|jest|tsc|eslint|tsx|vite|webpack|rollup)\b/g) ?? []);
+  for (const tool of new Set(toolNames)) {
+    if (!await executableExists(path17.join(workspacePath, "node_modules", ".bin", tool))) return false;
+  }
+  return true;
+}
+function preparation(args) {
+  return {
+    ...args,
+    bootstrapCommand: args.bootstrapCommand?.join(" "),
+    approvalRequired: args.approvalRequired ?? false,
+    commandRisk: {
+      localWrite: Boolean(args.bootstrapCommand),
+      network: Boolean(args.bootstrapCommand),
+      lifecycleScripts: Boolean(args.bootstrapCommand),
+      lockfilePreserving: args.bootstrapCommand ? !args.bootstrapCommand.includes("install") || args.bootstrapCommand.includes("ci") || args.bootstrapCommand.includes("--frozen-lockfile") || args.bootstrapCommand.includes("--immutable") : true,
+      manifestMutationExpected: args.bootstrapCommand?.join(" ") === "npm install"
+    }
+  };
+}
+function fallbackBootstrapCommand() {
+  return ["npm", "install"];
+}
+async function readPackageJson(workspacePath) {
+  try {
+    return JSON.parse(await readFile14(path17.join(workspacePath, "package.json"), "utf8"));
+  } catch {
+    return {};
+  }
+}
+async function manifestIdentity(workspacePath) {
+  const names = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
+  const parts = await Promise.all(names.map(async (name) => {
+    const file2 = path17.join(workspacePath, name);
+    try {
+      const stats = await lstat2(file2);
+      return `${name}:${stats.size}:${stats.mtimeMs}`;
+    } catch {
+      return `${name}:absent`;
+    }
+  }));
+  return parts.join("|");
+}
+async function exists(file2) {
+  return access3(file2, constants2.F_OK).then(() => true).catch(() => false);
+}
+async function executableExists(file2) {
+  return access3(file2, constants2.X_OK).then(() => true).catch(() => false);
+}
+function evidence(lockfile, declared) {
+  return [lockfile, declared ? `packageManager=${declared}` : "packageManager not declared"];
+}
 
 // src/core/execution/types.ts
 function toValidationEvidence(phaseId, entry) {
@@ -26848,7 +27230,7 @@ function toValidationEvidence(phaseId, entry) {
 
 // src/core/execution/coordinator.ts
 var ACTIVE_EXECUTION_STATUSES = /* @__PURE__ */ new Set(["dispatching", "running", "collecting"]);
-var execFileAsync3 = promisify3(execFile3);
+var execFileAsync4 = promisify4(execFile4);
 var CHECKPOINT_DIFF_BYTES = 32 * 1024;
 var ExecutionCoordinator = class {
   root;
@@ -26901,7 +27283,18 @@ var ExecutionCoordinator = class {
         const withWorkspace = await workspaceCreatePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase2.id, ownerId, config: this.config, mutation: { ownerId } });
         const workspace = withWorkspace.git?.phaseWorkspaces[phase2.id];
         if (!workspace) throw new Error(`Phase ${phase2.id} workspace was not created.`);
-        const input = await this.inputForPhase(withWorkspace, phase2.id, workspace.path, ownerId);
+        const preparation2 = await preparePhaseWorkspace({
+          workspacePath: workspace.path,
+          repositoryRoot: withWorkspace.git.context.repositoryRoot,
+          validationCommands: phase2.validationCommands,
+          config: this.config
+        });
+        await this.persistWorkspacePreparation(phase2.id, preparation2);
+        if (preparation2.status === "blocked" || preparation2.status === "failed") {
+          throw new Error(`Workspace preparation ${preparation2.status}: ${preparation2.reason}${preparation2.bootstrapCommand ? ` Required command: ${preparation2.bootstrapCommand}` : ""}`);
+        }
+        const preparedState = await loadFlowState(this.root, this.workflowId);
+        const input = await this.inputForPhase(preparedState, phase2.id, workspace.path, ownerId);
         const handle = await this.provider.dispatch(input);
         await this.persistHandle(handle);
         dispatched.push({ phaseId: phase2.id, provider: handle.providerId, status: "running", workspacePath: workspace.path, leaseOwnerId: ownerId });
@@ -27102,6 +27495,17 @@ var ExecutionCoordinator = class {
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_record_update" });
   }
+  async persistWorkspacePreparation(phaseId, preparation2) {
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const workspace = state.git?.phaseWorkspaces[phaseId];
+      if (workspace) {
+        state.git.phaseWorkspaces[phaseId] = { ...workspace, preparation: preparation2, updatedAt: this.now() };
+        const phase2 = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+        if (phase2?.workspace) phase2.workspace = state.git.phaseWorkspaces[phaseId];
+      }
+      return state;
+    }, { ownerId: this.coordinatorId, ownerType: "system", operation: "workspace_prepare_phase" });
+  }
   async reserveResumeDispatch(phaseId, ownerId) {
     await updateFlowState(this.root, this.workflowId, (state) => {
       const phase2 = state.plan?.phases.find((candidate) => candidate.id === phaseId);
@@ -27183,9 +27587,11 @@ var ExecutionCoordinator = class {
       safetyInstructions: [
         "Use only the assigned phase workspace.",
         "Return structured result evidence; LeanRigor will decide whether the phase is accepted.",
-        "Do not commit, push, merge, deploy, or edit outside the workspace."
+        "Do not commit, push, merge, deploy, or edit outside the workspace.",
+        phase2.workspace?.preparation?.dependencies === "available" ? "Workspace dependencies were prepared by LeanRigor before dispatch." : "Do not install dependencies. If dependencies are unavailable, stop and return blocked status with the missing command."
       ],
       previousCheckpoint: previousCheckpoint.dirty ? previousCheckpoint : void 0,
+      workspacePreparation: phase2.workspace?.preparation,
       resume,
       codeIntelligence: await detectCodeIntelligence(workspacePath, state.git.context.repositoryRoot),
       workerControls: workerControlsForMode(this.config, state.mode)
@@ -27323,7 +27729,7 @@ ${diffExcerpt}`].filter(Boolean).join("\n\n");
 }
 async function gitText(cwd, args) {
   try {
-    const result = await execFileAsync3("git", args, { cwd, encoding: "utf8", maxBuffer: CHECKPOINT_DIFF_BYTES * 4 });
+    const result = await execFileAsync4("git", args, { cwd, encoding: "utf8", maxBuffer: CHECKPOINT_DIFF_BYTES * 4 });
     return result.stdout;
   } catch {
     return "";
@@ -27373,8 +27779,8 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
   if (await codeGraphUsable(workspacePath)) {
     return { codegraph: "exact-worktree", note: "CodeGraph index is available for the exact assigned phase worktree." };
   }
-  const root = path17.resolve(repositoryRoot);
-  const workspace = path17.resolve(workspacePath);
+  const root = path18.resolve(repositoryRoot);
+  const workspace = path18.resolve(workspacePath);
   if (root !== workspace && await codeGraphUsable(root)) {
     return { codegraph: "root-advisory", note: "CodeGraph is available only for the repository root; results may not match this phase worktree." };
   }
@@ -27382,12 +27788,12 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
 }
 async function codeGraphUsable(target) {
   try {
-    await stat4(path17.join(target, ".codegraph"));
+    await stat4(path18.join(target, ".codegraph"));
   } catch {
     return false;
   }
   try {
-    await execFileAsync3("codegraph", ["status", target], { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
+    await execFileAsync4("codegraph", ["status", target], { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
     return true;
   } catch {
     return false;
@@ -27422,7 +27828,7 @@ function errorDetails(error51) {
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { mkdir as mkdir10, rm as rm3, writeFile as writeFile9 } from "node:fs/promises";
-import path18 from "node:path";
+import path19 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -27518,16 +27924,16 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path18.resolve(workspacePath, edit.path);
-      const relative = path18.relative(workspacePath, target);
-      if (relative.startsWith("..") || path18.isAbsolute(relative)) {
+      const target = path19.resolve(workspacePath, edit.path);
+      const relative = path19.relative(workspacePath, target);
+      if (relative.startsWith("..") || path19.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir10(path18.dirname(target), { recursive: true });
+      await mkdir10(path19.dirname(target), { recursive: true });
       await writeFile9(target, edit.content ?? "", "utf8");
     }
   }
@@ -27595,7 +28001,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.14");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.15");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -27612,11 +28018,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path19.join(root, ".leanrigor", "config.json");
+    const configPath = path20.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path19.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path20.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -27839,14 +28245,19 @@ flow.command("answer").argument("<workflow-id>").argument("<answer>").option("--
     mutation: mutationOptions(options)
   }));
 });
-flow.command("approve-approach").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+flow.command("approve-approach").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--add-constraint <constraint>", "constraint to add before planning", collect, []).option("--remove-constraint <constraint>", "triage constraint to remove before planning", collect, []).option("--override-constraint <override>", "constraint override as '<old> => <new>'", collect, []).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   const providerSelection = triageProviderSelection(options.provider);
   printFlowState(await approveApproach(
     options.root,
     workflowId2,
     await effectiveRepositoryConfig(options.root),
     mutationOptions(options),
-    { provider: planningProvider(providerSelection), providerSelection }
+    { provider: planningProvider(providerSelection), providerSelection },
+    {
+      add: options.addConstraint,
+      remove: options.removeConstraint,
+      override: parseConstraintOverrides(options.overrideConstraint)
+    }
   ));
 });
 flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reason <reason>", "reason for rejection").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
@@ -27873,23 +28284,23 @@ flow.command("phase-start").argument("<workflow-id>").argument("[phase-id]").opt
   printFlowState(await startPhase(options.root, workflowId2, phaseId, { ...mutationOptions(options), config: await effectiveRepositoryConfig(options.root) }));
 });
 flow.command("phase-complete").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--evidence-file <path>", "JSON completion evidence file").option("--files <files>", "comma-separated files changed").option("--command <command>", "command run during the phase", collect, []).option("--deviation <deviation>", "scope deviation to record", collect, []).option("--assumption <assumption>", "assumption introduced during execution", collect, []).option("--risk <risk>", "remaining risk", collect, []).option("--blocked-reason <reason>", "external blocker preventing completion").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "phase lease owner ID", "cli").action(async (workflowId2, phaseId, options) => {
-  const evidence = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
+  const evidence2 = options.evidenceFile ? await readCompletionEvidence(options.evidenceFile) : {};
   const config2 = await effectiveRepositoryConfig(options.root);
   printFlowState(await completePhase({
     root: options.root,
     workflowId: workflowId2,
     phaseId,
     config: config2,
-    criteria: evidence.criteria,
-    filesChanged: uniqueCli([...evidence.filesChanged ?? [], ...splitCsv(options.files)]),
-    commandsRun: uniqueCli([...evidence.commandsRun ?? [], ...options.command]),
-    validation: evidence.validation,
-    scopeDeviations: uniqueCli([...evidence.scopeDeviations ?? [], ...options.deviation]),
-    assumptions: uniqueCli([...evidence.assumptions ?? [], ...options.assumption]),
-    remainingRisks: uniqueCli([...evidence.remainingRisks ?? [], ...options.risk]),
-    blockedReason: options.blockedReason ?? evidence.blockedReason,
-    requestedRepairScope: evidence.requestedRepairScope,
-    modelDecision: evidence.modelDecision,
+    criteria: evidence2.criteria,
+    filesChanged: uniqueCli([...evidence2.filesChanged ?? [], ...splitCsv(options.files)]),
+    commandsRun: uniqueCli([...evidence2.commandsRun ?? [], ...options.command]),
+    validation: evidence2.validation,
+    scopeDeviations: uniqueCli([...evidence2.scopeDeviations ?? [], ...options.deviation]),
+    assumptions: uniqueCli([...evidence2.assumptions ?? [], ...options.assumption]),
+    remainingRisks: uniqueCli([...evidence2.remainingRisks ?? [], ...options.risk]),
+    blockedReason: options.blockedReason ?? evidence2.blockedReason,
+    requestedRepairScope: evidence2.requestedRepairScope,
+    modelDecision: evidence2.modelDecision,
     mutation: mutationOptions(options)
   }));
 });
@@ -28157,6 +28568,15 @@ function triageProvider(provider) {
 function planningProvider(provider) {
   return provider === "deterministic" ? void 0 : new ClaudeCliPlanningProvider();
 }
+function parseConstraintOverrides(values) {
+  return values.map((value) => {
+    const match = value.match(/^(.*?)\s*(?:=>|->)\s*(.*?)$/);
+    if (!match || !match[1]?.trim() || !match[2]?.trim()) {
+      throw new Error(`Invalid --override-constraint value. Use '<old> => <new>': ${value}`);
+    }
+    return { target: match[1].trim(), text: match[2].trim() };
+  });
+}
 function printFlowState(state) {
   console.log(JSON.stringify({
     id: state.id,
@@ -28186,6 +28606,15 @@ function printFlowState(state) {
       inspection: state.triage.inspection,
       constraints: state.triage.constraints
     } : void 0,
+    constraints: state.constraints ? {
+      original: state.constraints.original,
+      policy: state.constraints.policy,
+      userAdditions: state.constraints.userAdditions,
+      userRemovals: state.constraints.userRemovals,
+      userOverrides: state.constraints.userOverrides,
+      effective: state.constraints.effective,
+      audit: state.constraints.audit
+    } : void 0,
     planning: state.planningRun ? {
       source: state.planningRun.source,
       provider: state.planningRun.provider,
@@ -28208,6 +28637,12 @@ function printFlowState(state) {
       expectedFilesOrAreas: phase2.expectedFilesOrAreas,
       acceptanceCriteria: phase2.acceptanceCriteria,
       validationCommands: phase2.validationCommands,
+      workspace: phase2.workspace ? {
+        path: phase2.workspace.path,
+        branch: phase2.workspace.branch,
+        status: phase2.workspace.status,
+        preparation: phase2.workspace.preparation
+      } : void 0,
       riskLevel: phase2.riskLevel,
       modelTier: phase2.modelTier,
       completionGate: phase2.completion ? {
@@ -28220,14 +28655,14 @@ function printFlowState(state) {
       repairAttempts: phase2.repairAttempts.length,
       scopeDeviations: phase2.scopeDeviations
     })),
-    validation: state.validation.map((evidence) => ({
-      phaseId: evidence.phaseId,
-      command: evidence.command,
-      exitStatus: evidence.exitStatus,
-      status: evidence.status,
-      skipped: evidence.skipped,
-      skippedReason: evidence.skippedReason,
-      result: evidence.result
+    validation: state.validation.map((evidence2) => ({
+      phaseId: evidence2.phaseId,
+      command: evidence2.command,
+      exitStatus: evidence2.exitStatus,
+      status: evidence2.status,
+      skipped: evidence2.skipped,
+      skippedReason: evidence2.skippedReason,
+      result: evidence2.result
     })),
     review: state.review,
     commitPlan: state.commitPlan,
@@ -28307,10 +28742,10 @@ async function executionProvider(providerName, scriptFile, config2) {
       await provider.capabilities();
       return { provider };
     } catch (error51) {
-      return {
-        provider: await scriptedExecutionProvider(scriptFile),
-        fallbackReason: `Claude execution provider unavailable before dispatch: ${messageOf3(error51)}`
-      };
+      throw new Error([
+        `Configured execution provider unavailable before dispatch: ${messageOf3(error51)}`,
+        "Recovery options: retry configured provider, use --provider claude after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller."
+      ].join(" "), { cause: error51 });
     }
   }
   if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
@@ -28318,7 +28753,7 @@ async function executionProvider(providerName, scriptFile, config2) {
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 async function scriptedExecutionProvider(scriptFile) {
-  const scripts = scriptFile ? JSON.parse(await readFile14(path19.resolve(scriptFile), "utf8")) : {};
+  const scripts = scriptFile ? JSON.parse(await readFile15(path20.resolve(scriptFile), "utf8")) : {};
   return new ScriptedExecutionProvider(scripts);
 }
 async function runCoordinatorCommand(root, workflowId2, providerName, scriptFile, run) {
@@ -28425,7 +28860,7 @@ function mutationOptions(options) {
   };
 }
 async function readCompletionEvidence(file2) {
-  const raw = JSON.parse(await readFile14(path19.resolve(file2), "utf8"));
+  const raw = JSON.parse(await readFile15(path20.resolve(file2), "utf8"));
   return {
     ...raw,
     validation: raw.validation?.map((entry) => {

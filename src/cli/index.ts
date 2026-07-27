@@ -75,7 +75,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.14");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.15");
 
 program.command("setup")
   .alias("init")
@@ -444,6 +444,9 @@ flow.command("approve-approach")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto")
+  .option("--add-constraint <constraint>", "constraint to add before planning", collect, [])
+  .option("--remove-constraint <constraint>", "triage constraint to remove before planning", collect, [])
+  .option("--override-constraint <override>", "constraint override as '<old> => <new>'", collect, [])
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
@@ -453,7 +456,12 @@ flow.command("approve-approach")
       workflowId,
       await effectiveRepositoryConfig(options.root),
       mutationOptions(options),
-      { provider: planningProvider(providerSelection), providerSelection }
+      { provider: planningProvider(providerSelection), providerSelection },
+      {
+        add: options.addConstraint,
+        remove: options.removeConstraint,
+        override: parseConstraintOverrides(options.overrideConstraint)
+      }
     ));
   });
 
@@ -1050,6 +1058,16 @@ function planningProvider(provider: TriageProviderSelection): ClaudeCliPlanningP
   return provider === "deterministic" ? undefined : new ClaudeCliPlanningProvider();
 }
 
+function parseConstraintOverrides(values: string[]): Array<{ target: string; text: string }> {
+  return values.map((value) => {
+    const match = value.match(/^(.*?)\s*(?:=>|->)\s*(.*?)$/);
+    if (!match || !match[1]?.trim() || !match[2]?.trim()) {
+      throw new Error(`Invalid --override-constraint value. Use '<old> => <new>': ${value}`);
+    }
+    return { target: match[1].trim(), text: match[2].trim() };
+  });
+}
+
 function printFlowState(state: SequentialWorkflowState): void {
   console.log(JSON.stringify({
     id: state.id,
@@ -1079,6 +1097,15 @@ function printFlowState(state: SequentialWorkflowState): void {
       inspection: state.triage.inspection,
       constraints: state.triage.constraints
     } : undefined,
+    constraints: state.constraints ? {
+      original: state.constraints.original,
+      policy: state.constraints.policy,
+      userAdditions: state.constraints.userAdditions,
+      userRemovals: state.constraints.userRemovals,
+      userOverrides: state.constraints.userOverrides,
+      effective: state.constraints.effective,
+      audit: state.constraints.audit
+    } : undefined,
     planning: state.planningRun ? {
       source: state.planningRun.source,
       provider: state.planningRun.provider,
@@ -1101,6 +1128,12 @@ function printFlowState(state: SequentialWorkflowState): void {
       expectedFilesOrAreas: phase.expectedFilesOrAreas,
       acceptanceCriteria: phase.acceptanceCriteria,
       validationCommands: phase.validationCommands,
+      workspace: phase.workspace ? {
+        path: phase.workspace.path,
+        branch: phase.workspace.branch,
+        status: phase.workspace.status,
+        preparation: phase.workspace.preparation
+      } : undefined,
       riskLevel: phase.riskLevel,
       modelTier: phase.modelTier,
       completionGate: phase.completion ? {
@@ -1204,10 +1237,10 @@ async function executionProvider(providerName: string, scriptFile?: string, conf
       await provider.capabilities();
       return { provider };
     } catch (error) {
-      return {
-        provider: await scriptedExecutionProvider(scriptFile),
-        fallbackReason: `Claude execution provider unavailable before dispatch: ${messageOf(error)}`
-      };
+      throw new Error([
+        `Configured execution provider unavailable before dispatch: ${messageOf(error)}`,
+        "Recovery options: retry configured provider, use --provider claude after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller."
+      ].join(" "), { cause: error });
     }
   }
   if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
