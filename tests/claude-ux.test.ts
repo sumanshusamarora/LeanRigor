@@ -211,6 +211,19 @@ describe("Claude conversational workflow UX support", () => {
     expect(JSON.stringify(next.summary)).not.toMatch(/leanrigor flow/);
   });
 
+  it("labels clarification-gated mode as provisional", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({ request: "Fix it", root, config: defaultConfig() });
+    const next = workflowNextSummary(state);
+
+    expect(next.label).toBe("Clarification");
+    expect(next.summary).toMatchObject({
+      modeStatus: "provisional",
+      provisionalRecommendation: state.mode,
+      finalMode: null
+    });
+  });
+
   it("review command can distinguish phase review from final integrated review", async () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });

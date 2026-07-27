@@ -85,7 +85,14 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
       pendingDecision: "Answer the single blocking clarification question.",
       pendingAction: question,
       allowedIntents: ["answer", "cancel", "show status"],
-      summary: { question, reason }
+      summary: {
+        question,
+        reason,
+        modeStatus: "provisional",
+        provisionalRecommendation: state.triage?.workflow.modelRecommendation ?? workflow.mode,
+        finalMode: null,
+        clarificationDecision: state.triage?.clarificationDecision
+      }
     };
   }
   if (state.state === "awaiting_approach_approval") {

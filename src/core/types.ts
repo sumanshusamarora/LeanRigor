@@ -73,6 +73,43 @@ export type PhaseExecutionRecordStatus =
 export type ConstraintSource = "policy" | "triage" | "user";
 export type ConstraintAction = "add" | "remove" | "override";
 export type WorkspacePreparationStatus = "available" | "prepared" | "blocked" | "failed";
+export type ReferencedWorkItemSource = "github-issue";
+export type ReferencedWorkItemContentStatus = "resolved" | "partial" | "unavailable";
+export type ClarificationOwnership =
+  | "user-intent"
+  | "user-policy"
+  | "safety-critical"
+  | "repository-discoverable"
+  | "planning-detail"
+  | "already-resolved"
+  | "unnecessary";
+export type ClarificationDisposition = "accepted" | "inspected" | "deferred" | "suppressed";
+
+export interface ReferencedWorkItem {
+  source: ReferencedWorkItemSource;
+  repository?: string;
+  issueNumber: number;
+  url?: string;
+  title?: string;
+  body?: string;
+  acceptanceCriteria?: string[];
+  contentStatus: ReferencedWorkItemContentStatus;
+  truncated: boolean;
+  failureReason?: string;
+  retrievedAt?: string;
+}
+
+export interface ClarificationDecision {
+  original: {
+    required: boolean;
+    question: string | null;
+    reason: string | null;
+  };
+  ownership: ClarificationOwnership;
+  disposition: ClarificationDisposition;
+  finalRequired: boolean;
+  reason: string;
+}
 
 export interface TriageOutput {
   version: 1;
@@ -104,6 +141,7 @@ export interface TriageOutput {
     question: string | null;
     reason: string | null;
   };
+  clarificationDecision?: ClarificationDecision;
   inspection: {
     required: boolean;
     targets: string[];
@@ -140,6 +178,7 @@ export interface TriageEvidencePacket {
     referencedIssue?: string;
     explicitlyNamedPaths: string[];
   };
+  referencedWorkItems?: ReferencedWorkItem[];
   repository: {
     root: string;
     languages: string[];

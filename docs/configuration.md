@@ -169,6 +169,13 @@ Important settings include:
 - `triage.fallbackMode`: `standard` or `rigorous` when triage cannot safely resolve.
 
 Model output recommends a mode. Deterministic policy applies the final decision.
+When the request names a GitHub issue, triage tries to enrich the evidence from
+the current repository's GitHub issue metadata before the model call. GitHub
+access is opportunistic: unavailable remotes, missing authentication, or offline
+operation are recorded as explicit provenance and do not disable local triage.
+Model clarification requests are classified deterministically; repository scope
+and planning details are inspected or deferred instead of being asked of the
+user.
 
 Dedicated triage budgets live under `budgets`:
 

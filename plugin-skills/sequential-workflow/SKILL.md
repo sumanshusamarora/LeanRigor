@@ -162,7 +162,8 @@ Workflow created and triaged
 
 Workflow: <id>
 Request: <request>
-Mode: <Fast|Standard|Rigorous>
+Provisional recommendation: <Fast|Standard|Rigorous>
+Final mode: pending clarification
 
 Triage clarification
 
@@ -176,6 +177,11 @@ after "before continuing". If `AskUserQuestion` is available, ask exactly the
 persisted question there as well; otherwise ask for a free-form answer in plain
 language. The answer must be recorded through `flow answer <workflow-id>
 "<answer>" --provider auto`.
+
+Clarification is already filtered by LeanRigor core. Do not invent additional
+triage questions from repository scope or planning uncertainty; those are handled
+by targeted inspection or planning. When `next.summary.modeStatus` is
+`provisional`, do not present the mode as final.
 
 ### Free-form fallback
 

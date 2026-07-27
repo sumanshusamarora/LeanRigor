@@ -4,6 +4,8 @@ const risk = z.enum(["none", "low", "medium", "high"]);
 const nonZeroRisk = z.enum(["low", "medium", "high"]);
 const mode = z.enum(["fast", "standard", "rigorous"]);
 const taskType = z.enum(["bug", "feature", "refactor", "investigation", "maintenance", "documentation", "unknown"]);
+const clarificationOwnership = z.enum(["user-intent", "user-policy", "safety-critical", "repository-discoverable", "planning-detail", "already-resolved", "unnecessary"]);
+const clarificationDisposition = z.enum(["accepted", "inspected", "deferred", "suppressed"]);
 const triageQuestionSchema = z.object({
   id: z.string().trim().min(1).max(80),
   question: z.string().trim().min(1).max(240),
@@ -41,6 +43,17 @@ export const triageOutputSchema = z.object({
     question: z.string().trim().min(1).max(300).nullable(),
     reason: z.string().trim().min(1).max(300).nullable()
   }),
+  clarificationDecision: z.object({
+    original: z.object({
+      required: z.boolean(),
+      question: z.string().trim().min(1).max(300).nullable(),
+      reason: z.string().trim().min(1).max(300).nullable()
+    }),
+    ownership: clarificationOwnership,
+    disposition: clarificationDisposition,
+    finalRequired: z.boolean(),
+    reason: z.string().trim().min(1).max(300)
+  }).optional(),
   inspection: z.object({
     required: z.boolean(),
     targets: z.array(z.string().trim().min(1).max(180)).max(5)

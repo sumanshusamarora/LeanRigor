@@ -1,8 +1,12 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { LeanRigorConfig } from "../config/schema.js";
 import type { ModelTriageRecommendation, TriageEvidencePacket, TriageInspectionRequest, TriageInspectionResult, TriageOutput } from "./types.js";
 import { deterministicRecommendationFromEvidence, recommendationToTriageOutput } from "./assessment.js";
+import { clarificationInspectionQuestions } from "./clarification-policy.js";
 import { collectTriageEvidence } from "./triage-evidence.js";
 import { modelTriageRecommendationSchema, triageInspectionResultSchema, triageOutputSchema } from "./triage-schema.js";
+import type { WorkItemResolver } from "./work-item-resolver.js";
 
 export interface TriageProviderResult {
   raw: unknown;
@@ -79,10 +83,11 @@ export async function runTriage(args: {
   config: LeanRigorConfig;
   provider?: TriageProvider;
   providerSelection?: TriageProviderSelection;
+  workItemResolver?: WorkItemResolver;
 }): Promise<TriageRunResult> {
   const { request, root, config, provider } = args;
   const warnings: string[] = [];
-  let evidence = await collectTriageEvidence({ request, root, config });
+  let evidence = await collectTriageEvidence({ request, root, config, workItemResolver: args.workItemResolver });
 
   if (!config.workflow.automaticTriage || !provider) {
     const fallbackReason = !config.workflow.automaticTriage
@@ -212,7 +217,7 @@ async function maybeInspect(args: {
   provider: TriageProvider;
   warnings: string[];
 }): Promise<NonNullable<TriageRunResult["inspection"]>> {
-  const inspectionRequest = inspectionRequestFor(args.evidence, args.recommendation, args.config);
+  const inspectionRequest = inspectionRequestFor(args.root, args.evidence, args.recommendation, args.config);
   if (!inspectionRequest || !args.provider.inspect) return { used: false };
   try {
     const result = await args.provider.inspect({
@@ -232,15 +237,20 @@ async function maybeInspect(args: {
   }
 }
 
-function inspectionRequestFor(evidence: TriageEvidencePacket, recommendation: ModelTriageRecommendation, config: LeanRigorConfig): TriageInspectionRequest | undefined {
-  if (!recommendation.needsAdditionalInspection || recommendation.inspectionQuestions.length === 0) return undefined;
+function inspectionRequestFor(root: string, evidence: TriageEvidencePacket, recommendation: ModelTriageRecommendation, config: LeanRigorConfig): TriageInspectionRequest | undefined {
+  const questions = uniqueQuestions([
+    ...(recommendation.needsAdditionalInspection ? recommendation.inspectionQuestions : []),
+    ...clarificationInspectionQuestions(evidence, recommendation)
+  ]).slice(0, 4);
+  if (questions.length === 0) return undefined;
   const allowedPaths = unique([
     ...evidence.request.explicitlyNamedPaths,
-    ...recommendation.inspectionQuestions.flatMap((question) => question.allowedPaths ?? [])
+    ...questions.flatMap((question) => question.allowedPaths ?? []),
+    ...derivedInspectionPaths(root, evidence)
   ]).slice(0, 8);
   if (allowedPaths.length === 0) return undefined;
   return {
-    questions: recommendation.inspectionQuestions.slice(0, 4),
+    questions,
     allowedPaths,
     maxReads: config.budgets.triageInspectionMaxReads,
     maxBytes: config.budgets.triageInspectionMaxBytes
@@ -267,6 +277,37 @@ function mergeInspectionFindings(evidence: TriageEvidencePacket, result: TriageI
     return !result.findings.some((finding) => finding.confidence === "verified" && finding.key.toLowerCase().endsWith(normalized));
   });
   return next;
+}
+
+function derivedInspectionPaths(root: string, evidence: TriageEvidencePacket): string[] {
+  const concepts = evidence.changeSignals.namedBoundaries.map((value) => value.toLowerCase());
+  const candidates = new Set<string>();
+  const add = (values: string[]) => values.forEach((value) => candidates.add(value));
+
+  if (concepts.length === 0) add(["src/core", "tests"]);
+  for (const concept of concepts) {
+    if (concept.includes("workflow")) add(["src/core/types.ts", "src/core/flow.ts", "src/core/workflow.ts"]);
+    if (concept.includes("planning")) add(["src/core/planning-runner.ts", "methodology/planning.md"]);
+    if (concept.includes("completion") || concept.includes("validation")) add(["src/core/completion-evidence.ts", "src/core/flow.ts", "tests"]);
+    if (concept.includes("review")) add(["src/core/review-policy.ts", "methodology/review.md"]);
+    if (concept.includes("test")) add(["tests", "package.json"]);
+    if (concept.includes("cli")) add(["src/cli/index.ts"]);
+    if (concept.includes("docs")) add(["README.md", "docs"]);
+    if (concept.includes("infra")) add([".github/workflows", "infra", "infrastructure"]);
+    if (concept.includes("schema")) add(["src/core/types.ts", "src/core/flow.ts"]);
+  }
+
+  return [...candidates].filter((candidate) => existsSync(path.join(root, candidate))).slice(0, 8);
+}
+
+function uniqueQuestions(values: TriageInspectionRequest["questions"]): TriageInspectionRequest["questions"] {
+  const seen = new Set<string>();
+  return values.filter((question) => {
+    const key = question.id || question.question;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Accept direct JSON, fenced JSON, or Claude Code's JSON result envelope. */

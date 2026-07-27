@@ -232,12 +232,15 @@ Uninstall removes only LeanRigor-owned, unmodified assets and LeanRigor-specific
 - has no repository-navigation tools during normal recommendation;
 - returns one schema-constrained `ModelTriageRecommendation`;
 - recommends but does not execute;
+- may recommend clarification, but cannot force a user question directly;
 - never has final safety authority.
 
 The runtime builds deterministic evidence first, validates the recommendation,
-repairs malformed output once, optionally runs a separate targeted inspection
-with explicit path and byte budgets, applies deterministic policy, and falls
-back to deterministic local triage when necessary.
+resolves explicit GitHub issue references when available, repairs malformed
+output once, optionally runs a separate targeted inspection with explicit or
+derived path and byte budgets, applies deterministic mode and clarification
+policy, and falls back to deterministic local triage when necessary. Failed
+issue lookup is recorded explicitly and remains compatible with offline use.
 
 ## Git protection hook
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import { normaliseModelPayload, runTriage, type TriageProvider } from "../src/core/triage-runner.js";
-import type { ModelTriageRecommendation } from "../src/core/types.js";
+import type { ModelTriageRecommendation, ReferencedWorkItem } from "../src/core/types.js";
+import type { WorkItemResolver } from "../src/core/work-item-resolver.js";
 
 function providerFrom(values: unknown[]): TriageProvider {
   let index = 0;
@@ -193,6 +194,164 @@ describe("model-backed triage", () => {
     expect(result.inspection?.used).toBe(true);
     expect(result.output.workflow.finalMode).toBe("rigorous");
   });
+
+  it("does not let model-requested repository scope clarification block a detailed issue", async () => {
+    const config = defaultConfig();
+    const result = await runTriage({
+      request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates.",
+      root: process.cwd(),
+      config,
+      workItemResolver: resolverFrom(detailedIssue(12)),
+      provider: providerFrom([
+        recommendation({
+          recommendedMode: "rigorous",
+          ambiguity: "high",
+          blastRadius: "high",
+          confidence: 0.35,
+          clarification: {
+            required: true,
+            question: "What is the specific scope and affected subsystems for issue #12's test-obligation planning and evidence gates?",
+            reason: "High ambiguity from sparse specification prevents accurate risk assessment and mode selection."
+          }
+        })
+      ])
+    });
+
+    expect(result.evidence.referencedWorkItems?.[0]?.contentStatus).toBe("resolved");
+    expect(result.output.workflow.finalMode).toBe("rigorous");
+    expect(result.output.clarification.required).toBe(false);
+    expect(result.output.clarificationDecision).toMatchObject({
+      ownership: "already-resolved",
+      disposition: "suppressed",
+      finalRequired: false
+    });
+  });
+
+  it("runs bounded inspection for repository-owned clarification when scope can be derived", async () => {
+    const config = defaultConfig();
+    let inspected = false;
+    const provider: TriageProvider = {
+      name: "fake-model",
+      async recommend() {
+        return {
+          raw: recommendation({
+            clarification: {
+              required: true,
+              question: "Which subsystems are affected by the workflow planning evidence gate change?",
+              reason: "Repository scope should be checked."
+            }
+          }),
+          provider: "fake-model"
+        };
+      },
+      async inspect(input) {
+        inspected = true;
+        expect(input.inspection.allowedPaths).toEqual(expect.arrayContaining(["src/core/flow.ts", "src/core/planning-runner.ts", "tests"]));
+        return {
+          provider: "fake-model",
+          raw: {
+            version: 1,
+            findings: [{ key: "repository.boundary.workflow", value: ["src/core/flow.ts"], confidence: "verified", source: "src/core/flow.ts" }],
+            evidenceReferences: ["src/core/flow.ts"],
+            exhaustedBudget: false
+          }
+        };
+      }
+    };
+
+    const result = await runTriage({
+      request: "Implement workflow planning evidence gates",
+      root: process.cwd(),
+      config,
+      provider
+    });
+
+    expect(inspected).toBe(true);
+    expect(result.inspection?.used).toBe(true);
+    expect(result.output.clarification.required).toBe(false);
+    expect(result.output.clarificationDecision).toMatchObject({
+      ownership: "repository-discoverable",
+      disposition: "deferred",
+      finalRequired: false
+    });
+  });
+
+  it("keeps safety-critical model clarification blocking", async () => {
+    const config = defaultConfig();
+    const result = await runTriage({
+      request: "Change public API compatibility behaviour",
+      root: process.cwd(),
+      config,
+      provider: providerFrom([
+        recommendation({
+          recommendedMode: "rigorous",
+          clarification: {
+            required: true,
+            question: "Is an intentional public API breaking change acceptable?",
+            reason: "Public-contract break permission must be explicit."
+          }
+        })
+      ])
+    });
+
+    expect(result.output.workflow.finalMode).toBe("rigorous");
+    expect(result.output.clarification.required).toBe(true);
+    expect(result.output.clarificationDecision).toMatchObject({
+      ownership: "safety-critical",
+      disposition: "accepted",
+      finalRequired: true
+    });
+  });
+
+  it("defers planning-detail clarification instead of blocking triage", async () => {
+    const result = await runTriage({
+      request: "Implement workflow planning evidence gates",
+      root: process.cwd(),
+      config: defaultConfig(),
+      provider: providerFrom([
+        recommendation({
+          recommendedMode: "rigorous",
+          clarification: {
+            required: true,
+            question: "What exact phase decomposition and implementation order should be used?",
+            reason: "Planning still needs implementation details."
+          }
+        })
+      ])
+    });
+
+    expect(result.output.clarification.required).toBe(false);
+    expect(result.output.clarificationDecision).toMatchObject({
+      ownership: "planning-detail",
+      disposition: "suppressed",
+      finalRequired: false
+    });
+  });
+
+  it("keeps destructive production intent clarification blocking", async () => {
+    const result = await runTriage({
+      request: "Change production migration cleanup behavior",
+      root: process.cwd(),
+      config: defaultConfig(),
+      provider: providerFrom([
+        recommendation({
+          recommendedMode: "rigorous",
+          clarification: {
+            required: true,
+            question: "Is destructive deletion of production data acceptable?",
+            reason: "Data loss permission must be explicit."
+          }
+        })
+      ])
+    });
+
+    expect(result.output.clarification.required).toBe(true);
+    expect(result.output.clarificationDecision).toMatchObject({
+      ownership: "safety-critical",
+      disposition: "accepted",
+      finalRequired: true
+    });
+  });
 });
 
 function assessLegacy(request: string, config: ReturnType<typeof defaultConfig>) {
@@ -223,5 +382,42 @@ function assessLegacy(request: string, config: ReturnType<typeof defaultConfig>)
     escalationReasons: ["Legacy high-risk trigger."],
     assumptions: [],
     constraints: { mustNot: ["commit, push, deploy, or write to production without explicit approval"] }
+  };
+}
+
+function resolverFrom(item: ReferencedWorkItem): WorkItemResolver {
+  return {
+    async resolve() {
+      return item;
+    }
+  };
+}
+
+function detailedIssue(issueNumber: number): ReferencedWorkItem {
+  return {
+    source: "github-issue",
+    repository: "example/leanrigor",
+    issueNumber,
+    title: "Add deterministic test-obligation planning and evidence gates",
+    body: [
+      "## Problem",
+      "Validation evidence exists but a broad suite can miss changed behaviour.",
+      "## Goal",
+      "Derive explicit test obligations and require completion evidence.",
+      "## Desired behaviour",
+      "Planning produces phase-specific test obligations based on workflow state, planning, completion evidence gates, validation evidence, and review policy.",
+      "## Safety and compatibility",
+      "Preserve existing workflow-state compatibility through defaults or migration.",
+      "## Acceptance criteria",
+      "- Bug-fix plans require regression coverage.",
+      "- Completion evidence records obligation IDs and validation results."
+    ].join("\n"),
+    acceptanceCriteria: [
+      "Bug-fix plans require regression coverage.",
+      "Completion evidence records obligation IDs and validation results."
+    ],
+    contentStatus: "resolved",
+    truncated: false,
+    retrievedAt: "2026-07-28T00:00:00.000Z"
   };
 }

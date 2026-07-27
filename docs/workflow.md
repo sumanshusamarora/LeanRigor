@@ -86,16 +86,23 @@ than normal user-facing output.
 ## Triage
 
 `flow start` runs the evidence-driven triage runner. LeanRigor first creates a
-bounded deterministic evidence packet. Model-backed triage then produces a
-tool-free recommendation from that packet; it does not receive repository
-navigation tools during normal triage. Deterministic policy makes the final mode
-decision, malformed recommendation output receives one repair attempt, and
-fallback is deterministic.
+bounded deterministic evidence packet. Explicit GitHub issue references such as
+`issue #12`, `owner/repo#12`, or GitHub issue URLs are resolved before model
+triage when repository identity and GitHub access are available. The evidence
+packet records issue provenance, lookup status, bounded title/body content,
+acceptance criteria, and safe lookup failures; unavailable issue lookup remains
+explicit and does not make offline workflows unusable.
+
+Model-backed triage then produces a tool-free recommendation from that packet;
+it does not receive repository navigation tools during normal triage.
+Deterministic policy makes the final mode decision, malformed recommendation
+output receives one repair attempt, and fallback is deterministic.
 
 Additional repository inspection is separate from recommendation. It only runs
-for concrete questions with explicit allowed paths, read and byte budgets, and a
-fact-only result schema. Failed inspection leaves unresolved evidence unknown,
-and policy handles the result conservatively.
+for concrete repository-owned questions with explicit or deterministically
+derived allowed paths, read and byte budgets, and a fact-only result schema.
+Failed inspection leaves unresolved evidence unknown, and policy handles the
+result conservatively.
 
 Triage persists mode, risk, complexity, deterministic evidence, model
 recommendation, policy decision, targeted inspection diagnostics, escalation
@@ -107,6 +114,13 @@ implementation files.
 
 Clarification asks at most one blocking question. Non-blocking preferences are
 recorded as assumptions or left to the active coding session.
+Model-requested clarification is advisory: LeanRigor classifies the question as
+user intent, user policy, safety-critical, repository-discoverable,
+planning-detail, already resolved, or unnecessary. Only user-owned intent,
+policy, and safety-critical questions block triage. Repository scope questions
+are inspected when bounded scope is available or deferred to planning; planning
+details wait for plan approval. When clarification blocks final triage, the UI
+must label the mode as provisional rather than final.
 
 Fast mode skips the separate approach gate only when the task is obvious,
 unambiguous, low blast radius, and has no security, data, operational, or

@@ -86,6 +86,8 @@ const completionDecisionSchema = z.enum(["completed", "needs_repair", "needs_rev
 const phaseStatusSchema = z.enum(["planned", "ready", "leased", "running", "completion_pending", "completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
 const constraintSourceSchema = z.enum(["policy", "triage", "user"]);
 const constraintActionSchema = z.enum(["add", "remove", "override"]);
+const clarificationOwnershipSchema = z.enum(["user-intent", "user-policy", "safety-critical", "repository-discoverable", "planning-detail", "already-resolved", "unnecessary"]);
+const clarificationDispositionSchema = z.enum(["accepted", "inspected", "deferred", "suppressed"]);
 
 const triageSchema = z.object({
   version: z.literal(1),
@@ -117,6 +119,17 @@ const triageSchema = z.object({
     question: z.string().nullable(),
     reason: z.string().nullable()
   }),
+  clarificationDecision: z.object({
+    original: z.object({
+      required: z.boolean(),
+      question: z.string().nullable(),
+      reason: z.string().nullable()
+    }),
+    ownership: clarificationOwnershipSchema,
+    disposition: clarificationDispositionSchema,
+    finalRequired: z.boolean(),
+    reason: z.string()
+  }).optional(),
   inspection: z.object({
     required: z.boolean(),
     targets: z.array(z.string())
@@ -2809,11 +2822,11 @@ function boundEvents(events: WorkflowEvent[]): WorkflowEvent[] {
 
 function boundDiagnosticObject(value: Record<string, unknown>): Record<string, unknown> {
   const json = JSON.stringify(value);
-  if (json.length <= 8000) return value;
+  if (json.length <= 64_000) return value;
   return {
     truncated: true,
     bytes: json.length,
-    summary: json.slice(0, 4000)
+    summary: json.slice(0, 8000)
   };
 }
 

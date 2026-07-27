@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path23 = __require("node:path");
+    var path24 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path23.resolve(baseDir, baseName);
+          const localBin = path24.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path23.extname(baseName))) return void 0;
+          if (sourceExt.includes(path24.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path23.resolve(
-            path23.dirname(resolvedScriptPath),
+          executableDir = path24.resolve(
+            path24.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path23.basename(
+            const legacyName = path24.basename(
               this._scriptPath,
-              path23.extname(this._scriptPath)
+              path24.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path23.extname(executableFile));
+        launchWithNode = sourceExt.includes(path24.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path23.basename(filename, path23.extname(filename));
+        this._name = path24.basename(filename, path24.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path24) {
-        if (path24 === void 0) return this._executableDir;
-        this._executableDir = path24;
+      executableDir(path25) {
+        if (path25 === void 0) return this._executableDir;
+        this._executableDir = path25;
         return this;
       }
       /**
@@ -3864,10 +3864,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path23) {
-  if (!path23)
+function getElementAtPath(obj, path24) {
+  if (!path24)
     return obj;
-  return path23.reduce((acc, key) => acc?.[key], obj);
+  return path24.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4195,11 +4195,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path23, issues) {
+function prefixIssues(path24, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path23);
+    iss.path.unshift(path24);
     return iss;
   });
 }
@@ -4416,16 +4416,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path23 = []) => {
+  const processError = (error52, path24 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path23, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path24, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path23, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path23, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
       } else {
-        const fullpath = [...path23, ...issue2.path];
+        const fullpath = [...path24, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4452,17 +4452,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path23 = []) => {
+  const processError = (error52, path24 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path23, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path24, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path23, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path23, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
       } else {
-        const fullpath = [...path23, ...issue2.path];
+        const fullpath = [...path24, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4494,8 +4494,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path23 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path23) {
+  const path24 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path24) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17925,13 +17925,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path23 = ref.slice(1).split("/").filter(Boolean);
-  if (path23.length === 0) {
+  const path24 = ref.slice(1).split("/").filter(Boolean);
+  if (path24.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path23[0] === defsKey) {
-    const key = path23[1];
+  if (path24[0] === defsKey) {
+    const key = path24[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -19613,7 +19613,7 @@ var {
 
 // src/cli/index.ts
 import { readFile as readFile17 } from "node:fs/promises";
-import path22 from "node:path";
+import path23 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -20704,15 +20704,291 @@ async function loadConfigForUninstall(root) {
 init_models();
 import { spawn } from "node:child_process";
 import { readFile as readFile8 } from "node:fs/promises";
-import path9 from "node:path";
+import path10 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
+// src/core/triage-runner.ts
+import { existsSync } from "node:fs";
+import path9 from "node:path";
+
+// src/core/clarification-policy.ts
+function evaluateClarification(input) {
+  const original = input.recommendation.clarification ?? {
+    required: input.request.trim().length < 12,
+    question: input.request.trim().length < 12 ? "What specific behaviour or outcome should change?" : null,
+    reason: input.request.trim().length < 12 ? "The request is too brief to determine scope and acceptance criteria safely." : null
+  };
+  if (!original.required) {
+    return {
+      original,
+      ownership: "unnecessary",
+      disposition: "suppressed",
+      finalRequired: false,
+      reason: "No blocking clarification was requested."
+    };
+  }
+  const ownership = classifyClarificationOwnership(original.question ?? "", original.reason ?? "", input.evidence);
+  const blocking = ownership === "user-intent" || ownership === "user-policy" || ownership === "safety-critical";
+  const disposition = blocking ? "accepted" : ownership === "repository-discoverable" ? "deferred" : "suppressed";
+  const reason = decisionReason(ownership, input.finalMode);
+  return {
+    original,
+    ownership,
+    disposition,
+    finalRequired: blocking,
+    reason
+  };
+}
+function classifyClarificationOwnership(question, reason, evidence2) {
+  const text = `${question} ${reason}`.toLowerCase();
+  const resolvedWorkItem = evidence2.referencedWorkItems?.some((item) => item.contentStatus === "resolved") ?? false;
+  const hasAcceptanceCriteria = evidence2.referencedWorkItems?.some((item) => (item.acceptanceCriteria?.length ?? 0) > 0) ?? false;
+  if (!question.trim()) return "unnecessary";
+  if (resolvedWorkItem && hasAcceptanceCriteria && mentionsIssueScope(text, evidence2)) return "already-resolved";
+  if (isPlanningDetailQuestion(text)) return "planning-detail";
+  if (isRepositoryScopeQuestion(text)) return "repository-discoverable";
+  if (isSafetyCriticalQuestion(text)) return "safety-critical";
+  if (isUserPolicyQuestion(text)) return "user-policy";
+  if (isUserIntentQuestion(text)) return "user-intent";
+  if (resolvedWorkItem && /sparse specification|scope|subsystems|affected/.test(text)) return "already-resolved";
+  return "planning-detail";
+}
+function clarificationInspectionQuestions(evidence2, recommendation) {
+  const clarification = recommendation.clarification;
+  if (!clarification?.required || !clarification.question) return [];
+  const ownership = classifyClarificationOwnership(clarification.question, clarification.reason ?? "", evidence2);
+  if (ownership !== "repository-discoverable") return [];
+  return deriveRepositoryQuestions(evidence2, clarification.question);
+}
+function deriveRepositoryQuestions(evidence2, originalQuestion) {
+  const concepts = evidence2.changeSignals.namedBoundaries.length > 0 ? evidence2.changeSignals.namedBoundaries : ["workflow", "planning", "validation", "tests"];
+  return concepts.slice(0, 4).map((concept, index) => ({
+    id: `clarification-scope-${index + 1}`,
+    question: `Identify the existing implementation boundary for ${concept}.`,
+    reason: `Repository-owned scope question deferred from model clarification: ${originalQuestion}`
+  }));
+}
+function mentionsIssueScope(text, evidence2) {
+  const issueNumbers = evidence2.referencedWorkItems?.map((item) => item.issueNumber) ?? [];
+  return /scope|subsystems|affected|specific/.test(text) && issueNumbers.some((number4) => text.includes(`#${number4}`) || text.includes(`issue ${number4}`));
+}
+function isRepositoryScopeQuestion(text) {
+  return /\b(which|what|where)\b.*\b(files?|subsystems?|codebase|components?|implementation|schema|tests?|gate|workflow|planner|planning|evidence)\b/.test(text) || /\baffected subsystems?\b/.test(text) || /\bwhere is\b.*\bdefined\b/.test(text);
+}
+function isPlanningDetailQuestion(text) {
+  return /\b(exact|specific)\b.*\b(files?|phase|order|symbols?|implementation steps?)\b/.test(text) || /\bphase decomposition\b/.test(text) || /\bimplementation order\b/.test(text);
+}
+function isSafetyCriticalQuestion(text) {
+  return /\b(data loss|delete data|destructive|irreversible|drop table|truncate|production data)\b/.test(text) || /\b(public api|public contract|breaking api|break compatibility|breaking change)\b.*\b(acceptable|allowed|intended|intentional|should|may)\b/.test(text);
+}
+function isUserPolicyQuestion(text) {
+  return /\b(production|development only|deploy|public contract|compatibility|migration)\b.*\b(acceptable|allowed|required|waive|permit|policy)\b/.test(text);
+}
+function isUserIntentQuestion(text) {
+  return /\b(which|choose|prefer)\b.*\b(behaviou?r|option|outcome|semantics)\b/.test(text) || /\bwhat specific behaviou?r or outcome should change\b/.test(text);
+}
+function decisionReason(ownership, finalMode) {
+  switch (ownership) {
+    case "user-intent":
+      return "The question asks for missing user intent that LeanRigor cannot infer safely.";
+    case "user-policy":
+      return "The question asks for a user-owned policy decision.";
+    case "safety-critical":
+      return "The question asks for safety-critical permission that must be explicit.";
+    case "repository-discoverable":
+      return `Repository scope is discoverable by bounded inspection or planning; ${finalMode} mode can proceed without asking the user.`;
+    case "planning-detail":
+      return `The question belongs to planning, not triage; ${finalMode} mode can proceed with plan approval as the next control point.`;
+    case "already-resolved":
+      return "The referenced work item already supplies enough issue context for triage.";
+    case "unnecessary":
+      return "No blocking clarification is needed.";
+  }
+}
+
 // src/core/triage-evidence.ts
-import { execFile } from "node:child_process";
+import { execFile as execFile2 } from "node:child_process";
 import { access as access2, constants, lstat, readFile as readFile7 } from "node:fs/promises";
 import path8 from "node:path";
+import { promisify as promisify2 } from "node:util";
+
+// src/core/work-item-resolver.ts
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile);
+var MAX_ISSUE_BODY_BYTES = 32e3;
+var GITHUB_API_TIMEOUT_MS = 5e3;
+var GithubIssueWorkItemResolver = class {
+  async resolve(reference, root) {
+    const repository = reference.repository ?? await resolveGithubRepository(root);
+    if (!repository) {
+      return unavailable(reference, "No GitHub repository remote could be resolved.");
+    }
+    const base = {
+      source: "github-issue",
+      repository,
+      issueNumber: reference.issueNumber,
+      truncated: false
+    };
+    const gh = await fetchWithGh(repository, reference.issueNumber, root);
+    if (gh.status === "resolved") {
+      return {
+        ...base,
+        ...boundIssueContent(gh.issue.title, gh.issue.body ?? ""),
+        url: gh.issue.url,
+        contentStatus: "resolved",
+        retrievedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+    const api = await fetchWithGithubApi(repository, reference.issueNumber);
+    if (api.status === "resolved") {
+      return {
+        ...base,
+        ...boundIssueContent(api.issue.title, api.issue.body ?? ""),
+        url: api.issue.html_url,
+        contentStatus: "resolved",
+        retrievedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+    return {
+      ...base,
+      contentStatus: "unavailable",
+      truncated: false,
+      failureReason: safeFailure([gh.failureReason, api.failureReason].filter(Boolean).join("; ") || "GitHub issue lookup unavailable.")
+    };
+  }
+};
+function extractWorkItemReferences(request) {
+  const refs = /* @__PURE__ */ new Map();
+  const add2 = (reference) => refs.set(`${reference.repository ?? ""}#${reference.issueNumber}`, reference);
+  for (const match2 of request.matchAll(/\bgithub\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/([1-9]\d*)\b/gi)) {
+    add2({ source: "github-issue", repository: match2[1], issueNumber: Number(match2[2]), raw: match2[0] });
+  }
+  for (const match2 of request.matchAll(/\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#([1-9]\d*)\b/g)) {
+    add2({ source: "github-issue", repository: match2[1], issueNumber: Number(match2[2]), raw: match2[0] });
+  }
+  const contextualIssue = /\b(?:github\s+)?(?:issues?|pull request|pr)\s*#([1-9]\d*)\b/i;
+  const match = request.match(contextualIssue);
+  if (match) add2({ source: "github-issue", issueNumber: Number(match[1]), raw: match[0] });
+  return [...refs.values()].slice(0, 3);
+}
+async function resolveReferencedWorkItems(args) {
+  const references = extractWorkItemReferences(args.request);
+  if (references.length === 0) return [];
+  const resolver = args.resolver ?? new GithubIssueWorkItemResolver();
+  return Promise.all(references.map((reference) => resolver.resolve(reference, args.root)));
+}
+async function resolveGithubRepository(root) {
+  const remotes = await gitRemoteLines(root);
+  const candidates = ["origin", "upstream"];
+  for (const name of candidates) {
+    const repo = repositoryFromRemote(remotes.find((line) => line.startsWith(`${name}	`)) ?? "");
+    if (repo) return repo;
+  }
+  for (const remote of remotes) {
+    const repo = repositoryFromRemote(remote);
+    if (repo) return repo;
+  }
+  return void 0;
+}
+async function gitRemoteLines(root) {
+  try {
+    const { stdout } = await execFileAsync("git", ["remote", "-v"], { cwd: root, encoding: "utf8", timeout: 2e3, maxBuffer: 64e3 });
+    return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function repositoryFromRemote(line) {
+  const value = line.split(/\s+/)[1] ?? line;
+  const https = value.match(/github\.com[:/]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?(?:$|[\s#?])/i)?.[1];
+  return https?.replace(/\.git$/i, "");
+}
+async function fetchWithGh(repository, issueNumber, root) {
+  try {
+    const { stdout } = await execFileAsync("gh", ["issue", "view", String(issueNumber), "--repo", repository, "--json", "title,body,url"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 8e3,
+      maxBuffer: 128e3
+    });
+    const issue2 = JSON.parse(stdout);
+    if (typeof issue2.title === "string") {
+      return { status: "resolved", issue: { title: issue2.title, body: typeof issue2.body === "string" ? issue2.body : "", url: typeof issue2.url === "string" ? issue2.url : void 0 } };
+    }
+    return { status: "unavailable", failureReason: "gh returned issue data without a title." };
+  } catch (error51) {
+    return { status: "unavailable", failureReason: `gh issue lookup failed: ${safeFailure(messageOf(error51))}` };
+  }
+}
+async function fetchWithGithubApi(repository, issueNumber) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GITHUB_API_TIMEOUT_MS);
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repository}/issues/${issueNumber}`, {
+      signal: controller.signal,
+      headers: { "Accept": "application/vnd.github+json", "User-Agent": "LeanRigor" }
+    });
+    if (!response.ok) return { status: "unavailable", failureReason: `GitHub API returned HTTP ${response.status}.` };
+    const issue2 = await response.json();
+    if (typeof issue2.title === "string") {
+      return { status: "resolved", issue: { title: issue2.title, body: typeof issue2.body === "string" ? issue2.body : "", html_url: typeof issue2.html_url === "string" ? issue2.html_url : void 0 } };
+    }
+    return { status: "unavailable", failureReason: "GitHub API returned issue data without a title." };
+  } catch (error51) {
+    return { status: "unavailable", failureReason: `GitHub API lookup failed: ${safeFailure(messageOf(error51))}` };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+function boundIssueContent(title, body) {
+  const encoded = Buffer.from(body, "utf8");
+  const truncated = encoded.byteLength > MAX_ISSUE_BODY_BYTES;
+  const boundedBody = truncated ? encoded.subarray(0, MAX_ISSUE_BODY_BYTES).toString("utf8") : body;
+  return {
+    title: title.trim(),
+    body: boundedBody.trim(),
+    acceptanceCriteria: extractAcceptanceCriteria(boundedBody),
+    truncated
+  };
+}
+function extractAcceptanceCriteria(body) {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => /acceptance criteria|initial acceptance criteria|criteria/i.test(line));
+  if (start < 0) return [];
+  const items = [];
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (!line) {
+      if (items.length > 0) break;
+      continue;
+    }
+    if (/^#{1,6}\s+\S/.test(line) && items.length > 0) break;
+    const item = line.match(/^[-*]\s+(.+)/)?.[1] ?? line.match(/^\d+[.)]\s+(.+)/)?.[1];
+    if (item) items.push(item.trim());
+    else if (items.length > 0) break;
+  }
+  return items.slice(0, 12);
+}
+function unavailable(reference, failureReason) {
+  return {
+    source: reference.source,
+    repository: reference.repository,
+    issueNumber: reference.issueNumber,
+    contentStatus: "unavailable",
+    truncated: false,
+    failureReason
+  };
+}
+function safeFailure(value) {
+  return value.replace(/https?:\/\/\S+/g, "[url]").replace(/\s+/g, " ").slice(0, 240);
+}
+function messageOf(error51) {
+  return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
+}
+
+// src/core/triage-evidence.ts
+var execFileAsync2 = promisify2(execFile2);
 var MAX_NAMED_PATHS = 12;
 var MAX_MANIFEST_BYTES = 24e3;
 var TASK_TERMS = [
@@ -20741,6 +21017,10 @@ async function collectTriageEvidence(args) {
   const request = args.request;
   const findings = [];
   const namedPaths = explicitPaths(request).slice(0, MAX_NAMED_PATHS);
+  const referencedWorkItems = await resolveReferencedWorkItems({ request, root, resolver: args.workItemResolver });
+  const issueText = referencedWorkItems.map((item) => [item.title, item.body].filter(Boolean).join("\n\n")).join("\n\n");
+  const evidenceText = [request, issueText].filter(Boolean).join("\n\n");
+  const taskIntentText = [request, ...referencedWorkItems.map((item) => item.title).filter(Boolean)].join("\n\n");
   const manifest = await readPackageJson(root);
   const languages = await detectLanguages(root, manifest);
   const packageManager = await detectPackageManager(root, manifest);
@@ -20748,12 +21028,20 @@ async function collectTriageEvidence(args) {
   const hasTests = await hasAnyPath(root, ["tests", "test", "__tests__", "vitest.config.ts", "jest.config.js", "jest.config.ts", "package.json"]);
   const hasMigrations = await hasAnyPath(root, ["migrations", "db/migrations", "database/migrations", "prisma/migrations"]);
   const hasInfrastructure = await hasAnyPath(root, ["infra", "infrastructure", "terraform", ".github/workflows"]);
-  const taskType2 = detectTaskType(request);
+  const taskType2 = detectTaskType(taskIntentText);
   const namedBoundaries = unique([
     ...namedPaths.map((value) => value.split("/")[0] ?? value),
-    ...boundaryTerms(request)
+    ...boundaryTerms(evidenceText)
   ]).slice(0, 12);
   add(findings, "request.text", request.trim().length > 0, "verified", "user request supplied");
+  for (const item of referencedWorkItems) {
+    const prefix = `workItem.${item.source}.${item.issueNumber}`;
+    add(findings, `${prefix}.contentStatus`, item.contentStatus, item.contentStatus === "unavailable" ? "unknown" : "verified", item.failureReason ?? "referenced work item lookup");
+    if (item.repository) add(findings, `${prefix}.repository`, item.repository, "verified", "repository identity for referenced work item");
+    if (item.title) add(findings, `${prefix}.title`, item.title, "verified", "referenced issue title");
+    if (item.acceptanceCriteria && item.acceptanceCriteria.length > 0) add(findings, `${prefix}.acceptanceCriteria`, item.acceptanceCriteria, "verified", "referenced issue acceptance criteria");
+    addIssueSectionFindings(findings, prefix, item.body ?? "");
+  }
   if (namedPaths.length > 0) add(findings, "request.explicitlyNamedPaths", namedPaths, "verified", "path-like tokens appeared in the request");
   if (taskType2) add(findings, "taskType", taskType2, "inferred", "request keyword classification");
   if (packageManager) add(findings, "repository.packageManager", packageManager, "verified", "package manifest or lockfile");
@@ -20765,16 +21053,16 @@ async function collectTriageEvidence(args) {
   const requestOnlyDocs = taskType2 === "documentation" && namedPaths.every((candidate) => /(^|\/)(readme|docs?|changelog|.*\.md$)/i.test(candidate));
   const signals = Object.fromEntries(Object.entries(SIGNAL_PATTERNS).flatMap(([key, pattern]) => {
     if (!pattern) return [];
-    const matched = pattern.test(request);
+    const matched = pattern.test(evidenceText);
     const value = matched ? true : requestOnlyDocs ? false : "unknown";
-    add(findings, `changeSignals.${key}`, value, matched ? "verified" : requestOnlyDocs ? "inferred" : "unknown", matched ? "explicit request terminology" : requestOnlyDocs ? "documentation-only request" : "not resolved by bounded evidence");
+    add(findings, `changeSignals.${key}`, value, matched ? "verified" : requestOnlyDocs ? "inferred" : "unknown", matched ? "explicit request or work-item terminology" : requestOnlyDocs ? "documentation-only request" : "not resolved by bounded evidence");
     return [[key, value]];
   }));
   const pathFindings = await inspectNamedPaths(root, namedPaths);
   findings.push(...pathFindings);
   const gitFindings = await gitMetadata(root);
   findings.push(...gitFindings);
-  const unresolvedQuestions = unresolvedFromSignals(signals, taskType2, namedPaths);
+  const unresolvedQuestions = unresolvedFromSignals(signals, taskType2, namedPaths, referencedWorkItems.some((item) => item.contentStatus === "resolved"));
   return {
     version: 1,
     request: {
@@ -20782,6 +21070,7 @@ async function collectTriageEvidence(args) {
       referencedIssue: request.match(/#(\d+)/)?.[0],
       explicitlyNamedPaths: namedPaths
     },
+    referencedWorkItems: referencedWorkItems.length > 0 ? referencedWorkItems : void 0,
     repository: {
       root,
       languages,
@@ -20849,9 +21138,33 @@ function detectTaskType(request) {
   return TASK_TERMS.find(([, pattern]) => pattern.test(request))?.[0];
 }
 function boundaryTerms(request) {
-  const boundaries = ["api", "auth", "payments", "database", "schema", "frontend", "backend", "cli", "docs", "infra"];
-  const lower = request.toLowerCase();
-  return boundaries.filter((term) => lower.includes(term));
+  const boundaries = [
+    "api",
+    "auth",
+    "payments",
+    "database",
+    "schema",
+    "workflow state",
+    "workflow",
+    "planning",
+    "completion gate",
+    "evidence gate",
+    "completion evidence",
+    "validation evidence",
+    "validation",
+    "review policy",
+    "tests",
+    "frontend",
+    "backend",
+    "cli",
+    "docs",
+    "infra"
+  ];
+  const lower = request.toLowerCase().replace(/[-_]/g, " ");
+  const matched = boundaries.filter((term) => lower.includes(term));
+  if (lower.includes("completion evidence gate") && !matched.includes("completion gate")) matched.push("completion gate");
+  if (/\btest(?:s|ing)?\b/.test(lower) && !matched.includes("tests")) matched.push("tests");
+  return matched;
 }
 async function detectLanguages(root, manifest) {
   const languages = /* @__PURE__ */ new Set();
@@ -20910,16 +21223,16 @@ async function inspectNamedPaths(root, namedPaths) {
 }
 async function gitMetadata(root) {
   try {
-    const { stdout } = await execFileAsync("git", ["status", "--porcelain=v1"], { cwd: root, encoding: "utf8", timeout: 2e3, maxBuffer: 64e3 });
+    const { stdout } = await execFileAsync2("git", ["status", "--porcelain=v1"], { cwd: root, encoding: "utf8", timeout: 2e3, maxBuffer: 64e3 });
     const files = stdout.split("\n").map((line) => line.slice(3).trim()).filter(Boolean).slice(0, 20);
     return files.length > 0 ? [{ key: "git.status.changedFiles", value: files, confidence: "verified", source: "git status --porcelain bounded metadata" }] : [{ key: "git.status.changedFiles", value: [], confidence: "verified", source: "git status --porcelain bounded metadata" }];
   } catch {
     return [{ key: "git.status.changedFiles", value: "unknown", confidence: "unknown", source: "git status metadata unavailable" }];
   }
 }
-function unresolvedFromSignals(signals, taskType2, namedPaths) {
+function unresolvedFromSignals(signals, taskType2, namedPaths, hasResolvedWorkItem) {
   if (taskType2 === "documentation") return [];
-  return Object.entries(signals).filter(([, value]) => value === "unknown").slice(0, 4).map(([key]) => ({
+  return Object.entries(signals).filter(([, value]) => value === "unknown").slice(0, hasResolvedWorkItem ? 2 : 4).map(([key]) => ({
     id: `triage-${key}`,
     question: `Does the request affect ${key.replace(/[A-Z]/g, (value) => ` ${value.toLowerCase()}`)}?`,
     reason: "This unresolved material risk can change Fast eligibility or escalation.",
@@ -20928,6 +21241,33 @@ function unresolvedFromSignals(signals, taskType2, namedPaths) {
 }
 function add(findings, key, value, confidence, source) {
   findings.push({ key, value, confidence, source });
+}
+function addIssueSectionFindings(findings, prefix, body) {
+  const sections = [
+    ["problem", /problem/i],
+    ["goal", /goal/i],
+    ["desiredBehavior", /desired behaviou?r/i],
+    ["safetyCompatibility", /safety|compatibility/i],
+    ["exclusions", /exclusions?|non-goals?/i]
+  ];
+  for (const [name, pattern] of sections) {
+    const value = sectionText(body, pattern);
+    if (value) add(findings, `${prefix}.${name}`, value, "verified", `referenced issue ${name} section`);
+  }
+}
+function sectionText(body, headingPattern) {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => headingPattern.test(line.replace(/^#+\s*/, "")));
+  if (start < 0) return void 0;
+  const collected = [];
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^#{1,6}\s+\S/.test(line) && collected.length > 0) break;
+    if (line) collected.push(line.replace(/^[-*]\s+/, ""));
+    if (collected.join(" ").length > 500) break;
+  }
+  const text = collected.join(" ").slice(0, 500).trim();
+  return text || void 0;
 }
 function objectValue(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -20959,6 +21299,8 @@ var risk = external_exports.enum(["none", "low", "medium", "high"]);
 var nonZeroRisk = external_exports.enum(["low", "medium", "high"]);
 var mode = external_exports.enum(["fast", "standard", "rigorous"]);
 var taskType = external_exports.enum(["bug", "feature", "refactor", "investigation", "maintenance", "documentation", "unknown"]);
+var clarificationOwnership = external_exports.enum(["user-intent", "user-policy", "safety-critical", "repository-discoverable", "planning-detail", "already-resolved", "unnecessary"]);
+var clarificationDisposition = external_exports.enum(["accepted", "inspected", "deferred", "suppressed"]);
 var triageQuestionSchema = external_exports.object({
   id: external_exports.string().trim().min(1).max(80),
   question: external_exports.string().trim().min(1).max(240),
@@ -20995,6 +21337,17 @@ var triageOutputSchema = external_exports.object({
     question: external_exports.string().trim().min(1).max(300).nullable(),
     reason: external_exports.string().trim().min(1).max(300).nullable()
   }),
+  clarificationDecision: external_exports.object({
+    original: external_exports.object({
+      required: external_exports.boolean(),
+      question: external_exports.string().trim().min(1).max(300).nullable(),
+      reason: external_exports.string().trim().min(1).max(300).nullable()
+    }),
+    ownership: clarificationOwnership,
+    disposition: clarificationDisposition,
+    finalRequired: external_exports.boolean(),
+    reason: external_exports.string().trim().min(1).max(300)
+  }).optional(),
   inspection: external_exports.object({
     required: external_exports.boolean(),
     targets: external_exports.array(external_exports.string().trim().min(1).max(180)).max(5)
@@ -21283,9 +21636,9 @@ function recommendationToTriageOutput(args) {
     assumptions: ["Verified evidence is authoritative; unresolved material risks remain conservative."].slice(0, args.config.triage.maxAssumptions),
     constraints: { mustNot: constraints }
   };
-  return applyEvidencePolicy(preliminary, args.evidence, args.config);
+  return applyEvidencePolicy(preliminary, args.evidence, args.config, args.request, args.recommendation);
 }
-function applyEvidencePolicy(input, evidence2, config2) {
+function applyEvidencePolicy(input, evidence2, config2, request, recommendation) {
   const output = structuredClone(input);
   const overrideReasons = [];
   const explicitTriggers = explicitRigorousTriggers(evidence2);
@@ -21314,6 +21667,17 @@ function applyEvidencePolicy(input, evidence2, config2) {
   output.workflow.reviewLevel = highRisk ? config2.review.highRiskPaths : finalMode === "fast" ? config2.review.fast : finalMode === "standard" ? config2.review.standard : config2.review.rigorous;
   output.workflow.testLevel = defaultTestLevel(finalMode, output.task.type);
   output.escalationReasons = unique2([...output.escalationReasons, ...overrideReasons]).slice(0, config2.triage.maxEscalationReasons);
+  const clarificationDecision = evaluateClarification({ request, evidence: evidence2, recommendation, finalMode });
+  output.clarificationDecision = clarificationDecision;
+  if (clarificationDecision.finalRequired) {
+    output.clarification = clarificationDecision.original;
+  } else {
+    output.clarification = { required: false, question: null, reason: null };
+    output.assumptions = unique2([
+      ...output.assumptions,
+      clarificationDecision.reason
+    ]).slice(0, config2.triage.maxAssumptions);
+  }
   return {
     output: validateTriageOutput(output),
     policyDecision: { finalMode, overrideReasons, fastEligible }
@@ -21336,7 +21700,7 @@ var TriageProviderError = class extends Error {
 async function runTriage(args) {
   const { request, root, config: config2, provider } = args;
   const warnings = [];
-  let evidence2 = await collectTriageEvidence({ request, root, config: config2 });
+  let evidence2 = await collectTriageEvidence({ request, root, config: config2, workItemResolver: args.workItemResolver });
   if (!config2.workflow.automaticTriage || !provider) {
     const fallbackReason2 = !config2.workflow.automaticTriage ? "automatic triage is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model triage provider was resolved";
     const recommendation2 = deterministicRecommendationFromEvidence(evidence2, config2);
@@ -21385,7 +21749,7 @@ async function runTriage(args) {
         inspection
       };
     } catch (error51) {
-      lastFailure = messageOf(error51);
+      lastFailure = messageOf2(error51);
       warnings.push(`Model triage recommendation attempt ${attempts} failed: ${lastFailure}`);
       if (error51 instanceof TriageProviderError && (error51.kind === "max_turns" || error51.kind === "max_budget")) {
         warnings.push("Not retrying unchanged recommendation after a structural provider budget failure.");
@@ -21446,7 +21810,7 @@ function legacyTriageToRecommendation(value) {
   };
 }
 async function maybeInspect(args) {
-  const inspectionRequest = inspectionRequestFor(args.evidence, args.recommendation, args.config);
+  const inspectionRequest = inspectionRequestFor(args.root, args.evidence, args.recommendation, args.config);
   if (!inspectionRequest || !args.provider.inspect) return { used: false };
   try {
     const result = await args.provider.inspect({
@@ -21460,20 +21824,25 @@ async function maybeInspect(args) {
     const parsed = triageInspectionResultSchema.parse(normaliseModelPayload(result.raw));
     return { used: true, request: inspectionRequest, result: parsed };
   } catch (error51) {
-    const failureReason = messageOf(error51);
+    const failureReason = messageOf2(error51);
     args.warnings.push(`Targeted triage inspection failed: ${failureReason}`);
     return { used: true, request: inspectionRequest, failureReason };
   }
 }
-function inspectionRequestFor(evidence2, recommendation, config2) {
-  if (!recommendation.needsAdditionalInspection || recommendation.inspectionQuestions.length === 0) return void 0;
+function inspectionRequestFor(root, evidence2, recommendation, config2) {
+  const questions = uniqueQuestions([
+    ...recommendation.needsAdditionalInspection ? recommendation.inspectionQuestions : [],
+    ...clarificationInspectionQuestions(evidence2, recommendation)
+  ]).slice(0, 4);
+  if (questions.length === 0) return void 0;
   const allowedPaths = unique3([
     ...evidence2.request.explicitlyNamedPaths,
-    ...recommendation.inspectionQuestions.flatMap((question) => question.allowedPaths ?? [])
+    ...questions.flatMap((question) => question.allowedPaths ?? []),
+    ...derivedInspectionPaths(root, evidence2)
   ]).slice(0, 8);
   if (allowedPaths.length === 0) return void 0;
   return {
-    questions: recommendation.inspectionQuestions.slice(0, 4),
+    questions,
     allowedPaths,
     maxReads: config2.budgets.triageInspectionMaxReads,
     maxBytes: config2.budgets.triageInspectionMaxBytes
@@ -21500,6 +21869,33 @@ function mergeInspectionFindings(evidence2, result) {
   });
   return next;
 }
+function derivedInspectionPaths(root, evidence2) {
+  const concepts = evidence2.changeSignals.namedBoundaries.map((value) => value.toLowerCase());
+  const candidates = /* @__PURE__ */ new Set();
+  const add2 = (values) => values.forEach((value) => candidates.add(value));
+  if (concepts.length === 0) add2(["src/core", "tests"]);
+  for (const concept of concepts) {
+    if (concept.includes("workflow")) add2(["src/core/types.ts", "src/core/flow.ts", "src/core/workflow.ts"]);
+    if (concept.includes("planning")) add2(["src/core/planning-runner.ts", "methodology/planning.md"]);
+    if (concept.includes("completion") || concept.includes("validation")) add2(["src/core/completion-evidence.ts", "src/core/flow.ts", "tests"]);
+    if (concept.includes("review")) add2(["src/core/review-policy.ts", "methodology/review.md"]);
+    if (concept.includes("test")) add2(["tests", "package.json"]);
+    if (concept.includes("cli")) add2(["src/cli/index.ts"]);
+    if (concept.includes("docs")) add2(["README.md", "docs"]);
+    if (concept.includes("infra")) add2([".github/workflows", "infra", "infrastructure"]);
+    if (concept.includes("schema")) add2(["src/core/types.ts", "src/core/flow.ts"]);
+  }
+  return [...candidates].filter((candidate) => existsSync(path9.join(root, candidate))).slice(0, 8);
+}
+function uniqueQuestions(values) {
+  const seen = /* @__PURE__ */ new Set();
+  return values.filter((question) => {
+    const key = question.id || question.question;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 function normaliseModelPayload(raw) {
   if (typeof raw === "object" && raw !== null) {
     const record2 = raw;
@@ -21523,7 +21919,7 @@ function parseJsonText(value) {
     throw new TriageExecutionError("Model response did not contain valid JSON.");
   }
 }
-function messageOf(error51) {
+function messageOf2(error51) {
   return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
 }
 function unique3(values) {
@@ -21611,17 +22007,17 @@ async function buildTriagePrompt(input, repairFailure) {
   ].filter(Boolean).join("\n\n");
 }
 async function readTriageSkill(root) {
-  const moduleDir = path9.dirname(fileURLToPath2(import.meta.url));
+  const moduleDir = path10.dirname(fileURLToPath2(import.meta.url));
   const pluginRoots = [
     process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT,
     process.env.CLAUDE_PLUGIN_ROOT
   ].filter((value) => Boolean(value));
   const candidates = [
-    ...pluginRoots.map((pluginRoot) => path9.join(pluginRoot, "internal-skills", "triage-task", "SKILL.md")),
-    path9.join(moduleDir, "internal-skills", "triage-task", "SKILL.md"),
-    path9.join(moduleDir, "..", "internal-skills", "triage-task", "SKILL.md"),
-    path9.join(moduleDir, "..", "..", "..", "internal-skills", "triage-task", "SKILL.md"),
-    path9.join(root, "internal-skills", "triage-task", "SKILL.md")
+    ...pluginRoots.map((pluginRoot) => path10.join(pluginRoot, "internal-skills", "triage-task", "SKILL.md")),
+    path10.join(moduleDir, "internal-skills", "triage-task", "SKILL.md"),
+    path10.join(moduleDir, "..", "internal-skills", "triage-task", "SKILL.md"),
+    path10.join(moduleDir, "..", "..", "..", "internal-skills", "triage-task", "SKILL.md"),
+    path10.join(root, "internal-skills", "triage-task", "SKILL.md")
   ];
   for (const candidate of candidates) {
     try {
@@ -21882,7 +22278,7 @@ init_resolver();
 init_model_display();
 import { readFile as readFile9 } from "node:fs/promises";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import path10 from "node:path";
+import path11 from "node:path";
 var VALID_EXAMPLES = [
   {
     description: "Set personal small-tier model for all repos",
@@ -22002,8 +22398,8 @@ async function resolvePluginVersion(mode2) {
     const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
     if (pluginRoot) {
       candidates.push(
-        path10.join(pluginRoot, ".claude-plugin", "plugin.json"),
-        path10.join(pluginRoot, "package.json")
+        path11.join(pluginRoot, ".claude-plugin", "plugin.json"),
+        path11.join(pluginRoot, "package.json")
       );
     }
   }
@@ -22105,7 +22501,7 @@ async function buildInitReport(root, bootstrapResult) {
   }
   return {
     configurationFiles,
-    gitignore: await ensureGitignore(path10.join(root, ".leanrigor")),
+    gitignore: await ensureGitignore(path11.join(root, ".leanrigor")),
     models,
     execution,
     assets,
@@ -22315,12 +22711,12 @@ function renderSettingsState(settings, isMarketplace) {
 
 // src/core/bootstrap.ts
 init_resolver();
-import path11 from "node:path";
+import path12 from "node:path";
 async function ensureBootstrapped(root, opts = {}) {
   const warnings = [];
   await ensureRepositoryConfig(root);
   const config2 = (await resolveEffectiveConfig(root)).values;
-  await ensureGitignore(path11.join(root, ".leanrigor"));
+  await ensureGitignore(path12.join(root, ".leanrigor"));
   const installationMode = await detectInstallationMode(root);
   let shadowing = null;
   if (installationMode === "marketplace") {
@@ -22410,7 +22806,7 @@ init_models();
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { mkdir as mkdir8, readFile as readFile13 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path16 from "node:path";
+import path17 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -22432,13 +22828,13 @@ function commitCommands(proposal) {
 
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
-import { execFile as execFile2 } from "node:child_process";
+import { execFile as execFile3 } from "node:child_process";
 import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir6, readFile as readFile10, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
-import path13 from "node:path";
-import { promisify as promisify2 } from "node:util";
+import path14 from "node:path";
+import { promisify as promisify3 } from "node:util";
 
 // src/core/ownership.ts
-import path12 from "node:path";
+import path13 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -22455,7 +22851,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path12.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path13.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -22683,7 +23079,7 @@ function unique5(values) {
 }
 
 // src/core/git-workspace.ts
-var execFileAsync2 = promisify2(execFile2);
+var execFileAsync3 = promisify3(execFile3);
 var OWNERSHIP_VERSION = 1;
 var MAX_GIT_OUTPUT = 64 * 1024 * 1024;
 var GitWorkspaceError = class extends Error {
@@ -22762,13 +23158,13 @@ async function ensureIntegrationWorkspace(state, config2) {
   const existing = state.git;
   if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
   const names = workspaceNames(state.id, void 0, config2);
-  const workflowRoot = path13.join(preflight.workspaceRoot, state.id);
-  const integrationPath = path13.join(workflowRoot, "integration");
+  const workflowRoot = path14.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path14.join(workflowRoot, "integration");
   ensurePathLength(integrationPath, config2);
   await ensurePathAvailable(integrationPath, state.id, "integration");
   const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
   const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
-  await mkdir6(path13.dirname(integrationPath), { recursive: true });
+  await mkdir6(path14.dirname(integrationPath), { recursive: true });
   await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
   const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
   const now = timestamp();
@@ -22831,12 +23227,12 @@ async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
     throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
   const names = workspaceNames(state.id, phaseId, config2);
-  const workflowRoot = path13.join(gitState.context.workspaceRoot, state.id);
-  const phasePath = path13.join(workflowRoot, "phases", names.phasePathSegment);
+  const workflowRoot = path14.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path14.join(workflowRoot, "phases", names.phasePathSegment);
   ensurePathLength(phasePath, config2);
   await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
   const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
-  await mkdir6(path13.dirname(phasePath), { recursive: true });
+  await mkdir6(path14.dirname(phasePath), { recursive: true });
   await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
   const now = timestamp();
   await writeOwnershipMetadata(workflowRoot, {
@@ -23217,31 +23613,31 @@ function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
 function resolveWorkspaceRoot(repositoryRoot, config2, repositoryIdentity = repositoryIdentityFor(repositoryRoot)) {
-  if (config2.execution.workspaceRoot) return path13.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  if (config2.execution.workspaceRoot) return path14.resolve(repositoryRoot, config2.execution.workspaceRoot);
   const identity = safeIdentitySegment(repositoryIdentity);
-  return path13.join(path13.dirname(repositoryRoot), ".leanrigor-worktrees", `${path13.basename(repositoryRoot)}-${identity}`);
+  return path14.join(path14.dirname(repositoryRoot), ".leanrigor-worktrees", `${path14.basename(repositoryRoot)}-${identity}`);
 }
 function repositoryIdentityFor(repositoryRoot) {
-  return `root-sha256:${createHash2("sha256").update(path13.resolve(repositoryRoot)).digest("hex")}`;
+  return `root-sha256:${createHash2("sha256").update(path14.resolve(repositoryRoot)).digest("hex")}`;
 }
 function safeIdentitySegment(repositoryIdentity) {
   return (repositoryIdentity.includes(":") ? repositoryIdentity.split(":").at(-1) : repositoryIdentity).replace(/[^a-f0-9]/gi, "").slice(0, 12) || createHash2("sha256").update(repositoryIdentity).digest("hex").slice(0, 12);
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
-  const dir = path13.join(workflowRoot, ".leanrigor-owned-worktrees");
+  const dir = path14.join(workflowRoot, ".leanrigor-owned-worktrees");
   await mkdir6(dir, { recursive: true });
   const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
-  await writeFile6(path13.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+  await writeFile6(path14.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
 }
 async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
-  const workflowRoot = workspaceType === "integration" ? path13.dirname(worktreePath) : path13.dirname(path13.dirname(worktreePath));
-  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path13.basename(worktreePath))}.json`;
-  const file2 = path13.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  const workflowRoot = workspaceType === "integration" ? path14.dirname(worktreePath) : path14.dirname(path14.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path14.basename(worktreePath))}.json`;
+  const file2 = path14.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
     const parsed = JSON.parse(await readFile10(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
-    if (path13.resolve(parsed.path) !== path13.resolve(worktreePath)) return void 0;
+    if (path14.resolve(parsed.path) !== path14.resolve(worktreePath)) return void 0;
     return parsed;
   } catch {
     return void 0;
@@ -23256,12 +23652,12 @@ async function worktreeDirty(worktreePath) {
   return statusText.trim().length > 0;
 }
 async function git(cwd, args, options = {}) {
-  const { stdout } = await execFileAsync2("git", args, { cwd, encoding: "utf8", maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024 });
+  const { stdout } = await execFileAsync3("git", args, { cwd, encoding: "utf8", maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024 });
   return stdout;
 }
 async function runShellCommand(command, cwd) {
   try {
-    const { stdout, stderr } = await execFileAsync2("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
+    const { stdout, stderr } = await execFileAsync3("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
     return { exitStatus: 0, output: `${stdout}${stderr}`.trim() || "Command completed successfully." };
   } catch (error51) {
     const failed = error51;
@@ -23270,14 +23666,14 @@ async function runShellCommand(command, cwd) {
 }
 async function gitOperationInProgress(commonDir, gitDir) {
   const checks = [
-    [path13.join(gitDir, "MERGE_HEAD"), "merge"],
-    [path13.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
-    [path13.join(gitDir, "REVERT_HEAD"), "revert"],
-    [path13.join(gitDir, "BISECT_LOG"), "bisect"],
-    [path13.join(gitDir, "rebase-merge"), "rebase"],
-    [path13.join(gitDir, "rebase-apply"), "rebase"],
-    [path13.join(commonDir, "rebase-merge"), "rebase"],
-    [path13.join(commonDir, "rebase-apply"), "rebase"]
+    [path14.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path14.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path14.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path14.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path14.join(gitDir, "rebase-merge"), "rebase"],
+    [path14.join(gitDir, "rebase-apply"), "rebase"],
+    [path14.join(commonDir, "rebase-merge"), "rebase"],
+    [path14.join(commonDir, "rebase-apply"), "rebase"]
   ];
   for (const [file2, operation] of checks) {
     if (await pathExists(file2)) return operation;
@@ -23285,10 +23681,10 @@ async function gitOperationInProgress(commonDir, gitDir) {
   return void 0;
 }
 async function resolveGitPath(cwd, gitPath) {
-  return path13.isAbsolute(gitPath) ? gitPath : path13.resolve(cwd, gitPath);
+  return path14.isAbsolute(gitPath) ? gitPath : path14.resolve(cwd, gitPath);
 }
 async function canonical(value) {
-  return realpath(path13.resolve(value));
+  return realpath(path14.resolve(value));
 }
 function gitVersionSupportsWorktree(versionText) {
   const match = versionText.match(/git version (\d+)\.(\d+)/);
@@ -23309,9 +23705,9 @@ async function findNestedRepositories(repositoryRoot) {
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
-      const child = path13.join(dir, entry.name);
-      if (await pathExists(path13.join(child, ".git"))) {
-        nested.push(path13.relative(repositoryRoot, child));
+      const child = path14.join(dir, entry.name);
+      if (await pathExists(path14.join(child, ".git"))) {
+        nested.push(path14.relative(repositoryRoot, child));
         continue;
       }
       await walk(child, depth + 1);
@@ -23348,7 +23744,7 @@ function parseModeChanges(raw) {
 }
 async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
   for (const file2 of changedFiles) {
-    const full = path13.join(worktreePath, file2);
+    const full = path14.join(worktreePath, file2);
     let info;
     try {
       info = await lstat2(full);
@@ -23357,7 +23753,7 @@ async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
     }
     if (!info.isSymbolicLink()) continue;
     const target = await readlink(full);
-    if (path13.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+    if (path14.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
       throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
     }
   }
@@ -23375,11 +23771,11 @@ function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function isPathInside(child, parent) {
-  const relative = path13.relative(path13.resolve(parent), path13.resolve(child));
-  return relative === "" || !relative.startsWith("..") && !path13.isAbsolute(relative);
+  const relative = path14.relative(path14.resolve(parent), path14.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path14.isAbsolute(relative);
 }
 function isSamePath(left, right) {
-  return path13.resolve(left) === path13.resolve(right);
+  return path14.resolve(left) === path14.resolve(right);
 }
 async function pathExists(target) {
   return stat2(target).then(() => true).catch(() => false);
@@ -24182,7 +24578,7 @@ async function runPlanning(args) {
     try {
       result = await provider.plan(input);
     } catch (error51) {
-      warnings.push(`Planning provider invocation ${attempt} failed: ${messageOf2(error51)}`);
+      warnings.push(`Planning provider invocation ${attempt} failed: ${messageOf3(error51)}`);
       continue;
     }
     warnings.push(...result.warnings ?? []);
@@ -24194,7 +24590,7 @@ async function runPlanning(args) {
     } catch (error51) {
       const diagnostics = diagnosticsOf(error51, "syntax");
       allDiagnostics.push(...diagnostics);
-      warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf2(error51)}`);
+      warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf3(error51)}`);
       continue;
     }
     const validated = validateCandidate(args, parsed.value);
@@ -24241,7 +24637,7 @@ async function runPlanning(args) {
         warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
       } catch (error51) {
         allDiagnostics.push(...diagnosticsOf(error51, "schema"));
-        warnings.push(`Planning semantic repair failed: ${messageOf2(error51)}`);
+        warnings.push(`Planning semantic repair failed: ${messageOf3(error51)}`);
       }
       if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) break;
     }
@@ -24286,12 +24682,12 @@ function parsePlanningText(text) {
     try {
       repaired = jsonrepair(candidate);
     } catch {
-      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "invalid_json", message: messageOf2(firstError) }]);
+      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "invalid_json", message: messageOf3(firstError) }]);
     }
     try {
       return { value: JSON.parse(repaired), syntaxRepairApplied: true };
     } catch (secondError) {
-      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "jsonrepair_failed", message: messageOf2(secondError) }]);
+      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "jsonrepair_failed", message: messageOf3(secondError) }]);
     }
   }
 }
@@ -24346,11 +24742,11 @@ function diagnosticsOf(error51, fallbackStage) {
         stage: fallbackStage,
         path: Array.isArray(candidate.path) ? candidate.path.filter((part) => typeof part === "string" || typeof part === "number") : [],
         code: candidate.code ?? "validation_error",
-        message: candidate.message ?? messageOf2(issue2)
+        message: candidate.message ?? messageOf3(issue2)
       };
     });
   }
-  return [{ stage: fallbackStage, path: [], code: "planning_error", message: messageOf2(error51) }];
+  return [{ stage: fallbackStage, path: [], code: "planning_error", message: messageOf3(error51) }];
 }
 function diagnosticSummary(diagnostics) {
   return diagnostics.map((diagnostic) => `${diagnostic.stage}:${diagnostic.path.join(".") || "<root>"}:${diagnostic.message}`).join("; ");
@@ -24359,19 +24755,19 @@ function isGenericFallbackPlan(plan) {
   const text = plan.phases.map((phase2) => phase2.objective).join("\n").toLowerCase();
   return /\bimplement (the )?(primary|approved|high-risk) behavior( change)?\b/.test(text) || /\bfocused regression coverage\b/.test(text) || /\bactual implementation work will need\b/.test(plan.summary.toLowerCase());
 }
-function messageOf2(error51) {
+function messageOf3(error51) {
   return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
 }
 
 // src/core/workflow-lock.ts
 import { open as open2, readFile as readFile12, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
 import os from "node:os";
-import path15 from "node:path";
+import path16 from "node:path";
 
 // src/core/workflow-store.ts
 import { open, readFile as readFile11, rename as rename2, rm } from "node:fs/promises";
 import { randomUUID as randomUUID2 } from "node:crypto";
-import path14 from "node:path";
+import path15 from "node:path";
 var RevisionConflictError = class extends Error {
   constructor(expectedRevision, actualRevision) {
     super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
@@ -24383,8 +24779,8 @@ var RevisionConflictError = class extends Error {
   code = "revision_conflict";
 };
 async function atomicWriteJson2(file2, value) {
-  const dir = path14.dirname(file2);
-  const temp = path14.join(dir, `.${path14.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
+  const dir = path15.dirname(file2);
+  const temp = path15.join(dir, `.${path15.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
   const handle = await open(temp, "wx");
   try {
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
@@ -24425,13 +24821,13 @@ var WorkflowLockOwnershipError = class extends Error {
   code = "workflow_lock_owner_mismatch";
 };
 function lockPath(root, workflowId2) {
-  return path15.join(path15.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+  return path16.join(path16.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
 }
 async function acquireWorkflowLock(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const lock = buildLock(options, now);
   const file2 = lockPath(options.root, options.workflowId);
-  await mkdir7(path15.dirname(file2), { recursive: true });
+  await mkdir7(path16.dirname(file2), { recursive: true });
   try {
     const handle = await open2(file2, "wx");
     try {
@@ -24494,7 +24890,7 @@ function buildLock(options, now) {
 }
 
 // src/core/flow.ts
-var WORKFLOW_DIR = path16.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path17.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -24519,6 +24915,8 @@ var completionDecisionSchema = external_exports.enum(["completed", "needs_repair
 var phaseStatusSchema = external_exports.enum(["planned", "ready", "leased", "running", "completion_pending", "completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
 var constraintSourceSchema = external_exports.enum(["policy", "triage", "user"]);
 var constraintActionSchema = external_exports.enum(["add", "remove", "override"]);
+var clarificationOwnershipSchema = external_exports.enum(["user-intent", "user-policy", "safety-critical", "repository-discoverable", "planning-detail", "already-resolved", "unnecessary"]);
+var clarificationDispositionSchema = external_exports.enum(["accepted", "inspected", "deferred", "suppressed"]);
 var triageSchema = external_exports.object({
   version: external_exports.literal(1),
   task: external_exports.object({
@@ -24549,6 +24947,17 @@ var triageSchema = external_exports.object({
     question: external_exports.string().nullable(),
     reason: external_exports.string().nullable()
   }),
+  clarificationDecision: external_exports.object({
+    original: external_exports.object({
+      required: external_exports.boolean(),
+      question: external_exports.string().nullable(),
+      reason: external_exports.string().nullable()
+    }),
+    ownership: clarificationOwnershipSchema,
+    disposition: clarificationDispositionSchema,
+    finalRequired: external_exports.boolean(),
+    reason: external_exports.string()
+  }).optional(),
   inspection: external_exports.object({
     required: external_exports.boolean(),
     targets: external_exports.array(external_exports.string())
@@ -24988,7 +25397,7 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path16.resolve(options.root);
+  const root = path17.resolve(options.root);
   const now = timestamp2();
   let state = {
     version: STATE_VERSION,
@@ -25543,7 +25952,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path16.join(path16.resolve(root), WORKFLOW_DIR);
+  const dir = path17.join(path17.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -25580,7 +25989,7 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path16.join(path16.resolve(root), WORKFLOW_DIR);
+  const dir = path17.join(path17.resolve(root), WORKFLOW_DIR);
   await mkdir8(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
@@ -26436,7 +26845,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path16.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path17.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -26677,7 +27086,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path16.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path17.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -26782,11 +27191,11 @@ function boundEvents(events) {
 }
 function boundDiagnosticObject(value) {
   const json2 = JSON.stringify(value);
-  if (json2.length <= 8e3) return value;
+  if (json2.length <= 64e3) return value;
   return {
     truncated: true,
     bytes: json2.length,
-    summary: json2.slice(0, 4e3)
+    summary: json2.slice(0, 8e3)
   };
 }
 function migrateWorkflowState(raw, root, workflowId2) {
@@ -26799,7 +27208,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path16.resolve(root),
+      root: path17.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -26815,7 +27224,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path16.resolve(root);
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path17.resolve(root);
   migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
@@ -26878,7 +27287,7 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path16.join(path16.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path17.join(path17.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
   return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID3().slice(0, 8)}`;
@@ -26938,7 +27347,14 @@ function workflowNextSummary(state) {
       pendingDecision: "Answer the single blocking clarification question.",
       pendingAction: question,
       allowedIntents: ["answer", "cancel", "show status"],
-      summary: { question, reason }
+      summary: {
+        question,
+        reason,
+        modeStatus: "provisional",
+        provisionalRecommendation: state.triage?.workflow.modelRecommendation ?? workflow.mode,
+        finalMode: null,
+        clarificationDecision: state.triage?.clarificationDecision
+      }
     };
   }
   if (state.state === "awaiting_approach_approval") {
@@ -27265,9 +27681,9 @@ function quoteArg(value) {
 
 // src/core/completion-evidence.ts
 import { mkdir as mkdir9, readFile as readFile14, writeFile as writeFile8 } from "node:fs/promises";
-import path17 from "node:path";
+import path18 from "node:path";
 async function readCompletionEvidenceFile(root, workflowId2, phaseId, file2) {
-  const resolved = path17.resolve(file2);
+  const resolved = path18.resolve(file2);
   let rawText;
   try {
     rawText = await readFile14(resolved, "utf8");
@@ -27312,26 +27728,26 @@ function validateCompletionEvidenceFile(raw, state, phaseId, file2) {
   if (raw.validation !== void 0 && !Array.isArray(raw.validation)) throw new Error("Completion evidence validation must be an array.");
 }
 async function persistCompletionEvidenceArtifact(root, workflowId2, phaseId, file2) {
-  const sourcePath = path17.resolve(file2);
+  const sourcePath = path18.resolve(file2);
   const raw = await readFile14(sourcePath, "utf8");
   const artifactPath = completionEvidenceArtifactPath(root, workflowId2, phaseId);
-  const artifactDir = path17.dirname(artifactPath);
+  const artifactDir = path18.dirname(artifactPath);
   await mkdir9(artifactDir, { recursive: true });
   await writeFile8(artifactPath, raw.endsWith("\n") ? raw : `${raw}
 `, "utf8");
   return { path: artifactPath, sourcePath, recordedAt: (/* @__PURE__ */ new Date()).toISOString() };
 }
 function completionEvidenceArtifactPath(root, workflowId2, phaseId) {
-  return path17.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
+  return path18.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
 }
 
 // src/core/execution/claude-provider.ts
 init_models();
-import { execFile as execFile3, spawn as spawn2 } from "node:child_process";
+import { execFile as execFile4, spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import { mkdir as mkdir10, open as open3, readFile as readFile15, rename as rename3, stat as stat3, writeFile as writeFile9 } from "node:fs/promises";
-import path18 from "node:path";
-import { promisify as promisify3 } from "node:util";
+import path19 from "node:path";
+import { promisify as promisify4 } from "node:util";
 
 // src/core/execution/errors.ts
 var ExecutionError = class extends Error {
@@ -27420,7 +27836,7 @@ function defaultWorkerControls(mode2) {
 }
 
 // src/core/execution/claude-provider.ts
-var execFileAsync3 = promisify3(execFile3);
+var execFileAsync4 = promisify4(execFile4);
 var ClaudeCliExecutionProvider = class {
   constructor(options = {}) {
     this.options = options;
@@ -27431,7 +27847,7 @@ var ClaudeCliExecutionProvider = class {
   providerVersion;
   async capabilities() {
     try {
-      const version2 = await execFileAsync3(this.options.command ?? "claude", ["--version"], { timeout: 5e3, encoding: "utf8" });
+      const version2 = await execFileAsync4(this.options.command ?? "claude", ["--version"], { timeout: 5e3, encoding: "utf8" });
       this.providerVersion = (version2.stdout || version2.stderr).trim() || void 0;
     } catch (error51) {
       throw new ExecutionError("provider_unavailable", "Claude CLI is not available on PATH.", { cause: error51 instanceof Error ? error51.message : String(error51) });
@@ -27474,11 +27890,11 @@ var ClaudeCliExecutionProvider = class {
       resume: canResume
     });
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path18.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    const artifactDir = path19.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
     await mkdir10(artifactDir, { recursive: true });
-    const statusPath = path18.join(artifactDir, "status.json");
-    const stdoutPath = path18.join(artifactDir, "stdout.json");
-    const stderrPath = path18.join(artifactDir, "stderr.txt");
+    const statusPath = path19.join(artifactDir, "status.json");
+    const stdoutPath = path19.join(artifactDir, "stdout.json");
+    const stderrPath = path19.join(artifactDir, "stderr.txt");
     const providerMetadata = {
       command: this.options.command ?? "claude",
       safeArgs,
@@ -28059,20 +28475,20 @@ function redact(value) {
 }
 
 // src/core/execution/coordinator.ts
-import { execFile as execFile5 } from "node:child_process";
+import { execFile as execFile6 } from "node:child_process";
 import { stat as stat4 } from "node:fs/promises";
-import path20 from "node:path";
-import { promisify as promisify5 } from "node:util";
+import path21 from "node:path";
+import { promisify as promisify6 } from "node:util";
 
 // src/core/workspace-preparation.ts
-import { execFile as execFile4 } from "node:child_process";
+import { execFile as execFile5 } from "node:child_process";
 import { access as access4, constants as constants3, lstat as lstat3, readFile as readFile16 } from "node:fs/promises";
-import path19 from "node:path";
-import { promisify as promisify4 } from "node:util";
-var execFileAsync4 = promisify4(execFile4);
+import path20 from "node:path";
+import { promisify as promisify5 } from "node:util";
+var execFileAsync5 = promisify5(execFile5);
 async function preparePhaseWorkspace(args) {
   const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const packageJson = path19.join(args.workspacePath, "package.json");
+  const packageJson = path20.join(args.workspacePath, "package.json");
   if (!await exists2(packageJson)) {
     return preparation({
       status: "available",
@@ -28140,7 +28556,7 @@ async function preparePhaseWorkspace(args) {
   if (result.status !== "prepared") return result;
   const before = await manifestIdentity(args.workspacePath);
   try {
-    const install = await execFileAsync4(command[0], command.slice(1), { cwd: args.workspacePath, encoding: "utf8", maxBuffer: 1024 * 1024 * 8 });
+    const install = await execFileAsync5(command[0], command.slice(1), { cwd: args.workspacePath, encoding: "utf8", maxBuffer: 1024 * 1024 * 8 });
     const after = await manifestIdentity(args.workspacePath);
     if (before !== after) {
       return { ...result, status: "failed", approvalRequired: true, reason: "Bootstrap changed package manifests or lockfiles; provider dispatch is blocked.", evidence: [...result.evidence, "manifest identity changed", `${install.stdout}${install.stderr}`.slice(0, 1e3)] };
@@ -28152,10 +28568,10 @@ async function preparePhaseWorkspace(args) {
 }
 async function detectPackageManager2(workspacePath, packageJson = {}) {
   const declared = typeof packageJson.packageManager === "string" ? packageJson.packageManager : "";
-  if (await exists2(path19.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
-  if (await exists2(path19.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
-  if (await exists2(path19.join(workspacePath, "bun.lockb")) || await exists2(path19.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
-  if (await exists2(path19.join(workspacePath, "package-lock.json")) || await exists2(path19.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
+  if (await exists2(path20.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
+  if (await exists2(path20.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
+  if (await exists2(path20.join(workspacePath, "bun.lockb")) || await exists2(path20.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
+  if (await exists2(path20.join(workspacePath, "package-lock.json")) || await exists2(path20.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
   return { packageManager: "npm", bootstrapCommand: ["npm", "install"], lockfilePreserving: false, evidence: evidence("package.json without lockfile", declared) };
 }
 function hasDeclaredDependencies(packageJson) {
@@ -28165,10 +28581,10 @@ function hasDeclaredDependencies(packageJson) {
   });
 }
 async function dependenciesUsable(workspacePath, validationCommands) {
-  if (!await exists2(path19.join(workspacePath, "node_modules"))) return false;
+  if (!await exists2(path20.join(workspacePath, "node_modules"))) return false;
   const toolNames = validationCommands.flatMap((command) => command.match(/\b(vitest|jest|tsc|eslint|tsx|vite|webpack|rollup)\b/g) ?? []);
   for (const tool of new Set(toolNames)) {
-    if (!await executableExists(path19.join(workspacePath, "node_modules", ".bin", tool))) return false;
+    if (!await executableExists(path20.join(workspacePath, "node_modules", ".bin", tool))) return false;
   }
   return true;
 }
@@ -28194,7 +28610,7 @@ function fallbackBootstrapCommand() {
 }
 async function readPackageJson2(workspacePath) {
   try {
-    return JSON.parse(await readFile16(path19.join(workspacePath, "package.json"), "utf8"));
+    return JSON.parse(await readFile16(path20.join(workspacePath, "package.json"), "utf8"));
   } catch {
     return {};
   }
@@ -28202,7 +28618,7 @@ async function readPackageJson2(workspacePath) {
 async function manifestIdentity(workspacePath) {
   const names = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
   const parts = await Promise.all(names.map(async (name) => {
-    const file2 = path19.join(workspacePath, name);
+    const file2 = path20.join(workspacePath, name);
     try {
       const stats = await lstat3(file2);
       return `${name}:${stats.size}:${stats.mtimeMs}`;
@@ -28240,7 +28656,7 @@ function toValidationEvidence(phaseId, entry) {
 
 // src/core/execution/coordinator.ts
 var ACTIVE_EXECUTION_STATUSES = /* @__PURE__ */ new Set(["dispatching", "running", "collecting"]);
-var execFileAsync5 = promisify5(execFile5);
+var execFileAsync6 = promisify6(execFile6);
 var CHECKPOINT_DIFF_BYTES = 32 * 1024;
 var ExecutionCoordinator = class {
   root;
@@ -28742,7 +29158,7 @@ ${diffExcerpt}`].filter(Boolean).join("\n\n");
 }
 async function gitText(cwd, args) {
   try {
-    const result = await execFileAsync5("git", args, { cwd, encoding: "utf8", maxBuffer: CHECKPOINT_DIFF_BYTES * 4 });
+    const result = await execFileAsync6("git", args, { cwd, encoding: "utf8", maxBuffer: CHECKPOINT_DIFF_BYTES * 4 });
     return result.stdout;
   } catch {
     return "";
@@ -28792,8 +29208,8 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
   if (await codeGraphUsable(workspacePath)) {
     return { codegraph: "exact-worktree", note: "CodeGraph index is available for the exact assigned phase worktree." };
   }
-  const root = path20.resolve(repositoryRoot);
-  const workspace = path20.resolve(workspacePath);
+  const root = path21.resolve(repositoryRoot);
+  const workspace = path21.resolve(workspacePath);
   if (root !== workspace && await codeGraphUsable(root)) {
     return { codegraph: "root-advisory", note: "CodeGraph is available only for the repository root; results may not match this phase worktree." };
   }
@@ -28801,12 +29217,12 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
 }
 async function codeGraphUsable(target) {
   try {
-    await stat4(path20.join(target, ".codegraph"));
+    await stat4(path21.join(target, ".codegraph"));
   } catch {
     return false;
   }
   try {
-    await execFileAsync5("codegraph", ["status", target], { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
+    await execFileAsync6("codegraph", ["status", target], { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
     return true;
   } catch {
     return false;
@@ -28841,7 +29257,7 @@ function errorDetails(error51) {
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { mkdir as mkdir11, rm as rm3, writeFile as writeFile10 } from "node:fs/promises";
-import path21 from "node:path";
+import path22 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -28937,16 +29353,16 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path21.resolve(workspacePath, edit.path);
-      const relative = path21.relative(workspacePath, target);
-      if (relative.startsWith("..") || path21.isAbsolute(relative)) {
+      const target = path22.resolve(workspacePath, edit.path);
+      const relative = path22.relative(workspacePath, target);
+      if (relative.startsWith("..") || path22.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
         await rm3(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir11(path21.dirname(target), { recursive: true });
+      await mkdir11(path22.dirname(target), { recursive: true });
       await writeFile10(target, edit.content ?? "", "utf8");
     }
   }
@@ -29015,7 +29431,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.20");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.21");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -29032,11 +29448,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path22.join(root, ".leanrigor", "config.json");
+    const configPath = path23.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path22.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path23.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -29791,7 +30207,7 @@ async function executionProvider(providerName, scriptFile, config2) {
       return { provider };
     } catch (error51) {
       throw new Error([
-        `Configured execution provider unavailable before dispatch: ${messageOf3(error51)}`,
+        `Configured execution provider unavailable before dispatch: ${messageOf4(error51)}`,
         "Recovery options: retry configured provider, use --provider claude after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller."
       ].join(" "), { cause: error51 });
     }
@@ -29801,7 +30217,7 @@ async function executionProvider(providerName, scriptFile, config2) {
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 async function scriptedExecutionProvider(scriptFile) {
-  const scripts = scriptFile ? JSON.parse(await readFile17(path22.resolve(scriptFile), "utf8")) : {};
+  const scripts = scriptFile ? JSON.parse(await readFile17(path23.resolve(scriptFile), "utf8")) : {};
   return new ScriptedExecutionProvider(scripts);
 }
 async function runCoordinatorCommand(root, workflowId2, providerName, scriptFile, run) {
@@ -29836,7 +30252,7 @@ function printCoordinatorResult(result, json2) {
   ].filter((line) => Boolean(line));
   console.log(lines.join("\n"));
 }
-function messageOf3(error51) {
+function messageOf4(error51) {
   return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
 }
 function printActiveSelection(selection) {

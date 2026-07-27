@@ -1,4 +1,5 @@
 import type { LeanRigorConfig } from "../config/schema.js";
+import { evaluateClarification } from "./clarification-policy.js";
 import { explicitRigorousTriggers, materialUnknowns } from "./triage-evidence.js";
 import type { ModelTriageRecommendation, TriageEvidencePacket, TriageOutput, WorkflowMode } from "./types.js";
 import { defaultReviewLevel, defaultTestLevel } from "./review-policy.js";
@@ -257,10 +258,10 @@ export function recommendationToTriageOutput(args: {
     constraints: { mustNot: constraints }
   };
 
-  return applyEvidencePolicy(preliminary, args.evidence, args.config);
+  return applyEvidencePolicy(preliminary, args.evidence, args.config, args.request, args.recommendation);
 }
 
-function applyEvidencePolicy(input: TriageOutput, evidence: TriageEvidencePacket, config: LeanRigorConfig): { output: TriageOutput; policyDecision: { finalMode: WorkflowMode; overrideReasons: string[]; fastEligible: boolean } } {
+function applyEvidencePolicy(input: TriageOutput, evidence: TriageEvidencePacket, config: LeanRigorConfig, request: string, recommendation: ModelTriageRecommendation): { output: TriageOutput; policyDecision: { finalMode: WorkflowMode; overrideReasons: string[]; fastEligible: boolean } } {
   const output = structuredClone(input);
   const overrideReasons: string[] = [];
   const explicitTriggers = explicitRigorousTriggers(evidence);
@@ -310,6 +311,17 @@ function applyEvidencePolicy(input: TriageOutput, evidence: TriageEvidencePacket
         : config.review.rigorous;
   output.workflow.testLevel = defaultTestLevel(finalMode, output.task.type);
   output.escalationReasons = unique([...output.escalationReasons, ...overrideReasons]).slice(0, config.triage.maxEscalationReasons);
+  const clarificationDecision = evaluateClarification({ request, evidence, recommendation, finalMode });
+  output.clarificationDecision = clarificationDecision;
+  if (clarificationDecision.finalRequired) {
+    output.clarification = clarificationDecision.original;
+  } else {
+    output.clarification = { required: false, question: null, reason: null };
+    output.assumptions = unique([
+      ...output.assumptions,
+      clarificationDecision.reason
+    ]).slice(0, config.triage.maxAssumptions);
+  }
 
   return {
     output: validateTriageOutput(output),

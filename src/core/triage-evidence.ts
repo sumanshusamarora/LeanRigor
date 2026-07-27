@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../config/schema.js";
 import type { TriageEvidencePacket, TriageFinding, TriageOutput, TriageQuestion, TriageSignalValue } from "./types.js";
+import { resolveReferencedWorkItems, type WorkItemResolver } from "./work-item-resolver.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_NAMED_PATHS = 12;
@@ -36,11 +37,16 @@ export async function collectTriageEvidence(args: {
   request: string;
   root: string;
   config: LeanRigorConfig;
+  workItemResolver?: WorkItemResolver;
 }): Promise<TriageEvidencePacket> {
   const root = path.resolve(args.root);
   const request = args.request;
   const findings: TriageFinding[] = [];
   const namedPaths = explicitPaths(request).slice(0, MAX_NAMED_PATHS);
+  const referencedWorkItems = await resolveReferencedWorkItems({ request, root, resolver: args.workItemResolver });
+  const issueText = referencedWorkItems.map((item) => [item.title, item.body].filter(Boolean).join("\n\n")).join("\n\n");
+  const evidenceText = [request, issueText].filter(Boolean).join("\n\n");
+  const taskIntentText = [request, ...referencedWorkItems.map((item) => item.title).filter(Boolean)].join("\n\n");
   const manifest = await readPackageJson(root);
   const languages = await detectLanguages(root, manifest);
   const packageManager = await detectPackageManager(root, manifest);
@@ -48,13 +54,21 @@ export async function collectTriageEvidence(args: {
   const hasTests = await hasAnyPath(root, ["tests", "test", "__tests__", "vitest.config.ts", "jest.config.js", "jest.config.ts", "package.json"]);
   const hasMigrations = await hasAnyPath(root, ["migrations", "db/migrations", "database/migrations", "prisma/migrations"]);
   const hasInfrastructure = await hasAnyPath(root, ["infra", "infrastructure", "terraform", ".github/workflows"]);
-  const taskType = detectTaskType(request);
+  const taskType = detectTaskType(taskIntentText);
   const namedBoundaries = unique([
     ...namedPaths.map((value) => value.split("/")[0] ?? value),
-    ...boundaryTerms(request)
+    ...boundaryTerms(evidenceText)
   ]).slice(0, 12);
 
   add(findings, "request.text", request.trim().length > 0, "verified", "user request supplied");
+  for (const item of referencedWorkItems) {
+    const prefix = `workItem.${item.source}.${item.issueNumber}`;
+    add(findings, `${prefix}.contentStatus`, item.contentStatus, item.contentStatus === "unavailable" ? "unknown" : "verified", item.failureReason ?? "referenced work item lookup");
+    if (item.repository) add(findings, `${prefix}.repository`, item.repository, "verified", "repository identity for referenced work item");
+    if (item.title) add(findings, `${prefix}.title`, item.title, "verified", "referenced issue title");
+    if (item.acceptanceCriteria && item.acceptanceCriteria.length > 0) add(findings, `${prefix}.acceptanceCriteria`, item.acceptanceCriteria, "verified", "referenced issue acceptance criteria");
+    addIssueSectionFindings(findings, prefix, item.body ?? "");
+  }
   if (namedPaths.length > 0) add(findings, "request.explicitlyNamedPaths", namedPaths, "verified", "path-like tokens appeared in the request");
   if (taskType) add(findings, "taskType", taskType, "inferred", "request keyword classification");
   if (packageManager) add(findings, "repository.packageManager", packageManager, "verified", "package manifest or lockfile");
@@ -67,9 +81,9 @@ export async function collectTriageEvidence(args: {
   const requestOnlyDocs = taskType === "documentation" && namedPaths.every((candidate) => /(^|\/)(readme|docs?|changelog|.*\.md$)/i.test(candidate));
   const signals = Object.fromEntries(Object.entries(SIGNAL_PATTERNS).flatMap(([key, pattern]) => {
     if (!pattern) return [];
-    const matched = pattern.test(request);
+    const matched = pattern.test(evidenceText);
     const value: TriageSignalValue = matched ? true : requestOnlyDocs ? false : "unknown";
-    add(findings, `changeSignals.${key}`, value, matched ? "verified" : requestOnlyDocs ? "inferred" : "unknown", matched ? "explicit request terminology" : requestOnlyDocs ? "documentation-only request" : "not resolved by bounded evidence");
+    add(findings, `changeSignals.${key}`, value, matched ? "verified" : requestOnlyDocs ? "inferred" : "unknown", matched ? "explicit request or work-item terminology" : requestOnlyDocs ? "documentation-only request" : "not resolved by bounded evidence");
     return [[key, value]];
   })) as Omit<TriageEvidencePacket["changeSignals"], "taskType" | "namedBoundaries">;
 
@@ -78,7 +92,7 @@ export async function collectTriageEvidence(args: {
   const gitFindings = await gitMetadata(root);
   findings.push(...gitFindings);
 
-  const unresolvedQuestions = unresolvedFromSignals(signals, taskType, namedPaths);
+  const unresolvedQuestions = unresolvedFromSignals(signals, taskType, namedPaths, referencedWorkItems.some((item) => item.contentStatus === "resolved"));
   return {
     version: 1,
     request: {
@@ -86,6 +100,7 @@ export async function collectTriageEvidence(args: {
       referencedIssue: request.match(/#(\d+)/)?.[0],
       explicitlyNamedPaths: namedPaths
     },
+    referencedWorkItems: referencedWorkItems.length > 0 ? referencedWorkItems : undefined,
     repository: {
       root,
       languages,
@@ -159,9 +174,33 @@ function detectTaskType(request: string): TriageOutput["task"]["type"] | undefin
 }
 
 function boundaryTerms(request: string): string[] {
-  const boundaries = ["api", "auth", "payments", "database", "schema", "frontend", "backend", "cli", "docs", "infra"];
-  const lower = request.toLowerCase();
-  return boundaries.filter((term) => lower.includes(term));
+  const boundaries = [
+    "api",
+    "auth",
+    "payments",
+    "database",
+    "schema",
+    "workflow state",
+    "workflow",
+    "planning",
+    "completion gate",
+    "evidence gate",
+    "completion evidence",
+    "validation evidence",
+    "validation",
+    "review policy",
+    "tests",
+    "frontend",
+    "backend",
+    "cli",
+    "docs",
+    "infra"
+  ];
+  const lower = request.toLowerCase().replace(/[-_]/g, " ");
+  const matched = boundaries.filter((term) => lower.includes(term));
+  if (lower.includes("completion evidence gate") && !matched.includes("completion gate")) matched.push("completion gate");
+  if (/\btest(?:s|ing)?\b/.test(lower) && !matched.includes("tests")) matched.push("tests");
+  return matched;
 }
 
 async function detectLanguages(root: string, manifest?: Record<string, unknown>): Promise<string[]> {
@@ -237,11 +276,11 @@ async function gitMetadata(root: string): Promise<TriageFinding[]> {
   }
 }
 
-function unresolvedFromSignals(signals: Omit<TriageEvidencePacket["changeSignals"], "taskType" | "namedBoundaries">, taskType: TriageOutput["task"]["type"] | undefined, namedPaths: string[]): TriageQuestion[] {
+function unresolvedFromSignals(signals: Omit<TriageEvidencePacket["changeSignals"], "taskType" | "namedBoundaries">, taskType: TriageOutput["task"]["type"] | undefined, namedPaths: string[], hasResolvedWorkItem: boolean): TriageQuestion[] {
   if (taskType === "documentation") return [];
   return Object.entries(signals)
     .filter(([, value]) => value === "unknown")
-    .slice(0, 4)
+    .slice(0, hasResolvedWorkItem ? 2 : 4)
     .map(([key]) => ({
       id: `triage-${key}`,
       question: `Does the request affect ${key.replace(/[A-Z]/g, (value) => ` ${value.toLowerCase()}`)}?`,
@@ -252,6 +291,35 @@ function unresolvedFromSignals(signals: Omit<TriageEvidencePacket["changeSignals
 
 function add(findings: TriageFinding[], key: string, value: TriageFinding["value"], confidence: TriageFinding["confidence"], source: string): void {
   findings.push({ key, value, confidence, source });
+}
+
+function addIssueSectionFindings(findings: TriageFinding[], prefix: string, body: string): void {
+  const sections = [
+    ["problem", /problem/i],
+    ["goal", /goal/i],
+    ["desiredBehavior", /desired behaviou?r/i],
+    ["safetyCompatibility", /safety|compatibility/i],
+    ["exclusions", /exclusions?|non-goals?/i]
+  ] as const;
+  for (const [name, pattern] of sections) {
+    const value = sectionText(body, pattern);
+    if (value) add(findings, `${prefix}.${name}`, value, "verified", `referenced issue ${name} section`);
+  }
+}
+
+function sectionText(body: string, headingPattern: RegExp): string | undefined {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => headingPattern.test(line.replace(/^#+\s*/, "")));
+  if (start < 0) return undefined;
+  const collected: string[] = [];
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^#{1,6}\s+\S/.test(line) && collected.length > 0) break;
+    if (line) collected.push(line.replace(/^[-*]\s+/, ""));
+    if (collected.join(" ").length > 500) break;
+  }
+  const text = collected.join(" ").slice(0, 500).trim();
+  return text || undefined;
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
