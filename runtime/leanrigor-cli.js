@@ -27001,7 +27001,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.11");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.12");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -27572,6 +27572,9 @@ function printFlowState(state) {
       task: state.triage.task,
       assessment: state.triage.assessment,
       finalMode: state.triage.workflow.finalMode,
+      modelRecommendation: state.triage.workflow.modelRecommendation,
+      confidence: state.triage.workflow.confidence,
+      parallelism: state.triage.workflow.parallelism,
       reviewLevel: state.triage.workflow.reviewLevel,
       testLevel: state.triage.workflow.testLevel,
       source: state.triageRun?.source,
@@ -27582,7 +27585,9 @@ function printFlowState(state) {
       warnings: state.triageRun?.warnings,
       reasons: state.triage.escalationReasons,
       assumptions: state.triage.assumptions,
-      overrideReason: state.triage.workflow.overrideReason
+      overrideReason: state.triage.workflow.overrideReason,
+      inspection: state.triage.inspection,
+      constraints: state.triage.constraints
     } : void 0,
     planning: state.planningRun ? {
       source: state.planningRun.source,
