@@ -11,11 +11,12 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
   async plan(input: PlanningProviderInput): Promise<PlanningProviderResult> {
     const tier = planningTier(input);
     const prompt = buildPlanningPrompt(input);
-    const baseArgs = ["-p", prompt, "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const baseArgs = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     const attempted = await runClaudeWithTierFallback({
       runCommand: this.runCommand,
       root: input.root,
       baseArgs,
+      prompt,
       preferredTier: tier,
       config: input.config,
       stage: "planning"
@@ -26,9 +27,9 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
 
   async repair(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult> {
     const prompt = buildPlanningRepairPrompt(input, request);
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const args = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     if (request.model) args.push("--model", request.model);
-    const result = await this.runCommand("claude", args, input.root);
+    const result = await this.runCommand("claude", args, input.root, prompt);
     if (result.exitCode !== 0) {
       const reason = compactFailure(result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`);
       throw new Error(`Claude planning repair failed for ${request.model ? `model '${request.model}'` : "inherited Claude default"}: ${reason}`);

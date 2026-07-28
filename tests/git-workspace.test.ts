@@ -101,7 +101,7 @@ describe("Git worktree isolation and integration", () => {
 
     expect(initialized.git?.integration.path).toContain(".leanrigor-worktrees");
     expect(result.ok).toBe(true);
-    await expect(readFile(path.join(result.state.git!.integration.path, "README.md"), "utf8")).resolves.toBe("integrated phase change\n");
+    await expect(readFile(path.join(result.state.git!.integration.path, "README.md"), "utf8")).resolves.toMatch(/integrated phase change\r?\n/);
     await expect(readFile(path.join(root, "README.md"), "utf8")).resolves.toBe("user dirty change\n");
     expect(await git(root, ["branch", "--show-current"])).toBe(beforeBranch);
     expect(await git(root, ["rev-parse", "HEAD"])).toBe(beforeHead);
@@ -153,7 +153,7 @@ describe("Git worktree isolation and integration", () => {
     const conflict = await integratePhase({ root, workflowId: workflow.id, phaseId: "phase-right", ownerId: "integrator" });
 
     expect(conflict).toMatchObject({ ok: false, code: "integration_conflict", conflictingFiles: ["src/shared.txt"] });
-    await expect(readFile(path.join(root, "src/shared.txt"), "utf8")).resolves.toBe("base\n");
+    await expect(readFile(path.join(root, "src/shared.txt"), "utf8")).resolves.toMatch(/base\r?\n/);
     expect(integrationStatus(conflict.state).finalReviewEligible).toBe(false);
   });
 

@@ -1212,7 +1212,7 @@ var require_command = __commonJS({
   "node_modules/commander/lib/command.js"(exports) {
     var EventEmitter = __require("node:events").EventEmitter;
     var childProcess = __require("node:child_process");
-    var path24 = __require("node:path");
+    var path25 = __require("node:path");
     var fs = __require("node:fs");
     var process3 = __require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
@@ -2225,9 +2225,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
         function findFile(baseDir, baseName) {
-          const localBin = path24.resolve(baseDir, baseName);
+          const localBin = path25.resolve(baseDir, baseName);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path24.extname(baseName))) return void 0;
+          if (sourceExt.includes(path25.extname(baseName))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -2245,17 +2245,17 @@ Expecting one of '${allowedValues.join("', '")}'`);
           } catch {
             resolvedScriptPath = this._scriptPath;
           }
-          executableDir = path24.resolve(
-            path24.dirname(resolvedScriptPath),
+          executableDir = path25.resolve(
+            path25.dirname(resolvedScriptPath),
             executableDir
           );
         }
         if (executableDir) {
           let localFile = findFile(executableDir, executableFile);
           if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path24.basename(
+            const legacyName = path25.basename(
               this._scriptPath,
-              path24.extname(this._scriptPath)
+              path25.extname(this._scriptPath)
             );
             if (legacyName !== this._name) {
               localFile = findFile(
@@ -2266,7 +2266,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           }
           executableFile = localFile || executableFile;
         }
-        launchWithNode = sourceExt.includes(path24.extname(executableFile));
+        launchWithNode = sourceExt.includes(path25.extname(executableFile));
         let proc;
         if (process3.platform !== "win32") {
           if (launchWithNode) {
@@ -3181,7 +3181,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @return {Command}
        */
       nameFromFilename(filename) {
-        this._name = path24.basename(filename, path24.extname(filename));
+        this._name = path25.basename(filename, path25.extname(filename));
         return this;
       }
       /**
@@ -3195,9 +3195,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [path]
        * @return {(string|null|Command)}
        */
-      executableDir(path25) {
-        if (path25 === void 0) return this._executableDir;
-        this._executableDir = path25;
+      executableDir(path26) {
+        if (path26 === void 0) return this._executableDir;
+        this._executableDir = path26;
         return this;
       }
       /**
@@ -3860,10 +3860,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path24) {
-  if (!path24)
+function getElementAtPath(obj, path25) {
+  if (!path25)
     return obj;
-  return path24.reduce((acc, key) => acc?.[key], obj);
+  return path25.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -4191,11 +4191,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path24, issues) {
+function prefixIssues(path25, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path24);
+    iss.path.unshift(path25);
     return iss;
   });
 }
@@ -4412,16 +4412,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path24 = []) => {
+  const processError = (error52, path25 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path24, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path25, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path25, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path25, ...issue2.path]);
       } else {
-        const fullpath = [...path24, ...issue2.path];
+        const fullpath = [...path25, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -4448,17 +4448,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path24 = []) => {
+  const processError = (error52, path25 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path24, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path25, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path25, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path24, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path25, ...issue2.path]);
       } else {
-        const fullpath = [...path24, ...issue2.path];
+        const fullpath = [...path25, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -4490,8 +4490,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path24 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path24) {
+  const path25 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path25) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -17921,13 +17921,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path24 = ref.slice(1).split("/").filter(Boolean);
-  if (path24.length === 0) {
+  const path25 = ref.slice(1).split("/").filter(Boolean);
+  if (path25.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path24[0] === defsKey) {
-    const key = path24[1];
+  if (path25[0] === defsKey) {
+    const key = path25[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -19607,7 +19607,7 @@ var {
 
 // src/cli/index.ts
 import { readFile as readFile17 } from "node:fs/promises";
-import path23 from "node:path";
+import path24 from "node:path";
 
 // src/core/workflow.ts
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -20040,8 +20040,8 @@ async function cleanupProjectLocalAssets(root, opts) {
       await stat(leanrigorDir);
       items.push({ path: ".leanrigor/", action: "remove-directory" });
       if (!opts.dryRun) {
-        const { rm: rm4 } = await import("node:fs/promises");
-        await rm4(leanrigorDir, { recursive: true, force: true });
+        const { rm: rm5 } = await import("node:fs/promises");
+        await rm5(leanrigorDir, { recursive: true, force: true });
       }
     } catch {
       skipped.push({ path: ".leanrigor/", action: "skip-not-found", reason: "directory does not exist" });
@@ -20698,13 +20698,32 @@ async function loadConfigForUninstall(root) {
 init_models();
 import { spawn } from "node:child_process";
 import { existsSync as existsSync2 } from "node:fs";
-import { readFile as readFile8 } from "node:fs/promises";
-import path10 from "node:path";
+import { open, readFile as readFile8 } from "node:fs/promises";
+import path11 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// src/core/claude-prompt.ts
+import { mkdtemp, rm, writeFile as writeFile6 } from "node:fs/promises";
+import os from "node:os";
+import path8 from "node:path";
+async function createClaudePromptFile(prompt) {
+  const directory = await mkdtemp(path8.join(os.tmpdir(), "leanrigor-claude-prompt-"));
+  const promptPath = path8.join(directory, "prompt.txt");
+  await writeFile6(promptPath, prompt, "utf8");
+  let cleaned = false;
+  return {
+    path: promptPath,
+    async cleanup() {
+      if (cleaned) return;
+      cleaned = true;
+      await rm(directory, { recursive: true, force: true });
+    }
+  };
+}
 
 // src/core/triage-runner.ts
 import { existsSync } from "node:fs";
-import path9 from "node:path";
+import path10 from "node:path";
 
 // src/core/clarification-policy.ts
 function evaluateClarification(input) {
@@ -20804,7 +20823,7 @@ function decisionReason(ownership, finalMode) {
 // src/core/triage-evidence.ts
 import { execFile as execFile2 } from "node:child_process";
 import { access as access2, constants, lstat, readFile as readFile7 } from "node:fs/promises";
-import path8 from "node:path";
+import path9 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/work-item-resolver.ts
@@ -21008,7 +21027,7 @@ var SIGNAL_PATTERNS = {
   externalIntegration: /\b(webhook|external api|third-party|integration|oauth|stripe|slack|github app)\b/i
 };
 async function collectTriageEvidence(args) {
-  const root = path8.resolve(args.root);
+  const root = path9.resolve(args.root);
   const request = args.request;
   const findings = [];
   const namedPaths = explicitPaths(request).slice(0, MAX_NAMED_PATHS);
@@ -21120,7 +21139,7 @@ function explicitPaths(request) {
 }
 function addPathCandidate(values, raw) {
   const cleaned = raw.trim().replace(/[),.;:]+$/g, "").replace(/^["']|["']$/g, "");
-  if (!cleaned || cleaned.startsWith("-") || path8.isAbsolute(cleaned) || cleaned.includes("..")) return;
+  if (!cleaned || cleaned.startsWith("-") || path9.isAbsolute(cleaned) || cleaned.includes("..")) return;
   if (/^readme$/i.test(cleaned)) {
     values.add("README.md");
     return;
@@ -21166,18 +21185,18 @@ async function detectLanguages(root, manifest) {
   if (manifest) {
     languages.add("JavaScript/TypeScript");
   }
-  if (await exists(path8.join(root, "tsconfig.json"))) languages.add("TypeScript");
-  if (await exists(path8.join(root, "pyproject.toml"))) languages.add("Python");
-  if (await exists(path8.join(root, "go.mod"))) languages.add("Go");
-  if (await exists(path8.join(root, "Cargo.toml"))) languages.add("Rust");
+  if (await exists(path9.join(root, "tsconfig.json"))) languages.add("TypeScript");
+  if (await exists(path9.join(root, "pyproject.toml"))) languages.add("Python");
+  if (await exists(path9.join(root, "go.mod"))) languages.add("Go");
+  if (await exists(path9.join(root, "Cargo.toml"))) languages.add("Rust");
   return [...languages].sort();
 }
 async function detectPackageManager(root, manifest) {
   const declared = typeof manifest?.packageManager === "string" ? manifest.packageManager : void 0;
-  if (declared?.startsWith("pnpm@") || await exists(path8.join(root, "pnpm-lock.yaml"))) return "pnpm";
-  if (declared?.startsWith("yarn@") || await exists(path8.join(root, "yarn.lock"))) return "yarn";
-  if (declared?.startsWith("bun@") || await exists(path8.join(root, "bun.lock")) || await exists(path8.join(root, "bun.lockb"))) return "bun";
-  if (declared?.startsWith("npm@") || await exists(path8.join(root, "package-lock.json"))) return "npm";
+  if (declared?.startsWith("pnpm@") || await exists(path9.join(root, "pnpm-lock.yaml"))) return "pnpm";
+  if (declared?.startsWith("yarn@") || await exists(path9.join(root, "yarn.lock"))) return "yarn";
+  if (declared?.startsWith("bun@") || await exists(path9.join(root, "bun.lock")) || await exists(path9.join(root, "bun.lockb"))) return "bun";
+  if (declared?.startsWith("npm@") || await exists(path9.join(root, "package-lock.json"))) return "npm";
   return manifest ? "npm" : void 0;
 }
 function detectProjectType(manifest, languages) {
@@ -21189,7 +21208,7 @@ function detectProjectType(manifest, languages) {
   return "Node package";
 }
 async function readPackageJson(root) {
-  const file2 = path8.join(root, "package.json");
+  const file2 = path9.join(root, "package.json");
   try {
     const stats = await lstat(file2);
     if (stats.size > MAX_MANIFEST_BYTES) return void 0;
@@ -21200,7 +21219,7 @@ async function readPackageJson(root) {
 }
 async function hasAnyPath(root, candidates) {
   for (const candidate of candidates) {
-    if (await exists(path8.join(root, candidate))) return true;
+    if (await exists(path9.join(root, candidate))) return true;
   }
   return false;
 }
@@ -21208,7 +21227,7 @@ async function inspectNamedPaths(root, namedPaths) {
   const findings = [];
   for (const rel of namedPaths.slice(0, MAX_NAMED_PATHS)) {
     try {
-      const stats = await lstat(path8.join(root, rel));
+      const stats = await lstat(path9.join(root, rel));
       add(findings, `path.${rel}`, stats.isDirectory() ? "directory" : "file", "verified", "explicitly named path exists");
     } catch {
       add(findings, `path.${rel}`, "unknown", "unknown", "explicitly named path was not found by bounded lstat");
@@ -21880,7 +21899,7 @@ function derivedInspectionPaths(root, evidence2) {
     if (concept.includes("infra")) add2([".github/workflows", "infra", "infrastructure"]);
     if (concept.includes("schema")) add2(["src/core/types.ts", "src/core/flow.ts"]);
   }
-  return [...candidates].filter((candidate) => existsSync(path9.join(root, candidate))).slice(0, 8);
+  return [...candidates].filter((candidate) => existsSync(path10.join(root, candidate))).slice(0, 8);
 }
 function uniqueQuestions(values) {
   const seen = /* @__PURE__ */ new Set();
@@ -21938,7 +21957,6 @@ var ClaudeCliTriageProvider = class {
     const prompt = buildInspectionPrompt(input);
     const baseArgs = [
       "-p",
-      prompt,
       "--output-format",
       "json",
       "--max-turns",
@@ -21952,6 +21970,7 @@ var ClaudeCliTriageProvider = class {
       runCommand: this.runCommand,
       root: input.root,
       baseArgs,
+      prompt,
       preferredTier: input.config.routing.repositoryInspection,
       config: input.config,
       stage: "triage inspection"
@@ -21962,7 +21981,6 @@ var ClaudeCliTriageProvider = class {
     const prompt = await buildTriagePrompt(input, repairFailure);
     const baseArgs = [
       "-p",
-      prompt,
       "--bare",
       "--output-format",
       "json",
@@ -21975,6 +21993,7 @@ var ClaudeCliTriageProvider = class {
       runCommand: this.runCommand,
       root: input.root,
       baseArgs,
+      prompt,
       preferredTier: input.config.routing.triage,
       config: input.config,
       stage: repairFailure ? "triage recommendation repair" : "triage recommendation"
@@ -22002,17 +22021,17 @@ async function buildTriagePrompt(input, repairFailure) {
   ].filter(Boolean).join("\n\n");
 }
 async function readTriageSkill(root) {
-  const moduleDir = path10.dirname(fileURLToPath2(import.meta.url));
+  const moduleDir = path11.dirname(fileURLToPath2(import.meta.url));
   const pluginRoots = [
     process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT,
     process.env.CLAUDE_PLUGIN_ROOT
   ].filter((value) => Boolean(value));
   const candidates = [
-    ...pluginRoots.map((pluginRoot) => path10.join(pluginRoot, "internal-skills", "triage-task", "SKILL.md")),
-    path10.join(moduleDir, "internal-skills", "triage-task", "SKILL.md"),
-    path10.join(moduleDir, "..", "internal-skills", "triage-task", "SKILL.md"),
-    path10.join(moduleDir, "..", "..", "..", "internal-skills", "triage-task", "SKILL.md"),
-    path10.join(root, "internal-skills", "triage-task", "SKILL.md")
+    ...pluginRoots.map((pluginRoot) => path11.join(pluginRoot, "internal-skills", "triage-task", "SKILL.md")),
+    path11.join(moduleDir, "internal-skills", "triage-task", "SKILL.md"),
+    path11.join(moduleDir, "..", "internal-skills", "triage-task", "SKILL.md"),
+    path11.join(moduleDir, "..", "..", "..", "internal-skills", "triage-task", "SKILL.md"),
+    path11.join(root, "internal-skills", "triage-task", "SKILL.md")
   ];
   for (const candidate of candidates) {
     try {
@@ -22062,22 +22081,39 @@ function recommendationSchemaDescription() {
     clarification: { required: false, question: null, reason: null }
   };
 }
-var defaultCommandRunner = (command, args, cwd) => new Promise((resolve, reject) => {
-  const invocation = windowsCommandInvocation(command, args);
-  const child = spawn(invocation.command, invocation.args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-  let stdout = "";
-  let stderr = "";
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk;
+var defaultCommandRunner = async (command, args, cwd, prompt) => {
+  const promptFile = prompt === void 0 ? void 0 : await createClaudePromptFile(prompt);
+  const input = promptFile === void 0 ? void 0 : await open(promptFile.path, "r");
+  return new Promise((resolve, reject) => {
+    const invocation = windowsCommandInvocation(command, args);
+    const child = spawn(invocation.command, invocation.args, { cwd, stdio: [input?.fd ?? "ignore", "pipe", "pipe"] });
+    void input?.close();
+    if (!child.stdout || !child.stderr) {
+      void promptFile?.cleanup();
+      child.kill();
+      reject(new Error("Claude command did not provide stdout and stderr streams."));
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error51) => {
+      void promptFile?.cleanup();
+      reject(error51);
+    });
+    child.on("close", (code) => {
+      void promptFile?.cleanup();
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    });
   });
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk;
-  });
-  child.on("error", reject);
-  child.on("close", (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
-});
+};
 function windowsCommandInvocation(command, args) {
   if (process.platform !== "win32") return { command, args };
   const shim = resolveWindowsShim(command);
@@ -22088,10 +22124,10 @@ function windowsCommandInvocation(command, args) {
   };
 }
 function resolveWindowsShim(command) {
-  if (path10.extname(command)) return void 0;
-  for (const directory of (process.env.PATH ?? "").split(path10.delimiter)) {
+  if (path11.extname(command)) return void 0;
+  for (const directory of (process.env.PATH ?? "").split(path11.delimiter)) {
     for (const extension of [".cmd", ".bat"]) {
-      const candidate = path10.join(directory, `${command}${extension}`);
+      const candidate = path11.join(directory, `${command}${extension}`);
       if (existsSync2(candidate)) return candidate;
     }
   }
@@ -22104,7 +22140,7 @@ async function runClaudeWithTierFallback(args) {
     const commandArgs = [...args.baseArgs];
     if (resolved.model) commandArgs.push("--model", resolved.model);
     try {
-      const result = await args.runCommand("claude", commandArgs, args.root);
+      const result = await args.runCommand("claude", commandArgs, args.root, args.prompt);
       if (result.exitCode === 0) {
         return {
           result,
@@ -22156,11 +22192,12 @@ var ClaudeCliPlanningProvider = class {
   async plan(input) {
     const tier = planningTier(input);
     const prompt = buildPlanningPrompt(input);
-    const baseArgs = ["-p", prompt, "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const baseArgs = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     const attempted = await runClaudeWithTierFallback({
       runCommand: this.runCommand,
       root: input.root,
       baseArgs,
+      prompt,
       preferredTier: tier,
       config: input.config,
       stage: "planning"
@@ -22169,9 +22206,9 @@ var ClaudeCliPlanningProvider = class {
   }
   async repair(input, request) {
     const prompt = buildPlanningRepairPrompt(input, request);
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const args = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     if (request.model) args.push("--model", request.model);
-    const result = await this.runCommand("claude", args, input.root);
+    const result = await this.runCommand("claude", args, input.root, prompt);
     if (result.exitCode !== 0) {
       const reason = compactFailure(result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`);
       throw new Error(`Claude planning repair failed for ${request.model ? `model '${request.model}'` : "inherited Claude default"}: ${reason}`);
@@ -22284,8 +22321,8 @@ function compactFailure(reason) {
 init_models();
 import { execFile as execFile3, spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { mkdir as mkdir6, open, readFile as readFile9, rename as rename2, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
-import path11 from "node:path";
+import { mkdir as mkdir6, open as open2, readFile as readFile9, rename as rename2, stat as stat2, writeFile as writeFile7 } from "node:fs/promises";
+import path12 from "node:path";
 import { promisify as promisify3 } from "node:util";
 
 // src/core/execution/errors.ts
@@ -22413,7 +22450,6 @@ var ClaudeCliExecutionProvider = class {
     const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const resolved = resolveClaudeModel(input, this.options);
     const args = buildClaudeArgs({
-      prompt,
       maxTurns,
       permissionMode,
       environmentMode,
@@ -22430,11 +22466,11 @@ var ClaudeCliExecutionProvider = class {
       resume: canResume
     });
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path11.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    const artifactDir = path12.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
     await mkdir6(artifactDir, { recursive: true });
-    const statusPath = path11.join(artifactDir, "status.json");
-    const stdoutPath = path11.join(artifactDir, "stdout.json");
-    const stderrPath = path11.join(artifactDir, "stderr.txt");
+    const statusPath = path12.join(artifactDir, "status.json");
+    const stdoutPath = path12.join(artifactDir, "stdout.json");
+    const stderrPath = path12.join(artifactDir, "stderr.txt");
     const providerMetadata = {
       command: this.options.command ?? "claude",
       safeArgs,
@@ -22482,16 +22518,19 @@ var ClaudeCliExecutionProvider = class {
       nativeSessionId: sessionId
     };
     const controller = new AbortController();
-    const stdout = await open(stdoutPath, "w");
-    const stderr = await open(stderrPath, "w");
+    const stdout = await open2(stdoutPath, "w");
+    const stderr = await open2(stderrPath, "w");
     const invocation = windowsBatchInvocation(this.options.command ?? "claude", args);
+    const promptFile = await createClaudePromptFile(prompt);
+    const promptInput = await open2(promptFile.path, "r");
     const child = spawn2(invocation.command, invocation.args, {
       cwd: input.workspacePath,
       detached: process.platform !== "win32",
-      stdio: ["ignore", stdout.fd, stderr.fd],
+      stdio: [promptInput.fd, stdout.fd, stderr.fd],
       signal: controller.signal,
       env: boundedClaudeEnv(process.env)
     });
+    await promptInput.close();
     await stdout.close();
     await stderr.close();
     providerMetadata.pid = child.pid;
@@ -22509,6 +22548,7 @@ var ClaudeCliExecutionProvider = class {
       if (child.pid) killProcessGroup(child.pid, "SIGTERM");
     }, input.timeoutSeconds * 1e3);
     child.once("exit", (code, signal) => {
+      void promptFile.cleanup();
       clearTimeout(timeout);
       execution.status = controller.signal.aborted ? "timed_out" : code === 0 ? "completed" : "failed";
       execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -22524,6 +22564,7 @@ var ClaudeCliExecutionProvider = class {
       });
     });
     child.once("error", (error51) => {
+      void promptFile.cleanup();
       clearTimeout(timeout);
       execution.status = "failed";
       execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -22605,7 +22646,7 @@ async function writeStatus(statusPath, status) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const tempPath = `${statusPath}.${process.pid}.${Date.now()}.${attempt}.tmp`;
     try {
-      await writeFile6(tempPath, content, "utf8");
+      await writeFile7(tempPath, content, "utf8");
       await rename2(tempPath, statusPath);
       return;
     } catch (error51) {
@@ -22615,7 +22656,7 @@ async function writeStatus(statusPath, status) {
     }
   }
   try {
-    await writeFile6(statusPath, content, "utf8");
+    await writeFile7(statusPath, content, "utf8");
   } catch {
     throw lastError;
   }
@@ -22665,8 +22706,8 @@ function buildClaudeArgs(args) {
   const cliArgs = [];
   if (args.environmentMode === "bare") cliArgs.push("--bare");
   if (args.environmentMode === "safe-mode") cliArgs.push("--safe-mode");
-  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p", args.prompt);
-  else cliArgs.push("-p", args.prompt, "--session-id", args.sessionId);
+  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p");
+  else cliArgs.push("-p", "--session-id", args.sessionId);
   cliArgs.push(
     "--output-format",
     "json",
@@ -23073,7 +23114,7 @@ init_resolver();
 init_model_display();
 import { readFile as readFile10 } from "node:fs/promises";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import path12 from "node:path";
+import path13 from "node:path";
 var VALID_EXAMPLES = [
   {
     description: "Set personal small-tier model for all repos",
@@ -23193,8 +23234,8 @@ async function resolvePluginVersion(mode2) {
     const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
     if (pluginRoot) {
       candidates.push(
-        path12.join(pluginRoot, ".claude-plugin", "plugin.json"),
-        path12.join(pluginRoot, "package.json")
+        path13.join(pluginRoot, ".claude-plugin", "plugin.json"),
+        path13.join(pluginRoot, "package.json")
       );
     }
   }
@@ -23296,7 +23337,7 @@ async function buildInitReport(root, bootstrapResult) {
   }
   return {
     configurationFiles,
-    gitignore: await ensureGitignore(path12.join(root, ".leanrigor")),
+    gitignore: await ensureGitignore(path13.join(root, ".leanrigor")),
     models,
     execution,
     assets,
@@ -23506,12 +23547,12 @@ function renderSettingsState(settings, isMarketplace) {
 
 // src/core/bootstrap.ts
 init_resolver();
-import path13 from "node:path";
+import path14 from "node:path";
 async function ensureBootstrapped(root, opts = {}) {
   const warnings = [];
   await ensureRepositoryConfig(root);
   const config2 = (await resolveEffectiveConfig(root)).values;
-  await ensureGitignore(path13.join(root, ".leanrigor"));
+  await ensureGitignore(path14.join(root, ".leanrigor"));
   const installationMode = await detectInstallationMode(root);
   let shadowing = null;
   if (installationMode === "marketplace") {
@@ -23601,7 +23642,7 @@ init_models();
 import { randomUUID as randomUUID4 } from "node:crypto";
 import { mkdir as mkdir9, readFile as readFile14 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path18 from "node:path";
+import path19 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -23624,12 +23665,12 @@ function commitCommands(proposal) {
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
 import { execFile as execFile4 } from "node:child_process";
-import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir7, readFile as readFile11, readdir as readdir3, readlink, realpath, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
-import path15 from "node:path";
+import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir7, readFile as readFile11, readdir as readdir3, readlink, realpath, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
+import path16 from "node:path";
 import { promisify as promisify4 } from "node:util";
 
 // src/core/ownership.ts
-import path14 from "node:path";
+import path15 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -23646,7 +23687,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path14.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path15.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -24076,13 +24117,13 @@ async function ensureIntegrationWorkspace(state, config2) {
   const existing = state.git;
   if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
   const names = workspaceNames(state.id, void 0, config2);
-  const workflowRoot = path15.join(preflight.workspaceRoot, state.id);
-  const integrationPath = path15.join(workflowRoot, "integration");
+  const workflowRoot = path16.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path16.join(workflowRoot, "integration");
   ensurePathLength(integrationPath, config2);
   await ensurePathAvailable(integrationPath, state.id, "integration");
   const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
   const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
-  await mkdir7(path15.dirname(integrationPath), { recursive: true });
+  await mkdir7(path16.dirname(integrationPath), { recursive: true });
   await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
   const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
   const now = timestamp();
@@ -24145,12 +24186,12 @@ async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
     throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
   const names = workspaceNames(state.id, phaseId, config2);
-  const workflowRoot = path15.join(gitState.context.workspaceRoot, state.id);
-  const phasePath = path15.join(workflowRoot, "phases", names.phasePathSegment);
+  const workflowRoot = path16.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path16.join(workflowRoot, "phases", names.phasePathSegment);
   ensurePathLength(phasePath, config2);
   await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
   const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
-  await mkdir7(path15.dirname(phasePath), { recursive: true });
+  await mkdir7(path16.dirname(phasePath), { recursive: true });
   await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
   const now = timestamp();
   await writeOwnershipMetadata(workflowRoot, {
@@ -24531,31 +24572,31 @@ function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
 function resolveWorkspaceRoot(repositoryRoot, config2, repositoryIdentity = repositoryIdentityFor(repositoryRoot)) {
-  if (config2.execution.workspaceRoot) return path15.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  if (config2.execution.workspaceRoot) return path16.resolve(repositoryRoot, config2.execution.workspaceRoot);
   const identity = safeIdentitySegment(repositoryIdentity);
-  return path15.join(path15.dirname(repositoryRoot), ".leanrigor-worktrees", `${path15.basename(repositoryRoot)}-${identity}`);
+  return path16.join(path16.dirname(repositoryRoot), ".leanrigor-worktrees", `${path16.basename(repositoryRoot)}-${identity}`);
 }
 function repositoryIdentityFor(repositoryRoot) {
-  return `root-sha256:${createHash2("sha256").update(path15.resolve(repositoryRoot)).digest("hex")}`;
+  return `root-sha256:${createHash2("sha256").update(path16.resolve(repositoryRoot)).digest("hex")}`;
 }
 function safeIdentitySegment(repositoryIdentity) {
   return (repositoryIdentity.includes(":") ? repositoryIdentity.split(":").at(-1) : repositoryIdentity).replace(/[^a-f0-9]/gi, "").slice(0, 12) || createHash2("sha256").update(repositoryIdentity).digest("hex").slice(0, 12);
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
-  const dir = path15.join(workflowRoot, ".leanrigor-owned-worktrees");
+  const dir = path16.join(workflowRoot, ".leanrigor-owned-worktrees");
   await mkdir7(dir, { recursive: true });
   const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
-  await writeFile7(path15.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+  await writeFile8(path16.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
 }
 async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
-  const workflowRoot = workspaceType === "integration" ? path15.dirname(worktreePath) : path15.dirname(path15.dirname(worktreePath));
-  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path15.basename(worktreePath))}.json`;
-  const file2 = path15.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  const workflowRoot = workspaceType === "integration" ? path16.dirname(worktreePath) : path16.dirname(path16.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path16.basename(worktreePath))}.json`;
+  const file2 = path16.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
     const parsed = JSON.parse(await readFile11(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
-    if (path15.resolve(parsed.path) !== path15.resolve(worktreePath)) return void 0;
+    if (path16.resolve(parsed.path) !== path16.resolve(worktreePath)) return void 0;
     return parsed;
   } catch {
     return void 0;
@@ -24584,14 +24625,14 @@ async function runShellCommand(command, cwd) {
 }
 async function gitOperationInProgress(commonDir, gitDir) {
   const checks = [
-    [path15.join(gitDir, "MERGE_HEAD"), "merge"],
-    [path15.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
-    [path15.join(gitDir, "REVERT_HEAD"), "revert"],
-    [path15.join(gitDir, "BISECT_LOG"), "bisect"],
-    [path15.join(gitDir, "rebase-merge"), "rebase"],
-    [path15.join(gitDir, "rebase-apply"), "rebase"],
-    [path15.join(commonDir, "rebase-merge"), "rebase"],
-    [path15.join(commonDir, "rebase-apply"), "rebase"]
+    [path16.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path16.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path16.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path16.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path16.join(gitDir, "rebase-merge"), "rebase"],
+    [path16.join(gitDir, "rebase-apply"), "rebase"],
+    [path16.join(commonDir, "rebase-merge"), "rebase"],
+    [path16.join(commonDir, "rebase-apply"), "rebase"]
   ];
   for (const [file2, operation] of checks) {
     if (await pathExists(file2)) return operation;
@@ -24599,10 +24640,10 @@ async function gitOperationInProgress(commonDir, gitDir) {
   return void 0;
 }
 async function resolveGitPath(cwd, gitPath) {
-  return path15.isAbsolute(gitPath) ? gitPath : path15.resolve(cwd, gitPath);
+  return path16.isAbsolute(gitPath) ? gitPath : path16.resolve(cwd, gitPath);
 }
 async function canonical(value) {
-  return realpath(path15.resolve(value));
+  return realpath(path16.resolve(value));
 }
 function gitVersionSupportsWorktree(versionText) {
   const match = versionText.match(/git version (\d+)\.(\d+)/);
@@ -24623,9 +24664,9 @@ async function findNestedRepositories(repositoryRoot) {
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
-      const child = path15.join(dir, entry.name);
-      if (await pathExists(path15.join(child, ".git"))) {
-        nested.push(path15.relative(repositoryRoot, child));
+      const child = path16.join(dir, entry.name);
+      if (await pathExists(path16.join(child, ".git"))) {
+        nested.push(path16.relative(repositoryRoot, child));
         continue;
       }
       await walk(child, depth + 1);
@@ -24662,7 +24703,7 @@ function parseModeChanges(raw) {
 }
 async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
   for (const file2 of changedFiles) {
-    const full = path15.join(worktreePath, file2);
+    const full = path16.join(worktreePath, file2);
     let info;
     try {
       info = await lstat2(full);
@@ -24671,7 +24712,7 @@ async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
     }
     if (!info.isSymbolicLink()) continue;
     const target = await readlink(full);
-    if (path15.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+    if (path16.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
       throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
     }
   }
@@ -24689,11 +24730,11 @@ function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function isPathInside(child, parent) {
-  const relative = path15.relative(path15.resolve(parent), path15.resolve(child));
-  return relative === "" || !relative.startsWith("..") && !path15.isAbsolute(relative);
+  const relative = path16.relative(path16.resolve(parent), path16.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path16.isAbsolute(relative);
 }
 function isSamePath(left, right) {
-  return path15.resolve(left) === path15.resolve(right);
+  return path16.resolve(left) === path16.resolve(right);
 }
 async function pathExists(target) {
   return stat3(target).then(() => true).catch(() => false);
@@ -25678,14 +25719,14 @@ function messageOf3(error51) {
 }
 
 // src/core/workflow-lock.ts
-import { open as open3, readFile as readFile13, mkdir as mkdir8, rm as rm2, writeFile as writeFile8 } from "node:fs/promises";
-import os from "node:os";
-import path17 from "node:path";
+import { open as open4, readFile as readFile13, mkdir as mkdir8, rm as rm3, writeFile as writeFile9 } from "node:fs/promises";
+import os2 from "node:os";
+import path18 from "node:path";
 
 // src/core/workflow-store.ts
-import { open as open2, readFile as readFile12, rename as rename3, rm } from "node:fs/promises";
+import { open as open3, readFile as readFile12, rename as rename3, rm as rm2 } from "node:fs/promises";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import path16 from "node:path";
+import path17 from "node:path";
 var RevisionConflictError = class extends Error {
   constructor(expectedRevision, actualRevision) {
     super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
@@ -25697,9 +25738,9 @@ var RevisionConflictError = class extends Error {
   code = "revision_conflict";
 };
 async function atomicWriteJson2(file2, value) {
-  const dir = path16.dirname(file2);
-  const temp = path16.join(dir, `.${path16.basename(file2)}.${process.pid}.${randomUUID3()}.tmp`);
-  const handle = await open2(temp, "wx");
+  const dir = path17.dirname(file2);
+  const temp = path17.join(dir, `.${path17.basename(file2)}.${process.pid}.${randomUUID3()}.tmp`);
+  const handle = await open3(temp, "wx");
   try {
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
     await handle.sync();
@@ -25710,13 +25751,13 @@ async function atomicWriteJson2(file2, value) {
     await rename3(temp, file2);
     await fsyncDirectory(dir);
   } catch (error51) {
-    await rm(temp, { force: true }).catch(() => void 0);
+    await rm2(temp, { force: true }).catch(() => void 0);
     throw error51;
   }
 }
 async function fsyncDirectory(dir) {
   try {
-    const handle = await open2(dir, "r");
+    const handle = await open3(dir, "r");
     try {
       await handle.sync();
     } finally {
@@ -25739,15 +25780,15 @@ var WorkflowLockOwnershipError = class extends Error {
   code = "workflow_lock_owner_mismatch";
 };
 function lockPath(root, workflowId2) {
-  return path17.join(path17.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+  return path18.join(path18.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
 }
 async function acquireWorkflowLock(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const lock = buildLock(options, now);
   const file2 = lockPath(options.root, options.workflowId);
-  await mkdir8(path17.dirname(file2), { recursive: true });
+  await mkdir8(path18.dirname(file2), { recursive: true });
   try {
-    const handle = await open3(file2, "wx");
+    const handle = await open4(file2, "wx");
     try {
       await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
       await handle.sync();
@@ -25761,9 +25802,9 @@ async function acquireWorkflowLock(options) {
   const existing = await readWorkflowLock(options.root, options.workflowId);
   if (!existing) return acquireWorkflowLock(options);
   if (Date.parse(existing.expiresAt) > now.getTime()) throw new WorkflowLockBusyError(existing);
-  await rm2(file2, { force: true });
+  await rm3(file2, { force: true });
   try {
-    const handle = await open3(file2, "wx");
+    const handle = await open4(file2, "wx");
     try {
       await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
       await handle.sync();
@@ -25783,7 +25824,7 @@ async function releaseWorkflowLock(root, workflowId2, ownerId) {
   const existing = await readWorkflowLock(root, workflowId2);
   if (!existing) return;
   if (existing.ownerId !== ownerId) throw new WorkflowLockOwnershipError(`Workflow lock is owned by ${existing.ownerId}, not ${ownerId}.`);
-  await rm2(lockPath(root, workflowId2), { force: true });
+  await rm3(lockPath(root, workflowId2), { force: true });
 }
 async function readWorkflowLock(root, workflowId2) {
   try {
@@ -25803,12 +25844,12 @@ function buildLock(options, now) {
     heartbeatAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + options.timeoutSeconds * 1e3).toISOString(),
     processId: process.pid,
-    host: os.hostname()
+    host: os2.hostname()
   };
 }
 
 // src/core/flow.ts
-var WORKFLOW_DIR = path18.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path19.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -26378,7 +26419,7 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path18.resolve(options.root);
+  const root = path19.resolve(options.root);
   const now = timestamp2();
   let state = {
     version: STATE_VERSION,
@@ -27026,7 +27067,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path18.join(path18.resolve(root), WORKFLOW_DIR);
+  const dir = path19.join(path19.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -27063,7 +27104,7 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path18.join(path18.resolve(root), WORKFLOW_DIR);
+  const dir = path19.join(path19.resolve(root), WORKFLOW_DIR);
   await mkdir9(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
@@ -27924,7 +27965,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path18.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path19.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -28165,7 +28206,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path18.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path19.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -28287,7 +28328,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path18.resolve(root),
+      root: path19.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -28303,7 +28344,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path18.resolve(root);
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path19.resolve(root);
   migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
@@ -28377,7 +28418,7 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path18.join(path18.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path19.join(path19.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
   return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID4().slice(0, 8)}`;
@@ -28810,10 +28851,10 @@ function quoteArg(value) {
 }
 
 // src/core/completion-evidence.ts
-import { mkdir as mkdir10, readFile as readFile15, writeFile as writeFile9 } from "node:fs/promises";
-import path19 from "node:path";
+import { mkdir as mkdir10, readFile as readFile15, writeFile as writeFile10 } from "node:fs/promises";
+import path20 from "node:path";
 async function readCompletionEvidenceFile(root, workflowId2, phaseId, file2) {
-  const resolved = path19.resolve(file2);
+  const resolved = path20.resolve(file2);
   let rawText;
   try {
     rawText = await readFile15(resolved, "utf8");
@@ -28858,34 +28899,34 @@ function validateCompletionEvidenceFile(raw, state, phaseId, file2) {
   if (raw.validation !== void 0 && !Array.isArray(raw.validation)) throw new Error("Completion evidence validation must be an array.");
 }
 async function persistCompletionEvidenceArtifact(root, workflowId2, phaseId, file2) {
-  const sourcePath = path19.resolve(file2);
+  const sourcePath = path20.resolve(file2);
   const raw = await readFile15(sourcePath, "utf8");
   const artifactPath = completionEvidenceArtifactPath(root, workflowId2, phaseId);
-  const artifactDir = path19.dirname(artifactPath);
+  const artifactDir = path20.dirname(artifactPath);
   await mkdir10(artifactDir, { recursive: true });
-  await writeFile9(artifactPath, raw.endsWith("\n") ? raw : `${raw}
+  await writeFile10(artifactPath, raw.endsWith("\n") ? raw : `${raw}
 `, "utf8");
   return { path: artifactPath, sourcePath, recordedAt: (/* @__PURE__ */ new Date()).toISOString() };
 }
 function completionEvidenceArtifactPath(root, workflowId2, phaseId) {
-  return path19.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
+  return path20.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
 }
 
 // src/core/execution/coordinator.ts
 import { execFile as execFile6 } from "node:child_process";
 import { stat as stat4 } from "node:fs/promises";
-import path21 from "node:path";
+import path22 from "node:path";
 import { promisify as promisify6 } from "node:util";
 
 // src/core/workspace-preparation.ts
 import { execFile as execFile5 } from "node:child_process";
 import { access as access4, constants as constants3, lstat as lstat3, readFile as readFile16 } from "node:fs/promises";
-import path20 from "node:path";
+import path21 from "node:path";
 import { promisify as promisify5 } from "node:util";
 var execFileAsync5 = promisify5(execFile5);
 async function preparePhaseWorkspace(args) {
   const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const packageJson = path20.join(args.workspacePath, "package.json");
+  const packageJson = path21.join(args.workspacePath, "package.json");
   if (!await exists2(packageJson)) {
     return preparation({
       status: "available",
@@ -28965,10 +29006,10 @@ async function preparePhaseWorkspace(args) {
 }
 async function detectPackageManager2(workspacePath, packageJson = {}) {
   const declared = typeof packageJson.packageManager === "string" ? packageJson.packageManager : "";
-  if (await exists2(path20.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
-  if (await exists2(path20.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
-  if (await exists2(path20.join(workspacePath, "bun.lockb")) || await exists2(path20.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
-  if (await exists2(path20.join(workspacePath, "package-lock.json")) || await exists2(path20.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
+  if (await exists2(path21.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
+  if (await exists2(path21.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
+  if (await exists2(path21.join(workspacePath, "bun.lockb")) || await exists2(path21.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
+  if (await exists2(path21.join(workspacePath, "package-lock.json")) || await exists2(path21.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
   return { packageManager: "npm", bootstrapCommand: ["npm", "install"], lockfilePreserving: false, evidence: evidence("package.json without lockfile", declared) };
 }
 function hasDeclaredDependencies(packageJson) {
@@ -28978,10 +29019,10 @@ function hasDeclaredDependencies(packageJson) {
   });
 }
 async function dependenciesUsable(workspacePath, validationCommands) {
-  if (!await exists2(path20.join(workspacePath, "node_modules"))) return false;
+  if (!await exists2(path21.join(workspacePath, "node_modules"))) return false;
   const toolNames = validationCommands.flatMap((command) => command.match(/\b(vitest|jest|tsc|eslint|tsx|vite|webpack|rollup)\b/g) ?? []);
   for (const tool of new Set(toolNames)) {
-    if (!await executableExists(path20.join(workspacePath, "node_modules", ".bin", tool))) return false;
+    if (!await executableExists(path21.join(workspacePath, "node_modules", ".bin", tool))) return false;
   }
   return true;
 }
@@ -29007,7 +29048,7 @@ function fallbackBootstrapCommand() {
 }
 async function readPackageJson2(workspacePath) {
   try {
-    return JSON.parse(await readFile16(path20.join(workspacePath, "package.json"), "utf8"));
+    return JSON.parse(await readFile16(path21.join(workspacePath, "package.json"), "utf8"));
   } catch {
     return {};
   }
@@ -29015,7 +29056,7 @@ async function readPackageJson2(workspacePath) {
 async function manifestIdentity(workspacePath) {
   const names = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
   const parts = await Promise.all(names.map(async (name) => {
-    const file2 = path20.join(workspacePath, name);
+    const file2 = path21.join(workspacePath, name);
     try {
       const stats = await lstat3(file2);
       return `${name}:${stats.size}:${stats.mtimeMs}`;
@@ -29616,8 +29657,8 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
   if (await codeGraphUsable(workspacePath)) {
     return { codegraph: "exact-worktree", note: "CodeGraph index is available for the exact assigned phase worktree." };
   }
-  const root = path21.resolve(repositoryRoot);
-  const workspace = path21.resolve(workspacePath);
+  const root = path22.resolve(repositoryRoot);
+  const workspace = path22.resolve(workspacePath);
   if (root !== workspace && await codeGraphUsable(root)) {
     return { codegraph: "root-advisory", note: "CodeGraph is available only for the repository root; results may not match this phase worktree." };
   }
@@ -29625,7 +29666,7 @@ async function detectCodeIntelligence(workspacePath, repositoryRoot) {
 }
 async function codeGraphUsable(target) {
   try {
-    await stat4(path21.join(target, ".codegraph"));
+    await stat4(path22.join(target, ".codegraph"));
   } catch {
     return false;
   }
@@ -29666,8 +29707,8 @@ function errorDetails(error51) {
 
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { mkdir as mkdir11, rm as rm3, writeFile as writeFile10 } from "node:fs/promises";
-import path22 from "node:path";
+import { mkdir as mkdir11, rm as rm4, writeFile as writeFile11 } from "node:fs/promises";
+import path23 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
     this.scripts = scripts;
@@ -29763,17 +29804,17 @@ var ScriptedExecutionProvider = class {
   }
   async applyEdits(workspacePath, edits) {
     for (const edit of edits) {
-      const target = path22.resolve(workspacePath, edit.path);
-      const relative = path22.relative(workspacePath, target);
-      if (relative.startsWith("..") || path22.isAbsolute(relative)) {
+      const target = path23.resolve(workspacePath, edit.path);
+      const relative = path23.relative(workspacePath, target);
+      if (relative.startsWith("..") || path23.isAbsolute(relative)) {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
-        await rm3(target, { force: true, recursive: true });
+        await rm4(target, { force: true, recursive: true });
         continue;
       }
-      await mkdir11(path22.dirname(target), { recursive: true });
-      await writeFile10(target, edit.content ?? "", "utf8");
+      await mkdir11(path23.dirname(target), { recursive: true });
+      await writeFile11(target, edit.content ?? "", "utf8");
     }
   }
   executionFromHandle(handle) {
@@ -29858,11 +29899,11 @@ program2.command("uninstall").description("Remove LeanRigor-owned adapter files 
   const report = await new ClaudeAdapter().uninstall(root);
   printUninstallReport(report);
   if (removeConfig) {
-    const configPath = path23.join(root, ".leanrigor", "config.json");
+    const configPath = path24.join(root, ".leanrigor", "config.json");
     try {
       const { unlink: unlink2, rmdir: rmdir2 } = await import("node:fs/promises");
       await unlink2(configPath);
-      await rmdir2(path23.join(root, ".leanrigor")).catch(() => {
+      await rmdir2(path24.join(root, ".leanrigor")).catch(() => {
       });
       console.log("Removed .leanrigor/config.json");
     } catch {
@@ -30461,7 +30502,7 @@ function parseConstraintOverrides(values) {
 }
 async function textArgument(value, file2, label2) {
   if (value !== void 0 && file2 !== void 0) throw new Error(`Provide ${label2} either as an argument or with --${label2}-file, not both.`);
-  if (file2 !== void 0) return readFile17(path23.resolve(String(file2)), "utf8");
+  if (file2 !== void 0) return readFile17(path24.resolve(String(file2)), "utf8");
   if (typeof value === "string" && value.length > 0) return value;
   throw new Error(`Missing ${label2}. Provide it as an argument or with --${label2}-file.`);
 }
@@ -30660,7 +30701,7 @@ async function executionProvider(providerName, scriptFile, config2) {
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 async function scriptedExecutionProvider(scriptFile) {
-  const scripts = scriptFile ? JSON.parse(await readFile17(path23.resolve(scriptFile), "utf8")) : {};
+  const scripts = scriptFile ? JSON.parse(await readFile17(path24.resolve(scriptFile), "utf8")) : {};
   return new ScriptedExecutionProvider(scripts);
 }
 async function runCoordinatorCommand(root, workflowId2, providerName, scriptFile, run) {

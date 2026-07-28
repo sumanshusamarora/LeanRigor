@@ -178,7 +178,7 @@ describe("Claude marketplace plugin manifests", () => {
     expect(content).toContain("flow start --request-file <request-file> --provider auto");
     expect(content).toMatch(/Do not use\s+`--provider deterministic` unless the user/);
     expect(content).toContain("flow approve-approach <workflow-id> --provider auto");
-    expect(content).toContain("flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
+    expect(content).toContain("flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto");
     expect(content).toContain("flow execute-next --provider auto");
     expect(content).toContain("flow execution-poll --provider auto");
     expect(content).toContain("next.approvalActions");
@@ -226,18 +226,18 @@ describe("Claude marketplace plugin manifests", () => {
     }
     const startContent = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "commands", "leanrigor.md"), "utf8");
     const workflowContent = await readFile(path.join(repoRoot, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
-    expect(startContent).toContain("leanrigor flow start \"$ARGUMENTS\" --provider auto");
-    expect(workflowContent).toContain("leanrigor flow start \"$ARGUMENTS\" --provider auto");
+    expect(startContent).toContain("leanrigor flow start --request-file <request-file> --provider auto");
+    expect(workflowContent).toContain("leanrigor flow start --request-file <request-file> --provider auto");
     expect(startContent).toContain("Do not use `--provider deterministic` unless the");
     expect(startContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
-    expect(startContent).toContain("leanrigor flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
+    expect(startContent).toContain("leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto");
     expect(startContent).toContain("flow execute-next --provider auto");
     expect(startContent).toContain("flow execution-poll --provider auto");
     expect(startContent).toContain("next.approvalActions");
     expect(startContent).toMatch(/same\s+assistant\s+turn/);
     expect(startContent).toMatch(/summary-only triage\s+report/);
     expect(workflowContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
-    expect(workflowContent).toContain("leanrigor flow revise-plan <workflow-id> \"<feedback>\" --provider auto");
+    expect(workflowContent).toContain("leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto");
     expect(workflowContent).toContain("leanrigor flow execute-next --provider auto");
     expect(workflowContent).toContain("leanrigor flow execution-poll --provider auto");
     expect(workflowContent).toMatch(/A prose summary is\s+not a decision gate by itself/);

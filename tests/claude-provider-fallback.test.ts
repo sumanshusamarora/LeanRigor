@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCliPlanningProvider } from "../src/adapters/claude/planning-provider.js";
-import { buildTriagePrompt, ClaudeCliTriageProvider, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
+import { buildTriagePrompt, ClaudeCliTriageProvider, defaultCommandRunner, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
 import { defaultConfig } from "../src/config/defaults.js";
 import { assessTask } from "../src/core/assessment.js";
 import type { PlanningProviderInput } from "../src/core/planning-runner.js";
@@ -20,8 +20,10 @@ function commandRunner(args: {
   output: unknown;
   calls: string[][];
 }): CommandRunner {
-  return async (_command, commandArgs) => {
+  return async (_command, commandArgs, _cwd, prompt) => {
     args.calls.push(commandArgs);
+    expect(prompt).toEqual(expect.any(String));
+    expect(commandArgs[commandArgs.indexOf("-p") + 1]).not.toContain("bounded sequential");
     const modelIndex = commandArgs.indexOf("--model");
     const model = modelIndex >= 0 ? commandArgs[modelIndex + 1] : undefined;
     if (model && args.failModels.includes(model)) {
@@ -32,6 +34,17 @@ function commandRunner(args: {
 }
 
 describe("Claude provider model tier fallback", () => {
+  it("streams a prompt from a temporary file rather than a command-line argument", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "leanrigor-prompt-transport-"));
+    const script = path.join(root, "read-prompt.js");
+    await writeFile(script, "process.stdin.setEncoding('utf8'); let input = ''; process.stdin.on('data', (chunk) => { input += chunk; }); process.stdin.on('end', () => process.stdout.write(input));", "utf8");
+    const prompt = `large prompt ${"x".repeat(40_000)}`;
+
+    const result = await defaultCommandRunner(process.execPath, [script], root, prompt);
+
+    expect(result).toMatchObject({ stdout: prompt, stderr: "", exitCode: 0 });
+  });
+
   it("tries triage fallback tiers before deterministic triage can run", async () => {
     clearModelEnv();
     const config = defaultConfig();

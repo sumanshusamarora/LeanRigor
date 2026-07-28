@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import {
   ConfigScope,
   PRECEDENCE,
@@ -34,19 +35,17 @@ describe("ConfigScope", () => {
 
   it("resolves scope paths correctly", () => {
     const userPath = scopePath(ConfigScope.User, "/tmp/repo");
-    expect(userPath).toContain(".config/leanrigor/config.json");
+    expect(userPath).toContain(path.join(".config", "leanrigor", "config.json"));
 
     const repoPath = scopePath(ConfigScope.RepoPolicy, "/tmp/repo");
-    expect(repoPath).toBe("/tmp/repo/leanrigor.config.json");
+    expect(repoPath).toBe(path.join("/tmp/repo", "leanrigor.config.json"));
 
     const localPath = scopePath(ConfigScope.Local, "/tmp/repo");
-    expect(localPath).toBe("/tmp/repo/.leanrigor/config.json");
+    expect(localPath).toBe(path.join("/tmp/repo", ".leanrigor", "config.json"));
   });
 
   it("prevents concrete model IDs in committed repo policy", () => {
-    expect(REPO_POLICY_FORBIDDEN_KEYS).toContain("models.tiers.small.claude");
-    expect(REPO_POLICY_FORBIDDEN_KEYS).toContain("models.tiers.medium.claude");
-    expect(REPO_POLICY_FORBIDDEN_KEYS).toContain("models.tiers.large.claude");
+    expect(REPO_POLICY_FORBIDDEN_KEYS).toContain("models.tiers");
     expect(REPO_POLICY_FORBIDDEN_KEYS).toContain("execution.workspaceRoot");
   });
 

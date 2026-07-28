@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LeanRigorConfig, ModelTier } from "../../config/schema.js";
 import { resolveModelTierFallbacks, type ResolvedModel } from "../../config/models.js";
+import { createClaudePromptFile } from "../../core/claude-prompt.js";
 import { TriageProviderError, type TriageInspectionInput, type TriageProvider, type TriageProviderResult, type TriageRecommendationInput } from "../../core/triage-runner.js";
 
 export interface CommandResult {
@@ -13,7 +14,7 @@ export interface CommandResult {
   exitCode: number;
 }
 
-export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<CommandResult>;
+export type CommandRunner = (command: string, args: string[], cwd: string, prompt?: string) => Promise<CommandResult>;
 
 export class ClaudeCliTriageProvider implements TriageProvider {
   name = "claude-cli";
@@ -31,7 +32,7 @@ export class ClaudeCliTriageProvider implements TriageProvider {
   async inspect(input: TriageInspectionInput): Promise<TriageProviderResult> {
     const prompt = buildInspectionPrompt(input);
     const baseArgs = [
-      "-p", prompt,
+      "-p",
       "--output-format", "json",
       "--max-turns", String(input.config.budgets.triageInspectionMaxTurns),
       "--allowedTools", "Read,Grep,Glob",
@@ -41,6 +42,7 @@ export class ClaudeCliTriageProvider implements TriageProvider {
       runCommand: this.runCommand,
       root: input.root,
       baseArgs,
+      prompt,
       preferredTier: input.config.routing.repositoryInspection,
       config: input.config,
       stage: "triage inspection"
@@ -52,7 +54,7 @@ export class ClaudeCliTriageProvider implements TriageProvider {
   private async runRecommendation(input: TriageRecommendationInput, repairFailure: string | undefined): Promise<TriageProviderResult> {
     const prompt = await buildTriagePrompt(input, repairFailure);
     const baseArgs = [
-      "-p", prompt,
+      "-p",
       "--bare",
       "--output-format", "json",
       "--max-turns", String(input.config.budgets.triageRecommendationMaxTurns),
@@ -62,6 +64,7 @@ export class ClaudeCliTriageProvider implements TriageProvider {
       runCommand: this.runCommand,
       root: input.root,
       baseArgs,
+      prompt,
       preferredTier: input.config.routing.triage,
       config: input.config,
       stage: repairFailure ? "triage recommendation repair" : "triage recommendation"
@@ -156,18 +159,35 @@ function recommendationSchemaDescription(): unknown {
   };
 }
 
-export const defaultCommandRunner: CommandRunner = (command, args, cwd) => new Promise((resolve, reject) => {
-  const invocation = windowsCommandInvocation(command, args);
-  const child = spawn(invocation.command, invocation.args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-  let stdout = "";
-  let stderr = "";
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-  child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-  child.on("error", reject);
-  child.on("close", (code: number | null) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
-});
+export const defaultCommandRunner: CommandRunner = async (command, args, cwd, prompt) => {
+  const promptFile = prompt === undefined ? undefined : await createClaudePromptFile(prompt);
+  const input = promptFile === undefined ? undefined : await open(promptFile.path, "r");
+  return new Promise((resolve, reject) => {
+    const invocation = windowsCommandInvocation(command, args);
+    const child = spawn(invocation.command, invocation.args, { cwd, stdio: [input?.fd ?? "ignore", "pipe", "pipe"] });
+    void input?.close();
+    if (!child.stdout || !child.stderr) {
+      void promptFile?.cleanup();
+      child.kill();
+      reject(new Error("Claude command did not provide stdout and stderr streams."));
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    child.on("error", (error) => {
+      void promptFile?.cleanup();
+      reject(error);
+    });
+    child.on("close", (code: number | null) => {
+      void promptFile?.cleanup();
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    });
+  });
+};
 
 function windowsCommandInvocation(command: string, args: string[]): { command: string; args: string[] } {
   if (process.platform !== "win32") return { command, args };
@@ -194,6 +214,7 @@ export async function runClaudeWithTierFallback(args: {
   runCommand: CommandRunner;
   root: string;
   baseArgs: string[];
+  prompt: string;
   preferredTier: ModelTier;
   config: LeanRigorConfig;
   stage: string;
@@ -205,7 +226,7 @@ export async function runClaudeWithTierFallback(args: {
     const commandArgs = [...args.baseArgs];
     if (resolved.model) commandArgs.push("--model", resolved.model);
     try {
-      const result = await args.runCommand("claude", commandArgs, args.root);
+      const result = await args.runCommand("claude", commandArgs, args.root, args.prompt);
       if (result.exitCode === 0) {
         return {
           result,

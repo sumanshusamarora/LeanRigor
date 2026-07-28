@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { resolveModelTier } from "../../config/models.js";
 import type { LeanRigorConfig } from "../../config/schema.js";
+import { createClaudePromptFile } from "../claude-prompt.js";
 import { ExecutionError } from "./errors.js";
 import type { ExecutionProvider } from "./provider.js";
 import { phaseWorkerPrompt } from "./prompt.js";
@@ -100,7 +101,6 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const resolved = resolveClaudeModel(input, this.options);
     const args = buildClaudeArgs({
-      prompt,
       maxTurns,
       permissionMode,
       environmentMode,
@@ -172,13 +172,16 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     const stdout = await open(stdoutPath, "w");
     const stderr = await open(stderrPath, "w");
     const invocation = windowsBatchInvocation(this.options.command ?? "claude", args);
+    const promptFile = await createClaudePromptFile(prompt);
+    const promptInput = await open(promptFile.path, "r");
     const child = spawn(invocation.command, invocation.args, {
       cwd: input.workspacePath,
       detached: process.platform !== "win32",
-      stdio: ["ignore", stdout.fd, stderr.fd],
+      stdio: [promptInput.fd, stdout.fd, stderr.fd],
       signal: controller.signal,
       env: boundedClaudeEnv(process.env)
     });
+    await promptInput.close();
     await stdout.close();
     await stderr.close();
     providerMetadata.pid = child.pid;
@@ -196,6 +199,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       if (child.pid) killProcessGroup(child.pid, "SIGTERM");
     }, input.timeoutSeconds * 1000);
     child.once("exit", (code, signal) => {
+      void promptFile.cleanup();
       clearTimeout(timeout);
       execution.status = controller.signal.aborted ? "timed_out" : code === 0 ? "completed" : "failed";
       execution.completedAt = new Date().toISOString();
@@ -211,6 +215,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       });
     });
     child.once("error", (error) => {
+      void promptFile.cleanup();
       clearTimeout(timeout);
       execution.status = "failed";
       execution.completedAt = new Date().toISOString();
@@ -358,7 +363,6 @@ function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
 }
 
 function buildClaudeArgs(args: {
-  prompt: string;
   maxTurns: number;
   permissionMode: string;
   environmentMode: "bare" | "safe-mode" | "default";
@@ -369,8 +373,8 @@ function buildClaudeArgs(args: {
   const cliArgs: string[] = [];
   if (args.environmentMode === "bare") cliArgs.push("--bare");
   if (args.environmentMode === "safe-mode") cliArgs.push("--safe-mode");
-  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p", args.prompt);
-  else cliArgs.push("-p", args.prompt, "--session-id", args.sessionId);
+  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p");
+  else cliArgs.push("-p", "--session-id", args.sessionId);
   cliArgs.push(
     "--output-format",
     "json",
