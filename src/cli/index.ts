@@ -43,6 +43,7 @@ import {
   integrationStatus,
   leasePhase,
   listFlows,
+  loadFlowState,
   loadLatestFlow,
   nextActions,
   repairPhase,
@@ -78,7 +79,7 @@ import type { PlanningProvider } from "../core/planning-runner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.24");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.25");
 
 program.command("setup")
   .alias("init")
@@ -512,27 +513,55 @@ flow.command("approve-plan")
     if (options.approvalPolicy && !["workflow-authorized", "phase-by-phase"].includes(options.approvalPolicy)) {
       throw new Error("Invalid --approval-policy. Use workflow-authorized or phase-by-phase.");
     }
-    printFlowState(await approvePlan(options.root, workflowId, mutationOptions(options), options.approvalPolicy));
+    printFlowState(await approvePlan(
+      options.root,
+      workflowId,
+      mutationOptions(options),
+      options.approvalPolicy,
+      await effectiveRepositoryConfig(options.root)
+    ));
   });
 
 flow.command("phase-brief")
   .argument("<workflow-id>")
   .argument("<phase-id>")
+  .argument("[feedback]")
+  .option("--feedback-file <path>", "UTF-8 file containing phase brief revision feedback")
+  .option("--refresh", "rerun bounded inspection and brief planning without revision feedback")
   .option("--root <path>", "repository root", process.cwd())
-  .option("--provider <provider>", "execution provider provenance")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
-  .action(async (workflowId, phaseId, options) => {
+  .action(async (workflowId, phaseId, feedback, options) => {
+    const revisionFeedback = feedback === undefined && options.feedbackFile === undefined
+      ? undefined
+      : await textArgument(feedback, options.feedbackFile, "feedback");
     const state = await preparePhaseExecutionBrief({
       root: options.root,
       workflowId,
       phaseId,
-      provider: options.provider,
+      config: await effectiveRepositoryConfig(options.root),
+      feedback: revisionFeedback,
+      refresh: Boolean(revisionFeedback) || Boolean(options.refresh),
       mutation: mutationOptions(options)
     });
     const brief = state.phaseBriefs?.[phaseId];
-    if (!brief) throw new Error(`Phase ${phaseId} has no execution brief.`);
+    if (!brief || state.phaseBriefFailures?.[phaseId]) {
+      console.log(JSON.stringify({ phaseId, failure: state.phaseBriefFailures?.[phaseId] ?? "Phase execution brief is unavailable." }, null, 2));
+      return;
+    }
     console.log(JSON.stringify(brief, null, 2));
+  });
+
+flow.command("phase-brief-show")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .action(async (workflowId, phaseId, options) => {
+    const state = await loadFlowState(options.root, workflowId);
+    const brief = state.phaseBriefs?.[phaseId];
+    const failure = state.phaseBriefFailures?.[phaseId];
+    if (!brief && !failure) throw new Error(`Phase ${phaseId} has no execution brief or persisted generation diagnostic.`);
+    console.log(JSON.stringify(brief ?? { phaseId, failure }, null, 2));
   });
 
 flow.command("approve-phase")

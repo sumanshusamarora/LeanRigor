@@ -59,7 +59,12 @@ import type {
 import { acquireWorkflowLock, releaseWorkflowLock } from "./workflow-lock.js";
 import { RevisionConflictError, atomicWriteJson } from "./workflow-store.js";
 import { calculateReadyPhases, dependencyIds, refreshPhaseReadiness, validatePhaseDag } from "./scheduler.js";
-import { approvalRecommendation, briefIsCurrent, buildPhaseExecutionBrief, defaultApprovalPolicy, requiresPhaseByPhase } from "./approval.js";
+import { approvalRecommendation, briefIsCurrent, defaultApprovalPolicy, requiresPhaseByPhase } from "./approval.js";
+import {
+  generateInspectedPhaseExecutionBrief,
+  type PhaseBriefGenerationOutcome,
+  type PhaseBriefPlanningProvider
+} from "./phase-brief-planner.js";
 
 export const WORKFLOW_DIR = path.join(".leanrigor", "workflows");
 export const STATE_VERSION = 2;
@@ -443,14 +448,98 @@ const approvalRecommendationSchema = z.object({
 });
 
 const materialPlanChangeSchema = z.object({
-  category: z.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider"]),
+  category: z.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"]),
   previousValue: z.union([z.string(), z.array(z.string())]).optional(),
   proposedValue: z.union([z.string(), z.array(z.string())]).optional(),
   affectedPhase: z.string().min(1),
-  severity: z.enum(["medium", "high"]),
+  severity: z.enum(["informational", "medium", "high"]),
+  material: z.boolean().default(true),
   reason: z.string().min(1),
-  requiredTransition: z.enum(["reapprove-plan", "revise-plan", "revise-phase-brief"])
+  requiredTransition: z.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
 });
+
+const phaseBriefInspectionQuestionSchema = z.object({
+  id: z.string().min(1),
+  question: z.string().min(1),
+  reason: z.string().min(1)
+});
+
+const phaseBriefScopeExpansionSchema = z.object({
+  path: z.string().min(1),
+  reason: z.string().min(1),
+  sourcePath: z.string().optional(),
+  readOnly: z.literal(true)
+});
+
+const phaseBriefInspectionRequestSchema = z.object({
+  workflowId: z.string().min(1),
+  phaseId: z.string().min(1),
+  workflowRevision: z.number().int().min(0),
+  questions: z.array(phaseBriefInspectionQuestionSchema),
+  allowedPaths: z.array(z.string()),
+  scopeExpansions: z.array(phaseBriefScopeExpansionSchema),
+  maxReads: z.number().int().min(1),
+  maxBytes: z.number().int().min(1),
+  timeoutSeconds: z.number().min(0)
+});
+
+const phaseBriefInspectionResultSchema = z.object({
+  status: z.enum(["completed", "partial", "unavailable", "failed"]),
+  findings: z.array(z.object({
+    questionId: z.string().min(1),
+    question: z.string().min(1),
+    answer: z.string(),
+    evidence: z.array(z.string())
+  })),
+  filesRead: z.array(z.string()),
+  bytesRead: z.number().int().min(0),
+  unresolvedQuestions: z.array(z.string()),
+  warnings: z.array(z.string()),
+  relevantFiles: z.array(z.string()),
+  relevantSymbols: z.array(z.string()),
+  validationCommands: z.array(z.string()),
+  completedAt: z.string(),
+  provenance: z.object({
+    source: z.string().min(1),
+    provider: z.string().optional(),
+    modelTier: modelProfileSchema.optional()
+  })
+});
+
+const phaseBriefDiagnosticSchema = z.object({
+  stage: z.enum(["inspection", "generation", "quality"]),
+  field: z.string().min(1),
+  code: z.string().min(1),
+  message: z.string().min(1),
+  repairAttempt: z.enum(["none", "same-provider"]),
+  resolution: z.enum(["unresolved", "repaired"])
+});
+
+const legacyInspectionRequest = {
+  workflowId: "legacy",
+  phaseId: "legacy",
+  workflowRevision: 0,
+  questions: [],
+  allowedPaths: [],
+  scopeExpansions: [],
+  maxReads: 1,
+  maxBytes: 1,
+  timeoutSeconds: 0
+};
+
+const legacyInspectionResult = {
+  status: "unavailable" as const,
+  findings: [],
+  filesRead: [],
+  bytesRead: 0,
+  unresolvedQuestions: ["Legacy brief has no bounded inspection provenance."],
+  warnings: ["Loaded from a workflow created before inspected phase briefs."],
+  relevantFiles: [],
+  relevantSymbols: [],
+  validationCommands: [],
+  completedAt: "1970-01-01T00:00:00.000Z",
+  provenance: { source: "legacy-unverified" }
+};
 
 const phaseExecutionBriefSchema = z.object({
   phaseId: z.string().min(1),
@@ -463,7 +552,8 @@ const phaseExecutionBriefSchema = z.object({
   implementationApproach: z.string().min(1),
   readAreas: z.array(z.string()),
   writeAreas: z.array(z.string()),
-  relevantSymbols: z.array(z.string()).optional(),
+  relevantFiles: z.array(z.string()).default([]),
+  relevantSymbols: z.array(z.string()).default([]),
   dependencies: z.array(z.string()),
   assumptions: z.array(z.string()),
   exclusions: z.array(z.string()),
@@ -473,8 +563,68 @@ const phaseExecutionBriefSchema = z.object({
   risks: z.array(z.string()),
   provider: z.string().optional(),
   modelTier: modelProfileSchema.optional(),
+  inspectionRequest: phaseBriefInspectionRequestSchema.default(legacyInspectionRequest),
+  inspectionResult: phaseBriefInspectionResultSchema.default(legacyInspectionResult),
+  repository: z.object({
+    baseCommit: z.string().optional(),
+    repositoryRevision: z.string().min(1),
+    constraintHash: z.string().min(1),
+    inspectionResultId: z.string().min(1),
+    inspectedPaths: z.array(z.string())
+  }).default({
+    repositoryRevision: "legacy-unverified",
+    constraintHash: "legacy-unverified",
+    inspectionResultId: "legacy-unverified",
+    inspectedPaths: []
+  }),
+  generation: z.object({
+    source: z.enum(["deterministic", "provider"]),
+    provider: z.string().min(1),
+    modelTier: modelProfileSchema,
+    warnings: z.array(z.string())
+  }).default({
+    source: "deterministic",
+    provider: "legacy-unverified",
+    modelTier: "inherit",
+    warnings: ["Loaded from a workflow created before phase-brief generation provenance."]
+  }),
+  validation: z.object({
+    status: z.enum(["valid", "blocked"]),
+    diagnostics: z.array(phaseBriefDiagnosticSchema),
+    repairAttempts: z.number().int().min(0),
+    validatedAt: z.string()
+  }).default({
+    status: "blocked",
+    diagnostics: [{
+      stage: "quality",
+      field: "brief",
+      code: "brief.legacy_unverified",
+      message: "Legacy phase brief must be regenerated before execution.",
+      repairAttempt: "none",
+      resolution: "unresolved"
+    }],
+    repairAttempts: 0,
+    validatedAt: "1970-01-01T00:00:00.000Z"
+  }),
+  revisionRequests: z.array(z.object({ feedback: z.string().min(1), timestamp: z.string() })).default([]),
+  manualValidationPlan: z.string().optional(),
   materialChangesFromWorkflowPlan: z.array(materialPlanChangeSchema),
   approvalStatus: z.enum(["not-required", "pending", "approved", "rejected", "stale"])
+});
+
+const phaseBriefGenerationFailureSchema = z.object({
+  phaseId: z.string().min(1),
+  workflowRevision: z.number().int().min(0),
+  briefRevision: z.number().int().min(1),
+  status: z.enum(["inspection-unavailable", "inspection-failed", "quality-blocked"]),
+  message: z.string().min(1),
+  diagnostics: z.array(phaseBriefDiagnosticSchema),
+  inspectionRequest: phaseBriefInspectionRequestSchema,
+  inspectionResult: phaseBriefInspectionResultSchema.optional(),
+  repairAttempts: z.number().int().min(0),
+  provider: z.string().min(1),
+  modelTier: modelProfileSchema,
+  failedAt: z.string()
 });
 
 const phaseApprovalDecisionSchema = z.object({
@@ -635,6 +785,7 @@ const workflowStateSchema = z.object({
   plan: planSchema.optional(),
   approval: workflowApprovalSchema.optional(),
   phaseBriefs: z.record(z.string(), phaseExecutionBriefSchema).default({}),
+  phaseBriefFailures: z.record(z.string(), phaseBriefGenerationFailureSchema).default({}),
   validation: z.array(validationEvidenceSchema),
   review: z.object({
     status: z.enum(["passed", "needs_repair", "needs_replan", "blocked"]),
@@ -839,6 +990,7 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
     next.plan = planningRun.plan;
     next.planningRun = planningRunMetadata(planningRun);
     next.phaseBriefs = {};
+    next.phaseBriefFailures = {};
     supersedePendingPhaseApproval(next);
     next.approval = {
       ...(next.approval ?? { history: [], decisionHistory: [] }),
@@ -854,8 +1006,15 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
   }, { ...mutation, operation: "revise_plan" });
 }
 
-export async function approvePlan(root: string, workflowId: string, mutation?: MutationOptions, selectedPolicy?: "workflow-authorized" | "phase-by-phase"): Promise<SequentialWorkflowState> {
-  return updateFlowState(root, workflowId, (state) => {
+export async function approvePlan(
+  root: string,
+  workflowId: string,
+  mutation?: MutationOptions,
+  selectedPolicy?: "workflow-authorized" | "phase-by-phase",
+  config: LeanRigorConfig = defaultConfig(),
+  briefProvider?: PhaseBriefPlanningProvider
+): Promise<SequentialWorkflowState> {
+  return updateFlowState(root, workflowId, async (state) => {
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
@@ -870,6 +1029,7 @@ export async function approvePlan(root: string, workflowId: string, mutation?: M
     next.plan = { ...plan, approvedAt: timestamp() };
     next.plan.phases = plan.phases.map((phase) => ({ ...phase, status: "planned" }));
     next.phaseBriefs = {};
+    next.phaseBriefFailures = {};
     next.approval = {
       policy,
       source: selectedPolicy ? "user" : "legacy-default",
@@ -891,15 +1051,14 @@ export async function approvePlan(root: string, workflowId: string, mutation?: M
     refreshPhaseReadiness(executing);
     const firstReady = executing.plan?.phases.find((phase) => phase.status === "ready");
     if (firstReady) {
-      const brief = {
-        ...buildPhaseExecutionBrief(executing, firstReady, undefined),
-        approvalStatus: "pending" as const
-      };
-      executing.phaseBriefs![firstReady.id] = brief;
-      setPendingPhaseApproval(executing, brief);
+      const outcome = await generateInspectedPhaseExecutionBrief({
+        state: executing,
+        phase: firstReady,
+        config,
+        provider: briefProvider
+      });
+      persistPhaseBriefOutcome(executing, firstReady, outcome, true);
       executing.approval!.recommendation = approvalRecommendation(executing, firstReady.id);
-      appendEvent(executing, "phase_brief_generated", `Phase ${firstReady.id} execution brief revision ${brief.briefRevision} generated.`, firstReady.id);
-      appendEvent(executing, "phase_approval_required", `Phase ${firstReady.id} brief revision ${brief.briefRevision} requires explicit approval.`, firstReady.id);
     }
     return executing;
   }, { ...mutation, operation: "approve_plan" });
@@ -909,29 +1068,37 @@ export async function preparePhaseExecutionBrief(args: {
   root: string;
   workflowId: string;
   phaseId: string;
-  provider?: string;
+  config?: LeanRigorConfig;
+  provider?: PhaseBriefPlanningProvider;
+  feedback?: string;
+  refresh?: boolean;
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
-  return updateFlowState(args.root, args.workflowId, (state) => {
+  if (!args.feedback && !args.refresh) {
+    const current = await loadFlowState(args.root, args.workflowId);
+    if (current.phaseBriefs?.[args.phaseId] && briefIsCurrent(current, args.phaseId)) return current;
+  }
+  return updateFlowState(args.root, args.workflowId, async (state) => {
     assertState(state, ["executing"]);
     const phase = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
     if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
     if (!["planned", "ready"].includes(phase.status)) throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an unstarted phase can receive an execution brief.`);
     const next = structuredClone(state);
     const current = next.phaseBriefs?.[phase.id];
-    if (current && briefIsCurrent(next, phase.id)) return next;
-    next.phaseBriefs ??= {};
-    next.phaseBriefs[phase.id] = buildPhaseExecutionBrief(next, phase, args.provider, current);
-    if (["pending", "stale"].includes(next.phaseBriefs[phase.id].approvalStatus)) {
-      setPendingPhaseApproval(next, next.phaseBriefs[phase.id]);
-    }
-    if (next.phaseBriefs[phase.id].materialChangesFromWorkflowPlan.length > 0) {
-      next.phaseBriefs[phase.id].approvalStatus = "stale";
-      next.blockers = unique([...next.blockers, `Material drift detected in ${phase.id}; reapproval is required.`]);
-      appendEvent(next, "phase_brief_material_drift", `Phase ${phase.id} execution brief contains material drift.`, phase.id);
-    } else {
-      appendEvent(next, "phase_brief_generated", `Phase ${phase.id} execution brief revision ${next.phaseBriefs[phase.id].briefRevision} generated.`, phase.id);
-    }
+    if (current) current.approvalStatus = "stale";
+    if (next.approval?.currentAuthorizedPhase === phase.id) next.approval.currentAuthorizedPhase = undefined;
+    supersedePendingPhaseApproval(next);
+    const outcome = await generateInspectedPhaseExecutionBrief({
+      state: next,
+      phase,
+      config: args.config ?? defaultConfig(),
+      previous: current,
+      feedback: args.feedback,
+      provider: args.provider
+    });
+    const requiresApproval = next.approval?.policy === "phase-by-phase"
+      || !next.approval?.history.some((entry) => entry.action === "phase-approved");
+    persistPhaseBriefOutcome(next, phase, outcome, requiresApproval);
     return next;
   }, { ...args.mutation, operation: "phase_brief_prepare" });
 }
@@ -1096,10 +1263,12 @@ export async function completePhase(args: {
       const phaseForApproval = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
       next.approval.recommendation = approvalRecommendation(next, phaseForApproval?.id);
       if (phaseForApproval) {
-        next.phaseBriefs ??= {};
-        next.phaseBriefs[phaseForApproval.id] = buildPhaseExecutionBrief(next, phaseForApproval);
-        setPendingPhaseApproval(next, next.phaseBriefs[phaseForApproval.id]);
-        appendEvent(next, "phase_approval_required", `Phase ${phaseForApproval.id} is ready for explicit approval.`, phaseForApproval.id);
+        const outcome = await generateInspectedPhaseExecutionBrief({
+          state: next,
+          phase: phaseForApproval,
+          config: args.config ?? defaultConfig()
+        });
+        persistPhaseBriefOutcome(next, phaseForApproval, outcome, true);
       }
     }
 
@@ -1947,6 +2116,7 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
   planning.plan = planningRun.plan;
   planning.planningRun = planningRunMetadata(planningRun);
   planning.phaseBriefs = {};
+  planning.phaseBriefFailures = {};
   supersedePendingPhaseApproval(planning);
   planning.approval = {
     ...(planning.approval ?? { history: [], decisionHistory: [] }),
@@ -3114,6 +3284,7 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
     };
   }
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
+  migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   return migrated;
 }
 
@@ -3190,6 +3361,43 @@ const PHASE_APPROVAL_ACTIONS: PhaseApprovalDecision["allowedActions"] = [
   "view-details",
   "cancel-workflow"
 ];
+
+function persistPhaseBriefOutcome(
+  state: SequentialWorkflowState,
+  phase: WorkflowPhase,
+  outcome: PhaseBriefGenerationOutcome,
+  requiresApproval: boolean
+): void {
+  state.phaseBriefs ??= {};
+  state.phaseBriefFailures ??= {};
+  const blockerPrefix = `Phase brief ${phase.id}:`;
+  state.blockers = state.blockers.filter((blocker) => !blocker.startsWith(blockerPrefix));
+
+  if (outcome.status === "blocked") {
+    const current = state.phaseBriefs[phase.id];
+    if (current) current.approvalStatus = "stale";
+    state.phaseBriefFailures[phase.id] = outcome.failure;
+    state.blockers = unique([...state.blockers, `${blockerPrefix} ${outcome.failure.message}`]);
+    supersedePendingPhaseApproval(state);
+    appendEvent(state, "phase_brief_blocked", `${outcome.failure.message} ${outcome.failure.diagnostics.map((item) => item.message).join(" ")}`, phase.id);
+    return;
+  }
+
+  const brief = outcome.brief;
+  delete state.phaseBriefFailures[phase.id];
+  brief.approvalStatus = requiresApproval ? "pending" : "approved";
+  state.phaseBriefs[phase.id] = brief;
+  appendEvent(state, "phase_brief_generated", `Phase ${phase.id} detailed execution brief revision ${brief.briefRevision} generated from ${brief.inspectionResult.filesRead.length} bounded reads.`, phase.id);
+  appendEvent(state, "phase_brief_validated", `Phase ${phase.id} brief revision ${brief.briefRevision} passed deterministic quality validation.`, phase.id);
+  const material = brief.materialChangesFromWorkflowPlan.filter((change) => change.material);
+  if (material.length > 0) {
+    appendEvent(state, "phase_brief_material_drift", `Phase ${phase.id} brief records ${material.length} material change candidate(s).`, phase.id);
+  }
+  if (requiresApproval) {
+    setPendingPhaseApproval(state, brief);
+    appendEvent(state, "phase_approval_required", `Phase ${phase.id} brief revision ${brief.briefRevision} requires explicit approval.`, phase.id);
+  }
+}
 
 function setPendingPhaseApproval(state: SequentialWorkflowState, brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string]): void {
   if (!state.approval) throw new WorkflowStateError("Cannot request phase approval before the Workflow Plan is approved.");

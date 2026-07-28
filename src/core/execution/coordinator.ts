@@ -57,8 +57,8 @@ export class ExecutionCoordinator {
 
   async runNext(): Promise<CoordinatorResult> {
     const before = await loadFlowState(this.root, this.workflowId);
-    if (before.approval?.pendingDecision?.status === "pending") {
-      return this.result(before, [], "await_user", "Phase Execution Brief approval is required before coordinator execution.");
+    if (before.approval?.pendingDecision?.status === "pending" || Object.keys(before.phaseBriefFailures ?? {}).length > 0) {
+      return this.result(before, [], "await_user", "A valid Phase Execution Brief and exact approval are required before coordinator execution.");
     }
     if (this.activeRecords(before).length > 0) return this.poll();
     const dispatched = await this.dispatchReady();
@@ -78,8 +78,8 @@ export class ExecutionCoordinator {
 
   async dispatchReady(): Promise<CoordinatorResult> {
     let state = await loadFlowState(this.root, this.workflowId);
-    if (state.approval?.pendingDecision?.status === "pending") {
-      return this.result(state, [], "await_user", "Phase Execution Brief approval is required before coordinator execution.");
+    if (state.approval?.pendingDecision?.status === "pending" || Object.keys(state.phaseBriefFailures ?? {}).length > 0) {
+      return this.result(state, [], "await_user", "A valid Phase Execution Brief and exact approval are required before coordinator execution.");
     }
     await this.provider.capabilities();
     if (state.state !== "executing") return this.result(state, [], this.nextActionForState(state), "Workflow is not in an executable state.");
@@ -92,7 +92,7 @@ export class ExecutionCoordinator {
         root: this.root,
         workflowId: this.workflowId,
         phaseId: phase.id,
-        provider: this.provider.id,
+        config: this.config,
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
       });
     }

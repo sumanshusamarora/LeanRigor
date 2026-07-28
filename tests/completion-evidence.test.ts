@@ -4,12 +4,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import { completionEvidenceArtifactPath, persistCompletionEvidenceArtifact, readCompletionEvidenceFile } from "../src/core/completion-evidence.js";
-import { approvePlan, completePhase, startFlow, startPhase } from "../src/core/flow.js";
+import { approvePhase, approvePlan, completePhase, saveFlowState, startFlow, startPhase } from "../src/core/flow.js";
 import type { WorkflowPhase } from "../src/core/types.js";
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-evidence-"));
   await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } }));
+  await writeFile(path.join(root, "README.md"), "# fixture\n");
   return root;
 }
 
@@ -89,7 +90,18 @@ describe("completion evidence files", () => {
 async function runningFastPhase(): Promise<{ root: string; workflowId: string; phase: WorkflowPhase }> {
   const root = await tempRepo();
   const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
-  const executing = await approvePlan(root, started.id);
+  started.plan!.phases[0]!.acceptanceCriteria = ["README.md contains the corrected documentation and git diff --check passes."];
+  await saveFlowState(root, started, { expectedRevision: started.revision });
+  let executing = await approvePlan(root, started.id);
+  const brief = executing.phaseBriefs?.["phase-1"];
+  if (!brief) throw new Error(JSON.stringify(executing.phaseBriefFailures, null, 2));
+  executing = await approvePhase({
+    root,
+    workflowId: executing.id,
+    phaseId: "phase-1",
+    briefRevision: brief.briefRevision,
+    workflowRevision: brief.workflowRevision
+  });
   const running = await startPhase(root, executing.id, "phase-1");
   const phase = running.plan?.phases[0];
   if (!phase) throw new Error("Expected phase-1");

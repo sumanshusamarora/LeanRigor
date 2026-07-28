@@ -186,9 +186,17 @@ Dedicated triage budgets live under `budgets`:
 - `triageInspectionMaxTurns`, `triageInspectionMaxReads`,
   `triageInspectionMaxBytes`, and `triageInspectionTimeoutSeconds`: separate
   bounds for optional targeted fact inspection.
+- `phaseBriefInspectionMaxReads`, `phaseBriefInspectionMaxBytes`, and
+  `phaseBriefInspectionTimeoutSeconds`: deterministic limits for the read-only
+  repository inspection that informs one Phase Execution Brief;
+- `phaseBriefRepairAttempts`: bounded same-provider repair attempts after
+  deterministic brief-quality diagnostics. The default is one and the current
+  maximum is two.
 
 These budgets do not grant normal triage repository tools. They cap each stage
 after deterministic evidence collection has already bounded the discovery work.
+Phase brief limits likewise do not grant implementation tools, workspace
+creation, approval authority, or unrestricted repository traversal.
 
 ## Review, testing, and completion gates
 

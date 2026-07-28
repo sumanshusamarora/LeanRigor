@@ -104,7 +104,11 @@ export type MaterialPlanChangeCategory =
   | "dependency"
   | "ordering"
   | "architecture"
-  | "provider";
+  | "provider"
+  | "file-refinement"
+  | "symbol-refinement"
+  | "read-boundary"
+  | "risk";
 
 export interface ApprovalRecommendation {
   option: ApprovalRecommendationOption;
@@ -162,9 +166,111 @@ export interface MaterialPlanChange {
   previousValue?: string | string[];
   proposedValue?: string | string[];
   affectedPhase: string;
-  severity: "medium" | "high";
+  severity: "informational" | "medium" | "high";
+  material: boolean;
   reason: string;
-  requiredTransition: "reapprove-plan" | "revise-plan" | "revise-phase-brief";
+  requiredTransition: "none" | "reapprove-plan" | "revise-plan" | "revise-phase-brief";
+}
+
+export interface PhaseBriefInspectionQuestion {
+  id: string;
+  question: string;
+  reason: string;
+}
+
+export interface PhaseBriefScopeExpansion {
+  path: string;
+  reason: string;
+  sourcePath?: string;
+  readOnly: true;
+}
+
+export interface PhaseBriefInspectionRequest {
+  workflowId: string;
+  phaseId: string;
+  workflowRevision: number;
+  questions: PhaseBriefInspectionQuestion[];
+  allowedPaths: string[];
+  scopeExpansions: PhaseBriefScopeExpansion[];
+  maxReads: number;
+  maxBytes: number;
+  timeoutSeconds: number;
+}
+
+export interface PhaseBriefInspectionFinding {
+  questionId: string;
+  question: string;
+  answer: string;
+  evidence: string[];
+}
+
+export interface PhaseBriefInspectionResult {
+  status: "completed" | "partial" | "unavailable" | "failed";
+  findings: PhaseBriefInspectionFinding[];
+  filesRead: string[];
+  bytesRead: number;
+  unresolvedQuestions: string[];
+  warnings: string[];
+  relevantFiles: string[];
+  relevantSymbols: string[];
+  validationCommands: string[];
+  completedAt: string;
+  provenance: {
+    source: string;
+    provider?: string;
+    modelTier?: ModelProfile;
+  };
+}
+
+export interface PhaseBriefDiagnostic {
+  stage: "inspection" | "generation" | "quality";
+  field: string;
+  code: string;
+  message: string;
+  repairAttempt: "none" | "same-provider";
+  resolution: "unresolved" | "repaired";
+}
+
+export interface PhaseBriefValidation {
+  status: "valid" | "blocked";
+  diagnostics: PhaseBriefDiagnostic[];
+  repairAttempts: number;
+  validatedAt: string;
+}
+
+export interface PhaseBriefRepositoryProvenance {
+  baseCommit?: string;
+  repositoryRevision: string;
+  constraintHash: string;
+  inspectionResultId: string;
+  inspectedPaths: string[];
+}
+
+export interface PhaseBriefGenerationProvenance {
+  source: "deterministic" | "provider";
+  provider: string;
+  modelTier: ModelProfile;
+  warnings: string[];
+}
+
+export interface PhaseBriefRevisionRequest {
+  feedback: string;
+  timestamp: string;
+}
+
+export interface PhaseBriefGenerationFailure {
+  phaseId: string;
+  workflowRevision: number;
+  briefRevision: number;
+  status: "inspection-unavailable" | "inspection-failed" | "quality-blocked";
+  message: string;
+  diagnostics: PhaseBriefDiagnostic[];
+  inspectionRequest: PhaseBriefInspectionRequest;
+  inspectionResult?: PhaseBriefInspectionResult;
+  repairAttempts: number;
+  provider: string;
+  modelTier: ModelProfile;
+  failedAt: string;
 }
 
 export interface PhaseExecutionBrief {
@@ -178,7 +284,8 @@ export interface PhaseExecutionBrief {
   implementationApproach: string;
   readAreas: string[];
   writeAreas: string[];
-  relevantSymbols?: string[];
+  relevantFiles: string[];
+  relevantSymbols: string[];
   dependencies: string[];
   assumptions: string[];
   exclusions: string[];
@@ -188,6 +295,13 @@ export interface PhaseExecutionBrief {
   risks: string[];
   provider?: string;
   modelTier?: ModelProfile;
+  inspectionRequest: PhaseBriefInspectionRequest;
+  inspectionResult: PhaseBriefInspectionResult;
+  repository: PhaseBriefRepositoryProvenance;
+  generation: PhaseBriefGenerationProvenance;
+  validation: PhaseBriefValidation;
+  revisionRequests: PhaseBriefRevisionRequest[];
+  manualValidationPlan?: string;
   materialChangesFromWorkflowPlan: MaterialPlanChange[];
   approvalStatus: "not-required" | "pending" | "approved" | "rejected" | "stale";
 }
@@ -813,6 +927,7 @@ export interface SequentialWorkflowState {
   plan?: ExecutionPlan;
   approval?: WorkflowApprovalState;
   phaseBriefs?: Record<string, PhaseExecutionBrief>;
+  phaseBriefFailures?: Record<string, PhaseBriefGenerationFailure>;
   validation: ValidationEvidence[];
   review?: IntegratedReviewResult;
   commitPlan?: CommitPlan;

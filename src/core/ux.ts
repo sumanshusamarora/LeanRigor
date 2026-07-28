@@ -208,7 +208,31 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     const needsIntervention = ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status);
     const readiness = executingReadinessSummary(state);
     const brief = state.phaseBriefs?.[phase.id];
+    const briefFailure = state.phaseBriefFailures?.[phase.id];
     const pendingDecision = state.approval?.pendingDecision;
+    if (briefFailure) {
+      const root = quoteArg(state.root);
+      return {
+        ...base,
+        label: "Phase Execution Brief unavailable",
+        userDecisionRequired: true,
+        pendingDecision: `${phaseLabel(phase.id)} brief could not be completed.`,
+        pendingAction: briefFailure.message,
+        allowedIntents: ["retry", "revise", "view details", "cancel"],
+        approvalActions: [
+          { label: "Retry bounded inspection", intent: "retry", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --refresh --root ${root}`, description: "Retry the same read-only inspection and deterministic quality gate within configured limits." },
+          { label: "Revise Workflow Plan boundary", intent: "revise", command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`, description: "Correct the approved phase boundary before another brief is generated." },
+          { label: "View diagnostics", intent: "view details", command: `leanrigor flow phase-brief-show ${state.id} ${phase.id} --root ${root}`, description: "Show unresolved inspection questions, exact quality diagnostics, limits, and provenance." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel this workflow without starting execution." }
+        ],
+        summary: {
+          phase: phase.id,
+          objective: phase.objective,
+          failure: briefFailure,
+          executionAuthorized: false
+        }
+      };
+    }
     const needsPhaseApproval = phase.status === "ready"
       && Boolean(brief)
       && pendingDecision?.type === "phase-brief-approval"
@@ -223,21 +247,52 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         ...base,
         label: "Phase execution brief",
         userDecisionRequired: true,
-        pendingDecision: `Approve phase ${phase.id} using Workflow Plan revision ${pendingDecision?.workflowRevision} and execution brief revision ${pendingDecision?.briefRevision}.`,
+        pendingDecision: `Approve ${phaseLabel(phase.id)} using Workflow Plan revision ${pendingDecision?.workflowRevision} and execution brief revision ${pendingDecision?.briefRevision}.`,
         pendingAction: "Review the phase brief and select an action.",
         allowedIntents: ["approve", "revise", "view details", "cancel"],
         approvalActions: [
-          { label: `Approve ${phase.id}`, intent: "approve", command: `leanrigor flow approve-phase ${state.id} ${phase.id} --brief-revision ${brief?.briefRevision ?? 0} --workflow-revision ${pendingDecision?.workflowRevision ?? 0} --root ${root}`, description: "Authorize exactly this persisted Workflow Plan and Phase Execution Brief revision." },
-          { label: "Revise phase brief", intent: "revise", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --root ${root}`, description: "Refresh the bounded phase brief before approval." },
-          { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --root ${root}`, description: "Show the persisted objective, boundaries, obligations, validation, risks, and drift findings." },
+          { label: `Approve ${phaseLabel(phase.id)}`, intent: "approve", command: `leanrigor flow approve-phase ${state.id} ${phase.id} --brief-revision ${brief?.briefRevision ?? 0} --workflow-revision ${pendingDecision?.workflowRevision ?? 0} --root ${root}`, description: "Authorize exactly this persisted Workflow Plan and detailed Phase Execution Brief revision." },
+          { label: `Revise ${phaseLabel(phase.id)} brief`, intent: "revise", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --feedback-file <feedback-file> --root ${root}`, description: "Persist feedback, rerun bounded planning, and create a new unapproved brief revision." },
+          { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief-show ${state.id} ${phase.id} --root ${root}`, description: "Show the persisted objective, files, symbols, obligations, validation, risks, material changes, and inspection provenance." },
           { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel this workflow." }
         ],
         summary: {
+          title: `${phaseLabel(phase.id)} Execution Brief`,
           phase: phase.id,
-          brief,
+          objective: brief?.objective,
+          concreteDeliverable: brief?.deliverable,
+          currentBehaviour: brief?.currentBehaviour,
+          implementationApproach: brief?.implementationApproach,
+          affectedFilesAndSymbols: {
+            read: brief?.readAreas ?? [],
+            write: brief?.writeAreas ?? [],
+            relevantFiles: brief?.relevantFiles ?? [],
+            relevantSymbols: brief?.relevantSymbols ?? []
+          },
+          acceptanceCriteria: brief?.acceptanceCriteria ?? [],
+          testObligations: brief?.testObligations ?? [],
+          validationCommands: brief?.validationCommands ?? [],
+          dependencies: brief?.dependencies ?? [],
+          assumptions: brief?.assumptions ?? [],
+          exclusions: brief?.exclusions ?? [],
+          risks: brief?.risks ?? [],
+          changesFromApprovedWorkflowPlan: brief?.materialChangesFromWorkflowPlan ?? [],
+          inspectionProvenance: brief ? {
+            status: brief.inspectionResult.status,
+            repositoryRevision: brief.repository.repositoryRevision,
+            inspectedPaths: brief.repository.inspectedPaths,
+            scopeExpansions: brief.inspectionRequest.scopeExpansions,
+            source: brief.inspectionResult.provenance.source,
+            provider: brief.generation.provider,
+            modelTier: brief.generation.modelTier,
+            reads: brief.inspectionResult.filesRead.length,
+            bytes: brief.inspectionResult.bytesRead
+          } : undefined,
+          validation: brief?.validation,
+          briefRevision: brief?.briefRevision,
           pendingDecision,
           recommendation,
-          withinApprovedPlan: brief?.materialChangesFromWorkflowPlan.length === 0
+          withinApprovedPlan: !brief?.materialChangesFromWorkflowPlan.some((change) => change.material)
         }
       };
     }
@@ -325,7 +380,9 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
 export function currentPhaseObject(state: SequentialWorkflowState): WorkflowPhase | undefined {
   return state.plan?.phases.find((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending")
     ?? state.plan?.phases.find((phase) => phase.status === "ready")
-    ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
+    ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status))
+    ?? state.plan?.phases.find((phase) => Boolean(state.phaseBriefFailures?.[phase.id]))
+    ?? state.plan?.phases.find((phase) => phase.id === state.approval?.pendingDecision?.phaseId);
 }
 
 function executingReadinessSummary(state: SequentialWorkflowState): {
@@ -342,6 +399,11 @@ function executingReadinessSummary(state: SequentialWorkflowState): {
     recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : undefined,
     otherDependencyReadyPhases: dependencyReady.slice(1).map((phase) => ({ id: phase.id, objective: phase.objective }))
   };
+}
+
+function phaseLabel(phaseId: string): string {
+  const match = phaseId.match(/^phase-(\d+)$/i);
+  return match ? `Phase ${match[1]}` : phaseId;
 }
 
 function planExecutionStructure(state: SequentialWorkflowState): {

@@ -1,14 +1,16 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import {
+  approvePhase,
   approveApproach,
-  approvePlan,
+  approvePlan as approveWorkflowPlan,
   cancelFlow,
   completePhase,
+  loadFlowState,
   recordReview,
   recordValidation,
   resumeFlow,
@@ -24,8 +26,46 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-ux-"));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await mkdir(path.join(root, "tests"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+  await writeFile(path.join(root, "README.md"), "# UX fixture\n");
+  await writeFile(path.join(root, "src", "api.ts"), "export function apiValue() { return true; }\n");
+  await writeFile(path.join(root, "src", "api.test.ts"), "export const apiRegression = true;\n");
   return root;
+}
+
+async function approvePlan(root: string, workflowId: string): Promise<SequentialWorkflowState> {
+  await prepareConcretePlan(root, workflowId);
+  let approved = await approveWorkflowPlan(root, workflowId, undefined, undefined, defaultConfig());
+  const first = approved.plan?.phases[0];
+  const brief = first ? approved.phaseBriefs?.[first.id] : undefined;
+  if (!first || !brief) throw new Error(JSON.stringify(approved.phaseBriefFailures, null, 2));
+  approved = await approvePhase({
+    root,
+    workflowId,
+    phaseId: first.id,
+    briefRevision: brief.briefRevision,
+    workflowRevision: brief.workflowRevision
+  });
+  return approved;
+}
+
+async function prepareConcretePlan(root: string, workflowId: string): Promise<void> {
+  const state = await loadFlowState(root, workflowId);
+  if (!state.plan) throw new Error("expected plan");
+  for (const candidate of state.plan.phases) {
+    const paths = /\b(documentation|docs|readme)\b/i.test(`${state.request} ${candidate.objective}`)
+      ? ["README.md"]
+      : ["src/api.ts", "src/api.test.ts"];
+    candidate.expectedReadAreas = [...paths];
+    candidate.expectedWriteAreas = [...paths];
+    candidate.expectedFilesOrAreas = [...paths];
+    candidate.acceptanceCriteria = candidate.acceptanceCriteria.map((criterion) =>
+      `${criterion.replace(/[.]$/, "")}; the observable result is recorded and npm test passes.`);
+    candidate.ownershipUncertain = false;
+  }
+  await saveFlowState(root, state, { expectedRevision: state.revision });
 }
 
 function phase(id: string, objective: string, dependencies: string[], status: WorkflowPhase["status"]): WorkflowPhase {
@@ -137,7 +177,8 @@ describe("Claude conversational workflow UX support", () => {
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const planned = await approveApproach(root, started.id, defaultConfig());
 
-    const executing = await approvePlan(root, planned.id);
+    await prepareConcretePlan(root, planned.id);
+    const executing = await approveWorkflowPlan(root, planned.id, undefined, undefined, defaultConfig());
 
     const next = workflowNextSummary(executing);
     expect(next).toMatchObject({
@@ -146,7 +187,7 @@ describe("Claude conversational workflow UX support", () => {
     });
     expect(next.approvalActions).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        label: "Approve phase-1",
+        label: "Approve Phase 1",
         command: expect.stringContaining("--workflow-revision")
       })
     ]));

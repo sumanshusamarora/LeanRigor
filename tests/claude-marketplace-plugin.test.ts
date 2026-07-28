@@ -78,7 +78,7 @@ async function fakeClaudePath(): Promise<string> {
   const script = path.join(binDir, "claude.js");
   await writeFile(
     script,
-    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst prompt = args.join("\\n");\nconst stage = prompt.includes("bounded sequential planner") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
+    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst stdin = fs.readFileSync(0, "utf8");\nconst prompt = args.join("\\n") + "\\n" + stdin;\nconst stage = prompt.includes("bounded sequential planner") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
     { mode: 0o755 }
   );
   if (process.platform === "win32") {

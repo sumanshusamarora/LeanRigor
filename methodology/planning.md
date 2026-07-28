@@ -73,3 +73,23 @@ Rigorous:
 - If deterministic plan validation reports a constraint contradiction, repair
   only the named invalid fields while preserving valid phase content. If the
   contradiction cannot be repaired, stop before approval.
+
+## Progressive Phase Elaboration
+
+Workflow Plan approval does not authorize implementation. Before each phase is
+approved, run only the bounded, read-only inspection allowed by the persisted
+phase-brief request. Prefer approved paths, repository metadata, named issue
+paths, nearby tests, and justified direct imports. Record facts and provenance,
+not hidden reasoning or full provider transcripts.
+
+The Phase Execution Brief must add inspected current behavior, a concrete
+deliverable, actionable steps, exact files and symbols where supported,
+separate read/write boundaries, obligations, validation, assumptions,
+exclusions, risks, prior-phase context, and structured changes from the
+approved Workflow Plan. Do not pass WorkflowPhase prose off as this artifact.
+
+Deterministic quality diagnostics own eligibility. A planning provider may
+repair only deficient fields within the configured attempt budget. If
+inspection is unavailable, scope is unsafe, or repair remains shallow, keep the
+phase blocked at preflight. Revision feedback creates a new brief revision and
+supersedes the prior approval decision.

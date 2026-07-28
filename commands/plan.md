@@ -35,6 +35,12 @@ Behaviour:
 7. If the user gives revision feedback, invoke
    `flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto` internally and
    render the revised plan.
+8. Workflow Plan approval authorizes only the plan. Immediately read `flow next
+   --json` and render the detailed Phase Execution Brief produced by bounded
+   read-only inspection. Wait for approval of its exact revision. For phase
+   brief feedback, use `flow phase-brief <workflow-id> <phase-id>
+   --feedback-file <feedback-file>` and render the replacement revision; do not
+   carry prior approval forward.
 
 Do not create a duplicate workflow when an active relevant workflow already
 exists. Do not modify implementation files from this command.

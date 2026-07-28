@@ -63,7 +63,7 @@ export function testPhase(id: string, writes: string[], dependencies: string[] =
     expectedReadAreas: writes,
     expectedWriteAreas: writes,
     expectedFilesOrAreas: writes,
-    acceptanceCriteria: [`${id} is implemented with evidence.`],
+    acceptanceCriteria: [`${id} writes remain within the declared boundary and npm test passes.`],
     validationCommands: ["npm test"],
     riskLevel: "medium",
     modelTier: "medium",

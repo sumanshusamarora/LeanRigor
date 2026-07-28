@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import {
   answerClarification,
   approvePhase,
   approveApproach,
-  approvePlan,
+  approvePlan as approveWorkflowPlan,
   cancelFlow,
   classifyFilePath,
   completeFlow,
@@ -36,6 +36,8 @@ import recoveredRejectedPlan from "./fixtures/recovered-rejected-plan.json" with
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-flow-"));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await mkdir(path.join(root, "tests"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({
     scripts: {
       test: "vitest run",
@@ -44,7 +46,62 @@ async function tempRepo(): Promise<string> {
       build: "tsc -p tsconfig.build.json"
     }
   }));
+  await writeFile(path.join(root, "README.md"), "# LeanRigor fixture\n");
+  await writeFile(path.join(root, "src", "assignment.ts"), "export function validateAssignment(value: string): boolean { return value.length > 0; }\n");
+  await writeFile(path.join(root, "src", "api.ts"), "export function assignApi(value: string): boolean { return value.length > 0; }\n");
+  await writeFile(path.join(root, "src", "api.test.ts"), "export const apiRegression = true;\n");
+  await writeFile(path.join(root, "src", "auth.ts"), "export function authenticate(value: string): boolean { return value.length > 0; }\n");
+  await writeFile(path.join(root, "tests", "assignment.test.ts"), "export const assignmentRegression = true;\n");
+  await writeFile(path.join(root, "tests", "auth.test.ts"), "export const authRegression = true;\n");
   return root;
+}
+
+async function approvePlan(root: string, workflowId: string): Promise<SequentialWorkflowState> {
+  await prepareConcretePlan(root, workflowId);
+  let approved = await approveWorkflowPlan(root, workflowId, undefined, undefined, defaultConfig());
+  const first = approved.plan?.phases[0];
+  const brief = first ? approved.phaseBriefs?.[first.id] : undefined;
+  if (!first || !brief) throw new Error(JSON.stringify(approved.phaseBriefFailures, null, 2));
+  approved = await approvePhase({
+    root,
+    workflowId,
+    phaseId: first.id,
+    briefRevision: brief.briefRevision,
+    workflowRevision: brief.workflowRevision
+  });
+  if (approved.approval?.policy === "workflow-authorized") {
+    for (const phase of approved.plan?.phases.slice(1) ?? []) {
+      approved = await preparePhaseExecutionBrief({ root, workflowId, phaseId: phase.id, config: defaultConfig() });
+    }
+  }
+  return approved;
+}
+
+async function prepareConcretePlan(root: string, workflowId: string): Promise<void> {
+  const state = await loadFlowState(root, workflowId);
+  if (!state.plan) throw new Error("expected plan before execution approval");
+  for (const phase of state.plan.phases) {
+    const approvedPaths = [...phase.expectedReadAreas, ...phase.expectedWriteAreas, ...phase.expectedFilesOrAreas]
+      .filter((area) => area.includes("/") || /\.[A-Za-z0-9]+$/.test(area));
+    if (approvedPaths.length === 0) {
+      const paths = /\b(documentation|docs|readme)\b/i.test(`${state.request} ${phase.objective}`)
+        ? ["README.md"]
+        : /\b(authentication|credentials?|auth)\b/i.test(`${state.request} ${phase.objective}`)
+          ? ["src/auth.ts", "tests/auth.test.ts"]
+          : /\bapi\b/i.test(`${state.request} ${phase.objective}`)
+            ? ["src/api.ts", "src/api.test.ts"]
+        : ["src/assignment.ts", "tests/assignment.test.ts"];
+      phase.expectedReadAreas = [...paths];
+      phase.expectedWriteAreas = [...paths];
+      phase.expectedFilesOrAreas = [...paths];
+    }
+    phase.acceptanceCriteria = phase.acceptanceCriteria.map((criterion) =>
+      /\b(pass|return|persist|reject|remain|load|create|update|prevent|record|show|complete|explicit|reviewable)\w*\b/i.test(criterion)
+        ? criterion
+        : `${criterion.replace(/[.]$/, "")}; the observable result is recorded and configured validation passes.`);
+    phase.ownershipUncertain = false;
+  }
+  await saveFlowState(root, state, { expectedRevision: state.revision });
 }
 
 function planningProviderFrom(values: unknown[], warnings: string[] = []): PlanningProvider {
@@ -212,7 +269,7 @@ describe("sequential workflow orchestration", () => {
     const recommendation = workflowNextSummary(await loadFlowState(root, state.id)).summary.approval as { recommendation: { option: string } };
     expect(recommendation.recommendation.option).toBe("approve-all-remaining");
 
-    const approved = await approvePlan(root, state.id, undefined, "phase-by-phase");
+    const approved = await approveWorkflowPlan(root, state.id, undefined, "phase-by-phase");
     expect(approved.approval).toMatchObject({ policy: "phase-by-phase", source: "user" });
     expect(approved.approval?.history.at(-1)).toMatchObject({ action: "plan-approved", recommendationOverridden: true });
   });
@@ -229,7 +286,8 @@ describe("sequential workflow orchestration", () => {
       "Cancel workflow"
     ]);
     expect(JSON.stringify(planGate)).not.toContain("Approve this phase only");
-    const executing = await approvePlan(root, planned.id, undefined, "phase-by-phase");
+    await prepareConcretePlan(root, planned.id);
+    const executing = await approveWorkflowPlan(root, planned.id, undefined, "phase-by-phase", defaultConfig());
     const first = executing.plan!.phases[0]!;
     const brief = executing.phaseBriefs?.[first.id];
     if (!brief) throw new Error("expected Phase 1 execution brief");
@@ -249,7 +307,7 @@ describe("sequential workflow orchestration", () => {
       userDecisionRequired: true
     });
     expect(next.approvalActions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: `Approve ${first.id}` })
+      expect.objectContaining({ label: "Approve Phase 1" })
     ]));
 
     const stale = await loadFlowState(root, executing.id);
@@ -304,7 +362,8 @@ describe("sequential workflow orchestration", () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const planned = await approveApproach(root, started.id, defaultConfig());
-    const executing = await approvePlan(root, planned.id, undefined, "phase-by-phase");
+    await prepareConcretePlan(root, planned.id);
+    const executing = await approveWorkflowPlan(root, planned.id, undefined, "phase-by-phase", defaultConfig());
     const state = await loadFlowState(root, executing.id);
     const [first, second] = state.plan!.phases;
     first!.status = "completed";
@@ -329,7 +388,7 @@ describe("sequential workflow orchestration", () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const planned = await approveApproach(root, started.id, defaultConfig());
-    const approved = await approvePlan(root, planned.id, undefined, "phase-by-phase");
+    const approved = await approveWorkflowPlan(root, planned.id, undefined, "phase-by-phase", defaultConfig());
     const workflowPath = path.join(root, ".leanrigor", "workflows", `${approved.id}.json`);
     const legacy = JSON.parse(await readFile(workflowPath, "utf8")) as { approval?: Record<string, unknown> };
     delete legacy.approval?.pendingDecision;
@@ -1302,7 +1361,17 @@ async function completePhaseWithEvidence(root: string, state: SequentialWorkflow
   config?: ReturnType<typeof defaultConfig>;
   modelDecision?: "completed" | "needs_repair" | "needs_review" | "needs_replan" | "blocked";
 } = {}): Promise<SequentialWorkflowState> {
-    const current = await resumeFlow(root, state.id);
+    let current = await resumeFlow(root, state.id);
+    const pending = current.approval?.pendingDecision;
+    if (pending?.phaseId === phaseId) {
+      current = await approvePhase({
+        root,
+        workflowId: state.id,
+        phaseId,
+        briefRevision: pending.briefRevision,
+        workflowRevision: pending.workflowRevision
+      });
+    }
     const phase = current.plan?.phases.find((candidate) => candidate.id === phaseId);
     if (!phase) throw new Error(`Missing phase ${phaseId}`);
   const executable = phase.status === "ready" ? await startPhase(root, state.id, phaseId) : current;

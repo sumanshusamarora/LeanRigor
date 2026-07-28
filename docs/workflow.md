@@ -33,7 +33,9 @@ leanrigor flow approve-approach <workflow-id>
 leanrigor flow approve-plan <workflow-id> --approval-policy workflow-authorized
 leanrigor flow approve-plan <workflow-id> --approval-policy phase-by-phase
 leanrigor flow phase-brief <workflow-id> phase-1
-leanrigor flow approve-phase <workflow-id> phase-1 --brief-revision 1
+leanrigor flow phase-brief <workflow-id> phase-1 --feedback-file brief-feedback.txt
+leanrigor flow phase-brief-show <workflow-id> phase-1
+leanrigor flow approve-phase <workflow-id> phase-1 --brief-revision 1 --workflow-revision 4
 leanrigor flow ready <workflow-id> --json
 leanrigor flow execute-next <workflow-id> --provider scripted --json
 leanrigor flow execute-ready <workflow-id> --provider scripted --json
@@ -78,7 +80,7 @@ than normal user-facing output.
 | `awaiting_approach_approval` | Standard/Rigorous approach gate is pending. | `flow approve-approach` or `flow reject-approach`. |
 | `planning` | Sequential plan is being generated. | Internal transition to plan approval. |
 | `awaiting_plan_approval` | Phased plan is ready but implementation is blocked. | `flow approve-plan` or `flow revise-plan`. |
-| `executing` | One or more phases may be dependency-ready in the DAG; the first plan-order ready phase is the recommended next phase for Standard/Rigorous workflows. | Coordinator dispatch via `flow execute-next`; out-of-order ready phases require explicit user choice. |
+| `executing` | A phase may be at read-only brief preflight, exact-revision approval, or coordinator execution. The first plan-order dependency-ready phase remains recommended for Standard/Rigorous workflows. | Resolve the persisted brief decision first; coordinator dispatch is allowed only after exact brief approval. |
 | `validating` | All phase gates passed; final validation/review is still required. | `flow record-validation`, then review. |
 | `reviewing` | Final integrated review is being recorded. | `flow record-review`. |
 | `awaiting_commit_approval` | Review passed and a commit proposal exists. | Inspect proposal; optionally `flow complete`. |
@@ -194,23 +196,53 @@ review obligations, workspace strategy, and the current approval
 recommendation. The persisted DAG remains authoritative; planning detail is
 not deferred until implementation.
 
-Before a coordinator can dispatch a phase, LeanRigor persists a Phase Execution
-Brief. The brief contains the phase objective and deliverable, current behavior
-and implementation approach, bounded read/write areas, dependencies,
-assumptions and exclusions, acceptance and test obligations, validation
-commands, risks, provider/model provenance, and structured changes from the
-approved Workflow Plan. Identifying exact files or symbols inside an approved
-boundary is a non-material refinement. The current structured comparator blocks
-an added write boundary, changed acceptance criteria, removed validation, or
-changed dependency for explicit reapproval. Additional risk-category comparison
-and bounded semantic classification are conservative follow-up work rather than
-hidden model judgement.
+Before a phase can be approved, LeanRigor runs a provider-neutral, read-only
+brief-planning pipeline. Deterministic scope starts with approved phase paths,
+named issue paths, repository metadata, test layout, and justified direct
+imports. The request enforces read-count, byte, and timeout budgets. Every
+controlled scope expansion records its path, reason, source path when
+applicable, and read-only status. The persisted result contains facts,
+unresolved questions, warnings, files read, bytes read, and provider/model-tier
+provenance; it does not contain hidden reasoning or a model transcript.
+
+The generated Phase Execution Brief adds a concrete deliverable, inspected
+current behavior, actionable implementation approach, bounded reads and writes,
+relevant files and symbols, dependencies, assumptions, exclusions, acceptance
+criteria, current test obligations, validation, risks, prior-phase context, and
+repository/constraint/inspection identities. Current test obligations are
+derived from task type, risk, mode, plan criteria, and repository checks; the
+more comprehensive deterministic obligation system remains separate work.
+
+Deterministic quality validation rejects copied phase prose, generic approaches,
+unbounded implementation writes, uninspectable criteria, missing validation or
+manual validation, unjustified missing tests, missing risk representation, and
+missing or mismatched provenance. Exact diagnostics may receive one bounded
+same-provider repair that changes only deficient fields. The pipeline
+revalidates and fails closed if repair is still inadequate; it never substitutes
+a generic approvable fallback.
+
+Exact file, symbol, narrowed-read, and additional configured-validation
+refinements are recorded as non-material. New write boundaries, removed
+validation requirements, changed acceptance criteria or dependencies, and newly
+discovered material security, migration, architecture, or public-contract risks
+are structured and visible rather than hidden in prose.
 
 Brief approval is tied to its exact revision. Briefs become stale after a plan
 revision or other material change and are regenerated before they can be
 approved or executed. Provider findings that reveal unexpected scope preserve
 partial work in the phase worktree, then route through replan or review; they
 never silently expand the approved plan.
+
+Revision feedback is persisted and creates a replacement brief revision and
+pending decision. The previous decision is superseded and its approval cannot
+carry forward. Inspection or quality failure remains at phase preflight with
+retry, plan-boundary revision, diagnostics, and cancellation actions; it does
+not prepare a workspace or dispatch an implementation provider.
+
+Current limitation: the approved detailed brief is not yet propagated as the
+implementation provider's execution contract, and universal dispatch hardening
+across every legacy/runtime entry point remains Phase 3 work. The complete live
+provider lifecycle is therefore not claimed as verified by this phase.
 
 ### Adaptive Approval
 

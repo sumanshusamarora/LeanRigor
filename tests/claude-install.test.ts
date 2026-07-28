@@ -352,7 +352,7 @@ describe("Claude plugin doctor", () => {
     expect(text).toContain("Git protection hook:");
     expect(text).toContain("current and executable");
     expect(text).toContain(`Package version:`);
-    const assetCount = EXPECTED_DEST_PATHS.length;
+    const assetCount = EXPECTED_DEST_PATHS.filter((asset) => asset !== path.join(".claude", "settings.json")).length;
     expect(text).toContain(`Fallback assets: ${assetCount}/${assetCount}`);
   });
 

@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import {
+  approvePhase,
   approvePlan,
   completePhase,
   gitPreflight,
@@ -13,6 +14,7 @@ import {
   integrationStatus,
   leasePhase,
   loadFlowState,
+  preparePhaseExecutionBrief,
   saveFlowState,
   startFlow,
   validateIntegration,
@@ -205,10 +207,28 @@ async function workflowWithPlan(root: string, plan: ExecutionPlan): Promise<Sequ
   const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
   const state = await loadFlowState(root, started.id);
   state.state = "awaiting_plan_approval";
+  state.mode = "standard";
+  state.request = "Update bounded internal assignment validation";
+  state.triage!.assumptions = [];
+  state.triage!.assessment = { ...state.triage!.assessment, ambiguity: "low", blastRadius: "low", securityRisk: "none", dataIntegrityRisk: "none", operationalRisk: "none" };
   state.plan = plan;
   state.approach = { required: false, approved: true, proposed: "test", preferredBecause: "test", alternatives: [], primaryRisks: [], validationStrategy: [] };
   await saveFlowState(root, state, { expectedRevision: state.revision });
-  return approvePlan(root, state.id);
+  let approved = await approvePlan(root, state.id, undefined, "workflow-authorized");
+  const first = approved.plan!.phases[0]!;
+  const firstBrief = approved.phaseBriefs?.[first.id];
+  if (!firstBrief) throw new Error(JSON.stringify(approved.phaseBriefFailures, null, 2));
+  approved = await approvePhase({
+    root,
+    workflowId: approved.id,
+    phaseId: first.id,
+    briefRevision: firstBrief.briefRevision,
+    workflowRevision: firstBrief.workflowRevision
+  });
+  for (const phase of approved.plan!.phases.slice(1)) {
+    approved = await preparePhaseExecutionBrief({ root, workflowId: approved.id, phaseId: phase.id });
+  }
+  return approved;
 }
 
 async function completePhaseWithEvidence(root: string, workflowId: string, phaseId: string, ownerId: string): Promise<SequentialWorkflowState> {
@@ -239,7 +259,7 @@ function testPhase(id: string, writes: string[], dependencies: string[] = []): W
     expectedReadAreas: writes,
     expectedWriteAreas: writes,
     expectedFilesOrAreas: writes,
-    acceptanceCriteria: [`${id} is implemented with evidence.`],
+    acceptanceCriteria: [`${id} writes remain within the declared boundary and npm test passes.`],
     validationCommands: ["npm test"],
     riskLevel: "medium",
     modelTier: "medium",

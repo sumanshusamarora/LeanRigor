@@ -52,8 +52,10 @@ Behaviour:
    Preserve any explicit user request for deterministic planning.
 7. During execution, use `execution.mode = coordinator` when execution
    providers/workspaces are configured. After Workflow Plan approval, invoke
-   `flow next --json`, render the persisted Phase Execution Brief decision, and
-   wait for exact brief approval. Only then invoke `flow execute-next --provider auto`
+   `flow next --json`, render every persisted Phase Execution Brief section and
+   its bounded-inspection provenance, and wait for exact brief approval. If the
+   brief is blocked, present the persisted recovery actions instead of a
+   placeholder. Only then invoke `flow execute-next --provider auto`
    or `flow execution-poll --provider auto`, monitor persisted coordinator
    state, and present the returned gate. Do not use the scripted provider unless
    the user explicitly asks for a scripted/deterministic execution provider. Do

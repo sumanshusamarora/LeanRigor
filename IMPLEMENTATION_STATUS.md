@@ -26,6 +26,17 @@ This document describes the current `main` branch. It distinguishes implemented 
 ### Planning and completion gates
 
 - Small functional phases with stable IDs, dependencies, acceptance criteria, expected read/write areas, and validation expectations.
+- Separate Workflow Plan and exact-revision Phase Execution Brief approvals.
+- Provider-neutral, read-only phase inspection with path, read-count, byte, and
+  timeout limits; persisted findings, controlled scope expansions, unresolved
+  questions, and repository/provider/model provenance.
+- Detailed Phase Execution Briefs with inspected behavior, concrete
+  deliverables, actionable approaches, files and symbols, obligations,
+  validation, assumptions, exclusions, risks, prior-phase context, and
+  structured material-change candidates.
+- Deterministic shallow-brief rejection, one bounded same-provider repair by
+  default, fail-closed blockers, and revision feedback that supersedes prior
+  approval.
 - Dependency-derived ready scheduling and conservative ownership-conflict checks.
 - Durable phase leases, heartbeats, expiry, release, and stale-lease recovery.
 - Structured completion evidence for each acceptance criterion, changed files, validation, scope deviations, assumptions, and remaining risks.
@@ -124,9 +135,13 @@ Higher parallelism is not yet promoted as a stable autonomous multi-agent Claude
 - OpenCode, Codex, Cursor, Copilot, and other adapters are not implemented.
 - Methodology and model-assisted semantic judgement improve evidence quality but are not formal proofs.
 - LeanRigor does not provide a complete security audit or remove the need for human review.
-- Phase-brief material-drift comparison currently covers structured write-boundary,
-  acceptance, validation, and dependency changes. Broader risk-category diffs
-  and bounded semantic classification remain follow-up work.
+- Approved Phase Execution Briefs are not yet propagated as the implementation
+  provider's execution contract, and a universal current-brief dispatch guard
+  has not yet replaced every legacy/runtime eligibility path. These remain
+  Phase 3 execution-lifecycle work.
+- Phase-brief material-drift comparison is structured and conservative, but
+  broader semantic equivalence remains human-reviewable rather than a formal
+  proof.
 - Marketplace smoke scripts require a POSIX shell in the current test setup;
   cross-platform smoke execution remains a release/CI concern.
 

@@ -164,6 +164,10 @@ export const leanRigorConfigSchema = z.object({
     triageInspectionMaxReads: z.number().int().min(0).max(20).default(4),
     triageInspectionMaxBytes: z.number().int().min(1024).max(262144).default(30000),
     triageInspectionTimeoutSeconds: z.number().int().min(5).max(600).default(120),
+    phaseBriefInspectionMaxReads: z.number().int().min(1).max(50).default(12),
+    phaseBriefInspectionMaxBytes: z.number().int().min(1024).max(1048576).default(120000),
+    phaseBriefInspectionTimeoutSeconds: z.number().int().min(1).max(600).default(30),
+    phaseBriefRepairAttempts: z.number().int().min(0).max(2).default(1),
     planningMaxTurns: z.number().int().min(1).max(50).default(7),
     planningRepairMaxTurns: z.number().int().min(1).max(50).default(4)
   }).prefault({})

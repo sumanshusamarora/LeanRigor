@@ -64,6 +64,7 @@ Labels must stay distinct:
 
 - `Approach approval`
 - `Plan approval`
+- `Phase Execution Brief`
 - `Phase completion review`
 - `Final integrated review`
 - `Commit proposal`
@@ -193,6 +194,10 @@ The following typed responses remain supported as a fallback:
 
 - `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, adding `--add-constraint`, `--remove-constraint`, or `--override-constraint "<old> => <new>"` for any user-supplied constraint changes, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
 - `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve only the Workflow Plan, then call `flow next --json` and render the persisted Phase Execution Brief approval decision. Do not invoke coordinator or manual execution until the user approves the exact brief revision.
+- `revise ...` at a Phase Execution Brief gate: persist the feedback with
+  `flow phase-brief <workflow-id> <phase-id> --feedback-file
+  <feedback-file>`, then render the new brief and its new pending decision.
+  Never reuse approval from the superseded revision.
 - `show status` during execution: render the persisted `recommendedNextPhase`
   as the primary action. Show `otherDependencyReadyPhases` separately as
   available only after explicit user choice. Do not replace Phase 2 with Phase
@@ -208,6 +213,20 @@ The following typed responses remain supported as a fallback:
 Ask one concise clarification for ambiguous responses.
 
 ## Phase And Review Rules
+
+Before phase approval, render the persisted Phase Execution Brief from `flow
+next --json`. Show its objective, concrete deliverable, inspected current
+behaviour, implementation approach, read/write paths, relevant files and
+symbols, acceptance criteria, test obligations, validation, dependencies,
+assumptions, exclusions, risks, changes from the approved Workflow Plan, and
+inspection provenance. Use the returned approval actions in order. Do not
+summarise the Workflow Plan phase as though it were the detailed brief.
+
+Brief generation is a read-only planning operation. It must not initialize a
+workspace, dispatch the implementation provider, approve a phase, or expand
+write scope. If LeanRigor reports `Phase Execution Brief unavailable`, present
+its persisted retry, plan-boundary revision, diagnostics, and cancel actions.
+Do not invent a placeholder brief or proceed to execution.
 
 Execution mode is explicit:
 

@@ -1,9 +1,10 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import {
+  approvePhase,
   approvePlan,
   completePhase,
   heartbeatPhase,
@@ -25,7 +26,12 @@ import { RevisionConflictError } from "../src/core/workflow-store.js";
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-concurrency-"));
+  await mkdir(path.join(root, "src", "api"), { recursive: true });
+  await mkdir(path.join(root, "docs"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "vitest run", typecheck: "tsc --noEmit" } }));
+  await writeFile(path.join(root, "README.md"), "# fixture\n");
+  await writeFile(path.join(root, "src", "api", "routes.ts"), "export const route = true;\n");
+  await writeFile(path.join(root, "docs", "base.md"), "# docs\n");
   return root;
 }
 
@@ -187,7 +193,17 @@ async function workflowWithPlan(root: string, plan: ExecutionPlan): Promise<Sequ
   state.approach = { required: false, approved: true, proposed: "test", preferredBecause: "test", alternatives: [], primaryRisks: [], validationStrategy: [] };
   await saveFlowState(root, state, { expectedRevision: state.revision });
   let approved = await approvePlan(root, state.id, undefined, "workflow-authorized");
-  for (const phase of approved.plan!.phases) {
+  const first = approved.plan!.phases[0]!;
+  const firstBrief = approved.phaseBriefs?.[first.id];
+  if (!firstBrief) throw new Error(JSON.stringify(approved.phaseBriefFailures, null, 2));
+  approved = await approvePhase({
+    root,
+    workflowId: approved.id,
+    phaseId: first.id,
+    briefRevision: firstBrief.briefRevision,
+    workflowRevision: firstBrief.workflowRevision
+  });
+  for (const phase of approved.plan!.phases.slice(1)) {
     approved = await preparePhaseExecutionBrief({ root, workflowId: approved.id, phaseId: phase.id });
   }
   return approved;
@@ -213,7 +229,7 @@ function testPhase(id: string, writes: string[], dependencies: string[] = []): W
     expectedReadAreas: writes,
     expectedWriteAreas: writes,
     expectedFilesOrAreas: writes,
-    acceptanceCriteria: [`${id} is implemented with evidence.`],
+    acceptanceCriteria: [`${id} writes remain within the declared boundary and npm test passes.`],
     validationCommands: ["npm test"],
     riskLevel: "medium",
     modelTier: "medium",
