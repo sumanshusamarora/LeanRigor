@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -45,6 +46,7 @@ import type {
   PhaseRepairAttempt,
   RiskLevel,
   SequentialWorkflowState,
+  TriageEvidencePacket,
   TriageOutput,
   ValidationEvidence,
   WorkflowConstraintChange,
@@ -67,10 +69,14 @@ import {
   TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY
 } from "./dispatch-eligibility.js";
 import {
+  classifyAcceptanceOutcome,
   generateInspectedPhaseExecutionBrief,
+  isObservableAcceptanceCriterion,
+  synthesizeObservableAcceptanceCriteria,
   type PhaseBriefGenerationOutcome,
   type PhaseBriefPlanningProvider
 } from "./phase-brief-planner.js";
+import { repairPhaseGraphDependencies, validatePhaseGraphQuality } from "./phase-graph-quality.js";
 import {
   migrateWorkflowDecision,
   requirePendingDecision,
@@ -542,6 +548,43 @@ const phaseBriefDiagnosticSchema = z.object({
   resolution: z.enum(["unresolved", "repaired"])
 });
 
+const artifactRecoveryAttemptSchema = z.object({
+  attempt: z.number().int().min(1),
+  strategy: z.enum(["initial-generation", "targeted-repair", "refreshed-inspection", "alternate-strategy", "deterministic-fallback"]),
+  provider: z.string().min(1),
+  modelTier: modelProfileSchema,
+  inputArtifactHash: z.string().min(1),
+  outputArtifactHash: z.string().min(1).optional(),
+  inspectionIdentity: z.string().min(1).optional(),
+  validationDiagnostics: z.array(z.string()),
+  changed: z.boolean(),
+  disposition: z.enum(["continue", "succeeded", "failed", "skipped-identical"]),
+  timestamp: z.string()
+});
+
+const artifactQualityDimensionSchema = z.object({
+  status: z.enum(["pass", "warning", "fail"]),
+  diagnosticCodes: z.array(z.string()),
+  evidence: z.array(z.string())
+});
+
+const artifactQualityResultSchema = z.object({
+  artifactType: z.enum(["triage", "workflow-plan", "phase-brief", "provider-result", "completion-gate", "integration", "final-summary"]),
+  artifactId: z.string().min(1),
+  overall: z.enum(["pass", "warning", "fail"]),
+  dimensions: z.object({
+    completeness: artifactQualityDimensionSchema,
+    specificity: artifactQualityDimensionSchema,
+    traceability: artifactQualityDimensionSchema,
+    "phase-closure": artifactQualityDimensionSchema,
+    "dependency-validity": artifactQualityDimensionSchema,
+    "evidence-coverage": artifactQualityDimensionSchema,
+    "recovery-viability": artifactQualityDimensionSchema,
+    "internal-consistency": artifactQualityDimensionSchema
+  }),
+  evaluatedAt: z.string()
+});
+
 const legacyInspectionRequest = {
   workflowId: "legacy",
   phaseId: "legacy",
@@ -637,6 +680,9 @@ const phaseExecutionBriefSchema = z.object({
     repairAttempts: 0,
     validatedAt: "1970-01-01T00:00:00.000Z"
   }),
+  quality: artifactQualityResultSchema.optional(),
+  recoveryAttempts: z.array(artifactRecoveryAttemptSchema).optional(),
+  deterministicallySynthesized: z.boolean().optional(),
   revisionRequests: z.array(z.object({ feedback: z.string().min(1), timestamp: z.string() })).default([]),
   manualValidationPlan: z.string().optional(),
   materialChangesFromWorkflowPlan: z.array(materialPlanChangeSchema),
@@ -655,6 +701,19 @@ const phaseBriefGenerationFailureSchema = z.object({
   repairAttempts: z.number().int().min(0),
   provider: z.string().min(1),
   modelTier: modelProfileSchema,
+  failureOwnership: z.enum([
+    "leanrigor_generation_failure",
+    "repository_evidence_insufficient",
+    "provider_failure",
+    "user_decision_required",
+    "policy_block",
+    "environment_failure",
+    "implementation_failure",
+    "validation_failure",
+    "integration_failure"
+  ]).optional(),
+  recoveryAttempts: z.array(artifactRecoveryAttemptSchema).optional(),
+  quality: artifactQualityResultSchema.optional(),
   failedAt: z.string()
 });
 
@@ -757,7 +816,18 @@ const integrationValidationSchema = z.object({
   commands: z.array(validationEvidenceSchema),
   startedAt: z.string(),
   completedAt: z.string().optional(),
-  status: z.enum(["pending", "running", "passed", "failed", "skipped"])
+  status: z.enum(["pending", "running", "passed", "failed", "skipped"]),
+  failureOwnership: z.enum([
+    "leanrigor_generation_failure",
+    "repository_evidence_insufficient",
+    "provider_failure",
+    "user_decision_required",
+    "policy_block",
+    "environment_failure",
+    "implementation_failure",
+    "validation_failure",
+    "integration_failure"
+  ]).optional()
 });
 
 const workflowGitStateSchema = z.object({
@@ -1773,6 +1843,13 @@ export async function validateIntegration(args: {
     next.validation.push(...(next.git?.integrationValidation?.commands ?? []));
     appendEvent(next, "integration_validation_recorded", `Combined integration validation ${next.git?.integrationValidation?.status ?? "recorded"}.`);
     if (next.git?.integrationValidation?.status === "passed" && next.state === "validating") return transition(next, "reviewing", "Combined integration validation passed; final integrated review is ready.");
+    if (next.git?.integrationValidation?.status === "failed") {
+      setPendingDecision(next, {
+        type: "execution-recovery",
+        question: `Combined integration validation failed (${next.git.integrationValidation.failureOwnership ?? "validation_failure"}). An identical retry is disabled until the repository, environment, or validation strategy changes.`,
+        allowedActions: ["view-details", "revise-plan", "cancel-workflow"]
+      });
+    }
     return next;
   }, { ...args.mutation, operation: "validate_integration" });
 }
@@ -2302,6 +2379,7 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
     request: planning.request,
     root: planning.root,
     triage: state.triage,
+    evidence: planning.triageRun?.evidence,
     config,
     constraints: effectiveConstraintTexts(planning, state.triage, config ?? defaultConfig()),
     constraintSet: effectiveConstraintSet(planning, state.triage, config ?? defaultConfig()),
@@ -2352,17 +2430,25 @@ function buildApproach(triage: TriageOutput, config: LeanRigorConfig): ApproachR
   };
 }
 
-function buildPlan(request: string, triage: TriageOutput, root: string, config?: LeanRigorConfig, options?: { revisionRequests?: ExecutionPlan["revisionRequests"]; constraints?: string[] }): ExecutionPlan {
+function buildPlan(request: string, triage: TriageOutput, root: string, config?: LeanRigorConfig, options?: { revisionRequests?: ExecutionPlan["revisionRequests"]; constraints?: string[]; evidence?: TriageEvidencePacket }): ExecutionPlan {
   const mode = triage.workflow.finalMode;
   const validationCommands = defaultValidationCommands(root, mode, triage);
-  const targets = triage.inspection.targets.length > 0 ? triage.inspection.targets : ["relevant implementation boundary", "nearby tests"];
+  const proposedTargets = triage.inspection.targets.length > 0 ? triage.inspection.targets : ["relevant implementation boundary", "nearby tests"];
+  const targets = discoverPlanningTargets(root, planningEvidenceText(request, options?.evidence), proposedTargets);
   const revisionNote = options?.revisionRequests?.at(-1)?.feedback;
   const boundaries = inferBoundaries(request, triage, targets);
   const phases = mode === "fast"
     ? fastPhases(targets, validationCommands)
     : mode === "standard"
       ? standardPhases(targets, validationCommands, boundaries)
-      : rigorousPhases(targets, validationCommands, triage, boundaries);
+      : rigorousPhases(targets, validationCommands, boundaries);
+  applyEnrichedAcceptanceCriteria(phases, options?.evidence);
+  for (const plannedPhase of phases) {
+    plannedPhase.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(plannedPhase.acceptanceCriteria, {
+      validationCommands: plannedPhase.validationCommands,
+      documentationOnly: plannedPhase.expectedWriteAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area))
+    });
+  }
 
   const plan: ExecutionPlan = {
     version: 1,
@@ -2384,6 +2470,7 @@ async function generatePlan(args: {
   request: string;
   root: string;
   triage: TriageOutput;
+  evidence?: TriageEvidencePacket;
   config?: LeanRigorConfig;
   constraints?: string[];
   constraintSet?: PlanningProviderInput["effectiveConstraintSet"];
@@ -2395,7 +2482,8 @@ async function generatePlan(args: {
   const config = args.config ?? defaultConfig();
   const deterministicPlan = buildPlan(args.request, args.triage, args.root, config, {
     constraints: args.constraints,
-    revisionRequests: args.revisionRequests
+    revisionRequests: args.revisionRequests,
+    evidence: args.evidence
   });
   return runPlanning({
     input: {
@@ -2419,7 +2507,7 @@ async function generatePlan(args: {
     provider: args.provider,
     providerSelection: args.providerSelection,
     validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config, args.revisionRequests, args.constraints ?? args.triage.constraints.mustNot),
-    normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics)
+    normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics, deterministicPlan)
   });
 }
 
@@ -2458,14 +2546,19 @@ function validateModelPlan(raw: unknown, mode: WorkflowMode, config: LeanRigorCo
   return checked;
 }
 
-function normaliseModelPlan(raw: unknown, diagnostics: PlanDiagnostic[]): { raw: unknown; changed: boolean; warnings?: string[] } {
+function normaliseModelPlan(
+  raw: unknown,
+  diagnostics: PlanDiagnostic[],
+  deterministicPlan: ExecutionPlan
+): { raw: unknown; changed: boolean; warnings?: string[] } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { raw, changed: false };
   const mutable = structuredClone(raw) as Record<string, unknown>;
   let changed = false;
   if (Array.isArray(mutable.phases)) {
-    mutable.phases = mutable.phases.map((phase) => {
+    mutable.phases = mutable.phases.map((phase, index) => {
       if (!phase || typeof phase !== "object" || Array.isArray(phase)) return phase;
       const next = { ...phase } as Record<string, unknown>;
+      const deterministicPhase = deterministicPlan.phases[index];
       if (!Array.isArray(next.expectedFilesOrAreas) && Array.isArray(next.expectedWriteAreas)) {
         next.expectedFilesOrAreas = next.expectedWriteAreas;
         changed = true;
@@ -2474,8 +2567,66 @@ function normaliseModelPlan(raw: unknown, diagnostics: PlanDiagnostic[]): { raw:
         next.expectedWriteAreas = next.expectedFilesOrAreas;
         changed = true;
       }
+      if (
+        deterministicPhase
+        && diagnostics.some((diagnostic) =>
+          diagnostic.code === "scope.non_path_write_area"
+          && diagnostic.path.includes(index))
+      ) {
+        next.expectedFilesOrAreas = replaceNonPathAreas(next.expectedFilesOrAreas, deterministicPhase.expectedFilesOrAreas);
+        next.expectedWriteAreas = replaceNonPathAreas(next.expectedWriteAreas, deterministicPhase.expectedWriteAreas);
+        next.expectedReadAreas = replaceNonPathAreas(next.expectedReadAreas, deterministicPhase.expectedReadAreas);
+        changed = true;
+      }
+      if (
+        diagnostics.some((diagnostic) => diagnostic.code === "acceptance.not_inspectable")
+        && Array.isArray(next.acceptanceCriteria)
+        && next.acceptanceCriteria.every((criterion) => typeof criterion === "string")
+      ) {
+        next.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(next.acceptanceCriteria as string[], {
+          validationCommands: Array.isArray(next.validationCommands)
+            ? next.validationCommands.filter((command): command is string => typeof command === "string")
+            : []
+        });
+        changed = true;
+      }
       return next;
     });
+  }
+  const parsed = modelPlanSchema.safeParse(mutable);
+  const graphRepairRequested = diagnostics.some((diagnostic) =>
+    diagnostic.code === "dependency.unlinked_producer" || diagnostic.code === "dependency.write_boundary_overlap");
+  if (parsed.success && graphRepairRequested) {
+    const graphRepair = repairPhaseGraphDependencies({
+      version: 1,
+      summary: parsed.data.summary,
+      principles: parsed.data.principles ?? [],
+      phases: parsed.data.phases.map((candidate) => {
+        const areas = candidate.expectedFilesOrAreas ?? candidate.expectedWriteAreas ?? [];
+        return phase({
+          id: candidate.id,
+          objective: candidate.objective,
+          rationale: candidate.rationale,
+          dependencies: unique([...candidate.dependencies, ...(candidate.dependsOn ?? [])]),
+          areas,
+          readAreas: candidate.expectedReadAreas ?? areas,
+          acceptance: candidate.acceptanceCriteria,
+          validationCommands: candidate.validationCommands,
+          riskLevel: candidate.riskLevel,
+          modelTier: candidate.modelTier
+        });
+      }),
+      revisionRequests: []
+    });
+    if (graphRepair.changed) {
+      const dependencies = new Map(graphRepair.plan.phases.map((candidate) => [candidate.id, candidate.dependencies]));
+      mutable.phases = (mutable.phases as Array<Record<string, unknown>>).map((candidate) => ({
+        ...candidate,
+        dependencies: dependencies.get(String(candidate.id)) ?? candidate.dependencies,
+        dependsOn: dependencies.get(String(candidate.id)) ?? candidate.dependsOn
+      }));
+      changed = true;
+    }
   }
   return {
     raw: mutable,
@@ -2693,8 +2844,8 @@ function standardPhases(targets: string[], validationCommands: string[], boundar
         objective: "Add focused regression coverage for the changed behavior.",
         rationale: "Regression evidence should be reviewable separately from implementation edits.",
         dependencies: ["phase-2"],
-        areas: unique([...targets, "nearby tests or package checks"]),
-        acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
+        areas: targets,
+        acceptance: ["A focused regression check records the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
         validationCommands,
         riskLevel: "medium",
         modelTier: "medium"
@@ -2724,8 +2875,8 @@ function standardPhases(targets: string[], validationCommands: string[], boundar
       objective: "Add focused regression coverage for the changed behavior.",
       rationale: "Coverage is materially distinct from implementation and proves the behavior under review.",
       dependencies: ["phase-1"],
-      areas: unique([...targets, "nearby tests or package checks"]),
-      acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
+      areas: targets,
+      acceptance: ["A focused regression check records the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
       validationCommands,
       riskLevel: "medium",
       modelTier: "medium"
@@ -2747,11 +2898,7 @@ function standardPhases(targets: string[], validationCommands: string[], boundar
   return phases;
 }
 
-function rigorousPhases(targets: string[], validationCommands: string[], triage: TriageOutput, boundaries: BoundarySet): WorkflowPhase[] {
-  const highRiskAreas = unique([
-    ...targets,
-    ...triage.escalationReasons.map((reason) => `risk: ${reason}`)
-  ]);
+function rigorousPhases(targets: string[], validationCommands: string[], boundaries: BoundarySet): WorkflowPhase[] {
   const firstObjective = boundaries.migration
     ? "Isolate the migration contract and rollback-sensitive assumptions."
     : boundaries.security
@@ -2763,10 +2910,10 @@ function rigorousPhases(targets: string[], validationCommands: string[], triage:
     phase({
       id: "phase-1",
       objective: firstObjective,
-      rationale: "Rigorous work separates high-risk boundaries before behavior changes.",
+      rationale: "Rigorous work establishes the high-risk contract together with any required consumers when separating them would violate independently valid repository-state closure; the cross-boundary dependency is explicit.",
       dependencies: [],
-      areas: highRiskAreas,
-      acceptance: ["The high-risk boundary is explicit and independently reviewable.", "The approved scope still matches the original request."],
+      areas: targets,
+      acceptance: ["A focused contract check records the high-risk boundary and applicable compatibility result.", "A scope check records that the approved paths still match the original request."],
       validationCommands: validationCommands.slice(0, 1),
       riskLevel: "high",
       modelTier: "large"
@@ -2774,10 +2921,10 @@ function rigorousPhases(targets: string[], validationCommands: string[], triage:
     phase({
       id: "phase-2",
       objective: "Implement the approved high-risk behavior change.",
-      rationale: "The implementation phase depends on the established risk boundary.",
+      rationale: "The implementation phase depends on the established risk boundary and keeps required producer-consumer wiring together when needed for an independently valid repository state.",
       dependencies: ["phase-1"],
       areas: targets,
-      acceptance: ["The change preserves relevant contracts and invariants.", "Scope deviations are recorded before continuing."],
+      acceptance: ["A focused behavior check records the preserved contracts and invariants.", "Any scope deviation is recorded before continuing."],
       validationCommands,
       riskLevel: "high",
       modelTier: "large"
@@ -2785,10 +2932,10 @@ function rigorousPhases(targets: string[], validationCommands: string[], triage:
     phase({
       id: "phase-3",
       objective: "Add high-risk regression and integration validation evidence.",
-      rationale: "Rigorous mode requires broader evidence before final integrated review.",
+      rationale: "Rigorous mode keeps integration evidence with every required producer and consumer boundary so the completed phase is independently valid before final review.",
       dependencies: ["phase-2"],
-      areas: unique([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
-      acceptance: ["Targeted and broader checks are recorded or explicitly skipped with reasons.", "The diff is ready for deep integrated review."],
+      areas: targets,
+      acceptance: ["Targeted and broader checks are recorded or explicitly skipped with reasons.", "The full configured validation set passes before deep integrated review."],
       validationCommands,
       riskLevel: "high",
       modelTier: "large"
@@ -2810,7 +2957,7 @@ function inferBoundaries(request: string, triage: TriageOutput, targets: string[
   return {
     backend: /\b(api|backend|server|service|database|db|persistence|schema)\b/.test(text),
     frontend: /\b(frontend|front-end|ui|client|consumer|component|editor|page|view)\b/.test(text),
-    migration: /\b(migration|migrations|rollback|schema change|database)\b/.test(text),
+    migration: /\b(migration|migrations|rollback|forward[- ]?fix|database migration)\b/.test(text),
     security: /\b(auth|authentication|authorization|permission|credential|secret|security)\b/.test(text),
     publicContract: /\b(api|contract|schema|openapi|graphql|proto|public)\b/.test(text),
     documentation: /\b(doc|docs|documentation|readme)\b/.test(text)
@@ -2820,6 +2967,95 @@ function inferBoundaries(request: string, triage: TriageOutput, targets: string[
 function filterAreas(targets: string[], keywords: string[]): string[] {
   const filtered = targets.filter((target) => keywords.some((keyword) => target.toLowerCase().includes(keyword)));
   return filtered.length > 0 ? filtered : targets;
+}
+
+export function discoverPlanningTargets(root: string, requestEvidence: string, proposed: string[]): string[] {
+  const explicit = unique(proposed.filter(isPathLikeArea));
+  if (explicit.length > 0) return explicit;
+  const glob = require("fast-glob") as typeof import("fast-glob");
+  const files = glob.sync([
+    "src/**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php}",
+    "tests/**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php}",
+    "test/**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php}",
+    "**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs,py}",
+    "README.md",
+    "docs/**/*.md"
+  ], {
+    cwd: root,
+    onlyFiles: true,
+    unique: true,
+    ignore: ["**/node_modules/**", "dist/**", "runtime/**", ".git/**", ".leanrigor/**"]
+  }).slice(0, 240);
+  const tokens = planningSearchTokens(requestEvidence);
+  const scored = files.map((file) => {
+    const pathText = file.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    let score = tokens.reduce((total, token) => total + (pathText.includes(token) ? 5 : 0), 0);
+    if (score === 0 && existsSync(path.join(root, file))) {
+      try {
+        const content = readFileSync(path.join(root, file), "utf8").slice(0, 96_000).toLowerCase();
+        score += tokens.reduce((total, token) => total + (content.includes(token) ? 1 : 0), 0);
+      } catch {
+        // Unreadable candidates remain unselected; deterministic fallback never expands permissions.
+      }
+    }
+    if (/^(src|lib|app)\//.test(file)) score += 1;
+    if (/\.(test|spec)\./.test(file) || /^(tests?|__tests__)\//.test(file)) score += 1;
+    return { file, score };
+  }).filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score || left.file.localeCompare(right.file));
+  const selected = unique(scored.slice(0, 7).map((candidate) => candidate.file));
+  if (selected.length > 0) return selected;
+  const conservative = files.filter((file) => /^(src|lib|app|tests?)\//.test(file)).slice(0, 4);
+  if (conservative.length > 0) return conservative;
+  return unique([
+    "src/**",
+    "tests/**",
+    ...(/\b(doc|docs|documentation|readme)\b/i.test(requestEvidence) ? ["docs/**", "README.md"] : [])
+  ]);
+}
+
+function replaceNonPathAreas(value: unknown, fallback: string[]): string[] {
+  const current = Array.isArray(value) ? value.filter((area): area is string => typeof area === "string") : [];
+  const concrete = current.filter(isPathLikeArea);
+  return unique(concrete.length > 0 ? concrete : fallback);
+}
+
+function planningEvidenceText(request: string, evidence?: TriageEvidencePacket): string {
+  const workItems = evidence?.referencedWorkItems ?? [];
+  return [
+    request,
+    ...workItems.flatMap((item) => [
+      item.title ?? "",
+      item.body ?? "",
+      ...(item.acceptanceCriteria ?? [])
+    ])
+  ].join("\n").slice(0, 96_000);
+}
+
+function applyEnrichedAcceptanceCriteria(phases: WorkflowPhase[], evidence?: TriageEvidencePacket): void {
+  if (phases.length === 0) return;
+  const criteria = unique((evidence?.referencedWorkItems ?? []).flatMap((item) => item.acceptanceCriteria ?? []));
+  if (criteria.length === 0) return;
+  for (const criterion of criteria) {
+    const category = classifyAcceptanceOutcome(criterion);
+    const index = acceptancePhaseIndex(category, phases.length);
+    phases[index]!.acceptanceCriteria = unique([...phases[index]!.acceptanceCriteria, criterion]);
+  }
+}
+
+function acceptancePhaseIndex(category: ReturnType<typeof classifyAcceptanceOutcome>, phaseCount: number): number {
+  if (phaseCount === 1) return 0;
+  if (["persistence", "compatibility", "schema", "public-contract", "migration"].includes(category)) return 0;
+  if (["documentation", "validation", "integration"].includes(category)) return phaseCount - 1;
+  return Math.min(1, phaseCount - 1);
+}
+
+function planningSearchTokens(request: string): string[] {
+  const stop = new Set(["about", "after", "against", "change", "current", "from", "implement", "into", "issue", "request", "require", "should", "that", "their", "these", "this", "through", "using", "with", "without"]);
+  return unique((request.toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) ?? [])
+    .map((token) => token.replace(/(?:ing|ed|s)$/, ""))
+    .filter((token) => token.length >= 4 && !stop.has(token)))
+    .slice(0, 24);
 }
 
 export function validatePlanQuality(plan: ExecutionPlan, mode?: WorkflowMode, config?: LeanRigorConfig): string[] {
@@ -2841,6 +3077,9 @@ function validatePlanQualityDetailed(plan: ExecutionPlan, mode?: WorkflowMode, c
     }
     if (phase.validationCommands.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("validationCommands"), "validation.missing", `Phase ${phase.id} has no validation command or check expectation.`));
     if (phase.expectedFilesOrAreas.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.missing_write_area", `Phase ${phase.id} has no bounded expected write area.`));
+    if (phase.expectedFilesOrAreas.some((area) => !isPathLikeArea(area))) {
+      issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.non_path_write_area", `Phase ${phase.id} contains a write area that is not a repository-relative path or glob.`));
+    }
     if (phase.expectedFilesOrAreas.length >= (config?.taskSizing.reviewSplitThresholdFiles ?? 8) && mode !== "fast") {
       issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.too_many_write_areas", `Phase ${phase.id} lists many expected write areas and should be reviewed for splitting.`));
     }
@@ -2869,6 +3108,7 @@ function validatePlanQualityDetailed(plan: ExecutionPlan, mode?: WorkflowMode, c
     visited.add(id);
   };
   for (const phase of plan.phases) visit(phase.id);
+  issues.push(...validatePhaseGraphQuality(plan));
   return uniqueDiagnostics(issues);
 }
 
@@ -2879,7 +3119,7 @@ function isBroadContainer(objective: string): boolean {
 function isInspectableCriterion(criterion: string): boolean {
   const lower = criterion.toLowerCase();
   if (/^(done|works|complete|as needed|tbd)\.?$/.test(lower.trim())) return false;
-  return lower.length >= 12;
+  return lower.length >= 12 && isObservableAcceptanceCriterion(criterion);
 }
 
 function mixedArchitecturalBoundary(phase: WorkflowPhase, mode?: WorkflowMode): string | undefined {
@@ -2888,6 +3128,9 @@ function mixedArchitecturalBoundary(phase: WorkflowPhase, mode?: WorkflowMode): 
     .map(areaBoundary)
     .filter((group): group is string => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
   if (productionGroups.length <= 1) return undefined;
+  if (/\b(independently valid|repository-state closure|producer-consumer|cross-boundary dependency|required producer and consumer)\b/i.test(phase.rationale)) {
+    return undefined;
+  }
   return `Phase ${phase.id} writes multiple architectural boundaries (${productionGroups.join(", ")}); split the phase or make the dependency boundary explicit.`;
 }
 
@@ -2900,6 +3143,7 @@ function areaBoundary(area: string): string | undefined {
   if (/^(src\/config)\//.test(normalized)) return "src/config";
   if (/^(src\/cli)\//.test(normalized)) return "src/cli";
   if (/^(src\/adapters\/[^/]+)/.test(normalized)) return normalized.match(/^(src\/adapters\/[^/]+)/)?.[1];
+  if (/^(src|lib|app)\/[^/]+\.[a-z0-9]+$/.test(normalized)) return normalized.split("/")[0];
   if (/^(src\/[^/]+)/.test(normalized)) return normalized.match(/^(src\/[^/]+)/)?.[1];
   if (/^([^/]+\/[^/]+)/.test(normalized) && isPathLikeArea(normalized)) return normalized.match(/^([^/]+\/[^/]+)/)?.[1];
   return undefined;
@@ -3689,11 +3933,23 @@ function persistPhaseBriefOutcome(
     state.phaseBriefFailures[phase.id] = outcome.failure;
     state.blockers = unique([...state.blockers, `${blockerPrefix} ${outcome.failure.message}`]);
     supersedePendingPhaseApproval(state);
+    const planningFailure = outcome.failure.failureOwnership === "leanrigor_generation_failure";
+    const planInsufficiency = outcome.failure.diagnostics.some((item) =>
+      item.code.startsWith("dependency.") || item.code.startsWith("scope."));
+    const allowedActions = [
+      ...(!planningFailure && outcome.failure.recoveryAttempts?.at(-1)?.disposition !== "skipped-identical" ? ["retry-brief"] : []),
+      ...(planInsufficiency ? ["revise-plan"] : []),
+      "view-details",
+      "cancel-workflow"
+    ];
+    const question = planningFailure
+      ? "LeanRigor could not produce a valid phase brief from the available evidence. This is a LeanRigor planning failure, not a rejected user decision. The approved Workflow Plan remains intact."
+      : outcome.failure.message;
     setPendingDecision(state, {
       type: "execution-recovery",
       phaseId: phase.id,
-      question: outcome.failure.message,
-      allowedActions: ["retry-brief", "revise-plan", "view-details", "cancel-workflow"]
+      question,
+      allowedActions
     });
     appendEvent(state, "phase_brief_blocked", `${outcome.failure.message} ${outcome.failure.diagnostics.map((item) => item.message).join(" ")}`, phase.id);
     return;

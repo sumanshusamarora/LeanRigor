@@ -1,0 +1,964 @@
+{
+  "schemaVersion": 1,
+  "workflowId": "lr-20260728130700-219d3969",
+  "request": "Fix the error message wording in src/core/workflow-quality.ts and run its focused unit test.",
+  "mode": "standard",
+  "repositoryRevision": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+  "artifactRevisions": [
+    {
+      "phaseId": "phase-1",
+      "workflowRevision": 4,
+      "briefRevision": 1,
+      "deterministicallySynthesized": false
+    },
+    {
+      "phaseId": "phase-2",
+      "workflowRevision": 4,
+      "briefRevision": 1,
+      "deterministicallySynthesized": false
+    }
+  ],
+  "qualityResults": [
+    {
+      "artifactType": "phase-brief",
+      "artifactId": "phase-1:r1",
+      "overall": "pass",
+      "dimensions": {
+        "completeness": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "2 criteria; 12 validation commands"
+          ]
+        },
+        "specificity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "src/core/workflow-quality.ts",
+            "src/core/execution/types.ts",
+            "src/core/triage-schema.ts",
+            "src/core/types.ts",
+            "tests/config-scope.test.ts",
+            "tests/model-display.test.ts",
+            "tests/models.test.ts",
+            "tests/workflow-quality.test.ts"
+          ]
+        },
+        "traceability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "The requested behavior follows nearby patterns. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "Scope remains limited to the approved request. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes."
+          ]
+        },
+        "phase-closure": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Phase phase-1 validation is producible within src/core/workflow-quality.ts."
+          ]
+        },
+        "dependency-validity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "No phase dependencies."
+          ]
+        },
+        "evidence-coverage": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Add or update a targeted regression test for: Implement the primary behavior for the requested outcome..",
+            "Run schema/type validation and preserve the inspected public or internal contract.",
+            "Run configured check: npm test.",
+            "Run configured check: npm run test.",
+            "Run configured check: npm run typecheck.",
+            "Run configured check: npm run lint.",
+            "Run configured check: npm run build.",
+            "Run configured check: npm run check.",
+            "Run configured check: npm run build:claude-plugin.",
+            "Run configured check: npm run validate:claude-plugin.",
+            "Run configured check: npm run version:check.",
+            "Run configured check: npm run check:plugin-version-bump.",
+            "Run configured check: npm run check:stale-runtime.",
+            "Run configured check: npm run test:watch.",
+            "npm test",
+            "npm run test",
+            "npm run typecheck",
+            "npm run lint",
+            "npm run build",
+            "npm run check",
+            "npm run build:claude-plugin",
+            "npm run validate:claude-plugin",
+            "npm run version:check",
+            "npm run check:plugin-version-bump",
+            "npm run check:stale-runtime",
+            "npm run test:watch"
+          ]
+        },
+        "recovery-viability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "1 bounded recovery attempts recorded."
+          ]
+        },
+        "internal-consistency": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Brief phase phase-1 matches plan phase phase-1."
+          ]
+        }
+      },
+      "evaluatedAt": "2026-07-28T13:07:01.068Z"
+    },
+    {
+      "artifactType": "phase-brief",
+      "artifactId": "phase-2:r1",
+      "overall": "pass",
+      "dimensions": {
+        "completeness": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "2 criteria; 13 validation commands"
+          ]
+        },
+        "specificity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "src/core/workflow-quality.ts",
+            "src/core/review-policy.ts",
+            "tests/review-policy.test.ts",
+            "src/core/clarification-policy.ts",
+            "src/core/completion-evidence.ts",
+            "src/core/execution/types.ts",
+            "src/core/phase-brief-inspection.ts",
+            "src/core/phase-brief-planner.ts"
+          ]
+        },
+        "traceability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "A focused regression check records the changed behavior.",
+            "Any skipped check has a concise reason accepted by the completion policy."
+          ]
+        },
+        "phase-closure": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Phase phase-2 validation is producible within src/core/workflow-quality.ts."
+          ]
+        },
+        "dependency-validity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "phase-1"
+          ]
+        },
+        "evidence-coverage": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Add or update a targeted regression test for: Add focused regression coverage for the changed behavior..",
+            "Run schema/type validation and preserve the inspected public or internal contract.",
+            "Run configured check: npm test.",
+            "Run configured check: npm run typecheck.",
+            "Run configured check: npm run lint.",
+            "Run configured check: git diff --check.",
+            "Run configured check: npm run test.",
+            "Run configured check: npm run build.",
+            "Run configured check: npm run check.",
+            "Run configured check: npm run build:claude-plugin.",
+            "Run configured check: npm run validate:claude-plugin.",
+            "Run configured check: npm run version:check.",
+            "Run configured check: npm run check:plugin-version-bump.",
+            "Run configured check: npm run check:stale-runtime.",
+            "Run configured check: npm run test:watch.",
+            "npm test",
+            "npm run typecheck",
+            "npm run lint",
+            "git diff --check",
+            "npm run test",
+            "npm run build",
+            "npm run check",
+            "npm run build:claude-plugin",
+            "npm run validate:claude-plugin",
+            "npm run version:check",
+            "npm run check:plugin-version-bump",
+            "npm run check:stale-runtime",
+            "npm run test:watch"
+          ]
+        },
+        "recovery-viability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "1 bounded recovery attempts recorded."
+          ]
+        },
+        "internal-consistency": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Brief phase phase-2 matches plan phase phase-2."
+          ]
+        }
+      },
+      "evaluatedAt": "2026-07-28T13:07:35.192Z"
+    }
+  ],
+  "recoveryAttempts": [
+    {
+      "attempt": 1,
+      "strategy": "initial-generation",
+      "provider": "deterministic-phase-brief",
+      "modelTier": "medium",
+      "inputArtifactHash": "75c866cefe86282a41ab3ed3409922a5876e6cae12ca6f206695aea904b92903",
+      "outputArtifactHash": "bae808c24d287ca2799d18c8149dba4b25178fdf23a65a698a2c2f86f52fd9a7",
+      "inspectionIdentity": "92601e83cf38fdb7df681c1983244fea83b81f9437029f0f7f9970c75d7edc19",
+      "validationDiagnostics": [],
+      "changed": true,
+      "disposition": "succeeded",
+      "timestamp": "2026-07-28T13:07:01.067Z"
+    },
+    {
+      "attempt": 1,
+      "strategy": "initial-generation",
+      "provider": "deterministic-phase-brief",
+      "modelTier": "medium",
+      "inputArtifactHash": "e6fd2580a8afb30b061fbf6aace313a5b846844dc147dfb2af7418248fe138a1",
+      "outputArtifactHash": "fb1355c4a24c0385b61bf0ad9c95a4f4253035a7abf042fba966436723ec181a",
+      "inspectionIdentity": "85749931cf415f8a1b143c20b03b64a7967daa748f6b0e262b98c57e0c0f422d",
+      "validationDiagnostics": [],
+      "changed": true,
+      "disposition": "succeeded",
+      "timestamp": "2026-07-28T13:07:35.191Z"
+    }
+  ],
+  "phaseGraph": [
+    {
+      "phaseId": "phase-1",
+      "objective": "Implement the primary behavior for the requested outcome.",
+      "dependencies": [],
+      "expectedFilesOrAreas": [
+        "src/core/workflow-quality.ts"
+      ],
+      "acceptanceCriteria": [
+        "The requested behavior follows nearby patterns. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+        "Scope remains limited to the approved request. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes."
+      ],
+      "status": "completed"
+    },
+    {
+      "phaseId": "phase-2",
+      "objective": "Add focused regression coverage for the changed behavior.",
+      "dependencies": [
+        "phase-1"
+      ],
+      "expectedFilesOrAreas": [
+        "src/core/workflow-quality.ts"
+      ],
+      "acceptanceCriteria": [
+        "A focused regression check records the changed behavior.",
+        "Any skipped check has a concise reason accepted by the completion policy."
+      ],
+      "status": "completed"
+    }
+  ],
+  "approvals": [
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:07:01.022Z",
+      "workflowRevision": 4,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "risk-or-discovery-phase-gate",
+        "reasons": [
+          "security risk"
+        ],
+        "workflowRevision": 4,
+        "createdAt": "2026-07-28T13:07:01.022Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "plan-approved"
+    },
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:07:31.480Z",
+      "workflowRevision": 5,
+      "phaseId": "phase-1",
+      "briefRevision": 1,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "risk-or-discovery-phase-gate",
+        "reasons": [
+          "security risk"
+        ],
+        "workflowRevision": 4,
+        "phaseId": "phase-1",
+        "createdAt": "2026-07-28T13:07:31.481Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "phase-approved"
+    },
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:08:05.621Z",
+      "workflowRevision": 20,
+      "phaseId": "phase-2",
+      "briefRevision": 1,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "risk-or-discovery-phase-gate",
+        "reasons": [
+          "security risk",
+          "later phase depends on unresolved earlier-phase findings"
+        ],
+        "workflowRevision": 19,
+        "phaseId": "phase-2",
+        "createdAt": "2026-07-28T13:08:05.621Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "phase-approved"
+    }
+  ],
+  "providerExecutions": [
+    {
+      "phaseId": "phase-1",
+      "provider": "scripted",
+      "status": "result_recorded",
+      "workspacePath": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728130700-219d3969/phases/phase-1",
+      "heartbeatAt": "2026-07-28T13:07:34.482Z",
+      "completedAt": "2026-07-28T13:07:35.099Z",
+      "resultSummary": "Deterministic canary provider completed the approved contract boundary.",
+      "checkpoint": {
+        "capturedAt": "2026-07-28T13:07:34.993Z",
+        "dirty": false,
+        "changedFiles": [],
+        "untrackedFiles": [],
+        "deletedFiles": [],
+        "partialProgressAccepted": false
+      }
+    },
+    {
+      "phaseId": "phase-2",
+      "provider": "scripted",
+      "status": "result_recorded",
+      "workspacePath": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728130700-219d3969/phases/phase-2",
+      "heartbeatAt": "2026-07-28T13:08:08.243Z",
+      "completedAt": "2026-07-28T13:08:08.855Z",
+      "resultSummary": "Deterministic canary provider completed the approved behavior boundary.",
+      "checkpoint": {
+        "capturedAt": "2026-07-28T13:08:08.762Z",
+        "dirty": false,
+        "changedFiles": [],
+        "untrackedFiles": [],
+        "deletedFiles": [],
+        "partialProgressAccepted": false
+      }
+    }
+  ],
+  "phaseResults": [
+    {
+      "workflowId": "lr-20260728130700-219d3969",
+      "workflowRevision": 36,
+      "phaseId": "phase-1",
+      "lifecycle": {
+        "phaseStatus": "completed",
+        "briefApproval": "approved",
+        "workspacePreparation": "prepared",
+        "providerDispatch": "dispatched",
+        "providerResult": "result_recorded",
+        "resultIdentity": "verified",
+        "scopeCheck": "passed",
+        "completionGate": "completed",
+        "phaseAcceptance": "accepted",
+        "integration": "integrated",
+        "integratedValidation": "passed"
+      },
+      "brief": {
+        "revision": 1,
+        "workflowRevision": 4,
+        "objective": "Implement the primary behavior for the requested outcome.",
+        "deliverable": "A bounded update to src/core/workflow-quality.ts that makes implement the primary behavior for the requested outcome. observable and verifiable through npm test, npm run test, npm run typecheck, npm run lint, npm run build, npm run check, npm run build:claude-plugin, npm run validate:claude-plugin, npm run version:check, npm run check:plugin-version-bump, npm run check:stale-runtime, npm run test:watch."
+      },
+      "workspace": {
+        "path": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728130700-219d3969/phases/phase-1",
+        "identity": "6045af6a29fd32e86aa523ebe624c4012215fcbbd6f8947540303319d4d5a00c",
+        "baseCommit": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+        "preparationRevision": 1,
+        "evidence": [
+          "package-lock.json",
+          "packageManager not declared",
+          "node_modules/.bin or declared validation tooling unavailable",
+          "bootstrap exit status 0"
+        ]
+      },
+      "provider": {
+        "id": "scripted",
+        "executionId": "scripted-lr-20260728130700-219d3969-phase-1-b0f93731-a89",
+        "status": "result_recorded",
+        "summary": "Deterministic canary provider completed the approved contract boundary."
+      },
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "The requested behavior follows nearby patterns. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          },
+          {
+            "criterion": "Scope remains limited to the approved request. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      },
+      "blockers": [],
+      "nextSafeActions": [
+        "execute-next",
+        "view-details",
+        "cancel-workflow"
+      ],
+      "manualInspection": {
+        "required": false,
+        "availableOnlyWhenExplicitlyRequested": true
+      }
+    },
+    {
+      "workflowId": "lr-20260728130700-219d3969",
+      "workflowRevision": 36,
+      "phaseId": "phase-2",
+      "lifecycle": {
+        "phaseStatus": "completed",
+        "briefApproval": "approved",
+        "workspacePreparation": "prepared",
+        "providerDispatch": "dispatched",
+        "providerResult": "result_recorded",
+        "resultIdentity": "verified",
+        "scopeCheck": "passed",
+        "completionGate": "completed",
+        "phaseAcceptance": "accepted",
+        "integration": "integrated",
+        "integratedValidation": "passed"
+      },
+      "brief": {
+        "revision": 1,
+        "workflowRevision": 4,
+        "objective": "Add focused regression coverage for the changed behavior.",
+        "deliverable": "A bounded update to src/core/workflow-quality.ts that makes add focused regression coverage for the changed behavior. observable and verifiable through npm test, npm run typecheck, npm run lint, git diff --check, npm run test, npm run build, npm run check, npm run build:claude-plugin, npm run validate:claude-plugin, npm run version:check, npm run check:plugin-version-bump, npm run check:stale-runtime, npm run test:watch."
+      },
+      "workspace": {
+        "path": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728130700-219d3969/phases/phase-2",
+        "identity": "c46ddf627f0de175e4cde344c06e4cbfe45a29adfeeec378e270841bf9ae5f8d",
+        "baseCommit": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+        "preparationRevision": 1,
+        "evidence": [
+          "package-lock.json",
+          "packageManager not declared",
+          "node_modules/.bin or declared validation tooling unavailable",
+          "bootstrap exit status 0"
+        ]
+      },
+      "provider": {
+        "id": "scripted",
+        "executionId": "scripted-lr-20260728130700-219d3969-phase-2-49ccf5b5-5c0",
+        "status": "result_recorded",
+        "summary": "Deterministic canary provider completed the approved behavior boundary."
+      },
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          },
+          {
+            "command": "npm run typecheck",
+            "status": "passed",
+            "result": "Typecheck passed."
+          },
+          {
+            "command": "npm run lint",
+            "status": "passed",
+            "result": "Lint passed."
+          },
+          {
+            "command": "npm run build",
+            "status": "passed",
+            "result": "Build passed."
+          },
+          {
+            "command": "git diff --check",
+            "status": "passed",
+            "result": "Diff check passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "A focused regression check records the changed behavior.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          },
+          {
+            "criterion": "Any skipped check has a concise reason accepted by the completion policy.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      },
+      "blockers": [],
+      "nextSafeActions": [
+        "execute-next",
+        "view-details",
+        "cancel-workflow"
+      ],
+      "manualInspection": {
+        "required": false,
+        "availableOnlyWhenExplicitlyRequested": true
+      }
+    }
+  ],
+  "completionGateResults": [
+    {
+      "phaseId": "phase-1",
+      "status": "completed",
+      "acceptance": "accepted",
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "The requested behavior follows nearby patterns. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          },
+          {
+            "criterion": "Scope remains limited to the approved request. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      }
+    },
+    {
+      "phaseId": "phase-2",
+      "status": "completed",
+      "acceptance": "accepted",
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          },
+          {
+            "command": "npm run typecheck",
+            "status": "passed",
+            "result": "Typecheck passed."
+          },
+          {
+            "command": "npm run lint",
+            "status": "passed",
+            "result": "Lint passed."
+          },
+          {
+            "command": "npm run build",
+            "status": "passed",
+            "result": "Build passed."
+          },
+          {
+            "command": "git diff --check",
+            "status": "passed",
+            "result": "Diff check passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "A focused regression check records the changed behavior.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          },
+          {
+            "criterion": "Any skipped check has a concise reason accepted by the completion policy.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      }
+    }
+  ],
+  "validationEvidence": [
+    {
+      "phaseId": "phase-1",
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Focused and full test suite passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Focused and full test suite passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm run typecheck",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Typecheck passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm run lint",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Lint passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm run build",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Build passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "git diff --check",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Diff check passed."
+    },
+    {
+      "command": "git diff --check",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\nCommand completed successfully."
+    },
+    {
+      "command": "npm run lint",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 lint\n> eslint ."
+    },
+    {
+      "command": "npm run typecheck",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 typecheck\n> tsc -p tsconfig.json --noEmit"
+    },
+    {
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 test\n> vitest run --maxWorkers 1 --testTimeout 240000\n\n\n RUN  v3.2.7 /home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728130700-219d3969/integration\n\n ✓ tests/claude-marketplace-plugin.test.ts (38 tests) 65835ms\n   ✓ Claude marketplace plugin runtime > runs the installed Rigorous conversation through Phase 2 approval without manual inspection  61825ms\n   ✓ Claude marketplace plugin runtime > defaults marketplace approach approval to model-backed auto planning  452ms\n   ✓ Claude marketplace plugin runtime > uses effective user model config for marketplace first triage and approval planning  606ms\n   ✓ Claude marketplace plugin runtime > defaults project-local approach approval to model-backed auto planning  489ms\n   ✓ Claude marketplace plugin runtime > returns the persisted decision before initializing an unavailable execution provider  376ms\n   ✓ Claude marketplace plugin package inclusion > dry-run package contains only the intended user-facing command files  410ms\n ✓ tests/flow.test.ts (65 tests) 10238ms\n   ✓ sequential workflow orchestration > allows skipped validation in Fast and rejects it in Standard  365ms\n   ✓ sequential workflow orchestration > bounds per-phase repair attempts  363ms\n   ✓ sequential workflow orchestration > limits integrated review repair loops  313ms\n   ✓ sequential workflow orchestration > runs a complete Fast deterministic flow  338ms\n   ✓ sequential workflow orchestration > runs a complete Standard deterministic flow  496ms\n   ✓ sequential workflow orchestration > runs a complete Rigorous deterministic flow  784ms\n ✓ tests/execution-coordinator.test.ts (14 tests) 8629ms\n   ✓ execution coordinator > runs sequential phases through gates, integration, combined validation, and final-review eligibility  1237ms\n   ✓ execution coordinator > dispatches independent phases in parallel with distinct leases and worktrees  1316ms\n   ✓ execution coordinator > does not dispatch a dependent phase before its dependency is accepted and integrated  418ms\n   ✓ execution coordinator > blocks overlapping declared writes from parallel dispatch  463ms\n   ✓ execution coordinator > preserves parallel results when an unexpected overlap conflicts during deterministic integration  761ms\n   ✓ execution coordinator > keeps failed validation out of integration  471ms\n   ✓ execution coordinator > blocks provider dispatch when dependency preparation requires approval  478ms\n   ✓ execution coordinator > hands the persisted execution owner to the provider and rejects direct spoofed provider completion  427ms\n   ✓ execution coordinator > times out a running phase, cancels the provider, and preserves the dirty workspace  499ms\n   ✓ execution coordinator > captures tracked, untracked, and deleted partial changes on provider failure without accepting them  544ms\n   ✓ execution coordinator > recovers after restart by polling a persisted execution handle with the same provider  836ms\n   ✓ execution coordinator > allows a successful parallel worker to complete when another worker fails  982ms\n ✓ tests/dispatch-eligibility.test.ts (11 tests) 3303ms\n   ✓ central phase dispatch eligibility > blocks pending and stale exact briefs  321ms\n   ✓ central phase dispatch eligibility > invalidates a brief when the repository base changes  425ms\n   ✓ central phase dispatch eligibility > persists exact brief and workspace identity on a valid dispatch  387ms\n   ✓ central phase dispatch eligibility > quarantines a provider result for the wrong brief revision  479ms\n   ✓ central phase dispatch eligibility > persists provider material discovery and refuses completion authority  517ms\n ✓ tests/git-workspace.test.ts (8 tests) 2733ms\n   ✓ Git worktree isolation and integration > isolates a phase workspace, integrates approved changes, and preserves the original dirty worktree  553ms\n   ✓ Git worktree isolation and integration > integrates tw"
+    }
+  ],
+  "integrationResults": [
+    {
+      "phaseId": "phase-1",
+      "status": "integrated",
+      "integratedValidation": "passed"
+    },
+    {
+      "phaseId": "phase-2",
+      "status": "integrated",
+      "integratedValidation": "passed"
+    }
+  ],
+  "finalReview": {
+    "status": "passed",
+    "summary": "Deterministic scripted-provider canary review passed.",
+    "findings": [],
+    "reviewedAt": "2026-07-28T13:10:06.183Z"
+  },
+  "finalStatus": "completed",
+  "finalSummary": {
+    "code": "user_approved_final_completion",
+    "summary": "Final integrated review passed and the user completed the workflow."
+  },
+  "firstBlocker": null,
+  "userDecisionsRequested": [
+    {
+      "revision": 2,
+      "id": "decision-a7251ff2-2f67-4da0-a279-70dd2ad2b065",
+      "type": "approach-approval",
+      "question": "Approve the persisted approach before Workflow Plan generation?",
+      "selected": "approve-approach"
+    },
+    {
+      "revision": 3,
+      "id": "decision-646b6f72-0ac9-4272-b6f8-424cac4da73c",
+      "type": "workflow-plan-approval",
+      "question": "Approve the Workflow Plan structure and approval policy?",
+      "selected": "approve-plan"
+    },
+    {
+      "revision": 4,
+      "id": "decision-21ea5139-97eb-4bcd-8bd8-d71ceeacfa12",
+      "type": "phase-brief-approval",
+      "phaseId": "phase-1",
+      "question": "Review and approve phase-1 Execution Brief revision 1?",
+      "selected": "approve-phase"
+    },
+    {
+      "revision": 10,
+      "id": "decision-8b5f77ed-4a6d-49c1-96be-24ff1c25501b",
+      "type": "workspace-bootstrap-approval",
+      "phaseId": "phase-1",
+      "question": "Approve workspace bootstrap command 'npm ci' for Phase phase-1?",
+      "selected": "approve-bootstrap"
+    },
+    {
+      "revision": 19,
+      "id": "decision-2523cf82-8aca-4d14-84d0-2e29198edfcb",
+      "type": "phase-brief-approval",
+      "phaseId": "phase-2",
+      "question": "Review and approve phase-2 Execution Brief revision 1?",
+      "selected": "approve-phase"
+    },
+    {
+      "revision": 24,
+      "id": "decision-9b7748e3-95d6-4867-b86a-57d3d1ae3250",
+      "type": "workspace-bootstrap-approval",
+      "phaseId": "phase-2",
+      "question": "Approve workspace bootstrap command 'npm ci' for Phase phase-2?",
+      "selected": "approve-bootstrap"
+    },
+    {
+      "revision": 34,
+      "id": "decision-baffedbb-2a81-495a-8bd2-735314b518f1",
+      "type": "final-review",
+      "question": "Record the final integrated review against the persisted validation evidence?",
+      "selected": "record-review:passed"
+    },
+    {
+      "revision": 35,
+      "id": "decision-0f975e47-2f81-4d34-85b3-cf9cfa3c3059",
+      "type": "final-completion",
+      "question": "Complete the workflow after the passed final integrated review?",
+      "selected": "complete"
+    }
+  ],
+  "transitions": [
+    {
+      "revision": 2,
+      "lifecycle": "awaiting_approach_approval",
+      "status": {
+        "code": "awaiting_approach_approval",
+        "summary": "Approve the persisted approach before Workflow Plan generation?"
+      },
+      "decisionType": "approach-approval"
+    },
+    {
+      "revision": 3,
+      "lifecycle": "awaiting_plan_approval",
+      "status": {
+        "code": "awaiting_workflow_plan_approval",
+        "summary": "Approve the Workflow Plan structure and approval policy?"
+      },
+      "decisionType": "workflow-plan-approval"
+    },
+    {
+      "revision": 4,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_phase_brief_approval",
+        "summary": "Review and approve phase-1 Execution Brief revision 1?",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      },
+      "decisionType": "phase-brief-approval"
+    },
+    {
+      "revision": 5,
+      "lifecycle": "executing",
+      "status": {
+        "code": "phase_brief_approved",
+        "summary": "phase-1 execution brief revision 1 is approved.",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 10,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_workspace_bootstrap_approval",
+        "summary": "Approve workspace bootstrap command 'npm ci' for Phase phase-1?",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      },
+      "decisionType": "workspace-bootstrap-approval"
+    },
+    {
+      "revision": 11,
+      "lifecycle": "executing",
+      "status": {
+        "code": "workspace_preparation_blocked",
+        "summary": "phase-1 has not started. Workspace preparation is blocked.",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 15,
+      "lifecycle": "executing",
+      "status": {
+        "code": "provider_running",
+        "summary": "phase-1 provider execution is running.",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 19,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_phase_brief_approval",
+        "summary": "Review and approve phase-2 Execution Brief revision 1?",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      },
+      "decisionType": "phase-brief-approval"
+    },
+    {
+      "revision": 20,
+      "lifecycle": "executing",
+      "status": {
+        "code": "phase_brief_approved",
+        "summary": "phase-2 execution brief revision 1 is approved.",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 24,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_workspace_bootstrap_approval",
+        "summary": "Approve workspace bootstrap command 'npm ci' for Phase phase-2?",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      },
+      "decisionType": "workspace-bootstrap-approval"
+    },
+    {
+      "revision": 25,
+      "lifecycle": "executing",
+      "status": {
+        "code": "workspace_preparation_blocked",
+        "summary": "phase-2 has not started. Workspace preparation is blocked.",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 29,
+      "lifecycle": "executing",
+      "status": {
+        "code": "provider_running",
+        "summary": "phase-2 provider execution is running.",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 34,
+      "lifecycle": "reviewing",
+      "status": {
+        "code": "awaiting_final_review",
+        "summary": "Record the final integrated review against the persisted validation evidence?"
+      },
+      "decisionType": "final-review"
+    },
+    {
+      "revision": 35,
+      "lifecycle": "awaiting_commit_approval",
+      "status": {
+        "code": "awaiting_final_completion",
+        "summary": "Complete the workflow after the passed final integrated review?"
+      },
+      "decisionType": "final-completion"
+    },
+    {
+      "revision": 36,
+      "lifecycle": "completed",
+      "status": {
+        "code": "user_approved_final_completion",
+        "summary": "Final integrated review passed and the user completed the workflow."
+      }
+    }
+  ]
+}

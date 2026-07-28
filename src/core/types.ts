@@ -317,6 +317,62 @@ export interface PhaseBriefDiagnostic {
   resolution: "unresolved" | "repaired";
 }
 
+export type ArtifactQualityDimension =
+  | "completeness"
+  | "specificity"
+  | "traceability"
+  | "phase-closure"
+  | "dependency-validity"
+  | "evidence-coverage"
+  | "recovery-viability"
+  | "internal-consistency";
+
+export interface ArtifactQualityDimensionResult {
+  status: "pass" | "warning" | "fail";
+  diagnosticCodes: string[];
+  evidence: string[];
+}
+
+export interface ArtifactQualityResult {
+  artifactType: "triage" | "workflow-plan" | "phase-brief" | "provider-result" | "completion-gate" | "integration" | "final-summary";
+  artifactId: string;
+  overall: "pass" | "warning" | "fail";
+  dimensions: Record<ArtifactQualityDimension, ArtifactQualityDimensionResult>;
+  evaluatedAt: string;
+}
+
+export type FailureOwnership =
+  | "leanrigor_generation_failure"
+  | "repository_evidence_insufficient"
+  | "provider_failure"
+  | "user_decision_required"
+  | "policy_block"
+  | "environment_failure"
+  | "implementation_failure"
+  | "validation_failure"
+  | "integration_failure";
+
+export type ArtifactRecoveryStrategy =
+  | "initial-generation"
+  | "targeted-repair"
+  | "refreshed-inspection"
+  | "alternate-strategy"
+  | "deterministic-fallback";
+
+export interface ArtifactRecoveryAttempt {
+  attempt: number;
+  strategy: ArtifactRecoveryStrategy;
+  provider: string;
+  modelTier: ModelProfile;
+  inputArtifactHash: string;
+  outputArtifactHash?: string;
+  inspectionIdentity?: string;
+  validationDiagnostics: string[];
+  changed: boolean;
+  disposition: "continue" | "succeeded" | "failed" | "skipped-identical";
+  timestamp: string;
+}
+
 export interface PhaseBriefValidation {
   status: "valid" | "blocked";
   diagnostics: PhaseBriefDiagnostic[];
@@ -360,6 +416,9 @@ export interface PhaseBriefGenerationFailure {
   repairAttempts: number;
   provider: string;
   modelTier: ModelProfile;
+  failureOwnership?: FailureOwnership;
+  recoveryAttempts?: ArtifactRecoveryAttempt[];
+  quality?: ArtifactQualityResult;
   failedAt: string;
 }
 
@@ -390,6 +449,9 @@ export interface PhaseExecutionBrief {
   repository: PhaseBriefRepositoryProvenance;
   generation: PhaseBriefGenerationProvenance;
   validation: PhaseBriefValidation;
+  quality?: ArtifactQualityResult;
+  recoveryAttempts?: ArtifactRecoveryAttempt[];
+  deterministicallySynthesized?: boolean;
   revisionRequests: PhaseBriefRevisionRequest[];
   manualValidationPlan?: string;
   materialChangesFromWorkflowPlan: MaterialPlanChange[];
@@ -877,6 +939,7 @@ export interface IntegrationValidation {
   startedAt: string;
   completedAt?: string;
   status: IntegrationValidationStatus;
+  failureOwnership?: FailureOwnership;
 }
 
 export interface WorkflowGitState {

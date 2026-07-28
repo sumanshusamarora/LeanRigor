@@ -12,6 +12,7 @@ import {
   classifyFilePath,
   completeFlow,
   completePhase,
+  discoverPlanningTargets,
   getCommitPlan,
   getEvidenceTemplate,
   listFlows,
@@ -30,7 +31,7 @@ import {
 } from "../src/core/flow.js";
 import type { PlanningProvider } from "../src/core/planning-runner.js";
 import type { TriageProvider } from "../src/core/triage-runner.js";
-import type { CriterionCompletionEvidence, ModelTriageRecommendation, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
+import type { CriterionCompletionEvidence, ExecutionPlan, ModelTriageRecommendation, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
 import { workflowNextSummary } from "../src/core/ux.js";
 import { TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY } from "../src/core/dispatch-eligibility.js";
 import recoveredRejectedPlan from "./fixtures/recovered-rejected-plan.json" with { type: "json" };
@@ -653,7 +654,10 @@ describe("sequential workflow orchestration", () => {
     });
 
     expect(planned.planningRun?.source).toBe("model");
-    expect(planned.planningRun?.diagnostics ?? []).toEqual([]);
+    expect(planned.planningRun?.semanticRepairApplied).toBe(true);
+    expect(planned.planningRun?.diagnostics ?? []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "acceptance.not_inspectable" })
+    ]));
     expect(planned.plan?.phases.map((phase) => phase.id)).toEqual(["phase-1", "phase-2", "phase-3", "phase-4", "phase-5"]);
     expect(planned.plan?.phases[3]?.objective).toContain("migration, security, schema, and compatibility");
     expect(validatePlanQuality(planned.plan!, "rigorous", defaultConfig())).toEqual([]);
@@ -808,6 +812,36 @@ describe("sequential workflow orchestration", () => {
     expect(planned.plan?.phases[0]?.objective).toMatch(/migration|security/i);
   });
 
+  it("does not infer a migration phase from a schema signal alone", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({
+      request: "Add a persisted workflow schema field while preserving compatibility.",
+      root,
+      config: defaultConfig()
+    });
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      providerSelection: "deterministic"
+    });
+
+    expect(started.mode).toBe("rigorous");
+    expect(planned.plan?.phases[0]?.objective).not.toMatch(/migration|rollback/i);
+    expect(planned.plan?.phases[0]?.objective).toMatch(/contract|compatibility|high-risk/i);
+  });
+
+  it("uses enriched request evidence to locate concrete planning targets", async () => {
+    const root = await tempRepo();
+    await writeFile(path.join(root, "src", "workflow-quality.ts"), "export const artifactRecoveryAttempts = [];\n");
+
+    const targets = discoverPlanningTargets(
+      root,
+      "Persist artifact recovery attempts and structured quality dimensions in workflow state.",
+      []
+    );
+
+    expect(targets).toContain("src/workflow-quality.ts");
+    expect(targets.every((target) => target.includes("/") || target.includes("."))).toBe(true);
+  });
+
   it("validates one-objective phase sizing and rejects broad containers", async () => {
     const root = await tempRepo();
     const state = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
@@ -823,6 +857,33 @@ describe("sequential workflow orchestration", () => {
 
     const issues = validatePlanQuality(plan, "standard", defaultConfig());
     expect(issues.join("\n")).toMatch(/multiple primary objectives|broad|validation|acceptance/i);
+  });
+
+  it("permits a cross-boundary phase only when repository-state closure is explicit", () => {
+    const phase = {
+      id: "phase-1",
+      objective: "Update a producer and its required consumer.",
+      rationale: "The producer-consumer dependency stays together to preserve an independently valid repository state.",
+      dependencies: [],
+      dependsOn: [],
+      expectedReadAreas: ["src/core/producer.ts", "src/adapters/example/consumer.ts"],
+      expectedWriteAreas: ["src/core/producer.ts", "src/adapters/example/consumer.ts"],
+      expectedFilesOrAreas: ["src/core/producer.ts", "src/adapters/example/consumer.ts"],
+      acceptanceCriteria: ["A focused integration check records the producer and consumer result."],
+      validationCommands: ["npm test"],
+      riskLevel: "high",
+      modelTier: "large",
+      status: "planned",
+      filesChanged: [],
+      commandsRun: [],
+      validationResults: [],
+      scopeDeviations: [],
+      repairAttempts: []
+    } as WorkflowPhase;
+    const plan = { version: 1, summary: "Closed slice.", principles: [], phases: [phase], revisionRequests: [] } as ExecutionPlan;
+    expect(validatePlanQuality(plan, "rigorous", defaultConfig())).toEqual([]);
+    phase.rationale = "Touch both areas.";
+    expect(validatePlanQuality(plan, "rigorous", defaultConfig()).join("\n")).toMatch(/multiple architectural boundaries/i);
   });
 
   it("splits Standard backend and frontend work into cohesive phases", async () => {

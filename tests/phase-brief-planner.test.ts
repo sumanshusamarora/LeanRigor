@@ -7,7 +7,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import {
   classifyPhaseBriefChanges,
+  classifyAcceptanceOutcome,
   generateInspectedPhaseExecutionBrief,
+  synthesizeObservableAcceptanceCriteria,
   validatePhaseExecutionBrief,
   type PhaseBriefPlanningProvider,
   type PhaseBriefProposal
@@ -161,6 +163,62 @@ describe("phase brief deterministic quality", () => {
   });
 });
 
+describe("generic acceptance synthesis", () => {
+  it.each([
+    ["A persisted record has an identifier and required fields.", "persistence", /round-trip check saves and reloads/i],
+    ["Previously persisted state remains compatible.", "compatibility", /compatibility check loads/i],
+    ["The public interface has an optional field.", "schema", /schema or type-contract check accepts/i],
+    ["The command-line option exists.", "cli", /command invocation records its exit code/i]
+  ])("turns a structural %s requirement into observable evidence", (criterion, category, expected) => {
+    expect(classifyAcceptanceOutcome(criterion)).toBe(category);
+    expect(synthesizeObservableAcceptanceCriteria([criterion], { validationCommands: ["npm test"] })[0]).toMatch(expected);
+  });
+
+  it("preserves already observable criteria", () => {
+    const criterion = "A compatibility test loads previously persisted state and npm test passes.";
+    expect(synthesizeObservableAcceptanceCriteria([criterion], { validationCommands: ["npm test"] })).toEqual([criterion]);
+  });
+
+  it("contains no canary-specific entity names", () => {
+    const fallback = synthesizeObservableAcceptanceCriteria([
+      "The stored schema has a stable identifier.",
+      "Previously persisted state remains compatible."
+    ]).join("\n");
+    expect(fallback).not.toMatch(/TestObligation|issue\s*#?12/i);
+  });
+
+  it("treats obligation-planning language as a workflow rule rather than a domain migration", () => {
+    const [synthesized] = synthesizeObservableAcceptanceCriteria([
+      "Planning rules require relevant migration and compatibility obligations."
+    ], { validationCommands: ["npm test"] });
+
+    expect(synthesized).toMatch(/focused repository check/i);
+    expect(synthesized).not.toMatch(/rollback|previously persisted state/i);
+  });
+
+  it("classifies loadable existing artifacts as compatibility evidence", () => {
+    expect(classifyAcceptanceOutcome("Existing workflows remain loadable.")).toBe("compatibility");
+    expect(synthesizeObservableAcceptanceCriteria(["Existing workflows remain loadable."])[0]).toMatch(/compatibility check loads/i);
+  });
+
+  it("classifies missing-required behavior as a failure path before structural schema terms", () => {
+    expect(classifyAcceptanceOutcome("Missing required evidence prevents completion.")).toBe("failure-handling");
+  });
+
+  it("treats synthesized evidence as a non-material traceability refinement", () => {
+    const phase = structuredClone(fixture.phase);
+    phase.acceptanceCriteria = ["The public interface has an optional field."];
+    const candidate = proposal(validBrief);
+    candidate.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(phase.acceptanceCriteria, {
+      validationCommands: phase.validationCommands
+    });
+
+    expect(classifyPhaseBriefChanges(phase, candidate)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "acceptance-criteria", material: false })
+    ]));
+  });
+});
+
 describe("phase brief repair", () => {
   it("passes exact diagnostics to same-provider repair, preserves valid fields, and increments revision", async () => {
     const baseline = proposal(validBrief);
@@ -204,7 +262,7 @@ describe("phase brief repair", () => {
     }
   });
 
-  it("keeps an unrepaired brief blocked instead of substituting a generic fallback", async () => {
+  it("advances from an unrepaired provider brief to a deterministic fallback", async () => {
     const baseline = proposal(validBrief);
     const provider: PhaseBriefPlanningProvider = {
       name: "unrepaired-provider",
@@ -223,11 +281,62 @@ describe("phase brief repair", () => {
       provider
     });
 
-    expect(outcome.status).toBe("blocked");
-    if (outcome.status === "blocked") {
-      expect(outcome.failure.status).toBe("quality-blocked");
-      expect(outcome.failure.repairAttempts).toBe(1);
-      expect(outcome.failure.diagnostics.map((item) => item.code)).toContain("approach.not_actionable");
+    expect(outcome.status).toBe("generated");
+    if (outcome.status === "generated") {
+      expect(outcome.brief.deterministicallySynthesized).toBe(true);
+      expect(outcome.brief.approvalStatus).toBe("pending");
+      expect(outcome.brief.validation.status).toBe("valid");
+      expect(outcome.brief.recoveryAttempts?.map((attempt) => attempt.strategy)).toEqual([
+        "initial-generation",
+        "targeted-repair",
+        "refreshed-inspection",
+        "alternate-strategy",
+        "deterministic-fallback"
+      ]);
+      expect(outcome.brief.recoveryAttempts?.find((attempt) => attempt.strategy === "refreshed-inspection"))
+        .toEqual(expect.objectContaining({ disposition: "skipped-identical" }));
+      expect(outcome.brief.recoveryAttempts?.at(-1)).toEqual(expect.objectContaining({
+        changed: true,
+        disposition: "succeeded"
+      }));
+    }
+  });
+
+  it("uses a bounded alternative strategy before deterministic fallback", async () => {
+    const baseline = proposal(validBrief);
+    const provider: PhaseBriefPlanningProvider = {
+      name: "alternate-provider",
+      async generate() {
+        return { provider: this.name, modelTier: "medium", proposal: { ...baseline, implementationApproach: "implement the feature" } };
+      },
+      async repair() {
+        return { provider: this.name, modelTier: "medium", proposal: { ...baseline, implementationApproach: "update relevant files" } };
+      },
+      async alternate() {
+        return { provider: this.name, modelTier: "large", proposal: baseline };
+      }
+    };
+
+    const outcome = await generateInspectedPhaseExecutionBrief({
+      state: fixture.state,
+      phase: fixture.phase,
+      config: defaultConfig(),
+      provider
+    });
+
+    expect(outcome.status).toBe("generated");
+    if (outcome.status === "generated") {
+      expect(outcome.brief.deterministicallySynthesized).not.toBe(true);
+      expect(outcome.brief.recoveryAttempts?.map((attempt) => attempt.strategy)).toEqual([
+        "initial-generation",
+        "targeted-repair",
+        "refreshed-inspection",
+        "alternate-strategy"
+      ]);
+      expect(outcome.brief.recoveryAttempts?.at(-1)).toEqual(expect.objectContaining({
+        modelTier: "large",
+        disposition: "succeeded"
+      }));
     }
   });
 });

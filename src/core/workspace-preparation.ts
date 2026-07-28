@@ -121,7 +121,14 @@ export async function preparePhaseWorkspace(args: {
     if (before !== after) {
       return { ...result, status: "failed", approvalRequired: true, reason: "Bootstrap changed package manifests or lockfiles; provider dispatch is blocked.", evidence: [...result.evidence, "manifest identity changed", `${install.stdout}${install.stderr}`.slice(0, 1000)] };
     }
-    return { ...result, status: "prepared", dependencies: "available", reason: "Lockfile-preserving dependency bootstrap completed.", evidence: [...result.evidence, "bootstrap exit status 0"] };
+    return {
+      ...result,
+      status: "prepared",
+      dependencies: "available",
+      validationCommandsAvailable: true,
+      reason: "Lockfile-preserving dependency bootstrap completed.",
+      evidence: [...result.evidence, "bootstrap exit status 0"]
+    };
   } catch (error) {
     return { ...result, status: "failed", approvalRequired: true, reason: `Dependency bootstrap failed: ${error instanceof Error ? error.message : String(error)}` };
   }

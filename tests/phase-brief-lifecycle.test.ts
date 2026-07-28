@@ -188,7 +188,7 @@ describe("detailed phase brief approval lifecycle", () => {
       type: "execution-recovery",
       phaseId: "phase-1",
       status: "pending",
-      allowedActions: ["retry-brief", "revise-plan", "view-details", "cancel-workflow"]
+      allowedActions: ["revise-plan", "view-details", "cancel-workflow"]
     });
     expect(approvedPlan.approval?.currentAuthorizedPhase).toBeUndefined();
     expect(workflowNextSummary(approvedPlan)).toMatchObject({

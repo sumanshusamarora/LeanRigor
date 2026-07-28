@@ -1,0 +1,1489 @@
+{
+  "schemaVersion": 1,
+  "workflowId": "lr-20260728133355-3a2a2a0a",
+  "request": "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates.",
+  "mode": "rigorous",
+  "repositoryRevision": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+  "artifactRevisions": [
+    {
+      "phaseId": "phase-1",
+      "workflowRevision": 4,
+      "briefRevision": 1,
+      "deterministicallySynthesized": false
+    },
+    {
+      "phaseId": "phase-2",
+      "workflowRevision": 4,
+      "briefRevision": 1,
+      "deterministicallySynthesized": false
+    },
+    {
+      "phaseId": "phase-3",
+      "workflowRevision": 4,
+      "briefRevision": 1,
+      "deterministicallySynthesized": false
+    }
+  ],
+  "qualityResults": [
+    {
+      "artifactType": "phase-brief",
+      "artifactId": "phase-1:r1",
+      "overall": "pass",
+      "dimensions": {
+        "completeness": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "3 criteria; 1 validation commands"
+          ]
+        },
+        "specificity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "src/core/types.ts",
+            "src/cli/index.ts",
+            "src/core/flow.ts",
+            "tests/flow.test.ts",
+            "README.md",
+            "docs/configuration.md",
+            "docs/methodology.md",
+            "src/core/types.ts#WorkflowMode"
+          ]
+        },
+        "traceability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "A focused contract check records the high-risk boundary and applicable compatibility result.",
+            "A scope check records that the approved paths still match the original request.",
+            "Existing workflows remain loadable. A compatibility check loads a representative previously persisted state and preserves its observable behaviour and 'npm test' passes."
+          ]
+        },
+        "phase-closure": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Phase phase-1 validation is producible within src/core/types.ts, src/cli/index.ts, src/core/flow.ts, tests/flow.test.ts, README.md, docs/configuration.md, docs/methodology.md."
+          ]
+        },
+        "dependency-validity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "No phase dependencies."
+          ]
+        },
+        "evidence-coverage": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Exercise the affected behaviour for: Isolate the public contract and compatibility expectations..",
+            "Run schema/type validation and preserve the inspected public or internal contract.",
+            "Verify compatibility loading or migration behaviour, including the existing-state path.",
+            "Cover a relevant failure path or rejected-input path.",
+            "Run configured check: npm test.",
+            "npm test"
+          ]
+        },
+        "recovery-viability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "1 bounded recovery attempts recorded."
+          ]
+        },
+        "internal-consistency": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Brief phase phase-1 matches plan phase phase-1."
+          ]
+        }
+      },
+      "evaluatedAt": "2026-07-28T13:33:57.107Z"
+    },
+    {
+      "artifactType": "phase-brief",
+      "artifactId": "phase-2:r1",
+      "overall": "pass",
+      "dimensions": {
+        "completeness": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "2 criteria; 5 validation commands"
+          ]
+        },
+        "specificity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "src/core/types.ts",
+            "src/cli/index.ts",
+            "src/core/flow.ts",
+            "tests/flow.test.ts",
+            "README.md",
+            "docs/configuration.md",
+            "docs/methodology.md",
+            "src/core/types.ts#WorkflowMode"
+          ]
+        },
+        "traceability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "A focused behavior check records the preserved contracts and invariants.",
+            "Any scope deviation is recorded before continuing. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes."
+          ]
+        },
+        "phase-closure": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Phase phase-2 validation is producible within src/core/types.ts, src/cli/index.ts, src/core/flow.ts, tests/flow.test.ts, README.md, docs/configuration.md, docs/methodology.md."
+          ]
+        },
+        "dependency-validity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "phase-1"
+          ]
+        },
+        "evidence-coverage": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Exercise the affected behaviour for: Implement the approved high-risk behavior change..",
+            "Run schema/type validation and preserve the inspected public or internal contract.",
+            "Cover a relevant failure path or rejected-input path.",
+            "Run configured check: npm test.",
+            "Run configured check: npm run typecheck.",
+            "Run configured check: npm run lint.",
+            "Run configured check: npm run build.",
+            "Run configured check: git diff --check.",
+            "npm test",
+            "npm run typecheck",
+            "npm run lint",
+            "npm run build",
+            "git diff --check"
+          ]
+        },
+        "recovery-viability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "1 bounded recovery attempts recorded."
+          ]
+        },
+        "internal-consistency": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Brief phase phase-2 matches plan phase phase-2."
+          ]
+        }
+      },
+      "evaluatedAt": "2026-07-28T13:34:31.454Z"
+    },
+    {
+      "artifactType": "phase-brief",
+      "artifactId": "phase-3:r1",
+      "overall": "pass",
+      "dimensions": {
+        "completeness": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "8 criteria; 5 validation commands"
+          ]
+        },
+        "specificity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "src/core/types.ts",
+            "src/cli/index.ts",
+            "src/core/flow.ts",
+            "tests/flow.test.ts",
+            "README.md",
+            "docs/configuration.md",
+            "docs/methodology.md",
+            "src/core/types.ts#WorkflowMode"
+          ]
+        },
+        "traceability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Targeted and broader checks are recorded or explicitly skipped with reasons. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "The full configured validation set passes before deep integrated review.",
+            "Bug-fix plans require a regression obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "Public-contract changes require a contract obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "Rigorous risk triggers add relevant failure, compatibility, migration, security, concurrency, or recovery obligations. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "Completion evidence records obligation IDs and validation results.",
+            "Missing required obligations prevent phase completion with precise diagnostics. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "Documentation and README capability inventory are updated only after verification. A documentation check verifies the affected links, examples, and rendered structure against the implemented behaviour and 'npm test' passes."
+          ]
+        },
+        "phase-closure": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Phase phase-3 validation is producible within src/core/types.ts, src/cli/index.ts, src/core/flow.ts, tests/flow.test.ts, README.md, docs/configuration.md, docs/methodology.md."
+          ]
+        },
+        "dependency-validity": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "phase-2"
+          ]
+        },
+        "evidence-coverage": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Exercise the affected behaviour for: Add high-risk regression and integration validation evidence..",
+            "Run schema/type validation and preserve the inspected public or internal contract.",
+            "Cover a relevant failure path or rejected-input path.",
+            "Run configured check: npm test.",
+            "Run configured check: npm run typecheck.",
+            "Run configured check: npm run lint.",
+            "Run configured check: npm run build.",
+            "Run configured check: git diff --check.",
+            "npm test",
+            "npm run typecheck",
+            "npm run lint",
+            "npm run build",
+            "git diff --check"
+          ]
+        },
+        "recovery-viability": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "1 bounded recovery attempts recorded."
+          ]
+        },
+        "internal-consistency": {
+          "status": "pass",
+          "diagnosticCodes": [],
+          "evidence": [
+            "Brief phase phase-3 matches plan phase phase-3."
+          ]
+        }
+      },
+      "evaluatedAt": "2026-07-28T13:35:05.224Z"
+    }
+  ],
+  "recoveryAttempts": [
+    {
+      "attempt": 1,
+      "strategy": "initial-generation",
+      "provider": "deterministic-phase-brief",
+      "modelTier": "large",
+      "inputArtifactHash": "0c46abf71b111cb9a36d2985f4e90995acfeacf091b269dcec9c36acf821cc94",
+      "outputArtifactHash": "4b552bb7bc3550b4f212a0fce70ee11ada8ab71376bc65818dd9fa37c7111f07",
+      "inspectionIdentity": "bc898a066d1c7432c3c477ca5606810879ae76e9bab2993fe4b109c4169aed62",
+      "validationDiagnostics": [],
+      "changed": true,
+      "disposition": "succeeded",
+      "timestamp": "2026-07-28T13:33:57.107Z"
+    },
+    {
+      "attempt": 1,
+      "strategy": "initial-generation",
+      "provider": "deterministic-phase-brief",
+      "modelTier": "large",
+      "inputArtifactHash": "11e0c547f462dba86d2d7a2f4d21873671057c3f11b49f45ee108129556144d2",
+      "outputArtifactHash": "0b267e17c518fae377f1ef6f024858269178b000c75098b6a0ad2a9a62a2ac30",
+      "inspectionIdentity": "158a6a6d83eb88ea8ae631227b17cc92b9073fcdb0e63e7d57cf35f59ae9a484",
+      "validationDiagnostics": [],
+      "changed": true,
+      "disposition": "succeeded",
+      "timestamp": "2026-07-28T13:34:31.454Z"
+    },
+    {
+      "attempt": 1,
+      "strategy": "initial-generation",
+      "provider": "deterministic-phase-brief",
+      "modelTier": "large",
+      "inputArtifactHash": "fc04bf879cee85729dfc01ac1895fabc234a7fb360c99a1db487fb3c36b7eb48",
+      "outputArtifactHash": "828094b7e3b34553f8c1e6c3e9af499b1787889bfbada11f3760314c38601d3b",
+      "inspectionIdentity": "158a6a6d83eb88ea8ae631227b17cc92b9073fcdb0e63e7d57cf35f59ae9a484",
+      "validationDiagnostics": [],
+      "changed": true,
+      "disposition": "succeeded",
+      "timestamp": "2026-07-28T13:35:05.224Z"
+    }
+  ],
+  "phaseGraph": [
+    {
+      "phaseId": "phase-1",
+      "objective": "Isolate the public contract and compatibility expectations.",
+      "dependencies": [],
+      "expectedFilesOrAreas": [
+        "tests/flow.test.ts",
+        "README.md",
+        "src/cli/index.ts",
+        "src/core/flow.ts",
+        "src/core/types.ts",
+        "docs/configuration.md",
+        "docs/methodology.md"
+      ],
+      "acceptanceCriteria": [
+        "A focused contract check records the high-risk boundary and applicable compatibility result.",
+        "A scope check records that the approved paths still match the original request.",
+        "Existing workflows remain loadable. A compatibility check loads a representative previously persisted state and preserves its observable behaviour and 'npm test' passes."
+      ],
+      "status": "completed"
+    },
+    {
+      "phaseId": "phase-2",
+      "objective": "Implement the approved high-risk behavior change.",
+      "dependencies": [
+        "phase-1"
+      ],
+      "expectedFilesOrAreas": [
+        "tests/flow.test.ts",
+        "README.md",
+        "src/cli/index.ts",
+        "src/core/flow.ts",
+        "src/core/types.ts",
+        "docs/configuration.md",
+        "docs/methodology.md"
+      ],
+      "acceptanceCriteria": [
+        "A focused behavior check records the preserved contracts and invariants.",
+        "Any scope deviation is recorded before continuing. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes."
+      ],
+      "status": "completed"
+    },
+    {
+      "phaseId": "phase-3",
+      "objective": "Add high-risk regression and integration validation evidence.",
+      "dependencies": [
+        "phase-2"
+      ],
+      "expectedFilesOrAreas": [
+        "tests/flow.test.ts",
+        "README.md",
+        "src/cli/index.ts",
+        "src/core/flow.ts",
+        "src/core/types.ts",
+        "docs/configuration.md",
+        "docs/methodology.md"
+      ],
+      "acceptanceCriteria": [
+        "Targeted and broader checks are recorded or explicitly skipped with reasons. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+        "The full configured validation set passes before deep integrated review.",
+        "Bug-fix plans require a regression obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+        "Public-contract changes require a contract obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+        "Rigorous risk triggers add relevant failure, compatibility, migration, security, concurrency, or recovery obligations. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+        "Completion evidence records obligation IDs and validation results.",
+        "Missing required obligations prevent phase completion with precise diagnostics. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+        "Documentation and README capability inventory are updated only after verification. A documentation check verifies the affected links, examples, and rendered structure against the implemented behaviour and 'npm test' passes."
+      ],
+      "status": "completed"
+    }
+  ],
+  "approvals": [
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:33:57.054Z",
+      "workflowRevision": 4,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "rigorous-phase-by-phase",
+        "reasons": [
+          "Rigorous mode requires approval of each phase before coordinator execution."
+        ],
+        "workflowRevision": 4,
+        "createdAt": "2026-07-28T13:33:57.054Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "plan-approved"
+    },
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:34:27.521Z",
+      "workflowRevision": 5,
+      "phaseId": "phase-1",
+      "briefRevision": 1,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "rigorous-phase-by-phase",
+        "reasons": [
+          "Rigorous mode requires approval of each phase before coordinator execution."
+        ],
+        "workflowRevision": 4,
+        "phaseId": "phase-1",
+        "createdAt": "2026-07-28T13:34:27.521Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "phase-approved"
+    },
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:35:01.864Z",
+      "workflowRevision": 20,
+      "phaseId": "phase-2",
+      "briefRevision": 1,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "rigorous-phase-by-phase",
+        "reasons": [
+          "Rigorous mode requires approval of each phase before coordinator execution."
+        ],
+        "workflowRevision": 19,
+        "phaseId": "phase-2",
+        "createdAt": "2026-07-28T13:35:01.864Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "phase-approved"
+    },
+    {
+      "policy": "phase-by-phase",
+      "source": "user",
+      "timestamp": "2026-07-28T13:35:35.657Z",
+      "workflowRevision": 34,
+      "phaseId": "phase-3",
+      "briefRevision": 1,
+      "recommendation": {
+        "option": "approve-current-phase",
+        "ruleId": "rigorous-phase-by-phase",
+        "reasons": [
+          "Rigorous mode requires approval of each phase before coordinator execution."
+        ],
+        "workflowRevision": 33,
+        "phaseId": "phase-3",
+        "createdAt": "2026-07-28T13:35:35.657Z",
+        "overridable": false
+      },
+      "recommendationOverridden": false,
+      "action": "phase-approved"
+    }
+  ],
+  "providerExecutions": [
+    {
+      "phaseId": "phase-1",
+      "provider": "scripted",
+      "status": "result_recorded",
+      "workspacePath": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/phases/phase-1",
+      "heartbeatAt": "2026-07-28T13:34:30.757Z",
+      "completedAt": "2026-07-28T13:34:31.366Z",
+      "resultSummary": "Deterministic canary provider completed the approved contract boundary.",
+      "checkpoint": {
+        "capturedAt": "2026-07-28T13:34:31.272Z",
+        "dirty": false,
+        "changedFiles": [],
+        "untrackedFiles": [],
+        "deletedFiles": [],
+        "partialProgressAccepted": false
+      }
+    },
+    {
+      "phaseId": "phase-2",
+      "provider": "scripted",
+      "status": "result_recorded",
+      "workspacePath": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/phases/phase-2",
+      "heartbeatAt": "2026-07-28T13:35:04.522Z",
+      "completedAt": "2026-07-28T13:35:05.135Z",
+      "resultSummary": "Deterministic canary provider completed the approved behavior boundary.",
+      "checkpoint": {
+        "capturedAt": "2026-07-28T13:35:05.042Z",
+        "dirty": false,
+        "changedFiles": [],
+        "untrackedFiles": [],
+        "deletedFiles": [],
+        "partialProgressAccepted": false
+      }
+    },
+    {
+      "phaseId": "phase-3",
+      "provider": "scripted",
+      "status": "result_recorded",
+      "workspacePath": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/phases/phase-3",
+      "heartbeatAt": "2026-07-28T13:35:38.336Z",
+      "completedAt": "2026-07-28T13:35:38.906Z",
+      "resultSummary": "Deterministic canary provider completed validation and documentation evidence.",
+      "checkpoint": {
+        "capturedAt": "2026-07-28T13:35:38.815Z",
+        "dirty": false,
+        "changedFiles": [],
+        "untrackedFiles": [],
+        "deletedFiles": [],
+        "partialProgressAccepted": false
+      }
+    }
+  ],
+  "phaseResults": [
+    {
+      "workflowId": "lr-20260728133355-3a2a2a0a",
+      "workflowRevision": 50,
+      "phaseId": "phase-1",
+      "lifecycle": {
+        "phaseStatus": "completed",
+        "briefApproval": "approved",
+        "workspacePreparation": "prepared",
+        "providerDispatch": "dispatched",
+        "providerResult": "result_recorded",
+        "resultIdentity": "verified",
+        "scopeCheck": "passed",
+        "completionGate": "completed",
+        "phaseAcceptance": "accepted",
+        "integration": "integrated",
+        "integratedValidation": "passed"
+      },
+      "brief": {
+        "revision": 1,
+        "workflowRevision": 4,
+        "objective": "Isolate the public contract and compatibility expectations.",
+        "deliverable": "A bounded update to src/core/types.ts, src/cli/index.ts, src/core/flow.ts, tests/flow.test.ts, README.md, docs/configuration.md, docs/methodology.md that makes isolate the public contract and compatibility expectations. observable and verifiable through npm test."
+      },
+      "workspace": {
+        "path": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/phases/phase-1",
+        "identity": "e638b6daf7e02305b0aba3e062d6067ac0ae5b373d324a36666173497b1d2de8",
+        "baseCommit": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+        "preparationRevision": 1,
+        "evidence": [
+          "package-lock.json",
+          "packageManager not declared",
+          "node_modules/.bin or declared validation tooling unavailable",
+          "bootstrap exit status 0"
+        ]
+      },
+      "provider": {
+        "id": "scripted",
+        "executionId": "scripted-lr-20260728133355-3a2a2a0a-phase-1-05d8fad5-e5b",
+        "status": "result_recorded",
+        "summary": "Deterministic canary provider completed the approved contract boundary."
+      },
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "A focused contract check records the high-risk boundary and applicable compatibility result.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          },
+          {
+            "criterion": "A scope check records that the approved paths still match the original request.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          },
+          {
+            "criterion": "Existing workflows remain loadable. A compatibility check loads a representative previously persisted state and preserves its observable behaviour and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      },
+      "blockers": [],
+      "nextSafeActions": [
+        "execute-next",
+        "view-details",
+        "cancel-workflow"
+      ],
+      "manualInspection": {
+        "required": false,
+        "availableOnlyWhenExplicitlyRequested": true
+      }
+    },
+    {
+      "workflowId": "lr-20260728133355-3a2a2a0a",
+      "workflowRevision": 50,
+      "phaseId": "phase-2",
+      "lifecycle": {
+        "phaseStatus": "completed",
+        "briefApproval": "approved",
+        "workspacePreparation": "prepared",
+        "providerDispatch": "dispatched",
+        "providerResult": "result_recorded",
+        "resultIdentity": "verified",
+        "scopeCheck": "passed",
+        "completionGate": "completed",
+        "phaseAcceptance": "accepted",
+        "integration": "integrated",
+        "integratedValidation": "passed"
+      },
+      "brief": {
+        "revision": 1,
+        "workflowRevision": 4,
+        "objective": "Implement the approved high-risk behavior change.",
+        "deliverable": "A bounded update to src/core/types.ts, src/cli/index.ts, src/core/flow.ts, tests/flow.test.ts, README.md, docs/configuration.md, docs/methodology.md that makes implement the approved high-risk behavior change. observable and verifiable through npm test, npm run typecheck, npm run lint, npm run build, git diff --check."
+      },
+      "workspace": {
+        "path": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/phases/phase-2",
+        "identity": "19948209a5a026e11b370c1164e19a048b15b24419c735b5325565d7d89a9f43",
+        "baseCommit": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+        "preparationRevision": 1,
+        "evidence": [
+          "package-lock.json",
+          "packageManager not declared",
+          "node_modules/.bin or declared validation tooling unavailable",
+          "bootstrap exit status 0"
+        ]
+      },
+      "provider": {
+        "id": "scripted",
+        "executionId": "scripted-lr-20260728133355-3a2a2a0a-phase-2-b8a9e728-6f4",
+        "status": "result_recorded",
+        "summary": "Deterministic canary provider completed the approved behavior boundary."
+      },
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          },
+          {
+            "command": "npm run typecheck",
+            "status": "passed",
+            "result": "Typecheck passed."
+          },
+          {
+            "command": "npm run lint",
+            "status": "passed",
+            "result": "Lint passed."
+          },
+          {
+            "command": "npm run build",
+            "status": "passed",
+            "result": "Build passed."
+          },
+          {
+            "command": "git diff --check",
+            "status": "passed",
+            "result": "Diff check passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "A focused behavior check records the preserved contracts and invariants.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          },
+          {
+            "criterion": "Any scope deviation is recorded before continuing. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      },
+      "blockers": [],
+      "nextSafeActions": [
+        "execute-next",
+        "view-details",
+        "cancel-workflow"
+      ],
+      "manualInspection": {
+        "required": false,
+        "availableOnlyWhenExplicitlyRequested": true
+      }
+    },
+    {
+      "workflowId": "lr-20260728133355-3a2a2a0a",
+      "workflowRevision": 50,
+      "phaseId": "phase-3",
+      "lifecycle": {
+        "phaseStatus": "completed",
+        "briefApproval": "approved",
+        "workspacePreparation": "prepared",
+        "providerDispatch": "dispatched",
+        "providerResult": "result_recorded",
+        "resultIdentity": "verified",
+        "scopeCheck": "passed",
+        "completionGate": "completed",
+        "phaseAcceptance": "accepted",
+        "integration": "integrated",
+        "integratedValidation": "passed"
+      },
+      "brief": {
+        "revision": 1,
+        "workflowRevision": 4,
+        "objective": "Add high-risk regression and integration validation evidence.",
+        "deliverable": "A bounded update to src/core/types.ts, src/cli/index.ts, src/core/flow.ts, tests/flow.test.ts, README.md, docs/configuration.md, docs/methodology.md that makes add high-risk regression and integration validation evidence. observable and verifiable through npm test, npm run typecheck, npm run lint, npm run build, git diff --check."
+      },
+      "workspace": {
+        "path": "/home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/phases/phase-3",
+        "identity": "ec57f87182fbe5cf4bf10af3c0f905ba98b81daea856f4cf6227ba8002dc21c3",
+        "baseCommit": "0e9fff77bd6c415f47cb4876f58e90843f6cb78f",
+        "preparationRevision": 1,
+        "evidence": [
+          "package-lock.json",
+          "packageManager not declared",
+          "node_modules/.bin or declared validation tooling unavailable",
+          "bootstrap exit status 0"
+        ]
+      },
+      "provider": {
+        "id": "scripted",
+        "executionId": "scripted-lr-20260728133355-3a2a2a0a-phase-3-47e248aa-b4a",
+        "status": "result_recorded",
+        "summary": "Deterministic canary provider completed validation and documentation evidence."
+      },
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          },
+          {
+            "command": "npm run typecheck",
+            "status": "passed",
+            "result": "Typecheck passed."
+          },
+          {
+            "command": "npm run lint",
+            "status": "passed",
+            "result": "Lint passed."
+          },
+          {
+            "command": "npm run build",
+            "status": "passed",
+            "result": "Build passed."
+          },
+          {
+            "command": "git diff --check",
+            "status": "passed",
+            "result": "Diff check passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "Targeted and broader checks are recorded or explicitly skipped with reasons. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "The full configured validation set passes before deep integrated review.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Bug-fix plans require a regression obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Public-contract changes require a contract obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Rigorous risk triggers add relevant failure, compatibility, migration, security, concurrency, or recovery obligations. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Completion evidence records obligation IDs and validation results.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Missing required obligations prevent phase completion with precise diagnostics. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Documentation and README capability inventory are updated only after verification. A documentation check verifies the affected links, examples, and rendered structure against the implemented behaviour and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      },
+      "blockers": [],
+      "nextSafeActions": [
+        "execute-next",
+        "view-details",
+        "cancel-workflow"
+      ],
+      "manualInspection": {
+        "required": false,
+        "availableOnlyWhenExplicitlyRequested": true
+      }
+    }
+  ],
+  "completionGateResults": [
+    {
+      "phaseId": "phase-1",
+      "status": "completed",
+      "acceptance": "accepted",
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "A focused contract check records the high-risk boundary and applicable compatibility result.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          },
+          {
+            "criterion": "A scope check records that the approved paths still match the original request.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          },
+          {
+            "criterion": "Existing workflows remain loadable. A compatibility check loads a representative previously persisted state and preserves its observable behaviour and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-1."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      }
+    },
+    {
+      "phaseId": "phase-2",
+      "status": "completed",
+      "acceptance": "accepted",
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          },
+          {
+            "command": "npm run typecheck",
+            "status": "passed",
+            "result": "Typecheck passed."
+          },
+          {
+            "command": "npm run lint",
+            "status": "passed",
+            "result": "Lint passed."
+          },
+          {
+            "command": "npm run build",
+            "status": "passed",
+            "result": "Build passed."
+          },
+          {
+            "command": "git diff --check",
+            "status": "passed",
+            "result": "Diff check passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "A focused behavior check records the preserved contracts and invariants.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          },
+          {
+            "criterion": "Any scope deviation is recorded before continuing. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-2."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      }
+    },
+    {
+      "phaseId": "phase-3",
+      "status": "completed",
+      "acceptance": "accepted",
+      "evidence": {
+        "changedFiles": [],
+        "scopeDeviations": [],
+        "validation": [
+          {
+            "command": "npm test",
+            "status": "passed",
+            "result": "Focused and full test suite passed."
+          },
+          {
+            "command": "npm run typecheck",
+            "status": "passed",
+            "result": "Typecheck passed."
+          },
+          {
+            "command": "npm run lint",
+            "status": "passed",
+            "result": "Lint passed."
+          },
+          {
+            "command": "npm run build",
+            "status": "passed",
+            "result": "Build passed."
+          },
+          {
+            "command": "git diff --check",
+            "status": "passed",
+            "result": "Diff check passed."
+          }
+        ],
+        "criteria": [
+          {
+            "criterion": "Targeted and broader checks are recorded or explicitly skipped with reasons. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "The full configured validation set passes before deep integrated review.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Bug-fix plans require a regression obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Public-contract changes require a contract obligation. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Rigorous risk triggers add relevant failure, compatibility, migration, security, concurrency, or recovery obligations. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Completion evidence records obligation IDs and validation results.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Missing required obligations prevent phase completion with precise diagnostics. A focused repository check exercises this requirement and records a passing result tied to the criterion and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          },
+          {
+            "criterion": "Documentation and README capability inventory are updated only after verification. A documentation check verifies the affected links, examples, and rendered structure against the implemented behaviour and 'npm test' passes.",
+            "status": "met",
+            "evidence": [
+              "Scripted evidence for phase-3."
+            ]
+          }
+        ],
+        "assumptions": [],
+        "remainingRisks": []
+      }
+    }
+  ],
+  "validationEvidence": [
+    {
+      "phaseId": "phase-1",
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Focused and full test suite passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Focused and full test suite passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm run typecheck",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Typecheck passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm run lint",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Lint passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "npm run build",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Build passed."
+    },
+    {
+      "phaseId": "phase-2",
+      "command": "git diff --check",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Diff check passed."
+    },
+    {
+      "phaseId": "phase-3",
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Focused and full test suite passed."
+    },
+    {
+      "phaseId": "phase-3",
+      "command": "npm run typecheck",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Typecheck passed."
+    },
+    {
+      "phaseId": "phase-3",
+      "command": "npm run lint",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Lint passed."
+    },
+    {
+      "phaseId": "phase-3",
+      "command": "npm run build",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Build passed."
+    },
+    {
+      "phaseId": "phase-3",
+      "command": "git diff --check",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "Diff check passed."
+    },
+    {
+      "command": "git diff --check",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\nCommand completed successfully."
+    },
+    {
+      "command": "npm run build",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 build\n> npm run version:check && node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/verify-built-cli.mjs && node scripts/copy-claude-plugin-assets.mjs && npm run build:claude-plugin\n\n\n> leanrigor@0.3.1-dev.27 version:check\n> node scripts/sync-versions.mjs --check\n\nVersion synchronization check passed.\nVerified executable LeanRigor CLI 0.3.1-dev.27 at dist/cli/index.js\n\n> leanrigor@0.3.1-dev.27 build:claude-plugin\n> node scripts/build-claude-plugin.mjs"
+    },
+    {
+      "command": "npm run lint",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 lint\n> eslint ."
+    },
+    {
+      "command": "npm run typecheck",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 typecheck\n> tsc -p tsconfig.json --noEmit"
+    },
+    {
+      "command": "npm test",
+      "exitStatus": 0,
+      "status": "passed",
+      "skipped": false,
+      "result": "[project-local tool fallback: matching package and lockfile identity]\n> leanrigor@0.3.1-dev.27 test\n> vitest run --maxWorkers 1 --testTimeout 240000\n\n\n RUN  v3.2.7 /home/sam/open-source/.leanrigor-worktrees/LeanRigor-29bed1915351/lr-20260728133355-3a2a2a0a/integration\n\n ✓ tests/claude-marketplace-plugin.test.ts (38 tests) 66226ms\n   ✓ Claude marketplace plugin runtime > runs the installed Rigorous conversation through Phase 2 approval without manual inspection  61837ms\n   ✓ Claude marketplace plugin runtime > defaults marketplace approach approval to model-backed auto planning  524ms\n   ✓ Claude marketplace plugin runtime > uses effective user model config for marketplace first triage and approval planning  629ms\n   ✓ Claude marketplace plugin runtime > defaults project-local approach approval to model-backed auto planning  478ms\n   ✓ Claude marketplace plugin runtime > returns the persisted decision before initializing an unavailable execution provider  392ms\n   ✓ Claude marketplace plugin package inclusion > dry-run package contains only the intended user-facing command files  682ms\n ✓ tests/flow.test.ts (65 tests) 9856ms\n   ✓ sequential workflow orchestration > allows skipped validation in Fast and rejects it in Standard  375ms\n   ✓ sequential workflow orchestration > bounds per-phase repair attempts  333ms\n   ✓ sequential workflow orchestration > limits integrated review repair loops  402ms\n   ✓ sequential workflow orchestration > runs a complete Standard deterministic flow  360ms\n   ✓ sequential workflow orchestration > runs a complete Rigorous deterministic flow  568ms\n ✓ tests/execution-coordinator.test.ts (14 tests) 8259ms\n   ✓ execution coordinator > runs sequential phases through gates, integration, combined validation, and final-review eligibility  1212ms\n   ✓ execution coordinator > dispatches independent phases in parallel with distinct leases and worktrees  1254ms\n   ✓ execution coordinator > does not dispatch a dependent phase before its dependency is accepted and integrated  468ms\n   ✓ execution coordinator > blocks overlapping declared writes from parallel dispatch  444ms\n   ✓ execution coordinator > preserves parallel results when an unexpected overlap conflicts during deterministic integration  759ms\n   ✓ execution coordinator > keeps failed validation out of integration  499ms\n   ✓ execution coordinator > blocks provider dispatch when dependency preparation requires approval  417ms\n   ✓ execution coordinator > hands the persisted execution owner to the provider and rejects direct spoofed provider completion  376ms\n   ✓ execution coordinator > times out a running phase, cancels the provider, and preserves the dirty workspace  455ms\n   ✓ execution coordinator > captures tracked, untracked, and deleted partial changes on provider failure without accepting them  474ms\n   ✓ execution coordinator > recovers after restart by polling a persisted execution handle with the same provider  790ms\n   ✓ execution coordinator > allows a successful parallel worker to complete when another worker fails  933ms\n ✓ tests/dispatch-eligibility.test.ts (11 tests) 3009ms\n   ✓ central phase dispatch eligibility > blocks pending and stale exact briefs  318ms\n   ✓ central phase dispatch eligibility > invalidates a brief when the repository base changes  403ms\n   ✓ central phase dispatch eligibility > persists exact brief and workspace identity on a valid dispatch  403ms\n   ✓ central phase dispatch eligibility > quarantines a provider result for the wrong brief revision  468ms\n   ✓ central phase dispatch eligibility > persists provider material discovery and refuses completion authority  502ms\n ✓ tests/claude-ux.test.ts (26 tests) 2848ms\n   ✓ Claude conversational workflow UX support > review command can distinguish phase review from final integrated review  470ms\n ✓ tests/git-workspace.test.ts (8 tests) 2779ms\n   ✓ Git worktree isolation and integration > isolates a phase workspace, integrates approved changes, and preserves the origi"
+    }
+  ],
+  "integrationResults": [
+    {
+      "phaseId": "phase-1",
+      "status": "integrated",
+      "integratedValidation": "passed"
+    },
+    {
+      "phaseId": "phase-2",
+      "status": "integrated",
+      "integratedValidation": "passed"
+    },
+    {
+      "phaseId": "phase-3",
+      "status": "integrated",
+      "integratedValidation": "passed"
+    }
+  ],
+  "finalReview": {
+    "status": "passed",
+    "summary": "Deterministic scripted-provider canary review passed.",
+    "findings": [],
+    "reviewedAt": "2026-07-28T13:37:37.876Z"
+  },
+  "finalStatus": "completed",
+  "finalSummary": {
+    "code": "user_approved_final_completion",
+    "summary": "Final integrated review passed and the user completed the workflow."
+  },
+  "firstBlocker": null,
+  "userDecisionsRequested": [
+    {
+      "revision": 2,
+      "id": "decision-be873d12-a2e7-47e1-8d35-607124c23230",
+      "type": "approach-approval",
+      "question": "Approve the persisted approach before Workflow Plan generation?",
+      "selected": "approve-approach"
+    },
+    {
+      "revision": 3,
+      "id": "decision-0200500c-56f4-4ea6-a037-1c9dda219a2d",
+      "type": "workflow-plan-approval",
+      "question": "Approve the Workflow Plan structure and approval policy?",
+      "selected": "approve-plan"
+    },
+    {
+      "revision": 4,
+      "id": "decision-63bfb85d-c14f-4cb5-91f8-91c14853c454",
+      "type": "phase-brief-approval",
+      "phaseId": "phase-1",
+      "question": "Review and approve phase-1 Execution Brief revision 1?",
+      "selected": "approve-phase"
+    },
+    {
+      "revision": 10,
+      "id": "decision-f7bd9152-53f6-4074-963f-de370d077d65",
+      "type": "workspace-bootstrap-approval",
+      "phaseId": "phase-1",
+      "question": "Approve workspace bootstrap command 'npm ci' for Phase phase-1?",
+      "selected": "approve-bootstrap"
+    },
+    {
+      "revision": 19,
+      "id": "decision-2ab09008-d03b-48b3-8341-6baaea3585ef",
+      "type": "phase-brief-approval",
+      "phaseId": "phase-2",
+      "question": "Review and approve phase-2 Execution Brief revision 1?",
+      "selected": "approve-phase"
+    },
+    {
+      "revision": 24,
+      "id": "decision-82d1ee5b-e2e8-499c-a7fa-9cd91f6c37b0",
+      "type": "workspace-bootstrap-approval",
+      "phaseId": "phase-2",
+      "question": "Approve workspace bootstrap command 'npm ci' for Phase phase-2?",
+      "selected": "approve-bootstrap"
+    },
+    {
+      "revision": 33,
+      "id": "decision-9d50bc99-43ec-4930-a005-9fbf5dc59d87",
+      "type": "phase-brief-approval",
+      "phaseId": "phase-3",
+      "question": "Review and approve phase-3 Execution Brief revision 1?",
+      "selected": "approve-phase"
+    },
+    {
+      "revision": 38,
+      "id": "decision-f4f8e4c5-4f0a-4bb6-ae7c-aae379c48802",
+      "type": "workspace-bootstrap-approval",
+      "phaseId": "phase-3",
+      "question": "Approve workspace bootstrap command 'npm ci' for Phase phase-3?",
+      "selected": "approve-bootstrap"
+    },
+    {
+      "revision": 48,
+      "id": "decision-4cc4edff-7db2-4685-a90e-35d2a97dec86",
+      "type": "final-review",
+      "question": "Record the final integrated review against the persisted validation evidence?",
+      "selected": "record-review:passed"
+    },
+    {
+      "revision": 49,
+      "id": "decision-57717190-6904-4728-b28d-54338bc15ed4",
+      "type": "final-completion",
+      "question": "Complete the workflow after the passed final integrated review?",
+      "selected": "complete"
+    }
+  ],
+  "transitions": [
+    {
+      "revision": 2,
+      "lifecycle": "awaiting_approach_approval",
+      "status": {
+        "code": "awaiting_approach_approval",
+        "summary": "Approve the persisted approach before Workflow Plan generation?"
+      },
+      "decisionType": "approach-approval"
+    },
+    {
+      "revision": 3,
+      "lifecycle": "awaiting_plan_approval",
+      "status": {
+        "code": "awaiting_workflow_plan_approval",
+        "summary": "Approve the Workflow Plan structure and approval policy?"
+      },
+      "decisionType": "workflow-plan-approval"
+    },
+    {
+      "revision": 4,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_phase_brief_approval",
+        "summary": "Review and approve phase-1 Execution Brief revision 1?",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      },
+      "decisionType": "phase-brief-approval"
+    },
+    {
+      "revision": 5,
+      "lifecycle": "executing",
+      "status": {
+        "code": "phase_brief_approved",
+        "summary": "phase-1 execution brief revision 1 is approved.",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 10,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_workspace_bootstrap_approval",
+        "summary": "Approve workspace bootstrap command 'npm ci' for Phase phase-1?",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      },
+      "decisionType": "workspace-bootstrap-approval"
+    },
+    {
+      "revision": 11,
+      "lifecycle": "executing",
+      "status": {
+        "code": "workspace_preparation_blocked",
+        "summary": "phase-1 has not started. Workspace preparation is blocked.",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 15,
+      "lifecycle": "executing",
+      "status": {
+        "code": "provider_running",
+        "summary": "phase-1 provider execution is running.",
+        "phaseId": "phase-1",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 19,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_phase_brief_approval",
+        "summary": "Review and approve phase-2 Execution Brief revision 1?",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      },
+      "decisionType": "phase-brief-approval"
+    },
+    {
+      "revision": 20,
+      "lifecycle": "executing",
+      "status": {
+        "code": "phase_brief_approved",
+        "summary": "phase-2 execution brief revision 1 is approved.",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 24,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_workspace_bootstrap_approval",
+        "summary": "Approve workspace bootstrap command 'npm ci' for Phase phase-2?",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      },
+      "decisionType": "workspace-bootstrap-approval"
+    },
+    {
+      "revision": 25,
+      "lifecycle": "executing",
+      "status": {
+        "code": "workspace_preparation_blocked",
+        "summary": "phase-2 has not started. Workspace preparation is blocked.",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 29,
+      "lifecycle": "executing",
+      "status": {
+        "code": "provider_running",
+        "summary": "phase-2 provider execution is running.",
+        "phaseId": "phase-2",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 33,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_phase_brief_approval",
+        "summary": "Review and approve phase-3 Execution Brief revision 1?",
+        "phaseId": "phase-3",
+        "briefRevision": 1
+      },
+      "decisionType": "phase-brief-approval"
+    },
+    {
+      "revision": 34,
+      "lifecycle": "executing",
+      "status": {
+        "code": "phase_brief_approved",
+        "summary": "phase-3 execution brief revision 1 is approved.",
+        "phaseId": "phase-3",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 38,
+      "lifecycle": "executing",
+      "status": {
+        "code": "awaiting_workspace_bootstrap_approval",
+        "summary": "Approve workspace bootstrap command 'npm ci' for Phase phase-3?",
+        "phaseId": "phase-3",
+        "briefRevision": 1
+      },
+      "decisionType": "workspace-bootstrap-approval"
+    },
+    {
+      "revision": 39,
+      "lifecycle": "executing",
+      "status": {
+        "code": "workspace_preparation_blocked",
+        "summary": "phase-3 has not started. Workspace preparation is blocked.",
+        "phaseId": "phase-3",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 43,
+      "lifecycle": "executing",
+      "status": {
+        "code": "provider_running",
+        "summary": "phase-3 provider execution is running.",
+        "phaseId": "phase-3",
+        "briefRevision": 1
+      }
+    },
+    {
+      "revision": 48,
+      "lifecycle": "reviewing",
+      "status": {
+        "code": "awaiting_final_review",
+        "summary": "Record the final integrated review against the persisted validation evidence?"
+      },
+      "decisionType": "final-review"
+    },
+    {
+      "revision": 49,
+      "lifecycle": "awaiting_commit_approval",
+      "status": {
+        "code": "awaiting_final_completion",
+        "summary": "Complete the workflow after the passed final integrated review?"
+      },
+      "decisionType": "final-completion"
+    },
+    {
+      "revision": 50,
+      "lifecycle": "completed",
+      "status": {
+        "code": "user_approved_final_completion",
+        "summary": "Final integrated review passed and the user completed the workflow."
+      }
+    }
+  ]
+}

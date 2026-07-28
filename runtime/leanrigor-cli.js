@@ -18867,6 +18867,9 @@ var init_schema = __esm({
         phaseBriefInspectionMaxBytes: external_exports.number().int().min(1024).max(1048576).default(12e4),
         phaseBriefInspectionTimeoutSeconds: external_exports.number().int().min(1).max(600).default(30),
         phaseBriefRepairAttempts: external_exports.number().int().min(0).max(2).default(1),
+        phaseBriefRefreshedInspectionAttempts: external_exports.number().int().min(0).max(2).default(1),
+        phaseBriefAlternateStrategyAttempts: external_exports.number().int().min(0).max(2).default(1),
+        phaseBriefDeterministicFallbackAttempts: external_exports.number().int().min(0).max(2).default(1),
         planningMaxTurns: external_exports.number().int().min(1).max(50).default(7),
         planningRepairMaxTurns: external_exports.number().int().min(1).max(50).default(4)
       }).prefault({})
@@ -20044,8 +20047,8 @@ async function cleanupProjectLocalAssets(root, opts) {
       await stat(leanrigorDir);
       items.push({ path: ".leanrigor/", action: "remove-directory" });
       if (!opts.dryRun) {
-        const { rm: rm5 } = await import("node:fs/promises");
-        await rm5(leanrigorDir, { recursive: true, force: true });
+        const { rm: rm6 } = await import("node:fs/promises");
+        await rm6(leanrigorDir, { recursive: true, force: true });
       }
     } catch {
       skipped.push({ path: ".leanrigor/", action: "skip-not-found", reason: "directory does not exist" });
@@ -21021,7 +21024,7 @@ var SIGNAL_PATTERNS = {
   taskType: void 0,
   namedBoundaries: void 0,
   publicContract: /\b(public api|public contract|api contract|breaking api|graphql schema|openapi|sdk)\b/i,
-  schemaChange: /\b(schema|contract|graphql|openapi|protobuf|migration)\b/i,
+  schemaChange: /\b(schema|contract|graphql|openapi|protobuf|migration|workflow[- ]state persistence|persist(?:ed|ing)?\s+(?:records?\s+)?in workflow state)\b/i,
   migration: /\b(migration|migrate|database schema|db schema|prisma migrate)\b/i,
   security: /\b(auth|authenticated|authentication|authorization|authorisation|permission|secret|credential|encryption|privacy|compliance)\b/i,
   concurrency: /\b(concurrency|race condition|parallel|locking|duplicate-processing|distributed consistency)\b/i,
@@ -21071,7 +21074,11 @@ async function collectTriageEvidence(args) {
   const requestOnlyDocs = taskType2 === "documentation" && namedPaths.every((candidate) => /(^|\/)(readme|docs?|changelog|.*\.md$)/i.test(candidate));
   const signals = Object.fromEntries(Object.entries(SIGNAL_PATTERNS).flatMap(([key, pattern]) => {
     if (!pattern) return [];
-    const matched = pattern.test(evidenceText);
+    const matched = signalDescribesChangedBehaviour(
+      key,
+      pattern,
+      evidenceText
+    );
     const value = matched ? true : requestOnlyDocs ? false : "unknown";
     add(findings, `changeSignals.${key}`, value, matched ? "verified" : requestOnlyDocs ? "inferred" : "unknown", matched ? "explicit request or work-item terminology" : requestOnlyDocs ? "documentation-only request" : "not resolved by bounded evidence");
     return [[key, value]];
@@ -21106,6 +21113,19 @@ async function collectTriageEvidence(args) {
     deterministicFindings: findings,
     unresolvedQuestions
   };
+}
+function signalDescribesChangedBehaviour(key, pattern, evidenceText) {
+  const clauses = evidenceText.split(/[\n.!?]+/).map((value) => value.trim()).filter(Boolean);
+  return clauses.some((clause) => {
+    if (!pattern.test(clause)) return false;
+    if (key === "schemaChange" && /\b(?:persist(?:ed|ing)?\s+(?:records?\s+)?in workflow state|workflow[- ]state persistence)\b/i.test(clause)) {
+      return true;
+    }
+    const metaOnly = /\b(obligations?|coverage|categories?|classification|detect(?:ion)?|planning rules?|policy rules?|test design|candidate|where relevant|defaults or migration)\b/i.test(clause);
+    if (!metaOnly) return true;
+    const directChange = /\b(add|apply|change|create|delete|drop|implement|migrate|modify|remove|replace|run|update)\b/i.test(clause);
+    return directChange && !/\b(obligations?|coverage|categories?|classification|detect(?:ion)?|planning rules?|policy rules?|test design|defaults or migration)\b/i.test(clause);
+  });
 }
 function materialUnknowns(evidence2) {
   const material = [
@@ -22271,7 +22291,7 @@ function buildPlanningPrompt(input) {
     "- Good objective: 'Persist phase-specific test obligations in workflow state.'",
     "- Good objective: 'Require completion evidence to satisfy mandatory obligations.'",
     "- Bad objective: 'Implement backend, frontend, tests, docs, and migration changes.'",
-    "- Bad objective: 'Do everything needed for issue 12.'",
+    "- Bad objective: 'Do everything needed for the referenced work item.'",
     "- A single architectural boundary is determined from expectedWriteAreas, not from words in the objective. Keep each phase within one production owner such as src/core, src/config, src/cli, or one adapter unless dependencies make the boundary explicit.",
     "- Migration, security, schema, compatibility, failure, concurrency, recovery, contract, and regression may be obligation categories. These words do not by themselves mean a phase mixes boundaries.",
     "- Every phase must include specific acceptance criteria, at least one validation command or check expectation, and bounded expected write areas.",
@@ -23709,6 +23729,7 @@ init_zod();
 init_defaults();
 init_models();
 import { randomUUID as randomUUID5 } from "node:crypto";
+import { existsSync as existsSync3, readFileSync } from "node:fs";
 import { mkdir as mkdir9, readFile as readFile14 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path20 from "node:path";
@@ -23734,7 +23755,7 @@ function commitCommands(proposal) {
 // src/core/git-workspace.ts
 import { createHash as createHash4 } from "node:crypto";
 import { execFile as execFile4 } from "node:child_process";
-import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir7, readFile as readFile11, readdir as readdir3, readlink, realpath, stat as stat3, writeFile as writeFile8 } from "node:fs/promises";
+import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir7, readFile as readFile11, readdir as readdir3, readlink, realpath, rm as rm2, stat as stat3, symlink, writeFile as writeFile8 } from "node:fs/promises";
 import path16 from "node:path";
 import { promisify as promisify4 } from "node:util";
 
@@ -24666,16 +24687,24 @@ async function runIntegrationValidation(state) {
       timestamp: timestamp()
     });
   } else {
-    for (const command of commands) {
-      const result = await runShellCommand(command, state.git.integration.path);
-      evidence2.push({
-        command,
-        exitStatus: result.exitStatus,
-        result: result.output.slice(0, 4e3),
-        status: result.exitStatus === 0 ? "passed" : "failed",
-        skipped: false,
-        timestamp: timestamp()
-      });
+    const projectFallback = await projectLocalValidationFallback(
+      state.git.integration.path,
+      state.git.context.repositoryRoot
+    );
+    try {
+      for (const command of commands) {
+        const result = await runShellCommand(command, state.git.integration.path, Boolean(projectFallback));
+        evidence2.push({
+          command,
+          exitStatus: result.exitStatus,
+          result: result.output.slice(0, 4e3),
+          status: result.exitStatus === 0 ? "passed" : "failed",
+          skipped: false,
+          timestamp: timestamp()
+        });
+      }
+    } finally {
+      await projectFallback?.cleanup();
     }
   }
   const failed = evidence2.some((item) => item.status === "failed");
@@ -24686,7 +24715,8 @@ async function runIntegrationValidation(state) {
     commands: evidence2,
     startedAt,
     completedAt: timestamp(),
-    status: failed ? "failed" : skippedOnly ? "skipped" : "passed"
+    status: failed ? "failed" : skippedOnly ? "skipped" : "passed",
+    failureOwnership: failed ? evidence2.some((item) => item.exitStatus === 126 || item.exitStatus === 127 || /\b(?:not found|enoent)\b/i.test(item.result)) ? "environment_failure" : "validation_failure" : void 0
   };
   next.git.integration.status = failed ? "needs_repair" : "ready_for_final_review";
   return next;
@@ -24863,13 +24893,58 @@ async function git(cwd, args, options = {}) {
   const { stdout } = await execFileAsync4("git", args, { cwd, encoding: "utf8", maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024 });
   return stdout;
 }
-async function runShellCommand(command, cwd) {
+async function runShellCommand(command, cwd, projectLocalFallback = false) {
   try {
-    const { stdout, stderr } = await execFileAsync4("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
-    return { exitStatus: 0, output: `${stdout}${stderr}`.trim() || "Command completed successfully." };
+    const { stdout, stderr } = await execFileAsync4("bash", ["-lc", command], {
+      cwd,
+      encoding: "utf8",
+      maxBuffer: MAX_GIT_OUTPUT
+    });
+    const output = `${stdout}${stderr}`.trim() || "Command completed successfully.";
+    return {
+      exitStatus: 0,
+      output: projectLocalFallback ? `[project-local tool fallback: matching package and lockfile identity]
+${output}` : output
+    };
   } catch (error51) {
     const failed = error51;
-    return { exitStatus: typeof failed.code === "number" ? failed.code : 1, output: `${failed.stdout ?? ""}${failed.stderr ?? failed.message ?? ""}`.trim() };
+    const output = `${failed.stdout ?? ""}${failed.stderr ?? failed.message ?? ""}`.trim();
+    return {
+      exitStatus: typeof failed.code === "number" ? failed.code : 1,
+      output: projectLocalFallback ? `[project-local tool fallback: matching package and lockfile identity]
+${output}` : output
+    };
+  }
+}
+async function projectLocalValidationFallback(workspacePath, projectRoot) {
+  if (path16.resolve(workspacePath) === path16.resolve(projectRoot)) return void 0;
+  const workspaceModules = path16.join(workspacePath, "node_modules");
+  const projectModules = path16.join(projectRoot, "node_modules");
+  if (await pathExists(path16.join(workspaceModules, ".bin"))) return void 0;
+  if (!await pathExists(path16.join(projectModules, ".bin"))) return void 0;
+  const identityFiles = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
+  let compared = 0;
+  for (const name of identityFiles) {
+    const workspace = await fileIdentity(path16.join(workspacePath, name));
+    const project = await fileIdentity(path16.join(projectRoot, name));
+    if (workspace === void 0 && project === void 0) continue;
+    compared += 1;
+    if (workspace === void 0 || workspace !== project) return void 0;
+  }
+  if (compared === 0) return void 0;
+  await symlink(projectModules, workspaceModules, process.platform === "win32" ? "junction" : "dir");
+  return {
+    cleanup: async () => {
+      const info = await lstat2(workspaceModules).catch(() => void 0);
+      if (info?.isSymbolicLink()) await rm2(workspaceModules, { force: true });
+    }
+  };
+}
+async function fileIdentity(file2) {
+  try {
+    return createHash4("sha256").update(await readFile11(file2)).digest("hex");
+  } catch {
+    return void 0;
   }
 }
 async function gitOperationInProgress(commonDir, gitDir) {
@@ -25754,7 +25829,7 @@ function atEndOfBlockComment(text, i) {
 // src/core/planning-runner.ts
 var PlanningValidationError = class extends Error {
   constructor(diagnostics) {
-    super(diagnostics.map((diagnostic2) => `${diagnostic2.stage}:${diagnostic2.path.join(".") || "<root>"}:${diagnostic2.message}`).join("\n"));
+    super(diagnostics.map((diagnostic3) => `${diagnostic3.stage}:${diagnostic3.path.join(".") || "<root>"}:${diagnostic3.message}`).join("\n"));
     this.diagnostics = diagnostics;
   }
   diagnostics;
@@ -25806,7 +25881,7 @@ async function runPlanning(args) {
       return modelResult(validated.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
     }
     allDiagnostics.push(...validated.diagnostics);
-    if (validated.diagnostics.some((diagnostic2) => diagnostic2.stage === "quality")) sawQualityRepairablePlan = true;
+    if (validated.diagnostics.some((diagnostic3) => diagnostic3.stage === "quality")) sawQualityRepairablePlan = true;
     if (validated.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
     warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
     const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
@@ -25825,7 +25900,7 @@ async function runPlanning(args) {
         warnings.push("Attempting same-provider/model planning repair for exact validation diagnostics.");
         const repairResult = await provider.repair(input, {
           plan: normalised.raw,
-          diagnostics: validated.diagnostics.map((diagnostic2) => ({ ...diagnostic2, repairAttempt: "same-model" })),
+          diagnostics: validated.diagnostics.map((diagnostic3) => ({ ...diagnostic3, repairAttempt: "same-model" })),
           model: result.model,
           tier: result.tier
         });
@@ -25847,14 +25922,14 @@ async function runPlanning(args) {
         allDiagnostics.push(...diagnosticsOf(error51, "schema"));
         warnings.push(`Planning semantic repair failed: ${messageOf3(error51)}`);
       }
-      if (validated.diagnostics.some((diagnostic2) => diagnostic2.stage === "quality")) break;
+      if (validated.diagnostics.some((diagnostic3) => diagnostic3.stage === "quality")) break;
     }
   }
   const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
   const approvalBlockedReason = sawConstraintContradiction ? "Model planning contradicted approved constraints and repair did not produce a valid plan; plan approval is disabled until the plan is revised." : sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan) ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised." : void 0;
   if (approvalBlockedReason) {
-    for (const diagnostic2 of allDiagnostics) {
-      if (isConstraintDiagnostic(diagnostic2) && !diagnostic2.resolution) diagnostic2.resolution = "blocked";
+    for (const diagnostic3 of allDiagnostics) {
+      if (isConstraintDiagnostic(diagnostic3) && !diagnostic3.resolution) diagnostic3.resolution = "blocked";
     }
   }
   warnings.push(approvalBlockedReason ?? "Using deterministic planning fallback after model plan could not be validated.");
@@ -25918,13 +25993,13 @@ function validateCandidate(args, raw) {
     return { ok: false, diagnostics: diagnosticsOf(error51, "schema") };
   }
 }
-function isConstraintDiagnostic(diagnostic2) {
-  return diagnostic2.code.startsWith("constraint.");
+function isConstraintDiagnostic(diagnostic3) {
+  return diagnostic3.code.startsWith("constraint.");
 }
 function markDiagnosticsResolution(allDiagnostics, matched, resolution) {
-  for (const diagnostic2 of allDiagnostics) {
-    if (!matched.some((candidate) => candidate.code === diagnostic2.code && candidate.message === diagnostic2.message && candidate.path.join(".") === diagnostic2.path.join("."))) continue;
-    diagnostic2.resolution = resolution;
+  for (const diagnostic3 of allDiagnostics) {
+    if (!matched.some((candidate) => candidate.code === diagnostic3.code && candidate.message === diagnostic3.message && candidate.path.join(".") === diagnostic3.path.join("."))) continue;
+    diagnostic3.resolution = resolution;
   }
 }
 function modelResult(plan, result, attempts, warnings, diagnostics, syntaxRepairApplied, semanticRepairApplied) {
@@ -25957,7 +26032,7 @@ function diagnosticsOf(error51, fallbackStage) {
   return [{ stage: fallbackStage, path: [], code: "planning_error", message: messageOf3(error51) }];
 }
 function diagnosticSummary(diagnostics) {
-  return diagnostics.map((diagnostic2) => `${diagnostic2.stage}:${diagnostic2.path.join(".") || "<root>"}:${diagnostic2.message}`).join("; ");
+  return diagnostics.map((diagnostic3) => `${diagnostic3.stage}:${diagnostic3.path.join(".") || "<root>"}:${diagnostic3.message}`).join("; ");
 }
 function isGenericFallbackPlan(plan) {
   const text = plan.phases.map((phase2) => phase2.objective).join("\n").toLowerCase();
@@ -25968,12 +26043,12 @@ function messageOf3(error51) {
 }
 
 // src/core/workflow-lock.ts
-import { open as open4, readFile as readFile13, mkdir as mkdir8, rm as rm3, writeFile as writeFile9 } from "node:fs/promises";
+import { open as open4, readFile as readFile13, mkdir as mkdir8, rm as rm4, writeFile as writeFile9 } from "node:fs/promises";
 import os2 from "node:os";
 import path18 from "node:path";
 
 // src/core/workflow-store.ts
-import { open as open3, readFile as readFile12, rename as rename3, rm as rm2 } from "node:fs/promises";
+import { open as open3, readFile as readFile12, rename as rename3, rm as rm3 } from "node:fs/promises";
 import { randomUUID as randomUUID3 } from "node:crypto";
 import path17 from "node:path";
 var RevisionConflictError = class extends Error {
@@ -26000,7 +26075,7 @@ async function atomicWriteJson2(file2, value) {
     await rename3(temp, file2);
     await fsyncDirectory(dir);
   } catch (error51) {
-    await rm2(temp, { force: true }).catch(() => void 0);
+    await rm3(temp, { force: true }).catch(() => void 0);
     throw error51;
   }
 }
@@ -26051,7 +26126,7 @@ async function acquireWorkflowLock(options) {
   const existing = await readWorkflowLock(options.root, options.workflowId);
   if (!existing) return acquireWorkflowLock(options);
   if (Date.parse(existing.expiresAt) > now.getTime()) throw new WorkflowLockBusyError(existing);
-  await rm3(file2, { force: true });
+  await rm4(file2, { force: true });
   try {
     const handle = await open4(file2, "wx");
     try {
@@ -26073,7 +26148,7 @@ async function releaseWorkflowLock(root, workflowId2, ownerId) {
   const existing = await readWorkflowLock(root, workflowId2);
   if (!existing) return;
   if (existing.ownerId !== ownerId) throw new WorkflowLockOwnershipError(`Workflow lock is owned by ${existing.ownerId}, not ${ownerId}.`);
-  await rm3(lockPath(root, workflowId2), { force: true });
+  await rm4(lockPath(root, workflowId2), { force: true });
 }
 async function readWorkflowLock(root, workflowId2) {
   try {
@@ -26098,7 +26173,7 @@ function buildLock(options, now) {
 }
 
 // src/core/phase-brief-planner.ts
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 
 // src/core/phase-brief-inspection.ts
 import { execFile as execFile5 } from "node:child_process";
@@ -26496,6 +26571,93 @@ function unique7(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+// src/core/workflow-quality.ts
+import { createHash as createHash5 } from "node:crypto";
+var DIMENSIONS = [
+  "completeness",
+  "specificity",
+  "traceability",
+  "phase-closure",
+  "dependency-validity",
+  "evidence-coverage",
+  "recovery-viability",
+  "internal-consistency"
+];
+function evaluatePhaseBriefQuality(brief, phase2, diagnostics) {
+  const dimensions = Object.fromEntries(DIMENSIONS.map((dimension) => [
+    dimension,
+    dimensionResult(dimension, brief, phase2, diagnostics)
+  ]));
+  return {
+    artifactType: "phase-brief",
+    artifactId: `${brief.phaseId}:r${brief.briefRevision}`,
+    overall: overallStatus(Object.values(dimensions)),
+    dimensions,
+    evaluatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function classifyPhaseBriefFailure(status, diagnostics) {
+  if (status === "inspection-unavailable") return "repository_evidence_insufficient";
+  if (status === "inspection-failed") return "environment_failure";
+  if (diagnostics.some((item) => item.code.includes("provider_failed"))) return "provider_failure";
+  return "leanrigor_generation_failure";
+}
+function artifactHash(value) {
+  return createHash5("sha256").update(JSON.stringify(value)).digest("hex");
+}
+function recoveryAttempt(args) {
+  const inputArtifactHash = artifactHash(args.input);
+  const outputArtifactHash = args.output === void 0 ? void 0 : artifactHash(args.output);
+  const previous = args.attempts.at(-1);
+  const validationDiagnostics = args.diagnostics.map((item) => item.code);
+  const changed = !previous || previous.strategy !== args.strategy || previous.provider !== args.provider || previous.modelTier !== args.modelTier || previous.inputArtifactHash !== inputArtifactHash || previous.outputArtifactHash !== outputArtifactHash || previous.inspectionIdentity !== args.inspectionIdentity || previous.validationDiagnostics.join("\0") !== validationDiagnostics.join("\0");
+  return {
+    attempt: args.attempts.length + 1,
+    strategy: args.strategy,
+    provider: args.provider,
+    modelTier: args.modelTier,
+    inputArtifactHash,
+    outputArtifactHash,
+    inspectionIdentity: args.inspectionIdentity,
+    validationDiagnostics,
+    changed,
+    disposition: args.disposition,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function dimensionResult(dimension, brief, phase2, diagnostics) {
+  const codes = diagnostics.filter((item) => dimensionFor(item) === dimension).map((item) => item.code);
+  if (codes.length > 0) return { status: "fail", diagnosticCodes: [...new Set(codes)], evidence: diagnostics.filter((item) => codes.includes(item.code)).map((item) => item.message) };
+  if (dimension === "recovery-viability" && (brief.recoveryAttempts?.some((attempt) => attempt.disposition === "skipped-identical") ?? false)) {
+    return { status: "warning", diagnosticCodes: ["recovery.identical_retry_skipped"], evidence: ["An unchanged deterministic retry was skipped."] };
+  }
+  const evidence2 = {
+    completeness: [`${brief.acceptanceCriteria.length} criteria; ${brief.validationCommands.length} validation commands`],
+    specificity: [...brief.relevantFiles, ...brief.relevantSymbols].slice(0, 8),
+    traceability: brief.acceptanceCriteria,
+    "phase-closure": [`Phase ${phase2.id} validation is producible within ${brief.writeAreas.join(", ") || "the approved boundary"}.`],
+    "dependency-validity": brief.dependencies.length > 0 ? brief.dependencies : ["No phase dependencies."],
+    "evidence-coverage": [...brief.testObligations, ...brief.validationCommands],
+    "recovery-viability": [`${brief.recoveryAttempts?.length ?? 0} bounded recovery attempts recorded.`],
+    "internal-consistency": [`Brief phase ${brief.phaseId} matches plan phase ${phase2.id}.`]
+  };
+  return { status: "pass", diagnosticCodes: [], evidence: evidence2[dimension] };
+}
+function dimensionFor(diagnostic3) {
+  if (diagnostic3.field === "dependencies") return "dependency-validity";
+  if (diagnostic3.field === "acceptanceCriteria") return "traceability";
+  if (diagnostic3.field === "testObligations" || diagnostic3.field === "validationCommands") return "evidence-coverage";
+  if (diagnostic3.field === "writeAreas") return "phase-closure";
+  if (diagnostic3.field === "repository" || diagnostic3.field === "workflowRevision") return "internal-consistency";
+  if (diagnostic3.field === "objective" || diagnostic3.field === "deliverable" || diagnostic3.field === "implementationApproach") return "specificity";
+  return "completeness";
+}
+function overallStatus(values) {
+  if (values.some((value) => value.status === "fail")) return "fail";
+  if (values.some((value) => value.status === "warning")) return "warning";
+  return "pass";
+}
+
 // src/core/phase-brief-planner.ts
 var DeterministicPhaseBriefPlanningProvider = class {
   name = "deterministic-phase-brief";
@@ -26508,7 +26670,7 @@ var DeterministicPhaseBriefPlanningProvider = class {
   }
   async repair(input, request) {
     const baseline = deterministicProposal(input);
-    const deficient = new Set(request.diagnostics.map((diagnostic2) => diagnostic2.field));
+    const deficient = new Set(request.diagnostics.map((diagnostic3) => diagnostic3.field));
     const proposal = proposalFromBrief(request.brief);
     for (const field of deficient) copyProposalField(proposal, baseline, field);
     return {
@@ -26521,6 +26683,7 @@ var DeterministicPhaseBriefPlanningProvider = class {
 };
 async function generateInspectedPhaseExecutionBrief(args) {
   const provider = args.provider ?? new DeterministicPhaseBriefPlanningProvider();
+  const recoveryAttempts = [];
   const initialRequest = derivePhaseBriefInspectionRequest(args.state, args.phase, args.config);
   const inspected = await inspectPhaseBrief({
     root: args.state.root,
@@ -26545,10 +26708,12 @@ async function generateInspectedPhaseExecutionBrief(args) {
       result: inspected.result,
       repairAttempts: 0,
       provider: provider.name,
-      modelTier: tier
+      modelTier: tier,
+      recoveryAttempts
     });
   }
-  const input = {
+  let currentInspection = inspected;
+  let input = {
     state: args.state,
     phase: args.phase,
     inspection: inspected.result,
@@ -26560,23 +26725,35 @@ async function generateInspectedPhaseExecutionBrief(args) {
   try {
     generation = await provider.generate(input);
   } catch (error51) {
+    const diagnostics2 = [diagnostic("generation", "brief", "generation.provider_failed", messageOf5(error51))];
+    recoveryAttempts.push(recoveryAttempt({
+      attempts: recoveryAttempts,
+      strategy: "initial-generation",
+      provider: provider.name,
+      modelTier: tier,
+      input: { phase: args.phase, inspection: inspected.result },
+      inspectionIdentity: stableHash3(inspected.result),
+      diagnostics: diagnostics2,
+      disposition: "failed"
+    }));
     return blockedFailure({
       phase: args.phase,
       workflowRevision: planRevision,
       briefRevision: initialBriefRevision,
       status: "quality-blocked",
       message: `${args.phase.id} brief-planning provider failed: ${messageOf5(error51)}`,
-      diagnostics: [diagnostic("generation", "brief", "generation.provider_failed", messageOf5(error51))],
+      diagnostics: diagnostics2,
       request: inspected.request,
       result: inspected.result,
       repairAttempts: 0,
       provider: provider.name,
-      modelTier: tier
+      modelTier: tier,
+      recoveryAttempts
     });
   }
   const repo = await repositoryRevision(args.state.root);
   const constraintHash2 = stableHash3(effectiveConstraints(args.state));
-  const inspectionResultId = stableHash3(inspected.result);
+  let inspectionResultId = phaseBriefInspectionIdentity(inspected.result);
   let brief = assembleBrief({
     state: args.state,
     phase: args.phase,
@@ -26604,6 +26781,19 @@ async function generateInspectedPhaseExecutionBrief(args) {
     repairAttempts: 0
   });
   let diagnostics = validatePhaseExecutionBrief(brief, args.phase);
+  recoveryAttempts.push(recoveryAttempt({
+    attempts: recoveryAttempts,
+    strategy: "initial-generation",
+    provider: generation.provider,
+    modelTier: generation.modelTier ?? tier,
+    input: { phase: args.phase, inspection: inspected.result },
+    output: generation.proposal,
+    inspectionIdentity: inspectionResultId,
+    diagnostics,
+    disposition: diagnostics.length === 0 ? "succeeded" : "continue"
+  }));
+  brief.recoveryAttempts = [...recoveryAttempts];
+  brief.quality = evaluatePhaseBriefQuality(brief, args.phase, diagnostics);
   const maxRepairs = Math.min(args.config.budgets.phaseBriefRepairAttempts, provider.repair ? 1 : 0);
   if (diagnostics.length > 0 && maxRepairs > 0 && provider.repair) {
     try {
@@ -26639,8 +26829,236 @@ async function generateInspectedPhaseExecutionBrief(args) {
         ...repairedDiagnostics.filter((item) => !diagnostics.some((original) => original.field === item.field && original.code === item.code))
       ];
       diagnostics = repairedDiagnostics;
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "targeted-repair",
+        provider: repaired.provider,
+        modelTier: repaired.modelTier ?? generation.modelTier ?? tier,
+        input: generation.proposal,
+        output: repairedProposal,
+        inspectionIdentity: inspectionResultId,
+        diagnostics: repairedDiagnostics,
+        disposition: repairedDiagnostics.length === 0 ? "succeeded" : "continue"
+      }));
+      brief.recoveryAttempts = [...recoveryAttempts];
+      brief.quality = evaluatePhaseBriefQuality(brief, args.phase, repairedDiagnostics);
     } catch (error51) {
       diagnostics.push(diagnostic("generation", "brief", "repair.provider_failed", messageOf5(error51), "same-provider"));
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "targeted-repair",
+        provider: provider.name,
+        modelTier: tier,
+        input: generation.proposal,
+        inspectionIdentity: inspectionResultId,
+        diagnostics,
+        disposition: "failed"
+      }));
+    }
+  }
+  if (diagnostics.length > 0 && args.config.budgets.phaseBriefRefreshedInspectionAttempts > 0) {
+    const refreshed = await inspectPhaseBrief({
+      root: args.state.root,
+      state: args.state,
+      phase: args.phase,
+      request: derivePhaseBriefInspectionRequest(args.state, args.phase, args.config),
+      io: args.inspectionIo,
+      provider: provider.name
+    });
+    const refreshedIdentity = phaseBriefInspectionIdentity(refreshed.result);
+    if (refreshedIdentity === inspectionResultId) {
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "refreshed-inspection",
+        provider: provider.name,
+        modelTier: tier,
+        input: { phase: args.phase, inspectionIdentity: inspectionResultId },
+        inspectionIdentity: inspectionResultId,
+        diagnostics,
+        disposition: "skipped-identical"
+      }));
+    } else if (!["failed", "unavailable"].includes(refreshed.result.status)) {
+      currentInspection = refreshed;
+      inspectionResultId = refreshedIdentity;
+      input = {
+        ...input,
+        inspection: refreshed.result,
+        feedback: recoveryFeedback(args.feedback, diagnostics, "Use the refreshed bounded repository evidence.")
+      };
+      try {
+        const refreshedGeneration = await provider.generate(input);
+        const refreshedBrief = assembleBrief({
+          state: args.state,
+          phase: args.phase,
+          previous: args.previous,
+          feedback: input.feedback,
+          proposal: refreshedGeneration.proposal,
+          provider: refreshedGeneration.provider,
+          modelTier: refreshedGeneration.modelTier ?? tier,
+          warnings: unique8([...brief.generation.warnings ?? [], ...refreshedGeneration.warnings ?? [], "LeanRigor refreshed bounded repository inspection before regenerating this brief."]),
+          request: refreshed.request,
+          inspection: refreshed.result,
+          workflowRevision: planRevision,
+          briefRevision: brief.briefRevision + 1,
+          repository: {
+            ...brief.repository,
+            inspectionResultId,
+            inspectedPaths: refreshed.result.filesRead
+          },
+          repairAttempts: brief.validation.repairAttempts
+        });
+        const refreshedDiagnostics = validatePhaseExecutionBrief(refreshedBrief, args.phase);
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "refreshed-inspection",
+          provider: refreshedGeneration.provider,
+          modelTier: refreshedGeneration.modelTier ?? tier,
+          input: { phase: args.phase, inspection: refreshed.result },
+          output: refreshedGeneration.proposal,
+          inspectionIdentity: inspectionResultId,
+          diagnostics: refreshedDiagnostics,
+          disposition: refreshedDiagnostics.length === 0 ? "succeeded" : "continue"
+        }));
+        brief = refreshedBrief;
+        diagnostics = refreshedDiagnostics;
+      } catch (error51) {
+        const refreshedDiagnostics = [
+          ...diagnostics,
+          diagnostic("generation", "brief", "refresh.provider_failed", messageOf5(error51))
+        ];
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "refreshed-inspection",
+          provider: provider.name,
+          modelTier: tier,
+          input: { phase: args.phase, inspection: refreshed.result },
+          inspectionIdentity: inspectionResultId,
+          diagnostics: refreshedDiagnostics,
+          disposition: "failed"
+        }));
+        diagnostics = refreshedDiagnostics;
+      }
+    } else {
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "refreshed-inspection",
+        provider: provider.name,
+        modelTier: tier,
+        input: { phase: args.phase, inspection: refreshed.result },
+        inspectionIdentity: refreshedIdentity,
+        diagnostics,
+        disposition: "failed"
+      }));
+    }
+    brief.recoveryAttempts = [...recoveryAttempts];
+    brief.quality = evaluatePhaseBriefQuality(brief, args.phase, diagnostics);
+  }
+  if (diagnostics.length > 0 && args.config.budgets.phaseBriefAlternateStrategyAttempts > 0) {
+    if (provider.alternate) {
+      try {
+        const alternate = await provider.alternate(input, { brief, diagnostics });
+        const alternateBrief = assembleBrief({
+          state: args.state,
+          phase: args.phase,
+          previous: args.previous,
+          feedback: recoveryFeedback(args.feedback, diagnostics, "Use an alternative planning strategy while preserving approved scope."),
+          proposal: alternate.proposal,
+          provider: alternate.provider,
+          modelTier: alternate.modelTier ?? tier,
+          warnings: unique8([...brief.generation.warnings ?? [], ...alternate.warnings ?? [], "LeanRigor used a bounded alternative planning strategy after diagnosed repair remained invalid."]),
+          request: currentInspection.request,
+          inspection: currentInspection.result,
+          workflowRevision: planRevision,
+          briefRevision: brief.briefRevision + 1,
+          repository: brief.repository,
+          repairAttempts: brief.validation.repairAttempts
+        });
+        const alternateDiagnostics = validatePhaseExecutionBrief(alternateBrief, args.phase);
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "alternate-strategy",
+          provider: alternate.provider,
+          modelTier: alternate.modelTier ?? tier,
+          input: brief,
+          output: alternate.proposal,
+          inspectionIdentity: inspectionResultId,
+          diagnostics: alternateDiagnostics,
+          disposition: alternateDiagnostics.length === 0 ? "succeeded" : "continue"
+        }));
+        brief = alternateBrief;
+        diagnostics = alternateDiagnostics;
+      } catch (error51) {
+        const alternateDiagnostics = [
+          ...diagnostics,
+          diagnostic("generation", "brief", "alternate.provider_failed", messageOf5(error51))
+        ];
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "alternate-strategy",
+          provider: provider.name,
+          modelTier: tier,
+          input: brief,
+          inspectionIdentity: inspectionResultId,
+          diagnostics: alternateDiagnostics,
+          disposition: "failed"
+        }));
+        diagnostics = alternateDiagnostics;
+      }
+    } else {
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "alternate-strategy",
+        provider: provider.name,
+        modelTier: tier,
+        input: brief,
+        inspectionIdentity: inspectionResultId,
+        diagnostics,
+        disposition: "failed"
+      }));
+    }
+    brief.recoveryAttempts = [...recoveryAttempts];
+    brief.quality = evaluatePhaseBriefQuality(brief, args.phase, diagnostics);
+  }
+  if (diagnostics.length > 0 && provider.name !== "deterministic-phase-brief" && args.config.budgets.phaseBriefDeterministicFallbackAttempts > 0) {
+    const fallbackProvider = new DeterministicPhaseBriefPlanningProvider();
+    const fallback = await fallbackProvider.generate(input);
+    const fallbackBrief = assembleBrief({
+      state: args.state,
+      phase: args.phase,
+      previous: args.previous,
+      feedback: args.feedback,
+      proposal: fallback.proposal,
+      provider: fallback.provider,
+      modelTier: fallback.modelTier ?? tier,
+      warnings: unique8([...generation.warnings ?? [], "LeanRigor deterministically synthesized a conservative brief after provider repair failed."]),
+      request: currentInspection.request,
+      inspection: currentInspection.result,
+      workflowRevision: planRevision,
+      briefRevision: brief.briefRevision + 1,
+      repository: brief.repository,
+      repairAttempts: brief.validation.repairAttempts
+    });
+    const fallbackDiagnostics = validatePhaseExecutionBrief(fallbackBrief, args.phase);
+    recoveryAttempts.push(recoveryAttempt({
+      attempts: recoveryAttempts,
+      strategy: "deterministic-fallback",
+      provider: fallback.provider,
+      modelTier: fallback.modelTier ?? tier,
+      input: brief,
+      output: fallback.proposal,
+      inspectionIdentity: inspectionResultId,
+      diagnostics: fallbackDiagnostics,
+      disposition: fallbackDiagnostics.length === 0 ? "succeeded" : "failed"
+    }));
+    fallbackBrief.recoveryAttempts = [...recoveryAttempts];
+    fallbackBrief.deterministicallySynthesized = true;
+    fallbackBrief.quality = evaluatePhaseBriefQuality(fallbackBrief, args.phase, fallbackDiagnostics);
+    if (fallbackDiagnostics.length === 0) {
+      brief = fallbackBrief;
+      diagnostics = [];
+    } else {
+      brief = fallbackBrief;
+      diagnostics = fallbackDiagnostics;
     }
   }
   if (diagnostics.length > 0) {
@@ -26651,11 +27069,13 @@ async function generateInspectedPhaseExecutionBrief(args) {
       status: "quality-blocked",
       message: `${args.phase.id} execution brief failed deterministic quality validation.`,
       diagnostics: brief.validation.diagnostics.length > 0 ? brief.validation.diagnostics : diagnostics,
-      request: inspected.request,
-      result: inspected.result,
+      request: currentInspection.request,
+      result: currentInspection.result,
       repairAttempts: brief.validation.repairAttempts,
       provider: brief.generation.provider,
-      modelTier: brief.generation.modelTier
+      modelTier: brief.generation.modelTier,
+      recoveryAttempts,
+      quality: evaluatePhaseBriefQuality(brief, args.phase, diagnostics)
     });
   }
   brief.validation = {
@@ -26664,6 +27084,8 @@ async function generateInspectedPhaseExecutionBrief(args) {
     repairAttempts: brief.validation.repairAttempts,
     validatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+  brief.recoveryAttempts = [...recoveryAttempts];
+  brief.quality = evaluatePhaseBriefQuality(brief, args.phase, []);
   brief.approvalStatus = "pending";
   return { status: "generated", brief };
 }
@@ -26719,7 +27141,17 @@ function classifyPhaseBriefChanges(phase2, proposal, approvedContext = []) {
   const narrowedReads = proposal.readAreas.filter((candidate) => phase2.expectedReadAreas.some((area) => withinArea(candidate, area)) && !phase2.expectedReadAreas.includes(candidate));
   if (narrowedReads.length > 0) changes.push(change("read-boundary", phase2.id, phase2.expectedReadAreas, narrowedReads, false, "Read paths narrow an approved inspection area."));
   if (outsideWrites.length > 0) changes.push(change("write-boundary", phase2.id, approvedWrites, outsideWrites, true, "The brief proposes a write path outside the approved Workflow Plan boundary."));
-  if (!sameItems(phase2.acceptanceCriteria, proposal.acceptanceCriteria)) changes.push(change("acceptance-criteria", phase2.id, phase2.acceptanceCriteria, proposal.acceptanceCriteria, true, "The brief changes approved acceptance criteria."));
+  if (!sameItems(phase2.acceptanceCriteria, proposal.acceptanceCriteria)) {
+    const traceabilityRefinement = isScopePreservingAcceptanceRefinement(phase2.acceptanceCriteria, proposal.acceptanceCriteria);
+    changes.push(change(
+      "acceptance-criteria",
+      phase2.id,
+      phase2.acceptanceCriteria,
+      proposal.acceptanceCriteria,
+      !traceabilityRefinement,
+      traceabilityRefinement ? "The brief preserves each approved requirement and adds observable evidence within the same phase boundary." : "The brief changes approved acceptance criteria."
+    ));
+  }
   const removedValidation = phase2.validationCommands.filter((command) => !proposal.validationCommands.includes(command));
   const addedValidation = proposal.validationCommands.filter((command) => !phase2.validationCommands.includes(command));
   if (removedValidation.length > 0) {
@@ -26774,7 +27206,10 @@ function deterministicProposal(input) {
     dependencies: dependencyIds3(phase2),
     assumptions: unique8([...state.triage?.assumptions ?? [], ...priorPhaseAssumptions(state, phase2)]),
     exclusions: constraints,
-    acceptanceCriteria: [...phase2.acceptanceCriteria],
+    acceptanceCriteria: synthesizeObservableAcceptanceCriteria(phase2.acceptanceCriteria, {
+      validationCommands,
+      documentationOnly
+    }),
     testObligations,
     validationCommands,
     manualValidationPlan: validationCommands.length === 0 ? manualValidationPlan(documentationOnly, relevantFiles) : void 0,
@@ -26821,6 +27256,7 @@ function assembleBrief(args) {
   };
 }
 function blockedFailure(args) {
+  const ownership = classifyPhaseBriefFailure(args.status, args.diagnostics);
   return {
     status: "blocked",
     failure: {
@@ -26835,6 +27271,9 @@ function blockedFailure(args) {
       repairAttempts: args.repairAttempts,
       provider: args.provider,
       modelTier: args.modelTier,
+      failureOwnership: ownership,
+      recoveryAttempts: args.recoveryAttempts,
+      quality: args.quality,
       failedAt: (/* @__PURE__ */ new Date()).toISOString()
     }
   };
@@ -26889,6 +27328,79 @@ function deriveTestObligations(state, phase2, inspection, documentationOnly) {
   if (state.mode === "rigorous" || phase2.riskLevel === "high") obligations.push("Cover a relevant failure path or rejected-input path.");
   for (const command of unique8([...phase2.validationCommands, ...inspection.validationCommands])) obligations.push(`Run configured check: ${command}.`);
   return unique8(obligations);
+}
+function synthesizeObservableAcceptanceCriteria(criteria, context = {}) {
+  const validation = context.validationCommands?.[0];
+  return criteria.map((criterion) => {
+    const requirement = criterion.trim().replace(/[.!]+$/, "");
+    if (!needsEvidenceSynthesis(criterion)) return criterion.trim();
+    const category = classifyAcceptanceOutcome(requirement, context.documentationOnly);
+    const evidence2 = observableEvidenceFor(category, validation);
+    return `${requirement}. ${evidence2}`;
+  });
+}
+function classifyAcceptanceOutcome(criterion, documentationOnly = false) {
+  const value = criterion.toLowerCase();
+  if (documentationOnly || /\b(documentation|docs?|readme|guide|example|link)\b/.test(value)) return "documentation";
+  if (/\b(plan(?:ning)?|policy|rule|obligations?|coverage categor|requirement classification)\b/.test(value)) return "validation";
+  if (/\b(backward|forward|compatib|legacy|existing state|existing workflows?|remain(?:s)? loadable|previous(?:ly)? persisted|old state)\b/.test(value)) return "compatibility";
+  if (/\b(save|load|persist(?:s|ed|ence|ent|ing)?|round[- ]?trip|stored|storage|serialize|deserialize)\b/.test(value)) return "persistence";
+  if (/\b(migrat|rollback|forward[- ]?fix|versioned data)\b/.test(value)) return "migration";
+  if (/\b(cli|command[- ]?line|stdout|stderr|exit code|terminal output)\b/.test(value)) return "cli";
+  if (/\b(workflow state|state transition|lifecycle|status transition)\b/.test(value)) return "workflow-state";
+  if (/\b(reject|prevent|block|invalid|failure|error|malformed|unavailable|timeout|missing required)\b/.test(value)) return "failure-handling";
+  if (/\b(schema|serializ|deserializ|field|required|optional|enum|type shape|interface|property)\b/.test(value)) return "schema";
+  if (/\b(public|api|contract|consumer|protocol)\b/.test(value)) return "public-contract";
+  if (/\b(security|auth|permission|credential|secret|access control)\b/.test(value)) return "security";
+  if (/\b(concurr|idempoten|race|parallel|locking|lease)\b/.test(value)) return "concurrency";
+  if (/\b(integrat|end[- ]to[- ]end|combined|consumer)\b/.test(value)) return "integration";
+  return "validation";
+}
+function needsEvidenceSynthesis(criterion) {
+  if (genericCriterion(criterion)) return true;
+  return !/\b(test|check|command|invocation|output|exit code|result|evidence|inspect|load(?:s|ed)?|save(?:s|d)?|round[- ]?trip|serialize[sd]?|deserialize[sd]?|pass(?:es|ed)?|fail(?:s|ed)?|reject(?:s|ed)?|return(?:s|ed)?|render(?:s|ed)?|emit(?:s|ted)?)\b/i.test(criterion);
+}
+function isObservableAcceptanceCriterion(criterion) {
+  return !needsEvidenceSynthesis(criterion);
+}
+function observableEvidenceFor(category, validation) {
+  const check2 = validation ? ` and '${validation}' passes` : "";
+  switch (category) {
+    case "persistence":
+      return `A focused round-trip check saves and reloads representative state with the required values unchanged${check2}.`;
+    case "compatibility":
+      return `A compatibility check loads a representative previously persisted state and preserves its observable behaviour${check2}.`;
+    case "schema":
+      return `A focused schema or type-contract check accepts a representative valid value and rejects a malformed or incomplete value predictably${check2}.`;
+    case "public-contract":
+      return `A focused contract check exercises the affected consumer-visible behaviour and records the returned value or emitted representation${check2}.`;
+    case "cli":
+      return `A focused command invocation records its exit code and expected standard output or error output${check2}.`;
+    case "workflow-state":
+      return `A focused transition check records the starting state, action, and deterministic resulting state${check2}.`;
+    case "failure-handling":
+      return `A focused failure-path check supplies invalid or unavailable input and records the predictable rejection or error result${check2}.`;
+    case "migration":
+      return `A focused migration check records the before and after representation and verifies the supported rollback or forward-fix path${check2}.`;
+    case "security":
+      return `A focused policy check records an allowed case and a denied case without exposing protected data${check2}.`;
+    case "concurrency":
+      return `A focused repeated or concurrent operation check records a stable, non-duplicated result${check2}.`;
+    case "integration":
+      return `A focused integration check exercises the producing and consuming boundaries together and records the observable result${check2}.`;
+    case "documentation":
+      return `A documentation check verifies the affected links, examples, and rendered structure against the implemented behaviour${check2}.`;
+    case "validation":
+      return `A focused repository check exercises this requirement and records a passing result tied to the criterion${check2}.`;
+  }
+}
+function isScopePreservingAcceptanceRefinement(approved, proposed) {
+  if (approved.length !== proposed.length) return false;
+  return approved.every((criterion, index) => {
+    const requirement = normalized(criterion);
+    const candidate = normalized(proposed[index] ?? "");
+    return candidate === requirement || candidate.startsWith(`${requirement}. `) || candidate.startsWith(`${requirement} `);
+  });
 }
 function deriveRisks(state, phase2, inspection) {
   const risks = [];
@@ -26999,7 +27511,16 @@ function normalized(value) {
   return value.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!]+$/, "");
 }
 function stableHash3(value) {
-  return createHash5("sha256").update(JSON.stringify(value)).digest("hex");
+  return createHash6("sha256").update(JSON.stringify(value)).digest("hex");
+}
+function phaseBriefInspectionIdentity(result) {
+  const stableResult = { ...result };
+  delete stableResult.completedAt;
+  return stableHash3(stableResult);
+}
+function recoveryFeedback(feedback, diagnostics, strategy) {
+  const diagnosis = diagnostics.map((item) => `${item.code}: ${item.message}`).join("; ");
+  return [feedback?.trim(), strategy, `Diagnosed quality failures: ${diagnosis}`].filter(Boolean).join("\n");
 }
 function slash2(value) {
   return value.replaceAll("\\", "/");
@@ -27011,8 +27532,151 @@ function unique8(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+// src/core/phase-graph-quality.ts
+function validatePhaseGraphQuality(plan) {
+  const diagnostics = [];
+  const positions = new Map(plan.phases.map((phase2, index) => [phase2.id, index]));
+  const byId = new Map(plan.phases.map((phase2) => [phase2.id, phase2]));
+  for (const [index, phase2] of plan.phases.entries()) {
+    if (phase2.validationCommands.length === 0) {
+      diagnostics.push(diagnostic2(index, phase2.id, "closure.validation_missing", `Phase ${phase2.id} cannot establish an independently valid repository state without a validation command or check.`));
+    }
+    for (const token of declaredReferences(phase2.acceptanceCriteria)) {
+      const producers = plan.phases.filter((candidate) => candidate.id !== phase2.id && declaredTokens(candidate).has(token));
+      const futureProducer = producers.find((candidate) => (positions.get(candidate.id) ?? -1) > index);
+      if (futureProducer) {
+        diagnostics.push(diagnostic2(
+          index,
+          phase2.id,
+          "closure.future_dependency",
+          `Phase ${phase2.id} acceptance references ${token}, which is introduced by later phase ${futureProducer.id}. Move the producer earlier or remove that outcome from the current phase boundary.`
+        ));
+        continue;
+      }
+      const earlierProducer = producers.find((candidate) => !transitivelyDependsOn(phase2, candidate.id, byId));
+      if (earlierProducer) {
+        diagnostics.push(diagnostic2(
+          index,
+          phase2.id,
+          "dependency.unlinked_producer",
+          `Phase ${phase2.id} acceptance references ${token} from earlier phase ${earlierProducer.id}, but the dependency is not declared.`
+        ));
+      }
+    }
+  }
+  for (let right = 1; right < plan.phases.length; right += 1) {
+    const later = plan.phases[right];
+    for (let left = 0; left < right; left += 1) {
+      const earlier = plan.phases[left];
+      if (transitivelyDependsOn(later, earlier.id, byId)) continue;
+      const overlap = writeBoundaryOverlap(earlier, later);
+      if (!overlap) continue;
+      diagnostics.push(diagnostic2(
+        right,
+        later.id,
+        "dependency.write_boundary_overlap",
+        `Phases ${earlier.id} and ${later.id} both write ${overlap} without an ordering dependency.`
+      ));
+    }
+  }
+  return uniqueDiagnostics2(diagnostics);
+}
+function repairPhaseGraphDependencies(plan) {
+  const repaired = structuredClone(plan);
+  const repairs = [];
+  const byId = new Map(repaired.phases.map((phase2) => [phase2.id, phase2]));
+  for (let index = 0; index < repaired.phases.length; index += 1) {
+    const phase2 = repaired.phases[index];
+    const required2 = new Set(phase2.dependencies);
+    for (const token of declaredReferences(phase2.acceptanceCriteria)) {
+      const producer = [...repaired.phases.slice(0, index)].reverse().find((candidate) => declaredTokens(candidate).has(token));
+      if (producer && !transitivelyDependsOn(phase2, producer.id, byId)) {
+        required2.add(producer.id);
+        repairs.push(`Declared ${producer.id} as a dependency of ${phase2.id} because its acceptance criteria reference ${token}.`);
+      }
+    }
+    for (const earlier of repaired.phases.slice(0, index)) {
+      const overlap = writeBoundaryOverlap(earlier, phase2);
+      if (overlap && !transitivelyDependsOn(phase2, earlier.id, byId)) {
+        required2.add(earlier.id);
+        repairs.push(`Ordered ${phase2.id} after ${earlier.id} because both phases write ${overlap}.`);
+      }
+    }
+    phase2.dependencies = [...required2];
+    phase2.dependsOn = [...required2];
+  }
+  return { plan: repaired, changed: repairs.length > 0, repairs };
+}
+function declaredReferences(criteria) {
+  return codeTokens(criteria.join(" "));
+}
+function declaredTokens(phase2) {
+  return codeTokens([
+    phase2.objective,
+    phase2.rationale,
+    ...phase2.expectedFilesOrAreas,
+    ...phase2.expectedWriteAreas
+  ].join(" "));
+}
+function codeTokens(value) {
+  const tokens = /* @__PURE__ */ new Set();
+  for (const match of value.matchAll(/`([A-Za-z_$][\w$.-]{3,})`|\b([A-Z][A-Za-z0-9_$]{3,}|[a-z][a-z0-9]+_[a-z0-9_]{2,})\b/g)) {
+    const candidate = match[1] ?? match[2];
+    if (!match[1] && !candidate.includes("_") && !/[A-Z0-9]/.test(candidate.slice(1))) continue;
+    const token = candidate.toLowerCase();
+    if (!GENERIC_CODE_TOKENS.has(token)) tokens.add(token);
+  }
+  return tokens;
+}
+var GENERIC_CODE_TOKENS = /* @__PURE__ */ new Set([
+  "readme",
+  "typescript",
+  "javascript",
+  "workflow",
+  "validation",
+  "repository",
+  "standard",
+  "rigorous"
+]);
+function transitivelyDependsOn(phase2, target, byId, seen = /* @__PURE__ */ new Set()) {
+  if (phase2.dependencies.includes(target)) return true;
+  if (seen.has(phase2.id)) return false;
+  seen.add(phase2.id);
+  return phase2.dependencies.some((dependency) => {
+    const parent = byId.get(dependency);
+    return parent ? transitivelyDependsOn(parent, target, byId, seen) : false;
+  });
+}
+function writeBoundaryOverlap(left, right) {
+  const leftAreas = implementationAreas(left);
+  const rightAreas = implementationAreas(right);
+  for (const leftArea of leftAreas) {
+    for (const rightArea of rightAreas) {
+      if (leftArea === rightArea || leftArea.startsWith(`${rightArea}/`) || rightArea.startsWith(`${leftArea}/`)) {
+        return leftArea.length <= rightArea.length ? leftArea : rightArea;
+      }
+    }
+  }
+  return void 0;
+}
+function implementationAreas(phase2) {
+  return [...new Set((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map((area) => area.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/\*\*.*$/, "").replace(/\/$/, "")).filter((area) => area && !/^(tests?|__tests__|docs?|readme\.md)(\/|$)/i.test(area)))];
+}
+function diagnostic2(index, phaseId, code, message) {
+  return {
+    stage: "quality",
+    path: ["phases", index],
+    code,
+    message,
+    affectedPhase: phaseId
+  };
+}
+function uniqueDiagnostics2(diagnostics) {
+  return [...new Map(diagnostics.map((item) => [`${item.code}:${item.affectedPhase}:${item.message}`, item])).values()];
+}
+
 // src/core/workflow-decision.ts
-import { createHash as createHash6, randomUUID as randomUUID4 } from "node:crypto";
+import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
 function setPendingDecision(state, input) {
   ensureApprovalState(state);
   const previous = state.approval.pendingDecision;
@@ -27087,7 +27751,7 @@ function requirePendingDecision(state, type, action, decisionId) {
 function migrateWorkflowDecision(raw, index) {
   const decision = { ...raw };
   const createdAt = typeof decision.createdAt === "string" ? decision.createdAt : (/* @__PURE__ */ new Date(0)).toISOString();
-  const id = typeof decision.id === "string" && decision.id.length > 0 ? decision.id : `decision-migrated-${createHash6("sha256").update(JSON.stringify(decision)).digest("hex").slice(0, 16)}-${index}`;
+  const id = typeof decision.id === "string" && decision.id.length > 0 ? decision.id : `decision-migrated-${createHash7("sha256").update(JSON.stringify(decision)).digest("hex").slice(0, 16)}-${index}`;
   return {
     ...decision,
     id,
@@ -27543,6 +28207,40 @@ var phaseBriefDiagnosticSchema = external_exports.object({
   repairAttempt: external_exports.enum(["none", "same-provider"]),
   resolution: external_exports.enum(["unresolved", "repaired"])
 });
+var artifactRecoveryAttemptSchema = external_exports.object({
+  attempt: external_exports.number().int().min(1),
+  strategy: external_exports.enum(["initial-generation", "targeted-repair", "refreshed-inspection", "alternate-strategy", "deterministic-fallback"]),
+  provider: external_exports.string().min(1),
+  modelTier: modelProfileSchema,
+  inputArtifactHash: external_exports.string().min(1),
+  outputArtifactHash: external_exports.string().min(1).optional(),
+  inspectionIdentity: external_exports.string().min(1).optional(),
+  validationDiagnostics: external_exports.array(external_exports.string()),
+  changed: external_exports.boolean(),
+  disposition: external_exports.enum(["continue", "succeeded", "failed", "skipped-identical"]),
+  timestamp: external_exports.string()
+});
+var artifactQualityDimensionSchema = external_exports.object({
+  status: external_exports.enum(["pass", "warning", "fail"]),
+  diagnosticCodes: external_exports.array(external_exports.string()),
+  evidence: external_exports.array(external_exports.string())
+});
+var artifactQualityResultSchema = external_exports.object({
+  artifactType: external_exports.enum(["triage", "workflow-plan", "phase-brief", "provider-result", "completion-gate", "integration", "final-summary"]),
+  artifactId: external_exports.string().min(1),
+  overall: external_exports.enum(["pass", "warning", "fail"]),
+  dimensions: external_exports.object({
+    completeness: artifactQualityDimensionSchema,
+    specificity: artifactQualityDimensionSchema,
+    traceability: artifactQualityDimensionSchema,
+    "phase-closure": artifactQualityDimensionSchema,
+    "dependency-validity": artifactQualityDimensionSchema,
+    "evidence-coverage": artifactQualityDimensionSchema,
+    "recovery-viability": artifactQualityDimensionSchema,
+    "internal-consistency": artifactQualityDimensionSchema
+  }),
+  evaluatedAt: external_exports.string()
+});
 var legacyInspectionRequest = {
   workflowId: "legacy",
   phaseId: "legacy",
@@ -27636,6 +28334,9 @@ var phaseExecutionBriefSchema = external_exports.object({
     repairAttempts: 0,
     validatedAt: "1970-01-01T00:00:00.000Z"
   }),
+  quality: artifactQualityResultSchema.optional(),
+  recoveryAttempts: external_exports.array(artifactRecoveryAttemptSchema).optional(),
+  deterministicallySynthesized: external_exports.boolean().optional(),
   revisionRequests: external_exports.array(external_exports.object({ feedback: external_exports.string().min(1), timestamp: external_exports.string() })).default([]),
   manualValidationPlan: external_exports.string().optional(),
   materialChangesFromWorkflowPlan: external_exports.array(materialPlanChangeSchema),
@@ -27653,6 +28354,19 @@ var phaseBriefGenerationFailureSchema = external_exports.object({
   repairAttempts: external_exports.number().int().min(0),
   provider: external_exports.string().min(1),
   modelTier: modelProfileSchema,
+  failureOwnership: external_exports.enum([
+    "leanrigor_generation_failure",
+    "repository_evidence_insufficient",
+    "provider_failure",
+    "user_decision_required",
+    "policy_block",
+    "environment_failure",
+    "implementation_failure",
+    "validation_failure",
+    "integration_failure"
+  ]).optional(),
+  recoveryAttempts: external_exports.array(artifactRecoveryAttemptSchema).optional(),
+  quality: artifactQualityResultSchema.optional(),
   failedAt: external_exports.string()
 });
 var workflowDecisionBaseShape = {
@@ -27747,7 +28461,18 @@ var integrationValidationSchema = external_exports.object({
   commands: external_exports.array(validationEvidenceSchema),
   startedAt: external_exports.string(),
   completedAt: external_exports.string().optional(),
-  status: external_exports.enum(["pending", "running", "passed", "failed", "skipped"])
+  status: external_exports.enum(["pending", "running", "passed", "failed", "skipped"]),
+  failureOwnership: external_exports.enum([
+    "leanrigor_generation_failure",
+    "repository_evidence_insufficient",
+    "provider_failure",
+    "user_decision_required",
+    "policy_block",
+    "environment_failure",
+    "implementation_failure",
+    "validation_failure",
+    "integration_failure"
+  ]).optional()
 });
 var workflowGitStateSchema = external_exports.object({
   context: external_exports.object({
@@ -28543,6 +29268,13 @@ async function validateIntegration(args) {
     next.validation.push(...next.git?.integrationValidation?.commands ?? []);
     appendEvent(next, "integration_validation_recorded", `Combined integration validation ${next.git?.integrationValidation?.status ?? "recorded"}.`);
     if (next.git?.integrationValidation?.status === "passed" && next.state === "validating") return transition(next, "reviewing", "Combined integration validation passed; final integrated review is ready.");
+    if (next.git?.integrationValidation?.status === "failed") {
+      setPendingDecision(next, {
+        type: "execution-recovery",
+        question: `Combined integration validation failed (${next.git.integrationValidation.failureOwnership ?? "validation_failure"}). An identical retry is disabled until the repository, environment, or validation strategy changes.`,
+        allowedActions: ["view-details", "revise-plan", "cancel-workflow"]
+      });
+    }
     return next;
   }, { ...args.mutation, operation: "validate_integration" });
 }
@@ -28981,6 +29713,7 @@ async function withPlan(state, config2, planningOptions) {
     request: planning.request,
     root: planning.root,
     triage: state.triage,
+    evidence: planning.triageRun?.evidence,
     config: config2,
     constraints: effectiveConstraintTexts(planning, state.triage, config2 ?? defaultConfig()),
     constraintSet: effectiveConstraintSet(planning, state.triage, config2 ?? defaultConfig()),
@@ -29024,10 +29757,18 @@ function buildApproach(triage, config2) {
 function buildPlan(request, triage, root, config2, options) {
   const mode2 = triage.workflow.finalMode;
   const validationCommands = defaultValidationCommands(root, mode2, triage);
-  const targets = triage.inspection.targets.length > 0 ? triage.inspection.targets : ["relevant implementation boundary", "nearby tests"];
+  const proposedTargets = triage.inspection.targets.length > 0 ? triage.inspection.targets : ["relevant implementation boundary", "nearby tests"];
+  const targets = discoverPlanningTargets(root, planningEvidenceText(request, options?.evidence), proposedTargets);
   const revisionNote = options?.revisionRequests?.at(-1)?.feedback;
   const boundaries = inferBoundaries(request, triage, targets);
-  const phases = mode2 === "fast" ? fastPhases(targets, validationCommands) : mode2 === "standard" ? standardPhases(targets, validationCommands, boundaries) : rigorousPhases(targets, validationCommands, triage, boundaries);
+  const phases = mode2 === "fast" ? fastPhases(targets, validationCommands) : mode2 === "standard" ? standardPhases(targets, validationCommands, boundaries) : rigorousPhases(targets, validationCommands, boundaries);
+  applyEnrichedAcceptanceCriteria(phases, options?.evidence);
+  for (const plannedPhase of phases) {
+    plannedPhase.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(plannedPhase.acceptanceCriteria, {
+      validationCommands: plannedPhase.validationCommands,
+      documentationOnly: plannedPhase.expectedWriteAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area))
+    });
+  }
   const plan = {
     version: 1,
     summary: revisionNote ? `Sequential plan for: ${request.trim()} (revised for: ${revisionNote})` : `Sequential plan for: ${request.trim()}`,
@@ -29045,7 +29786,8 @@ async function generatePlan(args) {
   const config2 = args.config ?? defaultConfig();
   const deterministicPlan = buildPlan(args.request, args.triage, args.root, config2, {
     constraints: args.constraints,
-    revisionRequests: args.revisionRequests
+    revisionRequests: args.revisionRequests,
+    evidence: args.evidence
   });
   return runPlanning({
     input: {
@@ -29069,7 +29811,7 @@ async function generatePlan(args) {
     provider: args.provider,
     providerSelection: args.providerSelection,
     validate: (raw) => validateModelPlan(raw, args.triage.workflow.finalMode, config2, args.revisionRequests, args.constraints ?? args.triage.constraints.mustNot),
-    normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics)
+    normalise: (raw, diagnostics) => normaliseModelPlan(raw, diagnostics, deterministicPlan)
   });
 }
 function validateModelPlan(raw, mode2, config2, revisionRequests, constraints) {
@@ -29106,14 +29848,15 @@ function validateModelPlan(raw, mode2, config2, revisionRequests, constraints) {
   if (diagnostics.length > 0) throw new PlanningValidationError(diagnostics);
   return checked;
 }
-function normaliseModelPlan(raw, diagnostics) {
+function normaliseModelPlan(raw, diagnostics, deterministicPlan) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { raw, changed: false };
   const mutable = structuredClone(raw);
   let changed = false;
   if (Array.isArray(mutable.phases)) {
-    mutable.phases = mutable.phases.map((phase2) => {
+    mutable.phases = mutable.phases.map((phase2, index) => {
       if (!phase2 || typeof phase2 !== "object" || Array.isArray(phase2)) return phase2;
       const next = { ...phase2 };
+      const deterministicPhase = deterministicPlan.phases[index];
       if (!Array.isArray(next.expectedFilesOrAreas) && Array.isArray(next.expectedWriteAreas)) {
         next.expectedFilesOrAreas = next.expectedWriteAreas;
         changed = true;
@@ -29122,8 +29865,54 @@ function normaliseModelPlan(raw, diagnostics) {
         next.expectedWriteAreas = next.expectedFilesOrAreas;
         changed = true;
       }
+      if (deterministicPhase && diagnostics.some((diagnostic3) => diagnostic3.code === "scope.non_path_write_area" && diagnostic3.path.includes(index))) {
+        next.expectedFilesOrAreas = replaceNonPathAreas(next.expectedFilesOrAreas, deterministicPhase.expectedFilesOrAreas);
+        next.expectedWriteAreas = replaceNonPathAreas(next.expectedWriteAreas, deterministicPhase.expectedWriteAreas);
+        next.expectedReadAreas = replaceNonPathAreas(next.expectedReadAreas, deterministicPhase.expectedReadAreas);
+        changed = true;
+      }
+      if (diagnostics.some((diagnostic3) => diagnostic3.code === "acceptance.not_inspectable") && Array.isArray(next.acceptanceCriteria) && next.acceptanceCriteria.every((criterion) => typeof criterion === "string")) {
+        next.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(next.acceptanceCriteria, {
+          validationCommands: Array.isArray(next.validationCommands) ? next.validationCommands.filter((command) => typeof command === "string") : []
+        });
+        changed = true;
+      }
       return next;
     });
+  }
+  const parsed = modelPlanSchema.safeParse(mutable);
+  const graphRepairRequested = diagnostics.some((diagnostic3) => diagnostic3.code === "dependency.unlinked_producer" || diagnostic3.code === "dependency.write_boundary_overlap");
+  if (parsed.success && graphRepairRequested) {
+    const graphRepair = repairPhaseGraphDependencies({
+      version: 1,
+      summary: parsed.data.summary,
+      principles: parsed.data.principles ?? [],
+      phases: parsed.data.phases.map((candidate) => {
+        const areas = candidate.expectedFilesOrAreas ?? candidate.expectedWriteAreas ?? [];
+        return phase({
+          id: candidate.id,
+          objective: candidate.objective,
+          rationale: candidate.rationale,
+          dependencies: unique9([...candidate.dependencies, ...candidate.dependsOn ?? []]),
+          areas,
+          readAreas: candidate.expectedReadAreas ?? areas,
+          acceptance: candidate.acceptanceCriteria,
+          validationCommands: candidate.validationCommands,
+          riskLevel: candidate.riskLevel,
+          modelTier: candidate.modelTier
+        });
+      }),
+      revisionRequests: []
+    });
+    if (graphRepair.changed) {
+      const dependencies = new Map(graphRepair.plan.phases.map((candidate) => [candidate.id, candidate.dependencies]));
+      mutable.phases = mutable.phases.map((candidate) => ({
+        ...candidate,
+        dependencies: dependencies.get(String(candidate.id)) ?? candidate.dependencies,
+        dependsOn: dependencies.get(String(candidate.id)) ?? candidate.dependsOn
+      }));
+      changed = true;
+    }
   }
   return {
     raw: mutable,
@@ -29321,8 +30110,8 @@ function standardPhases(targets, validationCommands, boundaries) {
         objective: "Add focused regression coverage for the changed behavior.",
         rationale: "Regression evidence should be reviewable separately from implementation edits.",
         dependencies: ["phase-2"],
-        areas: unique9([...targets, "nearby tests or package checks"]),
-        acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
+        areas: targets,
+        acceptance: ["A focused regression check records the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
         validationCommands,
         riskLevel: "medium",
         modelTier: "medium"
@@ -29346,8 +30135,8 @@ function standardPhases(targets, validationCommands, boundaries) {
       objective: "Add focused regression coverage for the changed behavior.",
       rationale: "Coverage is materially distinct from implementation and proves the behavior under review.",
       dependencies: ["phase-1"],
-      areas: unique9([...targets, "nearby tests or package checks"]),
-      acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
+      areas: targets,
+      acceptance: ["A focused regression check records the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
       validationCommands,
       riskLevel: "medium",
       modelTier: "medium"
@@ -29368,20 +30157,16 @@ function standardPhases(targets, validationCommands, boundaries) {
   }
   return phases;
 }
-function rigorousPhases(targets, validationCommands, triage, boundaries) {
-  const highRiskAreas = unique9([
-    ...targets,
-    ...triage.escalationReasons.map((reason) => `risk: ${reason}`)
-  ]);
+function rigorousPhases(targets, validationCommands, boundaries) {
   const firstObjective = boundaries.migration ? "Isolate the migration contract and rollback-sensitive assumptions." : boundaries.security ? "Isolate the security-sensitive contract and invariants." : boundaries.publicContract ? "Isolate the public contract and compatibility expectations." : "Isolate the high-risk boundary and safety assumptions.";
   return [
     phase({
       id: "phase-1",
       objective: firstObjective,
-      rationale: "Rigorous work separates high-risk boundaries before behavior changes.",
+      rationale: "Rigorous work establishes the high-risk contract together with any required consumers when separating them would violate independently valid repository-state closure; the cross-boundary dependency is explicit.",
       dependencies: [],
-      areas: highRiskAreas,
-      acceptance: ["The high-risk boundary is explicit and independently reviewable.", "The approved scope still matches the original request."],
+      areas: targets,
+      acceptance: ["A focused contract check records the high-risk boundary and applicable compatibility result.", "A scope check records that the approved paths still match the original request."],
       validationCommands: validationCommands.slice(0, 1),
       riskLevel: "high",
       modelTier: "large"
@@ -29389,10 +30174,10 @@ function rigorousPhases(targets, validationCommands, triage, boundaries) {
     phase({
       id: "phase-2",
       objective: "Implement the approved high-risk behavior change.",
-      rationale: "The implementation phase depends on the established risk boundary.",
+      rationale: "The implementation phase depends on the established risk boundary and keeps required producer-consumer wiring together when needed for an independently valid repository state.",
       dependencies: ["phase-1"],
       areas: targets,
-      acceptance: ["The change preserves relevant contracts and invariants.", "Scope deviations are recorded before continuing."],
+      acceptance: ["A focused behavior check records the preserved contracts and invariants.", "Any scope deviation is recorded before continuing."],
       validationCommands,
       riskLevel: "high",
       modelTier: "large"
@@ -29400,10 +30185,10 @@ function rigorousPhases(targets, validationCommands, triage, boundaries) {
     phase({
       id: "phase-3",
       objective: "Add high-risk regression and integration validation evidence.",
-      rationale: "Rigorous mode requires broader evidence before final integrated review.",
+      rationale: "Rigorous mode keeps integration evidence with every required producer and consumer boundary so the completed phase is independently valid before final review.",
       dependencies: ["phase-2"],
-      areas: unique9([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
-      acceptance: ["Targeted and broader checks are recorded or explicitly skipped with reasons.", "The diff is ready for deep integrated review."],
+      areas: targets,
+      acceptance: ["Targeted and broader checks are recorded or explicitly skipped with reasons.", "The full configured validation set passes before deep integrated review."],
       validationCommands,
       riskLevel: "high",
       modelTier: "large"
@@ -29415,7 +30200,7 @@ function inferBoundaries(request, triage, targets) {
   return {
     backend: /\b(api|backend|server|service|database|db|persistence|schema)\b/.test(text),
     frontend: /\b(frontend|front-end|ui|client|consumer|component|editor|page|view)\b/.test(text),
-    migration: /\b(migration|migrations|rollback|schema change|database)\b/.test(text),
+    migration: /\b(migration|migrations|rollback|forward[- ]?fix|database migration)\b/.test(text),
     security: /\b(auth|authentication|authorization|permission|credential|secret|security)\b/.test(text),
     publicContract: /\b(api|contract|schema|openapi|graphql|proto|public)\b/.test(text),
     documentation: /\b(doc|docs|documentation|readme)\b/.test(text)
@@ -29425,8 +30210,86 @@ function filterAreas(targets, keywords) {
   const filtered = targets.filter((target) => keywords.some((keyword) => target.toLowerCase().includes(keyword)));
   return filtered.length > 0 ? filtered : targets;
 }
+function discoverPlanningTargets(root, requestEvidence, proposed) {
+  const explicit = unique9(proposed.filter(isPathLikeArea2));
+  if (explicit.length > 0) return explicit;
+  const glob = require2("fast-glob");
+  const files = glob.sync([
+    "src/**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php}",
+    "tests/**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php}",
+    "test/**/*.{ts,tsx,js,jsx,mjs,cjs,py,rs,go,java,kt,rb,php}",
+    "**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs,py}",
+    "README.md",
+    "docs/**/*.md"
+  ], {
+    cwd: root,
+    onlyFiles: true,
+    unique: true,
+    ignore: ["**/node_modules/**", "dist/**", "runtime/**", ".git/**", ".leanrigor/**"]
+  }).slice(0, 240);
+  const tokens = planningSearchTokens(requestEvidence);
+  const scored = files.map((file2) => {
+    const pathText = file2.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    let score = tokens.reduce((total, token) => total + (pathText.includes(token) ? 5 : 0), 0);
+    if (score === 0 && existsSync3(path20.join(root, file2))) {
+      try {
+        const content = readFileSync(path20.join(root, file2), "utf8").slice(0, 96e3).toLowerCase();
+        score += tokens.reduce((total, token) => total + (content.includes(token) ? 1 : 0), 0);
+      } catch {
+      }
+    }
+    if (/^(src|lib|app)\//.test(file2)) score += 1;
+    if (/\.(test|spec)\./.test(file2) || /^(tests?|__tests__)\//.test(file2)) score += 1;
+    return { file: file2, score };
+  }).filter((candidate) => candidate.score > 0).sort((left, right) => right.score - left.score || left.file.localeCompare(right.file));
+  const selected = unique9(scored.slice(0, 7).map((candidate) => candidate.file));
+  if (selected.length > 0) return selected;
+  const conservative = files.filter((file2) => /^(src|lib|app|tests?)\//.test(file2)).slice(0, 4);
+  if (conservative.length > 0) return conservative;
+  return unique9([
+    "src/**",
+    "tests/**",
+    .../\b(doc|docs|documentation|readme)\b/i.test(requestEvidence) ? ["docs/**", "README.md"] : []
+  ]);
+}
+function replaceNonPathAreas(value, fallback) {
+  const current = Array.isArray(value) ? value.filter((area) => typeof area === "string") : [];
+  const concrete = current.filter(isPathLikeArea2);
+  return unique9(concrete.length > 0 ? concrete : fallback);
+}
+function planningEvidenceText(request, evidence2) {
+  const workItems = evidence2?.referencedWorkItems ?? [];
+  return [
+    request,
+    ...workItems.flatMap((item) => [
+      item.title ?? "",
+      item.body ?? "",
+      ...item.acceptanceCriteria ?? []
+    ])
+  ].join("\n").slice(0, 96e3);
+}
+function applyEnrichedAcceptanceCriteria(phases, evidence2) {
+  if (phases.length === 0) return;
+  const criteria = unique9((evidence2?.referencedWorkItems ?? []).flatMap((item) => item.acceptanceCriteria ?? []));
+  if (criteria.length === 0) return;
+  for (const criterion of criteria) {
+    const category = classifyAcceptanceOutcome(criterion);
+    const index = acceptancePhaseIndex(category, phases.length);
+    phases[index].acceptanceCriteria = unique9([...phases[index].acceptanceCriteria, criterion]);
+  }
+}
+function acceptancePhaseIndex(category, phaseCount) {
+  if (phaseCount === 1) return 0;
+  if (["persistence", "compatibility", "schema", "public-contract", "migration"].includes(category)) return 0;
+  if (["documentation", "validation", "integration"].includes(category)) return phaseCount - 1;
+  return Math.min(1, phaseCount - 1);
+}
+function planningSearchTokens(request) {
+  const stop = /* @__PURE__ */ new Set(["about", "after", "against", "change", "current", "from", "implement", "into", "issue", "request", "require", "should", "that", "their", "these", "this", "through", "using", "with", "without"]);
+  return unique9((request.toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) ?? []).map((token) => token.replace(/(?:ing|ed|s)$/, "")).filter((token) => token.length >= 4 && !stop.has(token))).slice(0, 24);
+}
 function validatePlanQuality(plan, mode2, config2) {
-  return validatePlanQualityDetailed(plan, mode2, config2).map((diagnostic2) => diagnostic2.message);
+  return validatePlanQualityDetailed(plan, mode2, config2).map((diagnostic3) => diagnostic3.message);
 }
 function validatePlanQualityDetailed(plan, mode2, config2) {
   const issues = [];
@@ -29443,6 +30306,9 @@ function validatePlanQualityDetailed(plan, mode2, config2) {
     }
     if (phase2.validationCommands.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("validationCommands"), "validation.missing", `Phase ${phase2.id} has no validation command or check expectation.`));
     if (phase2.expectedFilesOrAreas.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.missing_write_area", `Phase ${phase2.id} has no bounded expected write area.`));
+    if (phase2.expectedFilesOrAreas.some((area) => !isPathLikeArea2(area))) {
+      issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.non_path_write_area", `Phase ${phase2.id} contains a write area that is not a repository-relative path or glob.`));
+    }
     if (phase2.expectedFilesOrAreas.length >= (config2?.taskSizing.reviewSplitThresholdFiles ?? 8) && mode2 !== "fast") {
       issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.too_many_write_areas", `Phase ${phase2.id} lists many expected write areas and should be reviewed for splitting.`));
     }
@@ -29471,7 +30337,8 @@ function validatePlanQualityDetailed(plan, mode2, config2) {
     visited.add(id);
   };
   for (const phase2 of plan.phases) visit(phase2.id);
-  return uniqueDiagnostics2(issues);
+  issues.push(...validatePhaseGraphQuality(plan));
+  return uniqueDiagnostics3(issues);
 }
 function isBroadContainer(objective) {
   return /\b(whole feature|backend, frontend|frontend, tests|tests and docs|some related|various|everything|all changes|whole task)\b/i.test(objective);
@@ -29479,12 +30346,15 @@ function isBroadContainer(objective) {
 function isInspectableCriterion(criterion) {
   const lower = criterion.toLowerCase();
   if (/^(done|works|complete|as needed|tbd)\.?$/.test(lower.trim())) return false;
-  return lower.length >= 12;
+  return lower.length >= 12 && isObservableAcceptanceCriterion(criterion);
 }
 function mixedArchitecturalBoundary(phase2, mode2) {
   if (mode2 === "fast") return void 0;
   const productionGroups = unique9((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(areaBoundary).filter((group) => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
   if (productionGroups.length <= 1) return void 0;
+  if (/\b(independently valid|repository-state closure|producer-consumer|cross-boundary dependency|required producer and consumer)\b/i.test(phase2.rationale)) {
+    return void 0;
+  }
   return `Phase ${phase2.id} writes multiple architectural boundaries (${productionGroups.join(", ")}); split the phase or make the dependency boundary explicit.`;
 }
 function areaBoundary(area) {
@@ -29496,6 +30366,7 @@ function areaBoundary(area) {
   if (/^(src\/config)\//.test(normalized2)) return "src/config";
   if (/^(src\/cli)\//.test(normalized2)) return "src/cli";
   if (/^(src\/adapters\/[^/]+)/.test(normalized2)) return normalized2.match(/^(src\/adapters\/[^/]+)/)?.[1];
+  if (/^(src|lib|app)\/[^/]+\.[a-z0-9]+$/.test(normalized2)) return normalized2.split("/")[0];
   if (/^(src\/[^/]+)/.test(normalized2)) return normalized2.match(/^(src\/[^/]+)/)?.[1];
   if (/^([^/]+\/[^/]+)/.test(normalized2) && isPathLikeArea2(normalized2)) return normalized2.match(/^([^/]+\/[^/]+)/)?.[1];
   return void 0;
@@ -29503,14 +30374,14 @@ function areaBoundary(area) {
 function planDiagnostic(stage, pathParts, code, message, details = {}) {
   return { stage, path: pathParts, code, message, ...details };
 }
-function uniqueDiagnostics2(diagnostics) {
+function uniqueDiagnostics3(diagnostics) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const diagnostic2 of diagnostics) {
-    const key = `${diagnostic2.stage}:${diagnostic2.code}:${diagnostic2.path.join(".")}:${diagnostic2.message}`;
+  for (const diagnostic3 of diagnostics) {
+    const key = `${diagnostic3.stage}:${diagnostic3.code}:${diagnostic3.path.join(".")}:${diagnostic3.message}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push(diagnostic2);
+    out.push(diagnostic3);
   }
   return out;
 }
@@ -30156,11 +31027,20 @@ function persistPhaseBriefOutcome(state, phase2, outcome, requiresApproval) {
     state.phaseBriefFailures[phase2.id] = outcome.failure;
     state.blockers = unique9([...state.blockers, `${blockerPrefix} ${outcome.failure.message}`]);
     supersedePendingPhaseApproval(state);
+    const planningFailure = outcome.failure.failureOwnership === "leanrigor_generation_failure";
+    const planInsufficiency = outcome.failure.diagnostics.some((item) => item.code.startsWith("dependency.") || item.code.startsWith("scope."));
+    const allowedActions = [
+      ...!planningFailure && outcome.failure.recoveryAttempts?.at(-1)?.disposition !== "skipped-identical" ? ["retry-brief"] : [],
+      ...planInsufficiency ? ["revise-plan"] : [],
+      "view-details",
+      "cancel-workflow"
+    ];
+    const question = planningFailure ? "LeanRigor could not produce a valid phase brief from the available evidence. This is a LeanRigor planning failure, not a rejected user decision. The approved Workflow Plan remains intact." : outcome.failure.message;
     setPendingDecision(state, {
       type: "execution-recovery",
       phaseId: phase2.id,
-      question: outcome.failure.message,
-      allowedActions: ["retry-brief", "revise-plan", "view-details", "cancel-workflow"]
+      question,
+      allowedActions
     });
     appendEvent(state, "phase_brief_blocked", `${outcome.failure.message} ${outcome.failure.diagnostics.map((item) => item.message).join(" ")}`, phase2.id);
     return;
@@ -31085,7 +31965,14 @@ async function preparePhaseWorkspace(args) {
     if (before !== after) {
       return { ...result, status: "failed", approvalRequired: true, reason: "Bootstrap changed package manifests or lockfiles; provider dispatch is blocked.", evidence: [...result.evidence, "manifest identity changed", `${install.stdout}${install.stderr}`.slice(0, 1e3)] };
     }
-    return { ...result, status: "prepared", dependencies: "available", reason: "Lockfile-preserving dependency bootstrap completed.", evidence: [...result.evidence, "bootstrap exit status 0"] };
+    return {
+      ...result,
+      status: "prepared",
+      dependencies: "available",
+      validationCommandsAvailable: true,
+      reason: "Lockfile-preserving dependency bootstrap completed.",
+      evidence: [...result.evidence, "bootstrap exit status 0"]
+    };
   } catch (error51) {
     return { ...result, status: "failed", approvalRequired: true, reason: `Dependency bootstrap failed: ${error51 instanceof Error ? error51.message : String(error51)}` };
   }
@@ -32109,7 +32996,7 @@ function errorDetails(error51) {
 
 // src/core/execution/scripted-provider.ts
 import { randomUUID as randomUUID6 } from "node:crypto";
-import { mkdir as mkdir11, rm as rm4, writeFile as writeFile11 } from "node:fs/promises";
+import { mkdir as mkdir11, rm as rm5, writeFile as writeFile11 } from "node:fs/promises";
 import path24 from "node:path";
 var ScriptedExecutionProvider = class {
   constructor(scripts = {}, clock = () => Date.now()) {
@@ -32218,7 +33105,7 @@ var ScriptedExecutionProvider = class {
         throw new ExecutionError("workspace_mismatch", `Scripted edit escapes workspace: ${edit.path}`);
       }
       if (edit.delete) {
-        await rm4(target, { force: true, recursive: true });
+        await rm5(target, { force: true, recursive: true });
         continue;
       }
       await mkdir11(path24.dirname(target), { recursive: true });

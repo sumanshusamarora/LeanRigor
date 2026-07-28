@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access, constants, lstat, mkdir, readFile, readdir, readlink, realpath, stat, writeFile } from "node:fs/promises";
+import { access, constants, lstat, mkdir, readFile, readdir, readlink, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../config/schema.js";
@@ -505,16 +505,24 @@ export async function runIntegrationValidation(state: SequentialWorkflowState): 
       timestamp: timestamp()
     });
   } else {
-    for (const command of commands) {
-      const result = await runShellCommand(command, state.git.integration.path);
-      evidence.push({
-        command,
-        exitStatus: result.exitStatus,
-        result: result.output.slice(0, 4000),
-        status: result.exitStatus === 0 ? "passed" : "failed",
-        skipped: false,
-        timestamp: timestamp()
-      });
+    const projectFallback = await projectLocalValidationFallback(
+      state.git.integration.path,
+      state.git.context.repositoryRoot
+    );
+    try {
+      for (const command of commands) {
+        const result = await runShellCommand(command, state.git.integration.path, Boolean(projectFallback));
+        evidence.push({
+          command,
+          exitStatus: result.exitStatus,
+          result: result.output.slice(0, 4000),
+          status: result.exitStatus === 0 ? "passed" : "failed",
+          skipped: false,
+          timestamp: timestamp()
+        });
+      }
+    } finally {
+      await projectFallback?.cleanup();
     }
   }
   const failed = evidence.some((item) => item.status === "failed");
@@ -525,7 +533,12 @@ export async function runIntegrationValidation(state: SequentialWorkflowState): 
     commands: evidence,
     startedAt,
     completedAt: timestamp(),
-    status: failed ? "failed" : skippedOnly ? "skipped" : "passed"
+    status: failed ? "failed" : skippedOnly ? "skipped" : "passed",
+    failureOwnership: failed
+      ? evidence.some((item) => item.exitStatus === 126 || item.exitStatus === 127 || /\b(?:not found|enoent)\b/i.test(item.result))
+        ? "environment_failure"
+        : "validation_failure"
+      : undefined
   };
   next.git!.integration.status = failed ? "needs_repair" : "ready_for_final_review";
   return next;
@@ -734,13 +747,61 @@ async function git(cwd: string, args: string[], options: { maxBuffer?: number } 
   return stdout;
 }
 
-async function runShellCommand(command: string, cwd: string): Promise<{ exitStatus: number; output: string }> {
+async function runShellCommand(command: string, cwd: string, projectLocalFallback = false): Promise<{ exitStatus: number; output: string }> {
   try {
-    const { stdout, stderr } = await execFileAsync("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
-    return { exitStatus: 0, output: `${stdout}${stderr}`.trim() || "Command completed successfully." };
+    const { stdout, stderr } = await execFileAsync("bash", ["-lc", command], {
+      cwd,
+      encoding: "utf8",
+      maxBuffer: MAX_GIT_OUTPUT
+    });
+    const output = `${stdout}${stderr}`.trim() || "Command completed successfully.";
+    return {
+      exitStatus: 0,
+      output: projectLocalFallback ? `[project-local tool fallback: matching package and lockfile identity]\n${output}` : output
+    };
   } catch (error) {
     const failed = error as { code?: number; stdout?: string; stderr?: string; message?: string };
-    return { exitStatus: typeof failed.code === "number" ? failed.code : 1, output: `${failed.stdout ?? ""}${failed.stderr ?? failed.message ?? ""}`.trim() };
+    const output = `${failed.stdout ?? ""}${failed.stderr ?? failed.message ?? ""}`.trim();
+    return {
+      exitStatus: typeof failed.code === "number" ? failed.code : 1,
+      output: projectLocalFallback ? `[project-local tool fallback: matching package and lockfile identity]\n${output}` : output
+    };
+  }
+}
+
+async function projectLocalValidationFallback(
+  workspacePath: string,
+  projectRoot: string
+): Promise<{ cleanup: () => Promise<void> } | undefined> {
+  if (path.resolve(workspacePath) === path.resolve(projectRoot)) return undefined;
+  const workspaceModules = path.join(workspacePath, "node_modules");
+  const projectModules = path.join(projectRoot, "node_modules");
+  if (await pathExists(path.join(workspaceModules, ".bin"))) return undefined;
+  if (!await pathExists(path.join(projectModules, ".bin"))) return undefined;
+  const identityFiles = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
+  let compared = 0;
+  for (const name of identityFiles) {
+    const workspace = await fileIdentity(path.join(workspacePath, name));
+    const project = await fileIdentity(path.join(projectRoot, name));
+    if (workspace === undefined && project === undefined) continue;
+    compared += 1;
+    if (workspace === undefined || workspace !== project) return undefined;
+  }
+  if (compared === 0) return undefined;
+  await symlink(projectModules, workspaceModules, process.platform === "win32" ? "junction" : "dir");
+  return {
+    cleanup: async () => {
+      const info = await lstat(workspaceModules).catch(() => undefined);
+      if (info?.isSymbolicLink()) await rm(workspaceModules, { force: true });
+    }
+  };
+}
+
+async function fileIdentity(file: string): Promise<string | undefined> {
+  try {
+    return createHash("sha256").update(await readFile(file)).digest("hex");
+  } catch {
+    return undefined;
   }
 }
 

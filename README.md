@@ -65,10 +65,14 @@ the installed conversational lifecycle use one persisted decision envelope:
 controllers refresh after every transition, render exact persisted options,
 present provider completion, completion-gate acceptance, and integration
 separately, and use the persisted phase-result view rather than normal-path
-worktree inspection. A bundled-runtime scripted Rigorous smoke verifies the
-transition through a fresh Phase 2 approval decision.
+worktree inspection. Two independent clean-start Rigorous canaries using the
+installed deterministic scripted provider verify the complete lifecycle through
+final validation, final review, and explicit completion. These canaries verify
+workflow orchestration and gates; an authenticated live-provider run remains
+separate evidence.
 
 📖 **New to LeanRigor?** Follow the [first-workflow guide](docs/first-workflow.md) for a step-by-step walkthrough — from installation to your first commit proposal.
+For reproducible reliability evidence, see the [canary hardening methodology](docs/canary-hardening.md).
 
 Other useful commands:
 
@@ -170,6 +174,9 @@ A provider process exiting successfully does **not** complete a phase. LeanRigor
 - Repository-local, versioned workflow state under `.leanrigor/`.
 - Atomic revisions, persistent workflow locks, durable phase leases, heartbeats, and stale-lease recovery.
 - Small functional phases with dependencies, acceptance criteria, expected areas, and validation expectations.
+- Pre-approval phase-DAG checks for independent repository-state closure, future-phase leakage, dependency ordering, cycles, and overlapping write boundaries.
+- Observable acceptance synthesis across persistence, compatibility, schema, CLI, public-contract, workflow-state, failure, migration, security, concurrency, integration, documentation, and validation outcomes.
+- Structured artifact quality results with separate completeness, specificity, traceability, phase-closure, dependency-validity, evidence-coverage, recovery-viability, and internal-consistency dimensions.
 - Per-phase evidence-based completion gates with bounded repair, review, replan, and blocked outcomes.
 - Isolated phase and integration Git worktrees that leave the user's original working tree untouched.
 - Internal mechanical transfer commits on LeanRigor-owned branches only.
@@ -183,6 +190,8 @@ A provider process exiting successfully does **not** complete a phase. LeanRigor
 - Exact approved-brief provider input, deterministic brief staleness, workspace preparation and bootstrap decisions, result identity checks, and write-boundary enforcement.
 - Stable exact-revision decision envelopes shared by flow, execution, polling, recovery, and integration commands.
 - Persisted phase-result presentation that separates provider completion, deterministic acceptance, and integration without normal-path main-session worktree inspection.
+- Bounded brief recovery with diagnosed repair, refreshed inspection, alternative-strategy capability, deterministic fallback, attempt hashes, stable diagnostics, and identical-retry suppression.
+- Ownership-classified generation, evidence, provider, policy, environment, implementation, validation, and integration failures.
 - Bounded Claude CLI execution provider prototype for authenticated headless smoke testing with preserved partial progress on provider failure.
 
 ### Claude Code integration
@@ -219,6 +228,8 @@ Known limitations:
 
 - Claude Code is the only supported coding-agent integration today.
 - The Claude CLI execution provider is a prototype and requires an authenticated local Claude CLI for live smoke testing.
+- End-to-end hardening is verified with the deterministic scripted provider. Equivalent authenticated live-provider completion has not yet been verified.
+- Deterministic scripted-provider canaries prove workflow state, planning, recovery, approvals, validation, integration, and completion behavior; they do not prove that a live coding model will implement every repository request correctly.
 - Native Claude subagent orchestration is not yet integrated.
 - Scheduling and the coordinator are parallel-capable, but autonomous multi-agent execution is not yet presented as a stable user-facing capability.
 - Textual integration conflicts are detected and preserved; semantic conflict repair is not implemented.

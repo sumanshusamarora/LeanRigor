@@ -91,7 +91,7 @@ function buildPlanningPrompt(input: PlanningProviderInput): string {
     "- Good objective: 'Persist phase-specific test obligations in workflow state.'",
     "- Good objective: 'Require completion evidence to satisfy mandatory obligations.'",
     "- Bad objective: 'Implement backend, frontend, tests, docs, and migration changes.'",
-    "- Bad objective: 'Do everything needed for issue 12.'",
+    "- Bad objective: 'Do everything needed for the referenced work item.'",
     "- A single architectural boundary is determined from expectedWriteAreas, not from words in the objective. Keep each phase within one production owner such as src/core, src/config, src/cli, or one adapter unless dependencies make the boundary explicit.",
     "- Migration, security, schema, compatibility, failure, concurrency, recovery, contract, and regression may be obligation categories. These words do not by themselves mean a phase mixes boundaries.",
     "- Every phase must include specific acceptance criteria, at least one validation command or check expectation, and bounded expected write areas.",

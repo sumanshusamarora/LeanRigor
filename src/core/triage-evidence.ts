@@ -23,7 +23,7 @@ const SIGNAL_PATTERNS: Record<keyof TriageEvidencePacket["changeSignals"], RegEx
   taskType: undefined,
   namedBoundaries: undefined,
   publicContract: /\b(public api|public contract|api contract|breaking api|graphql schema|openapi|sdk)\b/i,
-  schemaChange: /\b(schema|contract|graphql|openapi|protobuf|migration)\b/i,
+  schemaChange: /\b(schema|contract|graphql|openapi|protobuf|migration|workflow[- ]state persistence|persist(?:ed|ing)?\s+(?:records?\s+)?in workflow state)\b/i,
   migration: /\b(migration|migrate|database schema|db schema|prisma migrate)\b/i,
   security: /\b(auth|authenticated|authentication|authorization|authorisation|permission|secret|credential|encryption|privacy|compliance)\b/i,
   concurrency: /\b(concurrency|race condition|parallel|locking|duplicate-processing|distributed consistency)\b/i,
@@ -81,7 +81,11 @@ export async function collectTriageEvidence(args: {
   const requestOnlyDocs = taskType === "documentation" && namedPaths.every((candidate) => /(^|\/)(readme|docs?|changelog|.*\.md$)/i.test(candidate));
   const signals = Object.fromEntries(Object.entries(SIGNAL_PATTERNS).flatMap(([key, pattern]) => {
     if (!pattern) return [];
-    const matched = pattern.test(evidenceText);
+    const matched = signalDescribesChangedBehaviour(
+      key as keyof Omit<TriageEvidencePacket["changeSignals"], "taskType" | "namedBoundaries">,
+      pattern,
+      evidenceText
+    );
     const value: TriageSignalValue = matched ? true : requestOnlyDocs ? false : "unknown";
     add(findings, `changeSignals.${key}`, value, matched ? "verified" : requestOnlyDocs ? "inferred" : "unknown", matched ? "explicit request or work-item terminology" : requestOnlyDocs ? "documentation-only request" : "not resolved by bounded evidence");
     return [[key, value]];
@@ -118,6 +122,27 @@ export async function collectTriageEvidence(args: {
     deterministicFindings: findings,
     unresolvedQuestions
   };
+}
+
+function signalDescribesChangedBehaviour(
+  key: keyof Omit<TriageEvidencePacket["changeSignals"], "taskType" | "namedBoundaries">,
+  pattern: RegExp,
+  evidenceText: string
+): boolean {
+  const clauses = evidenceText.split(/[\n.!?]+/).map((value) => value.trim()).filter(Boolean);
+  return clauses.some((clause) => {
+    if (!pattern.test(clause)) return false;
+    if (
+      key === "schemaChange"
+      && /\b(?:persist(?:ed|ing)?\s+(?:records?\s+)?in workflow state|workflow[- ]state persistence)\b/i.test(clause)
+    ) {
+      return true;
+    }
+    const metaOnly = /\b(obligations?|coverage|categories?|classification|detect(?:ion)?|planning rules?|policy rules?|test design|candidate|where relevant|defaults or migration)\b/i.test(clause);
+    if (!metaOnly) return true;
+    const directChange = /\b(add|apply|change|create|delete|drop|implement|migrate|modify|remove|replace|run|update)\b/i.test(clause);
+    return directChange && !/\b(obligations?|coverage|categories?|classification|detect(?:ion)?|planning rules?|policy rules?|test design|defaults or migration)\b/i.test(clause);
+  });
 }
 
 export function materialUnknowns(evidence: TriageEvidencePacket): string[] {

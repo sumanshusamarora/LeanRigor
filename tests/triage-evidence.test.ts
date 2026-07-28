@@ -92,7 +92,21 @@ describe("triage evidence collection", () => {
     expect(evidence.deterministicFindings.some((finding) => finding.key.endsWith(".goal"))).toBe(true);
     expect(evidence.deterministicFindings.some((finding) => finding.key.endsWith(".safetyCompatibility"))).toBe(true);
     expect(evidence.changeSignals.namedBoundaries).toEqual(expect.arrayContaining(["workflow state", "planning", "completion gate", "validation evidence", "tests"]));
-    expect(evidence.changeSignals.migration).toBe(true);
+    expect(evidence.changeSignals.migration).toBe("unknown");
+    expect(evidence.changeSignals.schemaChange).toBe(true);
+  });
+
+  it("does not treat obligation categories as direct high-risk changes", async () => {
+    const root = await fixture();
+    const evidence = await collectTriageEvidence({
+      request: "Add planning rules that create migration, security, and concurrency test obligations.",
+      root,
+      config: defaultConfig()
+    });
+
+    expect(evidence.changeSignals.migration).not.toBe(true);
+    expect(evidence.changeSignals.security).not.toBe(true);
+    expect(evidence.changeSignals.concurrency).not.toBe(true);
   });
 
   it("records unavailable issue lookup explicitly", async () => {

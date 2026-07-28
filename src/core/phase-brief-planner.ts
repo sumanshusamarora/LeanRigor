@@ -13,7 +13,13 @@ import {
   repositoryRevision,
   type PhaseBriefInspectionIo
 } from "./phase-brief-inspection.js";
+import {
+  classifyPhaseBriefFailure,
+  evaluatePhaseBriefQuality,
+  recoveryAttempt
+} from "./workflow-quality.js";
 import type {
+  ArtifactRecoveryAttempt,
   MaterialPlanChange,
   PhaseBriefDiagnostic,
   PhaseBriefGenerationFailure,
@@ -42,6 +48,21 @@ export interface PhaseBriefProposal {
   risks: string[];
 }
 
+export type AcceptanceOutcomeCategory =
+  | "persistence"
+  | "compatibility"
+  | "schema"
+  | "public-contract"
+  | "cli"
+  | "workflow-state"
+  | "failure-handling"
+  | "migration"
+  | "security"
+  | "concurrency"
+  | "integration"
+  | "documentation"
+  | "validation";
+
 export interface PhaseBriefPlanningInput {
   state: SequentialWorkflowState;
   phase: WorkflowPhase;
@@ -67,6 +88,7 @@ export interface PhaseBriefPlanningProvider {
   name: string;
   generate(input: PhaseBriefPlanningInput): Promise<PhaseBriefPlanningResult>;
   repair?(input: PhaseBriefPlanningInput, request: PhaseBriefRepairRequest): Promise<PhaseBriefPlanningResult>;
+  alternate?(input: PhaseBriefPlanningInput, request: PhaseBriefRepairRequest): Promise<PhaseBriefPlanningResult>;
 }
 
 export type PhaseBriefGenerationOutcome =
@@ -107,7 +129,8 @@ export async function generateInspectedPhaseExecutionBrief(args: {
   provider?: PhaseBriefPlanningProvider;
   inspectionIo?: PhaseBriefInspectionIo;
 }): Promise<PhaseBriefGenerationOutcome> {
-  const provider = args.provider ?? new DeterministicPhaseBriefPlanningProvider();
+  const provider: PhaseBriefPlanningProvider = args.provider ?? new DeterministicPhaseBriefPlanningProvider();
+  const recoveryAttempts: ArtifactRecoveryAttempt[] = [];
   const initialRequest = derivePhaseBriefInspectionRequest(args.state, args.phase, args.config);
   const inspected = await inspectPhaseBrief({
     root: args.state.root,
@@ -134,11 +157,13 @@ export async function generateInspectedPhaseExecutionBrief(args: {
       result: inspected.result,
       repairAttempts: 0,
       provider: provider.name,
-      modelTier: tier
+      modelTier: tier,
+      recoveryAttempts
     });
   }
 
-  const input: PhaseBriefPlanningInput = {
+  let currentInspection = inspected;
+  let input: PhaseBriefPlanningInput = {
     state: args.state,
     phase: args.phase,
     inspection: inspected.result,
@@ -150,24 +175,36 @@ export async function generateInspectedPhaseExecutionBrief(args: {
   try {
     generation = await provider.generate(input);
   } catch (error) {
+    const diagnostics = [diagnostic("generation", "brief", "generation.provider_failed", messageOf(error))];
+    recoveryAttempts.push(recoveryAttempt({
+      attempts: recoveryAttempts,
+      strategy: "initial-generation",
+      provider: provider.name,
+      modelTier: tier,
+      input: { phase: args.phase, inspection: inspected.result },
+      inspectionIdentity: stableHash(inspected.result),
+      diagnostics,
+      disposition: "failed"
+    }));
     return blockedFailure({
       phase: args.phase,
       workflowRevision: planRevision,
       briefRevision: initialBriefRevision,
       status: "quality-blocked",
       message: `${args.phase.id} brief-planning provider failed: ${messageOf(error)}`,
-      diagnostics: [diagnostic("generation", "brief", "generation.provider_failed", messageOf(error))],
+      diagnostics,
       request: inspected.request,
       result: inspected.result,
       repairAttempts: 0,
       provider: provider.name,
-      modelTier: tier
+      modelTier: tier,
+      recoveryAttempts
     });
   }
 
   const repo = await repositoryRevision(args.state.root);
   const constraintHash = stableHash(effectiveConstraints(args.state));
-  const inspectionResultId = stableHash(inspected.result);
+  let inspectionResultId = phaseBriefInspectionIdentity(inspected.result);
   let brief = assembleBrief({
     state: args.state,
     phase: args.phase,
@@ -195,6 +232,19 @@ export async function generateInspectedPhaseExecutionBrief(args: {
     repairAttempts: 0
   });
   let diagnostics = validatePhaseExecutionBrief(brief, args.phase);
+  recoveryAttempts.push(recoveryAttempt({
+    attempts: recoveryAttempts,
+    strategy: "initial-generation",
+    provider: generation.provider,
+    modelTier: generation.modelTier ?? tier,
+    input: { phase: args.phase, inspection: inspected.result },
+    output: generation.proposal,
+    inspectionIdentity: inspectionResultId,
+    diagnostics,
+    disposition: diagnostics.length === 0 ? "succeeded" : "continue"
+  }));
+  brief.recoveryAttempts = [...recoveryAttempts];
+  brief.quality = evaluatePhaseBriefQuality(brief, args.phase, diagnostics);
   const maxRepairs = Math.min(args.config.budgets.phaseBriefRepairAttempts, provider.repair ? 1 : 0);
 
   if (diagnostics.length > 0 && maxRepairs > 0 && provider.repair) {
@@ -231,8 +281,243 @@ export async function generateInspectedPhaseExecutionBrief(args: {
         ...repairedDiagnostics.filter((item) => !diagnostics.some((original) => original.field === item.field && original.code === item.code))
       ];
       diagnostics = repairedDiagnostics;
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "targeted-repair",
+        provider: repaired.provider,
+        modelTier: repaired.modelTier ?? generation.modelTier ?? tier,
+        input: generation.proposal,
+        output: repairedProposal,
+        inspectionIdentity: inspectionResultId,
+        diagnostics: repairedDiagnostics,
+        disposition: repairedDiagnostics.length === 0 ? "succeeded" : "continue"
+      }));
+      brief.recoveryAttempts = [...recoveryAttempts];
+      brief.quality = evaluatePhaseBriefQuality(brief, args.phase, repairedDiagnostics);
     } catch (error) {
       diagnostics.push(diagnostic("generation", "brief", "repair.provider_failed", messageOf(error), "same-provider"));
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "targeted-repair",
+        provider: provider.name,
+        modelTier: tier,
+        input: generation.proposal,
+        inspectionIdentity: inspectionResultId,
+        diagnostics,
+        disposition: "failed"
+      }));
+    }
+  }
+
+  if (diagnostics.length > 0 && args.config.budgets.phaseBriefRefreshedInspectionAttempts > 0) {
+    const refreshed = await inspectPhaseBrief({
+      root: args.state.root,
+      state: args.state,
+      phase: args.phase,
+      request: derivePhaseBriefInspectionRequest(args.state, args.phase, args.config),
+      io: args.inspectionIo,
+      provider: provider.name
+    });
+    const refreshedIdentity = phaseBriefInspectionIdentity(refreshed.result);
+    if (refreshedIdentity === inspectionResultId) {
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "refreshed-inspection",
+        provider: provider.name,
+        modelTier: tier,
+        input: { phase: args.phase, inspectionIdentity: inspectionResultId },
+        inspectionIdentity: inspectionResultId,
+        diagnostics,
+        disposition: "skipped-identical"
+      }));
+    } else if (!["failed", "unavailable"].includes(refreshed.result.status)) {
+      currentInspection = refreshed;
+      inspectionResultId = refreshedIdentity;
+      input = {
+        ...input,
+        inspection: refreshed.result,
+        feedback: recoveryFeedback(args.feedback, diagnostics, "Use the refreshed bounded repository evidence.")
+      };
+      try {
+        const refreshedGeneration = await provider.generate(input);
+        const refreshedBrief = assembleBrief({
+          state: args.state,
+          phase: args.phase,
+          previous: args.previous,
+          feedback: input.feedback,
+          proposal: refreshedGeneration.proposal,
+          provider: refreshedGeneration.provider,
+          modelTier: refreshedGeneration.modelTier ?? tier,
+          warnings: unique([...(brief.generation.warnings ?? []), ...(refreshedGeneration.warnings ?? []), "LeanRigor refreshed bounded repository inspection before regenerating this brief."]),
+          request: refreshed.request,
+          inspection: refreshed.result,
+          workflowRevision: planRevision,
+          briefRevision: brief.briefRevision + 1,
+          repository: {
+            ...brief.repository,
+            inspectionResultId,
+            inspectedPaths: refreshed.result.filesRead
+          },
+          repairAttempts: brief.validation.repairAttempts
+        });
+        const refreshedDiagnostics = validatePhaseExecutionBrief(refreshedBrief, args.phase);
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "refreshed-inspection",
+          provider: refreshedGeneration.provider,
+          modelTier: refreshedGeneration.modelTier ?? tier,
+          input: { phase: args.phase, inspection: refreshed.result },
+          output: refreshedGeneration.proposal,
+          inspectionIdentity: inspectionResultId,
+          diagnostics: refreshedDiagnostics,
+          disposition: refreshedDiagnostics.length === 0 ? "succeeded" : "continue"
+        }));
+        brief = refreshedBrief;
+        diagnostics = refreshedDiagnostics;
+      } catch (error) {
+        const refreshedDiagnostics = [
+          ...diagnostics,
+          diagnostic("generation", "brief", "refresh.provider_failed", messageOf(error))
+        ];
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "refreshed-inspection",
+          provider: provider.name,
+          modelTier: tier,
+          input: { phase: args.phase, inspection: refreshed.result },
+          inspectionIdentity: inspectionResultId,
+          diagnostics: refreshedDiagnostics,
+          disposition: "failed"
+        }));
+        diagnostics = refreshedDiagnostics;
+      }
+    } else {
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "refreshed-inspection",
+        provider: provider.name,
+        modelTier: tier,
+        input: { phase: args.phase, inspection: refreshed.result },
+        inspectionIdentity: refreshedIdentity,
+        diagnostics,
+        disposition: "failed"
+      }));
+    }
+    brief.recoveryAttempts = [...recoveryAttempts];
+    brief.quality = evaluatePhaseBriefQuality(brief, args.phase, diagnostics);
+  }
+
+  if (diagnostics.length > 0 && args.config.budgets.phaseBriefAlternateStrategyAttempts > 0) {
+    if (provider.alternate) {
+      try {
+        const alternate = await provider.alternate(input, { brief, diagnostics });
+        const alternateBrief = assembleBrief({
+          state: args.state,
+          phase: args.phase,
+          previous: args.previous,
+          feedback: recoveryFeedback(args.feedback, diagnostics, "Use an alternative planning strategy while preserving approved scope."),
+          proposal: alternate.proposal,
+          provider: alternate.provider,
+          modelTier: alternate.modelTier ?? tier,
+          warnings: unique([...(brief.generation.warnings ?? []), ...(alternate.warnings ?? []), "LeanRigor used a bounded alternative planning strategy after diagnosed repair remained invalid."]),
+          request: currentInspection.request,
+          inspection: currentInspection.result,
+          workflowRevision: planRevision,
+          briefRevision: brief.briefRevision + 1,
+          repository: brief.repository,
+          repairAttempts: brief.validation.repairAttempts
+        });
+        const alternateDiagnostics = validatePhaseExecutionBrief(alternateBrief, args.phase);
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "alternate-strategy",
+          provider: alternate.provider,
+          modelTier: alternate.modelTier ?? tier,
+          input: brief,
+          output: alternate.proposal,
+          inspectionIdentity: inspectionResultId,
+          diagnostics: alternateDiagnostics,
+          disposition: alternateDiagnostics.length === 0 ? "succeeded" : "continue"
+        }));
+        brief = alternateBrief;
+        diagnostics = alternateDiagnostics;
+      } catch (error) {
+        const alternateDiagnostics = [
+          ...diagnostics,
+          diagnostic("generation", "brief", "alternate.provider_failed", messageOf(error))
+        ];
+        recoveryAttempts.push(recoveryAttempt({
+          attempts: recoveryAttempts,
+          strategy: "alternate-strategy",
+          provider: provider.name,
+          modelTier: tier,
+          input: brief,
+          inspectionIdentity: inspectionResultId,
+          diagnostics: alternateDiagnostics,
+          disposition: "failed"
+        }));
+        diagnostics = alternateDiagnostics;
+      }
+    } else {
+      recoveryAttempts.push(recoveryAttempt({
+        attempts: recoveryAttempts,
+        strategy: "alternate-strategy",
+        provider: provider.name,
+        modelTier: tier,
+        input: brief,
+        inspectionIdentity: inspectionResultId,
+        diagnostics,
+        disposition: "failed"
+      }));
+    }
+    brief.recoveryAttempts = [...recoveryAttempts];
+    brief.quality = evaluatePhaseBriefQuality(brief, args.phase, diagnostics);
+  }
+
+  if (
+    diagnostics.length > 0
+    && provider.name !== "deterministic-phase-brief"
+    && args.config.budgets.phaseBriefDeterministicFallbackAttempts > 0
+  ) {
+    const fallbackProvider = new DeterministicPhaseBriefPlanningProvider();
+    const fallback = await fallbackProvider.generate(input);
+    const fallbackBrief = assembleBrief({
+      state: args.state,
+      phase: args.phase,
+      previous: args.previous,
+      feedback: args.feedback,
+      proposal: fallback.proposal,
+      provider: fallback.provider,
+      modelTier: fallback.modelTier ?? tier,
+      warnings: unique([...(generation.warnings ?? []), "LeanRigor deterministically synthesized a conservative brief after provider repair failed."]),
+      request: currentInspection.request,
+      inspection: currentInspection.result,
+      workflowRevision: planRevision,
+      briefRevision: brief.briefRevision + 1,
+      repository: brief.repository,
+      repairAttempts: brief.validation.repairAttempts
+    });
+    const fallbackDiagnostics = validatePhaseExecutionBrief(fallbackBrief, args.phase);
+    recoveryAttempts.push(recoveryAttempt({
+      attempts: recoveryAttempts,
+      strategy: "deterministic-fallback",
+      provider: fallback.provider,
+      modelTier: fallback.modelTier ?? tier,
+      input: brief,
+      output: fallback.proposal,
+      inspectionIdentity: inspectionResultId,
+      diagnostics: fallbackDiagnostics,
+      disposition: fallbackDiagnostics.length === 0 ? "succeeded" : "failed"
+    }));
+    fallbackBrief.recoveryAttempts = [...recoveryAttempts];
+    fallbackBrief.deterministicallySynthesized = true;
+    fallbackBrief.quality = evaluatePhaseBriefQuality(fallbackBrief, args.phase, fallbackDiagnostics);
+    if (fallbackDiagnostics.length === 0) {
+      brief = fallbackBrief;
+      diagnostics = [];
+    } else {
+      brief = fallbackBrief;
+      diagnostics = fallbackDiagnostics;
     }
   }
 
@@ -244,11 +529,13 @@ export async function generateInspectedPhaseExecutionBrief(args: {
       status: "quality-blocked",
       message: `${args.phase.id} execution brief failed deterministic quality validation.`,
       diagnostics: brief.validation.diagnostics.length > 0 ? brief.validation.diagnostics : diagnostics,
-      request: inspected.request,
-      result: inspected.result,
+      request: currentInspection.request,
+      result: currentInspection.result,
       repairAttempts: brief.validation.repairAttempts,
       provider: brief.generation.provider,
-      modelTier: brief.generation.modelTier
+      modelTier: brief.generation.modelTier,
+      recoveryAttempts,
+      quality: evaluatePhaseBriefQuality(brief, args.phase, diagnostics)
     });
   }
 
@@ -258,6 +545,8 @@ export async function generateInspectedPhaseExecutionBrief(args: {
     repairAttempts: brief.validation.repairAttempts,
     validatedAt: new Date().toISOString()
   };
+  brief.recoveryAttempts = [...recoveryAttempts];
+  brief.quality = evaluatePhaseBriefQuality(brief, args.phase, []);
   brief.approvalStatus = "pending";
   return { status: "generated", brief };
 }
@@ -331,7 +620,19 @@ export function classifyPhaseBriefChanges(
   const narrowedReads = proposal.readAreas.filter((candidate) => phase.expectedReadAreas.some((area) => withinArea(candidate, area)) && !phase.expectedReadAreas.includes(candidate));
   if (narrowedReads.length > 0) changes.push(change("read-boundary", phase.id, phase.expectedReadAreas, narrowedReads, false, "Read paths narrow an approved inspection area."));
   if (outsideWrites.length > 0) changes.push(change("write-boundary", phase.id, approvedWrites, outsideWrites, true, "The brief proposes a write path outside the approved Workflow Plan boundary."));
-  if (!sameItems(phase.acceptanceCriteria, proposal.acceptanceCriteria)) changes.push(change("acceptance-criteria", phase.id, phase.acceptanceCriteria, proposal.acceptanceCriteria, true, "The brief changes approved acceptance criteria."));
+  if (!sameItems(phase.acceptanceCriteria, proposal.acceptanceCriteria)) {
+    const traceabilityRefinement = isScopePreservingAcceptanceRefinement(phase.acceptanceCriteria, proposal.acceptanceCriteria);
+    changes.push(change(
+      "acceptance-criteria",
+      phase.id,
+      phase.acceptanceCriteria,
+      proposal.acceptanceCriteria,
+      !traceabilityRefinement,
+      traceabilityRefinement
+        ? "The brief preserves each approved requirement and adds observable evidence within the same phase boundary."
+        : "The brief changes approved acceptance criteria."
+    ));
+  }
   const removedValidation = phase.validationCommands.filter((command) => !proposal.validationCommands.includes(command));
   const addedValidation = proposal.validationCommands.filter((command) => !phase.validationCommands.includes(command));
   if (removedValidation.length > 0) {
@@ -392,7 +693,10 @@ function deterministicProposal(input: PhaseBriefPlanningInput): PhaseBriefPropos
     dependencies: dependencyIds(phase),
     assumptions: unique([...(state.triage?.assumptions ?? []), ...priorPhaseAssumptions(state, phase)]),
     exclusions: constraints,
-    acceptanceCriteria: [...phase.acceptanceCriteria],
+    acceptanceCriteria: synthesizeObservableAcceptanceCriteria(phase.acceptanceCriteria, {
+      validationCommands,
+      documentationOnly
+    }),
     testObligations,
     validationCommands,
     manualValidationPlan: validationCommands.length === 0 ? manualValidationPlan(documentationOnly, relevantFiles) : undefined,
@@ -467,7 +771,10 @@ function blockedFailure(args: {
   repairAttempts: number;
   provider: string;
   modelTier: ModelTier;
+  recoveryAttempts: ArtifactRecoveryAttempt[];
+  quality?: PhaseExecutionBrief["quality"];
 }): PhaseBriefGenerationOutcome {
+  const ownership = classifyPhaseBriefFailure(args.status, args.diagnostics);
   return {
     status: "blocked",
     failure: {
@@ -482,6 +789,9 @@ function blockedFailure(args: {
       repairAttempts: args.repairAttempts,
       provider: args.provider,
       modelTier: args.modelTier,
+      failureOwnership: ownership,
+      recoveryAttempts: args.recoveryAttempts,
+      quality: args.quality,
       failedAt: new Date().toISOString()
     }
   };
@@ -547,6 +857,91 @@ function deriveTestObligations(
   if (state.mode === "rigorous" || phase.riskLevel === "high") obligations.push("Cover a relevant failure path or rejected-input path.");
   for (const command of unique([...phase.validationCommands, ...inspection.validationCommands])) obligations.push(`Run configured check: ${command}.`);
   return unique(obligations);
+}
+
+export function synthesizeObservableAcceptanceCriteria(
+  criteria: string[],
+  context: { validationCommands?: string[]; documentationOnly?: boolean } = {}
+): string[] {
+  const validation = context.validationCommands?.[0];
+  return criteria.map((criterion) => {
+    const requirement = criterion.trim().replace(/[.!]+$/, "");
+    if (!needsEvidenceSynthesis(criterion)) return criterion.trim();
+    const category = classifyAcceptanceOutcome(requirement, context.documentationOnly);
+    const evidence = observableEvidenceFor(category, validation);
+    return `${requirement}. ${evidence}`;
+  });
+}
+
+export function classifyAcceptanceOutcome(
+  criterion: string,
+  documentationOnly = false
+): AcceptanceOutcomeCategory {
+  const value = criterion.toLowerCase();
+  if (documentationOnly || /\b(documentation|docs?|readme|guide|example|link)\b/.test(value)) return "documentation";
+  if (/\b(plan(?:ning)?|policy|rule|obligations?|coverage categor|requirement classification)\b/.test(value)) return "validation";
+  if (/\b(backward|forward|compatib|legacy|existing state|existing workflows?|remain(?:s)? loadable|previous(?:ly)? persisted|old state)\b/.test(value)) return "compatibility";
+  if (/\b(save|load|persist(?:s|ed|ence|ent|ing)?|round[- ]?trip|stored|storage|serialize|deserialize)\b/.test(value)) return "persistence";
+  if (/\b(migrat|rollback|forward[- ]?fix|versioned data)\b/.test(value)) return "migration";
+  if (/\b(cli|command[- ]?line|stdout|stderr|exit code|terminal output)\b/.test(value)) return "cli";
+  if (/\b(workflow state|state transition|lifecycle|status transition)\b/.test(value)) return "workflow-state";
+  if (/\b(reject|prevent|block|invalid|failure|error|malformed|unavailable|timeout|missing required)\b/.test(value)) return "failure-handling";
+  if (/\b(schema|serializ|deserializ|field|required|optional|enum|type shape|interface|property)\b/.test(value)) return "schema";
+  if (/\b(public|api|contract|consumer|protocol)\b/.test(value)) return "public-contract";
+  if (/\b(security|auth|permission|credential|secret|access control)\b/.test(value)) return "security";
+  if (/\b(concurr|idempoten|race|parallel|locking|lease)\b/.test(value)) return "concurrency";
+  if (/\b(integrat|end[- ]to[- ]end|combined|consumer)\b/.test(value)) return "integration";
+  return "validation";
+}
+
+function needsEvidenceSynthesis(criterion: string): boolean {
+  if (genericCriterion(criterion)) return true;
+  return !/\b(test|check|command|invocation|output|exit code|result|evidence|inspect|load(?:s|ed)?|save(?:s|d)?|round[- ]?trip|serialize[sd]?|deserialize[sd]?|pass(?:es|ed)?|fail(?:s|ed)?|reject(?:s|ed)?|return(?:s|ed)?|render(?:s|ed)?|emit(?:s|ted)?)\b/i.test(criterion);
+}
+
+export function isObservableAcceptanceCriterion(criterion: string): boolean {
+  return !needsEvidenceSynthesis(criterion);
+}
+
+function observableEvidenceFor(category: AcceptanceOutcomeCategory, validation?: string): string {
+  const check = validation ? ` and '${validation}' passes` : "";
+  switch (category) {
+    case "persistence":
+      return `A focused round-trip check saves and reloads representative state with the required values unchanged${check}.`;
+    case "compatibility":
+      return `A compatibility check loads a representative previously persisted state and preserves its observable behaviour${check}.`;
+    case "schema":
+      return `A focused schema or type-contract check accepts a representative valid value and rejects a malformed or incomplete value predictably${check}.`;
+    case "public-contract":
+      return `A focused contract check exercises the affected consumer-visible behaviour and records the returned value or emitted representation${check}.`;
+    case "cli":
+      return `A focused command invocation records its exit code and expected standard output or error output${check}.`;
+    case "workflow-state":
+      return `A focused transition check records the starting state, action, and deterministic resulting state${check}.`;
+    case "failure-handling":
+      return `A focused failure-path check supplies invalid or unavailable input and records the predictable rejection or error result${check}.`;
+    case "migration":
+      return `A focused migration check records the before and after representation and verifies the supported rollback or forward-fix path${check}.`;
+    case "security":
+      return `A focused policy check records an allowed case and a denied case without exposing protected data${check}.`;
+    case "concurrency":
+      return `A focused repeated or concurrent operation check records a stable, non-duplicated result${check}.`;
+    case "integration":
+      return `A focused integration check exercises the producing and consuming boundaries together and records the observable result${check}.`;
+    case "documentation":
+      return `A documentation check verifies the affected links, examples, and rendered structure against the implemented behaviour${check}.`;
+    case "validation":
+      return `A focused repository check exercises this requirement and records a passing result tied to the criterion${check}.`;
+  }
+}
+
+function isScopePreservingAcceptanceRefinement(approved: string[], proposed: string[]): boolean {
+  if (approved.length !== proposed.length) return false;
+  return approved.every((criterion, index) => {
+    const requirement = normalized(criterion);
+    const candidate = normalized(proposed[index] ?? "");
+    return candidate === requirement || candidate.startsWith(`${requirement}. `) || candidate.startsWith(`${requirement} `);
+  });
 }
 
 function deriveRisks(state: SequentialWorkflowState, phase: WorkflowPhase, inspection: PhaseBriefInspectionResult): string[] {
@@ -705,6 +1100,21 @@ function normalized(value: string): string {
 
 function stableHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function phaseBriefInspectionIdentity(result: PhaseBriefInspectionResult): string {
+  const stableResult: Partial<PhaseBriefInspectionResult> = { ...result };
+  delete stableResult.completedAt;
+  return stableHash(stableResult);
+}
+
+function recoveryFeedback(
+  feedback: string | undefined,
+  diagnostics: PhaseBriefDiagnostic[],
+  strategy: string
+): string {
+  const diagnosis = diagnostics.map((item) => `${item.code}: ${item.message}`).join("; ");
+  return [feedback?.trim(), strategy, `Diagnosed quality failures: ${diagnosis}`].filter(Boolean).join("\n");
 }
 
 function slash(value: string): string {

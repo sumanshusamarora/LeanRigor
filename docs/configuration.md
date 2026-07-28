@@ -191,12 +191,21 @@ Dedicated triage budgets live under `budgets`:
   repository inspection that informs one Phase Execution Brief;
 - `phaseBriefRepairAttempts`: bounded same-provider repair attempts after
   deterministic brief-quality diagnostics. The default is one and the current
-  maximum is two.
+  maximum is two;
+- `phaseBriefRefreshedInspectionAttempts`: bounded refreshes of repository
+  evidence after diagnosed repair remains invalid. The default is one;
+- `phaseBriefAlternateStrategyAttempts`: bounded alternative planning-strategy
+  attempts when the selected provider exposes that capability. The default is
+  one;
+- `phaseBriefDeterministicFallbackAttempts`: bounded conservative deterministic
+  synthesis after provider strategies are exhausted. The default is one.
 
 These budgets do not grant normal triage repository tools. They cap each stage
 after deterministic evidence collection has already bounded the discovery work.
 Phase brief limits likewise do not grant implementation tools, workspace
-creation, approval authority, or unrestricted repository traversal.
+creation, approval authority, or unrestricted repository traversal. An
+unchanged deterministic attempt is skipped, not counted as useful progress, and
+the ladder advances to the next configured strategy.
 
 ## Review, testing, and completion gates
 

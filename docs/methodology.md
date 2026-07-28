@@ -78,6 +78,58 @@ Methodology guides:
 
 Completion gates remain the state authority. Methodology improves the content submitted to those gates but cannot override a deterministic blocker.
 
+## Phase closure and acceptance traceability
+
+Every phase must leave an independently valid repository state. Anything needed
+to satisfy that phase's acceptance criteria must be produced by the phase or an
+earlier dependency. Plan validation rejects future-phase symbol leakage,
+missing or circular dependencies, incoherent validation ordering, and
+overlapping write boundaries without an ordering dependency. Documentation-only
+phases are not assigned unrelated build obligations.
+
+Acceptance criteria describe observable outcomes rather than only internal
+shapes. LeanRigor classifies the approved phase semantics and can conservatively
+synthesize evidence-bearing outcomes for persistence, compatibility, schema,
+public contract, CLI behavior, workflow state, failure handling, integration,
+validation, security, migration, concurrency, data integrity, and
+documentation. Synthesized criteria remain inside the approved phase boundary
+and pass the same deterministic quality gate.
+
+## Artifact quality and bounded recovery
+
+Major planning artifacts carry a structured quality result. Completeness,
+specificity, traceability, phase closure, dependency validity, evidence
+coverage, recovery viability, and internal consistency are evaluated
+separately. Each dimension records `pass`, `warning`, or `fail`, stable
+diagnostic codes, and concise evidence. Hard failures block progression;
+warnings proceed only when policy permits.
+
+LeanRigor owns recovery from its generated artifacts. Phase-brief recovery is
+bounded and ordered:
+
+```text
+initial generation
+-> targeted diagnosed repair
+-> refreshed bounded inspection
+-> alternative planning strategy when the provider supports one
+-> deterministic conservative fallback
+-> classified product failure
+```
+
+Every attempt records its strategy, provider and model tier, artifact hashes,
+inspection identity, validation diagnostics, whether a measurable factor
+changed, and final disposition. An unchanged deterministic attempt is skipped
+instead of being presented as a useful retry. Deterministic fallback artifacts
+are labelled, remain pending approval, and cannot weaken scope, risk, or
+validation requirements.
+
+Failures are classified by owner: LeanRigor generation, insufficient repository
+evidence, provider, user decision, policy, environment, implementation,
+validation, or integration. A LeanRigor generation failure does not ask the
+user to rewrite internal acceptance criteria or phase structure. User input is
+reserved for genuine product, architecture, migration, public-contract, risk,
+or destructive-action decisions.
+
 ## Relationship to execution providers
 
 Methodology is not tied to Claude Code. An execution provider may launch Claude CLI, a future native subagent, another coding agent, or a deterministic test worker. The provider should receive only the methodology relevant to the assigned phase and must return structured results rather than hidden reasoning.

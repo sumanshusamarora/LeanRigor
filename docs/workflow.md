@@ -176,7 +176,13 @@ and a meaningful dependency relationship to later phases.
 Plan validation checks that phase dependencies are acyclic, criteria are
 inspectable, validation expectations are present, no phase is an obvious
 container such as "implement the whole feature" or "update backend, frontend,
-tests and docs," and no phase contradicts approved effective constraints. For
+tests and docs," and no phase contradicts approved effective constraints. It
+also checks independent repository-state closure: a phase cannot require a
+symbol or behavior introduced only later, dependency producers must precede
+consumers, overlapping write boundaries require coherent ordering, and each
+implementation phase must define validation for the state it creates. Safe,
+scope-preserving dependency omissions are repaired deterministically before
+approval; cycles and material boundary changes fail closed. For
 example, a plan cannot reach approval if the user waived backward
 compatibility but a phase introduces a compatibility migration. LeanRigor first
 attempts same-model repair with the exact diagnostic; if the contradiction
@@ -221,10 +227,16 @@ more comprehensive deterministic obligation system remains separate work.
 Deterministic quality validation rejects copied phase prose, generic approaches,
 unbounded implementation writes, uninspectable criteria, missing validation or
 manual validation, unjustified missing tests, missing risk representation, and
-missing or mismatched provenance. Exact diagnostics may receive one bounded
-same-provider repair that changes only deficient fields. The pipeline
-revalidates and fails closed if repair is still inadequate; it never substitutes
-a generic approvable fallback.
+missing or mismatched provenance. It also records separate quality dimensions
+for completeness, specificity, traceability, phase closure, dependency
+validity, evidence coverage, recovery viability, and internal consistency.
+Exact diagnostics enter a configured recovery ladder: targeted field repair,
+refreshed bounded inspection, an alternative provider strategy when supported,
+and conservative deterministic synthesis. Every attempt persists strategy,
+provider/model tier, input and output hashes, inspection identity, diagnostics,
+change detection, and disposition. Identical deterministic generation is
+skipped. A fallback is labelled, must pass the same quality gate, stays inside
+the approved scope, and remains pending explicit phase approval.
 
 Exact file, symbol, narrowed-read, and additional configured-validation
 refinements are recorded as non-material. New write boundaries, removed
@@ -290,7 +302,12 @@ policy permits and no material change requires another decision.
 Recovery decisions cover workspace preparation, provider failure or
 interruption, stale results, completion-gate failure, integration conflicts,
 stale briefs, and material drift. Recovery never silently switches to
-main-session implementation.
+main-session implementation. Failures are classified as LeanRigor generation,
+insufficient repository evidence, provider, user decision, policy, environment,
+implementation, validation, or integration failures. LeanRigor-generated
+planning defects are repaired internally; users are asked only for decisions
+that require product, architecture, migration, public-contract, risk, or
+destructive-action judgment.
 
 ### Adaptive Approval
 

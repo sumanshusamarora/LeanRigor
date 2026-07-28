@@ -650,6 +650,24 @@
           "maximum": 2,
           "default": 1
         },
+        "phaseBriefRefreshedInspectionAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 1
+        },
+        "phaseBriefAlternateStrategyAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 1
+        },
+        "phaseBriefDeterministicFallbackAttempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 1
+        },
         "planningMaxTurns": {
           "type": "integer",
           "minimum": 1,
