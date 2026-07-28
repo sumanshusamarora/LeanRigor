@@ -53,6 +53,8 @@ Then, from any repository:
 
 LeanRigor creates repository-local state under `.leanrigor/`, presents the selected mode and approvals conversationally, coordinates phased work, requires completion evidence, runs final integrated review, and proposes commits without creating the final user commit or pushing.
 
+LeanRigor approves the overall Workflow Plan first, then persists a current Phase Execution Brief before coordinator dispatch. Standard workflows deterministically recommend either authorising all remaining phases or approving one phase at a time from current risk, uncertainty, and dependency evidence. Material scope or risk changes always pause for reapproval.
+
 📖 **New to LeanRigor?** Follow the [first-workflow guide](docs/first-workflow.md) for a step-by-step walkthrough — from installation to your first commit proposal.
 
 Other useful commands:

@@ -170,9 +170,10 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     const controller = new AbortController();
     const stdout = await open(stdoutPath, "w");
     const stderr = await open(stderrPath, "w");
-    const child = spawn(this.options.command ?? "claude", args, {
+    const invocation = windowsBatchInvocation(this.options.command ?? "claude", args);
+    const child = spawn(invocation.command, invocation.args, {
       cwd: input.workspacePath,
-      detached: true,
+      detached: process.platform !== "win32",
       stdio: ["ignore", stdout.fd, stderr.fd],
       signal: controller.signal,
       env: boundedClaudeEnv(process.env)
@@ -278,10 +279,34 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
   }
 }
 
+function windowsBatchInvocation(command: string, args: string[]): { command: string; args: string[] } {
+  if (process.platform !== "win32" || !/\.(?:cmd|bat)$/i.test(command)) return { command, args };
+  return {
+    command: process.env.ComSpec ?? "cmd.exe",
+    args: ["/d", "/c", "call", command, ...args]
+  };
+}
+
 async function writeStatus(statusPath: string, status: PersistedClaudeStatus): Promise<void> {
-  const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(status, null, 2)}\n`, "utf8");
-  await rename(tempPath, statusPath);
+  const content = `${JSON.stringify(status, null, 2)}\n`;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const tempPath = `${statusPath}.${process.pid}.${Date.now()}.${attempt}.tmp`;
+    try {
+      await writeFile(tempPath, content, "utf8");
+      await rename(tempPath, statusPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if ((error as NodeJS.ErrnoException).code !== "EPERM" && (error as NodeJS.ErrnoException).code !== "EACCES") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+    }
+  }
+  try {
+    await writeFile(statusPath, content, "utf8");
+  } catch {
+    throw lastError;
+  }
 }
 
 async function readPersistedStatus(handle: ExecutionHandle): Promise<PersistedClaudeStatus | undefined> {

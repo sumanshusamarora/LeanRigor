@@ -446,7 +446,7 @@ function assetManifest(triageModel: string): Array<{ src: string; dest: string; 
 
 /** Asset manifest without the shared settings.json entry. Used by bootstrap. */
 function assetManifestWithoutSettings(triageModel: string): Array<{ src: string; dest: string; vars?: Record<string, string> }> {
-  return assetManifest(triageModel).filter((entry) => entry.dest !== ".claude/settings.json");
+  return assetManifest(triageModel).filter((entry) => entry.dest !== path.join(".claude", "settings.json"));
 }
 
 export class ClaudeAdapter implements HarnessAdapter {

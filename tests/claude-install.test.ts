@@ -352,8 +352,7 @@ describe("Claude plugin doctor", () => {
     expect(text).toContain("Git protection hook:");
     expect(text).toContain("current and executable");
     expect(text).toContain(`Package version:`);
-    // settings.json is excluded from total (handled by settings-merger)
-    const assetCount = EXPECTED_DEST_PATHS.filter(p => p !== path.join(".claude", "settings.json")).length;
+    const assetCount = EXPECTED_DEST_PATHS.length;
     expect(text).toContain(`Fallback assets: ${assetCount}/${assetCount}`);
   });
 
@@ -476,6 +475,7 @@ describe("Claude plugin asset structure validation", () => {
   });
 
   it("allows ordinary Bash commands without hook errors", async () => {
+    if (!POSIX) return;
     const root = await tempRepo();
     await new ClaudeAdapter().install(root, defaultConfig());
     const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");
@@ -487,6 +487,7 @@ describe("Claude plugin asset structure validation", () => {
   });
 
   it("blocks prohibited Git commands with the expected hook decision", async () => {
+    if (!POSIX) return;
     const root = await tempRepo();
     await new ClaudeAdapter().install(root, defaultConfig());
     const hook = path.join(root, ".claude", "leanrigor", "protect-git.sh");

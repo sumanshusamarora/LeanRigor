@@ -30,7 +30,10 @@ leanrigor flow next <workflow-id> --json
 leanrigor flow status <workflow-id>
 leanrigor flow answer <workflow-id> "<answer>"
 leanrigor flow approve-approach <workflow-id>
-leanrigor flow approve-plan <workflow-id>
+leanrigor flow approve-plan <workflow-id> --approval-policy workflow-authorized
+leanrigor flow approve-plan <workflow-id> --approval-policy phase-by-phase
+leanrigor flow phase-brief <workflow-id> phase-1
+leanrigor flow approve-phase <workflow-id> phase-1 --brief-revision 1
 leanrigor flow ready <workflow-id> --json
 leanrigor flow execute-next <workflow-id> --provider scripted --json
 leanrigor flow execute-ready <workflow-id> --provider scripted --json
@@ -181,6 +184,59 @@ architecture boundaries, effective approved constraints, dependencies and
 execution order, validation strategy, provider mode, and isolated-worktree
 policy. Approval remains explicit; implementation starts only through the
 coordinator execution command after plan approval.
+
+### Workflow Plan and Phase Execution Brief
+
+Every mode presents a Workflow Plan before implementation. It records the
+workflow ID and mode, planning/provider provenance, overall strategy, phase
+DAG, architecture and write boundaries, effective constraints, validation and
+review obligations, workspace strategy, and the current approval
+recommendation. The persisted DAG remains authoritative; planning detail is
+not deferred until implementation.
+
+Before a coordinator can dispatch a phase, LeanRigor persists a Phase Execution
+Brief. The brief contains the phase objective and deliverable, current behavior
+and implementation approach, bounded read/write areas, dependencies,
+assumptions and exclusions, acceptance and test obligations, validation
+commands, risks, provider/model provenance, and structured changes from the
+approved Workflow Plan. Identifying exact files or symbols inside an approved
+boundary is a non-material refinement. The current structured comparator blocks
+an added write boundary, changed acceptance criteria, removed validation, or
+changed dependency for explicit reapproval. Additional risk-category comparison
+and bounded semantic classification are conservative follow-up work rather than
+hidden model judgement.
+
+Brief approval is tied to its exact revision. Briefs become stale after a plan
+revision or other material change and are regenerated before they can be
+approved or executed. Provider findings that reveal unexpected scope preserve
+partial work in the phase worktree, then route through replan or review; they
+never silently expand the approved plan.
+
+### Adaptive Approval
+
+LeanRigor computes recommendations from deterministic mode, risk, ambiguity,
+blast-radius, phase dependency, assumptions, and material-drift evidence. Model
+confidence is not an approval decision input. The recommendation, its rule and
+reasons, the selected policy, selection source, timestamp, workflow revision,
+phase authorisation, override, and later changes are persisted in workflow
+history.
+
+- Fast recommends **Approve all remaining phases**. It still requires explicit
+  Workflow Plan approval and creates every brief; execution continues only
+  while no material drift or approval-required risk appears.
+- Standard always presents **Approve all remaining phases**, **Approve this
+  phase only**, **Revise plan**, and **Cancel workflow**, with one execution
+  option marked recommended. The user may override unless deterministic policy
+  forbids workflow-wide approval.
+- Rigorous allows only **Approve this phase only**. Each completed phase clears
+  its authorisation and returns the next ready brief for approval.
+
+Workflow-wide authorisation never covers material drift. Scheduler eligibility
+requires complete dependencies, a prepared workspace, a current brief without
+unresolved material changes, approval-policy permission, recorded required user
+approval, and existing deterministic gates. The coordinator remains the sole
+provider dispatch path; the interactive controller does not implement phase
+files unless manual execution was explicitly selected.
 
 Mode differences:
 

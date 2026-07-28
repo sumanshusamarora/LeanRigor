@@ -58,6 +58,7 @@ import type {
 import { acquireWorkflowLock, releaseWorkflowLock } from "./workflow-lock.js";
 import { RevisionConflictError, atomicWriteJson } from "./workflow-store.js";
 import { calculateReadyPhases, dependencyIds, refreshPhaseReadiness, validatePhaseDag } from "./scheduler.js";
+import { approvalRecommendation, briefIsCurrent, buildPhaseExecutionBrief, defaultApprovalPolicy, requiresPhaseByPhase } from "./approval.js";
 
 export const WORKFLOW_DIR = path.join(".leanrigor", "workflows");
 export const STATE_VERSION = 2;
@@ -430,6 +431,71 @@ const workflowConstraintsSchema = z.object({
   audit: z.array(constraintChangeSchema).default([])
 });
 
+const approvalRecommendationSchema = z.object({
+  option: z.enum(["approve-all-remaining", "approve-current-phase"]),
+  ruleId: z.string().min(1),
+  reasons: z.array(z.string().min(1)),
+  workflowRevision: z.number().int().min(0),
+  phaseId: z.string().optional(),
+  createdAt: z.string(),
+  overridable: z.boolean()
+});
+
+const materialPlanChangeSchema = z.object({
+  category: z.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider"]),
+  previousValue: z.union([z.string(), z.array(z.string())]).optional(),
+  proposedValue: z.union([z.string(), z.array(z.string())]).optional(),
+  affectedPhase: z.string().min(1),
+  severity: z.enum(["medium", "high"]),
+  reason: z.string().min(1),
+  requiredTransition: z.enum(["reapprove-plan", "revise-plan", "revise-phase-brief"])
+});
+
+const phaseExecutionBriefSchema = z.object({
+  phaseId: z.string().min(1),
+  workflowRevision: z.number().int().min(0),
+  briefRevision: z.number().int().min(1),
+  generatedAt: z.string(),
+  objective: z.string().min(1),
+  deliverable: z.string().min(1),
+  currentBehaviour: z.string().optional(),
+  implementationApproach: z.string().min(1),
+  readAreas: z.array(z.string()),
+  writeAreas: z.array(z.string()),
+  relevantSymbols: z.array(z.string()).optional(),
+  dependencies: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  exclusions: z.array(z.string()),
+  acceptanceCriteria: z.array(z.string()),
+  testObligations: z.array(z.string()),
+  validationCommands: z.array(z.string()),
+  risks: z.array(z.string()),
+  provider: z.string().optional(),
+  modelTier: modelProfileSchema.optional(),
+  materialChangesFromWorkflowPlan: z.array(materialPlanChangeSchema),
+  approvalStatus: z.enum(["not-required", "pending", "approved", "rejected", "stale"])
+});
+
+const workflowApprovalSchema = z.object({
+  policy: z.enum(["workflow-authorized", "phase-by-phase"]).optional(),
+  source: z.enum(["user", "deterministic-policy", "legacy-default"]).optional(),
+  selectedAt: z.string().optional(),
+  workflowPlanRevision: z.number().int().min(0).optional(),
+  currentAuthorizedPhase: z.string().optional(),
+  recommendation: approvalRecommendationSchema.optional(),
+  history: z.array(z.object({
+    policy: z.enum(["workflow-authorized", "phase-by-phase"]),
+    source: z.enum(["user", "deterministic-policy", "legacy-default"]),
+    timestamp: z.string(),
+    workflowRevision: z.number().int().min(0),
+    phaseId: z.string().optional(),
+    briefRevision: z.number().int().min(1).optional(),
+    recommendation: approvalRecommendationSchema.optional(),
+    recommendationOverridden: z.boolean(),
+    action: z.enum(["plan-approved", "phase-approved", "policy-changed", "reapproval-required"])
+  })).default([])
+});
+
 const workflowEventSchema = z.object({
   eventId: z.string().min(1),
   timestamp: z.string(),
@@ -553,6 +619,8 @@ const workflowStateSchema = z.object({
     rejectedReason: z.string().optional()
   }).optional(),
   plan: planSchema.optional(),
+  approval: workflowApprovalSchema.optional(),
+  phaseBriefs: z.record(z.string(), phaseExecutionBriefSchema).default({}),
   validation: z.array(validationEvidenceSchema),
   review: z.object({
     status: z.enum(["passed", "needs_repair", "needs_replan", "blocked"]),
@@ -756,6 +824,11 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
     });
     next.plan = planningRun.plan;
     next.planningRun = planningRunMetadata(planningRun);
+    next.phaseBriefs = {};
+    next.approval = {
+      ...(next.approval ?? { history: [] }),
+      recommendation: approvalRecommendation(next)
+    };
     appendEvent(next, "planning_completed", planningEventSummary(planningRun));
     next.review = undefined;
     next.commitPlan = undefined;
@@ -764,18 +837,110 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
   }, { ...mutation, operation: "revise_plan" });
 }
 
-export async function approvePlan(root: string, workflowId: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
+export async function approvePlan(root: string, workflowId: string, mutation?: MutationOptions, selectedPolicy?: "workflow-authorized" | "phase-by-phase"): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
     const plan = state.plan;
+    const recommendation = approvalRecommendation(next);
+    const policy = selectedPolicy ?? (recommendation.option === "approve-current-phase" ? "phase-by-phase" : defaultApprovalPolicy(next.mode));
+    if (policy === "workflow-authorized" && requiresPhaseByPhase(next, recommendation.reasons)) {
+      throw new InvalidTransitionError(`Full-workflow approval is not permitted by ${recommendation.ruleId}; approve the current phase instead.`);
+    }
+    const approvalRevision = next.revision + 1;
+    const now = timestamp();
     next.plan = { ...plan, approvedAt: timestamp() };
     next.plan.phases = plan.phases.map((phase) => ({ ...phase, status: "planned" }));
+    next.phaseBriefs = {};
+    next.approval = {
+      policy,
+      source: selectedPolicy ? "user" : "legacy-default",
+      selectedAt: now,
+      workflowPlanRevision: approvalRevision,
+      recommendation: { ...recommendation, workflowRevision: approvalRevision, createdAt: now },
+      history: [{
+        policy,
+        source: selectedPolicy ? "user" : "legacy-default",
+        timestamp: now,
+        workflowRevision: approvalRevision,
+        recommendation: { ...recommendation, workflowRevision: approvalRevision, createdAt: now },
+        recommendationOverridden: policy !== (recommendation.option === "approve-current-phase" ? "phase-by-phase" : "workflow-authorized"),
+        action: "plan-approved"
+      }]
+    };
     const executing = transition(next, "executing", "Plan approved. Ready phases will be derived from DAG dependencies and ownership.");
     refreshPhaseReadiness(executing);
+    const firstReady = executing.plan?.phases.find((phase) => phase.status === "ready");
+    if (policy === "phase-by-phase" && firstReady) {
+      executing.approval!.currentAuthorizedPhase = firstReady.id;
+      executing.phaseBriefs![firstReady.id] = buildPhaseExecutionBrief(executing, firstReady, undefined);
+    }
     return executing;
   }, { ...mutation, operation: "approve_plan" });
+}
+
+export async function preparePhaseExecutionBrief(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  provider?: string;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    const phase = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
+    if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    if (!["planned", "ready"].includes(phase.status)) throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an unstarted phase can receive an execution brief.`);
+    const next = structuredClone(state);
+    const current = next.phaseBriefs?.[phase.id];
+    if (current && briefIsCurrent(next, phase.id)) return next;
+    next.phaseBriefs ??= {};
+    next.phaseBriefs[phase.id] = buildPhaseExecutionBrief(next, phase, args.provider, current);
+    if (next.phaseBriefs[phase.id].materialChangesFromWorkflowPlan.length > 0) {
+      next.phaseBriefs[phase.id].approvalStatus = "stale";
+      next.blockers = unique([...next.blockers, `Material drift detected in ${phase.id}; reapproval is required.`]);
+      appendEvent(next, "phase_brief_material_drift", `Phase ${phase.id} execution brief contains material drift.`, phase.id);
+    } else {
+      appendEvent(next, "phase_brief_generated", `Phase ${phase.id} execution brief revision ${next.phaseBriefs[phase.id].briefRevision} generated.`, phase.id);
+    }
+    return next;
+  }, { ...args.mutation, operation: "phase_brief_prepare" });
+}
+
+export async function approvePhase(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  briefRevision: number;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (state.approval?.policy !== "phase-by-phase") throw new InvalidTransitionError("Phase approval is available only under the phase-by-phase policy.");
+    const phase = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
+    const brief = state.phaseBriefs?.[args.phaseId];
+    if (!phase || phase.status !== "ready") throw new InvalidTransitionError(`Phase ${args.phaseId} is not ready for approval.`);
+    if (!brief || !briefIsCurrent(state, args.phaseId) || brief.briefRevision !== args.briefRevision) throw new InvalidTransitionError(`Phase ${args.phaseId} has no current execution brief revision ${args.briefRevision}.`);
+    const next = structuredClone(state);
+    next.approval!.currentAuthorizedPhase = args.phaseId;
+    next.phaseBriefs![args.phaseId] = { ...brief, approvalStatus: "approved" };
+    const recommendation = approvalRecommendation(next, args.phaseId);
+    next.approval!.recommendation = recommendation;
+    next.approval!.history.push({
+      policy: "phase-by-phase",
+      source: "user",
+      timestamp: timestamp(),
+      workflowRevision: next.revision + 1,
+      phaseId: args.phaseId,
+      briefRevision: brief.briefRevision,
+      recommendation,
+      recommendationOverridden: false,
+      action: "phase-approved"
+    });
+    appendEvent(next, "phase_execution_approved", `Phase ${args.phaseId} brief revision ${brief.briefRevision} approved.`, args.phaseId);
+    return next;
+  }, { ...args.mutation, operation: "approve_phase" });
 }
 
 export async function startPhase(root: string, workflowId: string, phaseId?: string, mutation?: MutationOptions & { config?: LeanRigorConfig }): Promise<SequentialWorkflowState> {
@@ -879,6 +1044,17 @@ export async function completePhase(args: {
       return transition(next, "blocked", `Phase ${phase.id} is blocked.`);
     }
     if (completion.decision !== "completed") return next;
+
+    if (next.approval?.policy === "phase-by-phase" && next.approval.currentAuthorizedPhase === phase.id) {
+      next.approval.currentAuthorizedPhase = undefined;
+      const phaseForApproval = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
+      next.approval.recommendation = approvalRecommendation(next, phaseForApproval?.id);
+      if (phaseForApproval) {
+        next.phaseBriefs ??= {};
+        next.phaseBriefs[phaseForApproval.id] = buildPhaseExecutionBrief(next, phaseForApproval);
+        appendEvent(next, "phase_approval_required", `Phase ${phaseForApproval.id} is ready for explicit approval.`, phaseForApproval.id);
+      }
+    }
 
     const nextPhase = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
     if (nextPhase) {
@@ -1721,6 +1897,11 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
   });
   planning.plan = planningRun.plan;
   planning.planningRun = planningRunMetadata(planningRun);
+  planning.phaseBriefs = {};
+  planning.approval = {
+    ...(planning.approval ?? { history: [] }),
+    recommendation: approvalRecommendation(planning)
+  };
   appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
   if (planningRun.approvalBlockedReason) {
     planning.blockers = unique([...planning.blockers, planningRun.approvalBlockedReason]);
@@ -2869,6 +3050,17 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
     const plan = migrated.plan as { phases?: unknown[] };
     plan.phases = (plan.phases ?? []).map((phase, index) => migratePhase(phase, index));
   }
+  if (!migrated.approval && migrated.state === "executing") {
+    const mode = migrated.mode === "rigorous" ? "rigorous" : migrated.mode === "fast" ? "fast" : "standard";
+    migrated.approval = {
+      policy: defaultApprovalPolicy(mode),
+      source: "legacy-default",
+      selectedAt: migrated.updatedAt,
+      workflowPlanRevision: migrated.revision,
+      history: []
+    };
+  }
+  migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   return migrated;
 }
 

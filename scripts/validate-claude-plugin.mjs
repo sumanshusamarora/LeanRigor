@@ -52,17 +52,18 @@ async function assertExecutable(relativePath) {
 }
 
 function extractFrontmatter(content, file) {
-  if (!content.startsWith("---\n")) {
+  const normalized = content.replaceAll("\r\n", "\n");
+  if (!normalized.startsWith("---\n")) {
     fail(`${file}: missing YAML frontmatter`);
     return {};
   }
-  const end = content.indexOf("\n---", 4);
+  const end = normalized.indexOf("\n---", 4);
   if (end < 0) {
     fail(`${file}: unterminated YAML frontmatter`);
     return {};
   }
   const fields = {};
-  for (const line of content.slice(4, end).split("\n")) {
+  for (const line of normalized.slice(4, end).split("\n")) {
     const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (match) fields[match[1]] = match[2].trim();
   }
@@ -214,7 +215,11 @@ try {
   // already reported by assertExists
 }
 
-const claude = spawnSync("claude", ["plugin", "validate", ".", "--strict"], { cwd: root, encoding: "utf8" });
+let claude = spawnSync("claude", ["plugin", "validate", ".", "--strict"], { cwd: root, encoding: "utf8" });
+if (claude.status !== 0 && /unknown option ['"]?--strict/.test(`${claude.stdout}\n${claude.stderr}`)) {
+  warn("Installed Claude CLI does not support --strict; retried plugin validation without it.");
+  claude = spawnSync("claude", ["plugin", "validate", "."], { cwd: root, encoding: "utf8" });
+}
 if (claude.error && claude.error.code === "ENOENT") {
   warn("Claude CLI not found; skipped official `claude plugin validate . --strict`.");
 } else if (claude.status !== 0) {

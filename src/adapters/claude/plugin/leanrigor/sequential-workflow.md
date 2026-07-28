@@ -7,7 +7,7 @@ concise summaries.
 
 Normal flow:
 
-`triage summary -> Approach approval? -> Plan approval -> coordinator/manual execution -> per-phase completion gate -> final integrated review -> commit proposal`
+`triage summary -> Approach approval? -> Workflow Plan approval -> Phase Execution Brief -> coordinator/manual execution -> per-phase completion gate -> final integrated review -> commit proposal`
 
 Use `leanrigor flow active --json` to discover active workflows and
 `leanrigor flow next --json` to inspect the current gate. Do not show shell
@@ -59,7 +59,8 @@ Do not load every methodology file for every task. Fast mode must stay compact.
 Labels:
 
 - `Approach approval`
-- `Plan approval`
+- `Workflow Plan approval`
+- `Phase Execution Brief approval`
 - `Phase completion review`
 - `Final integrated review`
 - `Commit proposal`
@@ -92,6 +93,19 @@ Rules:
 - Plan revisions use
   `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
   unless deterministic planning was explicitly requested.
+- At the Workflow Plan gate, render the persisted Workflow Plan contract: strategy,
+  phase DAG, effective constraints, validation strategy, provider/workspace
+  policy, and deterministic approval recommendation with concise reasons. For
+  Standard, present exactly `Approve all remaining phases`, `Approve this phase
+  only`, `Revise plan`, and `Cancel workflow`. For Rigorous, present only the
+  permitted phase approval action plus revise and cancel. Match the selected
+  persisted action to its deterministic transition; never infer an approval
+  from conversational tone or use ExitPlanMode.
+- Before coordinator dispatch, render the persisted Phase Execution Brief when
+  phase-by-phase approval is required. Offer `Approve this phase`, `Revise phase
+  brief`, `View full details`, `Return to Workflow Plan`, and `Cancel workflow`.
+  A workflow-authorized phase remains inspectable but does not pause unless its
+  brief is stale or has material drift.
 - Approval at plan derives ready phases. When execution providers/workspaces are
   configured, use `execution.mode = coordinator`: invoke
   `leanrigor flow execute-next --provider auto` or

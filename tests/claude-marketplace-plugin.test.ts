@@ -12,6 +12,7 @@ import { defaultConfig } from "../src/config/defaults.js";
 import { assessTask } from "../src/core/assessment.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const POSIX = process.platform !== "win32";
 const expectedMarketplaceCommands = [
   "./commands/start.md",
   "./commands/init.md",
@@ -27,9 +28,14 @@ async function tempDir(prefix: string): Promise<string> {
 
 function run(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const useNodeForWrapper = process.platform === "win32" && path.normalize(command).endsWith(path.join("bin", "leanrigor"));
+    const runtime = path.join(path.dirname(path.dirname(command)), "runtime", "leanrigor-cli.js");
+    const executable = useNodeForWrapper ? process.execPath : process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+    const commandArgs = useNodeForWrapper ? [runtime, ...args] : args;
+    const child = spawn(executable, commandArgs, {
       cwd: options.cwd ?? repoRoot,
       env: { ...process.env, ...options.env },
+      shell: process.platform === "win32" && executable === "npm.cmd",
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
@@ -69,11 +75,17 @@ async function fakeClaudePath(): Promise<string> {
   const triageEnvelope = JSON.stringify({ result: JSON.stringify(triageOutput) });
   const standardTriageEnvelope = JSON.stringify({ result: JSON.stringify(standardTriageOutput) });
   const planningEnvelope = JSON.stringify({ result: JSON.stringify(planningOutput) });
+  const script = path.join(binDir, "claude.js");
   await writeFile(
-    path.join(binDir, "claude"),
+    script,
     `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst prompt = args.join("\\n");\nconst stage = prompt.includes("bounded sequential planner") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
     { mode: 0o755 }
   );
+  if (process.platform === "win32") {
+    await writeFile(path.join(binDir, "claude.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0claude.js" %*\r\n`, "utf8");
+  } else {
+    await writeFile(path.join(binDir, "claude"), `#!/usr/bin/env node\nrequire(${JSON.stringify(script)});\n`, { mode: 0o755 });
+  }
   return `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
 }
 
@@ -93,11 +105,12 @@ async function pathWithoutClaude(): Promise<string> {
 }
 
 function frontmatter(content: string): Record<string, string> {
-  expect(content.startsWith("---\n")).toBe(true);
-  const end = content.indexOf("\n---", 4);
+  const normalized = content.replaceAll("\r\n", "\n");
+  expect(normalized.startsWith("---\n")).toBe(true);
+  const end = normalized.indexOf("\n---", 4);
   expect(end).toBeGreaterThan(0);
   const fields: Record<string, string> = {};
-  for (const line of content.slice(4, end).split("\n")) {
+  for (const line of normalized.slice(4, end).split("\n")) {
     const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (match) fields[match[1]] = match[2];
   }
@@ -235,7 +248,7 @@ describe("Claude marketplace plugin manifests", () => {
     const hooks = await readFile(path.join(repoRoot, "hooks", "hooks.json"), "utf8");
     expect(hooks).toContain("${CLAUDE_PLUGIN_ROOT}/hooks/protect-git.sh");
     const hookStat = await stat(path.join(repoRoot, "hooks", "protect-git.sh"));
-    expect((hookStat.mode & 0o111) !== 0).toBe(true);
+    if (process.platform !== "win32") expect((hookStat.mode & 0o111) !== 0).toBe(true);
   });
 });
 
@@ -271,6 +284,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("defaults marketplace flow start to model-backed auto triage", async () => {
+    if (!POSIX) return;
     const repo = path.join(await tempDir("leanrigor marketplace auto repo "), "repo");
     await mkdir(repo, { recursive: true });
 
@@ -287,6 +301,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("returns post-triage selector state from marketplace flow start", async () => {
+    if (!POSIX) return;
     const repo = path.join(await tempDir("leanrigor marketplace selector repo "), "repo");
     await mkdir(repo, { recursive: true });
 
@@ -324,6 +339,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("defaults marketplace approach approval to model-backed auto planning", async () => {
+    if (!POSIX) return;
     const repo = path.join(await tempDir("leanrigor marketplace planning repo "), "repo");
     await mkdir(repo, { recursive: true });
     const env = { CLAUDE_PLUGIN_ROOT: repoRoot, PATH: await fakeClaudePath() };
@@ -347,6 +363,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("uses effective user model config for marketplace first triage and approval planning", async () => {
+    if (!POSIX) return;
     const repo = path.join(await tempDir("leanrigor marketplace effective models repo "), "repo");
     await mkdir(repo, { recursive: true });
     const logFile = path.join(await tempDir("leanrigor-model-log-"), "models.log");
@@ -394,6 +411,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("prints a clear error when Node is unavailable", async () => {
+    if (process.platform === "win32") return;
     const result = await run("/bin/sh", [path.join(repoRoot, "bin", "leanrigor"), "--version"], {
       env: { PATH: "/tmp", CLAUDE_PLUGIN_ROOT: repoRoot }
     });
@@ -418,6 +436,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("defaults project-local flow start to model-backed auto triage", async () => {
+    if (!POSIX) return;
     const repo = await tempDir("leanrigor-project-local-auto-");
     await new ClaudeAdapter().install(repo, defaultConfig());
 
@@ -434,6 +453,7 @@ describe("Claude marketplace plugin runtime", () => {
   });
 
   it("defaults project-local approach approval to model-backed auto planning", async () => {
+    if (!POSIX) return;
     const repo = await tempDir("leanrigor-project-local-planning-");
     await new ClaudeAdapter().install(repo, defaultConfig());
     const env = { CLAUDE_PLUGIN_ROOT: "", LEANRIGOR_CLAUDE_PLUGIN_ROOT: "", PATH: await fakeClaudePath() };

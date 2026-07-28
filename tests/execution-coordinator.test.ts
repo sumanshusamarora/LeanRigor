@@ -28,7 +28,7 @@ describe("execution coordinator", () => {
     expect(result.nextAction).toBe("final_review");
     expect(state.state).toBe("reviewing");
     expect(integrationStatus(state).finalReviewEligible).toBe(true);
-    await expect(readFile(path.join(state.git!.integration.path, "src", "a.ts"), "utf8")).resolves.toBe("export const a = 1;\n");
+    await expect(readFile(path.join(state.git!.integration.path, "src", "a.ts"), "utf8")).resolves.toSatisfy((content) => content.replaceAll("\r\n", "\n") === "export const a = 1;\n");
     await expect(readFile(path.join(harness.root, "src", "a.ts"), "utf8")).rejects.toThrow();
     expect(await harness.git(["rev-list", "--count", "HEAD"])).toBe("1");
   });
@@ -323,8 +323,9 @@ describe("execution coordinator", () => {
   it("distinguishes CodeGraph support for exact worktrees, root-advisory indexes, and unavailable indexes", async () => {
     const bin = await mkdtemp(path.join(tmpdir(), "leanrigor-codegraph-bin-"));
     const originalPath = process.env.PATH;
-    await writeFile(path.join(bin, "codegraph"), "#!/bin/sh\nexit 0\n", "utf8");
-    await chmod(path.join(bin, "codegraph"), 0o755);
+    const command = process.platform === "win32" ? "codegraph.cmd" : "codegraph";
+    await writeFile(path.join(bin, command), process.platform === "win32" ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n", "utf8");
+    if (process.platform !== "win32") await chmod(path.join(bin, command), 0o755);
     process.env.PATH = `${bin}${path.delimiter}${originalPath ?? ""}`;
     try {
       const root = await mkdtemp(path.join(tmpdir(), "leanrigor-codegraph-root-"));

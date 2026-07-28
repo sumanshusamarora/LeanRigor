@@ -124,6 +124,11 @@ Higher parallelism is not yet promoted as a stable autonomous multi-agent Claude
 - OpenCode, Codex, Cursor, Copilot, and other adapters are not implemented.
 - Methodology and model-assisted semantic judgement improve evidence quality but are not formal proofs.
 - LeanRigor does not provide a complete security audit or remove the need for human review.
+- Phase-brief material-drift comparison currently covers structured write-boundary,
+  acceptance, validation, and dependency changes. Broader risk-category diffs
+  and bounded semantic classification remain follow-up work.
+- Marketplace smoke scripts require a POSIX shell in the current test setup;
+  cross-platform smoke execution remains a release/CI concern.
 
 ## Roadmap
 

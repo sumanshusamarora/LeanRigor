@@ -1,5 +1,6 @@
 import type { LeanRigorConfig } from "../config/schema.js";
 import { detectOwnershipConflicts, ownershipIsExplicit, type OwnershipConflict } from "./ownership.js";
+import { approvalPermitsExecution, briefIsCurrent } from "./approval.js";
 import type { ExecutionPlan, PhaseStatus, SequentialWorkflowState, WorkflowPhase } from "./types.js";
 
 export class PhaseDagError extends Error {}
@@ -111,6 +112,11 @@ export function calculateReadyPhases(state: SequentialWorkflowState, config?: Le
   const readyPhases: ReadyPhase[] = [];
   for (const phase of candidates) {
     const blockedBy: string[] = [];
+    if (!briefIsCurrent(state, phase.id)) {
+      blockedBy.push("Phase execution brief is missing, stale, or has unresolved material drift.");
+    } else if (!approvalPermitsExecution(state, phase.id)) {
+      blockedBy.push("Current approval policy does not authorize this phase.");
+    }
     if ((state.mode === "standard" || state.mode === "rigorous") && !ownershipIsExplicit(phase, state.mode)) {
       blockedBy.push(`${state.mode} mode requires explicit read/write ownership before parallel eligibility.`);
     }

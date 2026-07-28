@@ -31,6 +31,7 @@ import {
 } from "../core/ux.js";
 import {
   answerClarification,
+  approvePhase,
   approveApproach,
   approvePlan,
   cancelFlow,
@@ -48,6 +49,7 @@ import {
   repairPhase,
   recordReview,
   recordValidation,
+  preparePhaseExecutionBrief,
   recoverLeases,
   rejectApproach,
   releasePhase,
@@ -76,7 +78,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.21");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.22");
 
 program.command("setup")
   .alias("init")
@@ -499,11 +501,48 @@ flow.command("revise-approach")
 
 flow.command("approve-plan")
   .argument("<workflow-id>")
+  .option("--approval-policy <policy>", "workflow-authorized or phase-by-phase")
   .option("--root <path>", "repository root", process.cwd())
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
-    printFlowState(await approvePlan(options.root, workflowId, mutationOptions(options)));
+    if (options.approvalPolicy && !["workflow-authorized", "phase-by-phase"].includes(options.approvalPolicy)) {
+      throw new Error("Invalid --approval-policy. Use workflow-authorized or phase-by-phase.");
+    }
+    printFlowState(await approvePlan(options.root, workflowId, mutationOptions(options), options.approvalPolicy));
+  });
+
+flow.command("phase-brief")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider provenance")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, phaseId, options) => {
+    const state = await preparePhaseExecutionBrief({
+      root: options.root,
+      workflowId,
+      phaseId,
+      provider: options.provider,
+      mutation: mutationOptions(options)
+    });
+    const brief = state.phaseBriefs?.[phaseId];
+    if (!brief) throw new Error(`Phase ${phaseId} has no execution brief.`);
+    console.log(JSON.stringify(brief, null, 2));
+  });
+
+flow.command("approve-phase")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--brief-revision <revision>", "exact phase execution brief revision")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, phaseId, options) => {
+    const briefRevision = Number.parseInt(options.briefRevision, 10);
+    if (!Number.isInteger(briefRevision) || briefRevision < 1) throw new Error("--brief-revision must be a positive integer.");
+    printFlowState(await approvePhase({ root: options.root, workflowId, phaseId, briefRevision, mutation: mutationOptions(options) }));
   });
 
 flow.command("revise-plan")
@@ -1145,6 +1184,8 @@ function printFlowState(state: SequentialWorkflowState): void {
     } : undefined,
     clarification: state.clarification,
     approach: state.approach,
+    approval: state.approval,
+    phaseBriefs: state.phaseBriefs,
     phaseProgress: state.plan?.phases.map((phase) => ({
       id: phase.id,
       status: phase.status,

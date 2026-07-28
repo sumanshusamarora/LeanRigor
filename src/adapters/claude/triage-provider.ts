@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,7 +157,8 @@ function recommendationSchemaDescription(): unknown {
 }
 
 export const defaultCommandRunner: CommandRunner = (command, args, cwd) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  const invocation = windowsCommandInvocation(command, args);
+  const child = spawn(invocation.command, invocation.args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   child.stdout.setEncoding("utf8");
@@ -166,6 +168,27 @@ export const defaultCommandRunner: CommandRunner = (command, args, cwd) => new P
   child.on("error", reject);
   child.on("close", (code: number | null) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
 });
+
+function windowsCommandInvocation(command: string, args: string[]): { command: string; args: string[] } {
+  if (process.platform !== "win32") return { command, args };
+  const shim = resolveWindowsShim(command);
+  if (shim) return { command: process.env.ComSpec ?? "cmd.exe", args: ["/d", "/c", "call", shim, ...args] };
+  return {
+    command: process.env.ComSpec ?? "cmd.exe",
+    args: ["/d", "/c", "call", command, ...args]
+  };
+}
+
+function resolveWindowsShim(command: string): string | undefined {
+  if (path.extname(command)) return undefined;
+  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+    for (const extension of [".cmd", ".bat"]) {
+      const candidate = path.join(directory, `${command}${extension}`);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
 
 export async function runClaudeWithTierFallback(args: {
   runCommand: CommandRunner;

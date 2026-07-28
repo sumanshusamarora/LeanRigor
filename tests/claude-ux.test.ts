@@ -62,7 +62,7 @@ describe("Claude conversational workflow UX support", () => {
     expect(next.label).toBe("Plan approval");
     expect(next.pendingAction).toBe("Select an approval action or type a response.");
     expect(next.approvalActions).toBeDefined();
-    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve plan and start coordinator execution");
+    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve all remaining phases");
     expect(next.approvalActions?.find((a) => a.intent === "revise")?.label).toBe("Revise plan");
     expect(next.approvalActions?.find((a) => a.intent === "show plan")?.label).toBe("View full details");
     expect(next.approvalActions?.find((a) => a.intent === "cancel")?.label).toBe("Cancel workflow");
@@ -373,7 +373,7 @@ describe("approval actions", () => {
 
     expect(next.label).toBe("Plan approval");
     expect(next.approvalActions).toBeDefined();
-    expect(next.approvalActions).toHaveLength(4);
+    expect(next.approvalActions).toHaveLength(5);
 
     const approve = next.approvalActions?.find((a) => a.intent === "approve");
     expect(approve?.command).toContain("leanrigor flow approve-plan");

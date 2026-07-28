@@ -84,6 +84,94 @@ export type ClarificationOwnership =
   | "already-resolved"
   | "unnecessary";
 export type ClarificationDisposition = "accepted" | "inspected" | "deferred" | "suppressed";
+export type PhaseApprovalPolicy = "workflow-authorized" | "phase-by-phase";
+export type ApprovalSelectionSource = "user" | "deterministic-policy" | "legacy-default";
+export type ApprovalRecommendationOption = "approve-all-remaining" | "approve-current-phase";
+export type MaterialPlanChangeCategory =
+  | "write-boundary"
+  | "migration"
+  | "compatibility"
+  | "public-contract"
+  | "security"
+  | "concurrency"
+  | "recovery"
+  | "data-integrity"
+  | "production-infrastructure"
+  | "destructive-operation"
+  | "network-operation"
+  | "acceptance-criteria"
+  | "validation"
+  | "dependency"
+  | "ordering"
+  | "architecture"
+  | "provider";
+
+export interface ApprovalRecommendation {
+  option: ApprovalRecommendationOption;
+  ruleId: string;
+  reasons: string[];
+  workflowRevision: number;
+  phaseId?: string;
+  createdAt: string;
+  overridable: boolean;
+}
+
+export interface ApprovalHistoryEntry {
+  policy: PhaseApprovalPolicy;
+  source: ApprovalSelectionSource;
+  timestamp: string;
+  workflowRevision: number;
+  phaseId?: string;
+  briefRevision?: number;
+  recommendation?: ApprovalRecommendation;
+  recommendationOverridden: boolean;
+  action: "plan-approved" | "phase-approved" | "policy-changed" | "reapproval-required";
+}
+
+export interface WorkflowApprovalState {
+  policy?: PhaseApprovalPolicy;
+  source?: ApprovalSelectionSource;
+  selectedAt?: string;
+  workflowPlanRevision?: number;
+  currentAuthorizedPhase?: string;
+  recommendation?: ApprovalRecommendation;
+  history: ApprovalHistoryEntry[];
+}
+
+export interface MaterialPlanChange {
+  category: MaterialPlanChangeCategory;
+  previousValue?: string | string[];
+  proposedValue?: string | string[];
+  affectedPhase: string;
+  severity: "medium" | "high";
+  reason: string;
+  requiredTransition: "reapprove-plan" | "revise-plan" | "revise-phase-brief";
+}
+
+export interface PhaseExecutionBrief {
+  phaseId: string;
+  workflowRevision: number;
+  briefRevision: number;
+  generatedAt: string;
+  objective: string;
+  deliverable: string;
+  currentBehaviour?: string;
+  implementationApproach: string;
+  readAreas: string[];
+  writeAreas: string[];
+  relevantSymbols?: string[];
+  dependencies: string[];
+  assumptions: string[];
+  exclusions: string[];
+  acceptanceCriteria: string[];
+  testObligations: string[];
+  validationCommands: string[];
+  risks: string[];
+  provider?: string;
+  modelTier?: ModelProfile;
+  materialChangesFromWorkflowPlan: MaterialPlanChange[];
+  approvalStatus: "not-required" | "pending" | "approved" | "rejected" | "stale";
+}
 
 export interface ReferencedWorkItem {
   source: ReferencedWorkItemSource;
@@ -704,6 +792,8 @@ export interface SequentialWorkflowState {
   };
   approach?: ApproachRecommendation;
   plan?: ExecutionPlan;
+  approval?: WorkflowApprovalState;
+  phaseBriefs?: Record<string, PhaseExecutionBrief>;
   validation: ValidationEvidence[];
   review?: IntegratedReviewResult;
   commitPlan?: CommitPlan;

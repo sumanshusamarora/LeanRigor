@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { defaultConfig } from "../../src/config/defaults.js";
 import type { LeanRigorConfig } from "../../src/config/schema.js";
-import { approvePlan, loadFlowState, saveFlowState, startFlow } from "../../src/core/flow.js";
+import { approvePlan, loadFlowState, preparePhaseExecutionBrief, saveFlowState, startFlow } from "../../src/core/flow.js";
 import { ExecutionCoordinator } from "../../src/core/execution/coordinator.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../../src/core/execution/scripted-provider.js";
 import type { ExecutionPlan, SequentialWorkflowState, WorkflowPhase } from "../../src/core/types.js";
@@ -91,13 +91,21 @@ export async function gitRepo(): Promise<string> {
 }
 
 async function workflowWithPlan(root: string, plan: ExecutionPlan): Promise<SequentialWorkflowState> {
-  const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+  const started = await startFlow({ request: "Update bounded internal assignment validation", root, config: defaultConfig() });
   const state = await loadFlowState(root, started.id);
   state.state = "awaiting_plan_approval";
+  state.mode = "standard";
+  state.request = "Update bounded internal assignment validation";
+  state.triage!.assumptions = [];
+  state.triage!.assessment = { ...state.triage!.assessment, ambiguity: "low", blastRadius: "low", securityRisk: "none", dataIntegrityRisk: "none", operationalRisk: "none" };
   state.plan = plan;
   state.approach = { required: false, approved: true, proposed: "test", preferredBecause: "test", alternatives: [], primaryRisks: [], validationStrategy: [] };
   await saveFlowState(root, state, { expectedRevision: state.revision });
-  return approvePlan(root, state.id);
+  let approved = await approvePlan(root, state.id, undefined, "workflow-authorized");
+  for (const phase of approved.plan!.phases) {
+    approved = await preparePhaseExecutionBrief({ root, workflowId: approved.id, phaseId: phase.id });
+  }
+  return approved;
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {

@@ -303,6 +303,13 @@ function input(workspacePath: string): PhaseExecutionInput {
 }
 
 async function fakeClaude(root: string, result: string, exitCode = 0): Promise<string> {
+  if (process.platform === "win32") {
+    const script = path.join(root, "fake-claude.js");
+    const command = path.join(root, "fake-claude.cmd");
+    await writeFile(script, `setTimeout(() => { process.stdout.write(${JSON.stringify(`${result}\n`)}); process.exit(${exitCode}); }, 50);\n`, "utf8");
+    await writeFile(command, `@echo off\r\n"${process.execPath}" "%~dp0fake-claude.js"\r\n`, "utf8");
+    return command;
+  }
   const command = path.join(root, "fake-claude.sh");
   await writeFile(command, `#!/bin/sh\nprintf '%s\\n' '${result.replaceAll("'", "'\\''")}'\nsleep 0.05\nexit ${exitCode}\n`, "utf8");
   await chmod(command, 0o755);

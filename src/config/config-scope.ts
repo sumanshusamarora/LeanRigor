@@ -36,7 +36,7 @@ export const PRECEDENCE: readonly ConfigScope[] = [
 export function scopePath(scope: ConfigScope, root: string): string {
   switch (scope) {
     case ConfigScope.User:
-      return path.join(homedir(), ".config", "leanrigor", "config.json");
+      return path.join(process.env.HOME || process.env.USERPROFILE || homedir(), ".config", "leanrigor", "config.json");
     case ConfigScope.RepoPolicy:
       return path.join(root, "leanrigor.config.json");
     case ConfigScope.Local:

@@ -3485,8 +3485,8 @@ __export(models_exports, {
 });
 function resolveModelTierFallbacks(tier, harness, config2) {
   const tiers = [tier, ...tier === "inherit" ? [] : config2.models.fallback[tier] ?? []];
-  const unique8 = [...new Set(tiers)];
-  return unique8.map((candidate) => resolveModelTier(candidate, harness, config2));
+  const unique9 = [...new Set(tiers)];
+  return unique9.map((candidate) => resolveModelTier(candidate, harness, config2));
 }
 function resolveModelTier(tier, harness, config2) {
   if (tier === "inherit") return { tier, source: "inherit" };
@@ -19085,7 +19085,7 @@ import { homedir } from "node:os";
 function scopePath(scope, root) {
   switch (scope) {
     case ConfigScope.User:
-      return path4.join(homedir(), ".config", "leanrigor", "config.json");
+      return path4.join(process.env.HOME || process.env.USERPROFILE || homedir(), ".config", "leanrigor", "config.json");
     case ConfigScope.RepoPolicy:
       return path4.join(root, "leanrigor.config.json");
     case ConfigScope.Local:
@@ -20195,7 +20195,7 @@ function assetManifest(triageModel) {
   ];
 }
 function assetManifestWithoutSettings(triageModel) {
-  return assetManifest(triageModel).filter((entry) => entry.dest !== ".claude/settings.json");
+  return assetManifest(triageModel).filter((entry) => entry.dest !== path7.join(".claude", "settings.json"));
 }
 var ClaudeAdapter = class {
   name = "claude";
@@ -20703,6 +20703,7 @@ async function loadConfigForUninstall(root) {
 // src/adapters/claude/triage-provider.ts
 init_models();
 import { spawn } from "node:child_process";
+import { existsSync as existsSync2 } from "node:fs";
 import { readFile as readFile8 } from "node:fs/promises";
 import path10 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
@@ -22068,7 +22069,8 @@ function recommendationSchemaDescription() {
   };
 }
 var defaultCommandRunner = (command, args, cwd) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  const invocation = windowsCommandInvocation(command, args);
+  const child = spawn(invocation.command, invocation.args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   child.stdout.setEncoding("utf8");
@@ -22082,6 +22084,25 @@ var defaultCommandRunner = (command, args, cwd) => new Promise((resolve, reject)
   child.on("error", reject);
   child.on("close", (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
 });
+function windowsCommandInvocation(command, args) {
+  if (process.platform !== "win32") return { command, args };
+  const shim = resolveWindowsShim(command);
+  if (shim) return { command: process.env.ComSpec ?? "cmd.exe", args: ["/d", "/c", "call", shim, ...args] };
+  return {
+    command: process.env.ComSpec ?? "cmd.exe",
+    args: ["/d", "/c", "call", command, ...args]
+  };
+}
+function resolveWindowsShim(command) {
+  if (path10.extname(command)) return void 0;
+  for (const directory of (process.env.PATH ?? "").split(path10.delimiter)) {
+    for (const extension of [".cmd", ".bat"]) {
+      const candidate = path10.join(directory, `${command}${extension}`);
+      if (existsSync2(candidate)) return candidate;
+    }
+  }
+  return void 0;
+}
 async function runClaudeWithTierFallback(args) {
   const resolvedModels = resolveModelTierFallbacks(args.preferredTier, "claude", args.config);
   const failures = [];
@@ -22942,6 +22963,124 @@ function unique4(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+// src/core/approval.ts
+var highRiskTerms = [
+  [/\bmigrat(e|ion)\b/i, "migration risk"],
+  [/\b(public|api|contract|schema)\b/i, "public-contract impact"],
+  [/\bsecurity|auth|permission|credential\b/i, "security risk"],
+  [/\b(data.integrity|data loss|corrupt)\b/i, "data-integrity risk"],
+  [/\b(concurren|race condition|locking)\b/i, "concurrency risk"],
+  [/\b(recovery|idempoten)\b/i, "recovery or idempotency risk"],
+  [/\b(deploy|production|infrastructure)\b/i, "production infrastructure impact"],
+  [/\b(delete|destroy|drop)\b/i, "destructive-operation risk"]
+];
+function defaultApprovalPolicy(mode2) {
+  return mode2 === "rigorous" ? "phase-by-phase" : "workflow-authorized";
+}
+function approvalRecommendation(state, phaseId) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const phase2 = phaseId ? state.plan?.phases.find((candidate) => candidate.id === phaseId) : void 0;
+  if (state.mode === "rigorous") {
+    return {
+      option: "approve-current-phase",
+      ruleId: "rigorous-phase-by-phase",
+      reasons: ["Rigorous mode requires approval of each phase before coordinator execution."],
+      workflowRevision: state.revision,
+      phaseId,
+      createdAt: now,
+      overridable: false
+    };
+  }
+  const reasons = deterministicRiskReasons(state, phase2);
+  const hasElevatedRisk = reasons.length > 0;
+  return {
+    option: hasElevatedRisk ? "approve-current-phase" : "approve-all-remaining",
+    ruleId: hasElevatedRisk ? "risk-or-discovery-phase-gate" : "bounded-stable-workflow",
+    reasons: hasElevatedRisk ? reasons : ["The planned scope is bounded and stable; no migration, public-contract, security, or data-integrity risk is currently recorded."],
+    workflowRevision: state.revision,
+    phaseId,
+    createdAt: now,
+    overridable: !requiresPhaseByPhase(state, reasons)
+  };
+}
+function requiresPhaseByPhase(state, reasons = deterministicRiskReasons(state)) {
+  if (reasons.some((reason) => reason.startsWith("The planned scope is bounded and stable"))) return false;
+  return state.mode === "rigorous" || reasons.some((reason) => /public-contract|security|data-integrity|destructive-operation|migration risk/.test(reason));
+}
+function buildPhaseExecutionBrief(state, phase2, provider, previous) {
+  const materialChangesFromWorkflowPlan = compareBriefAgainstWorkflowPlan(phase2, previous);
+  const policy = state.approval?.policy ?? defaultApprovalPolicy(state.mode);
+  const isAuthorized = policy === "workflow-authorized" || state.approval?.currentAuthorizedPhase === phase2.id;
+  const planRevision = state.approval?.workflowPlanRevision ?? state.revision;
+  return {
+    phaseId: phase2.id,
+    workflowRevision: planRevision,
+    briefRevision: (previous?.briefRevision ?? 0) + 1,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    objective: phase2.objective,
+    deliverable: phase2.acceptanceCriteria.join(" "),
+    currentBehaviour: phase2.rationale,
+    implementationApproach: `Implement the bounded ${phase2.id} objective only within its approved read and write areas.`,
+    readAreas: unique5(phase2.expectedReadAreas),
+    writeAreas: unique5(phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas),
+    dependencies: dependencyIds(phase2),
+    assumptions: unique5(state.triage?.assumptions ?? []),
+    exclusions: unique5(state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? []),
+    acceptanceCriteria: [...phase2.acceptanceCriteria],
+    testObligations: [...phase2.acceptanceCriteria],
+    validationCommands: [...phase2.validationCommands],
+    risks: unique5([phase2.riskLevel === "none" ? "No material phase risk recorded." : `${phase2.riskLevel} phase risk.`, ...deterministicRiskReasons(state, phase2)]),
+    provider,
+    modelTier: phase2.modelTier,
+    materialChangesFromWorkflowPlan,
+    approvalStatus: materialChangesFromWorkflowPlan.length > 0 ? "stale" : isAuthorized ? "approved" : "pending"
+  };
+}
+function compareBriefAgainstWorkflowPlan(phase2, brief) {
+  if (!brief) return [];
+  const changes = [];
+  const allowedWrites = new Set(phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas);
+  const unexpectedWrites = brief.writeAreas.filter((area) => !allowedWrites.has(area));
+  if (unexpectedWrites.length > 0) changes.push(change("write-boundary", phase2.id, [...allowedWrites], unexpectedWrites, "The brief adds a write boundary outside the approved phase."));
+  if (!sameItems(phase2.acceptanceCriteria, brief.acceptanceCriteria)) changes.push(change("acceptance-criteria", phase2.id, phase2.acceptanceCriteria, brief.acceptanceCriteria, "The brief changes approved acceptance criteria."));
+  const missingValidation = phase2.validationCommands.filter((command) => !brief.validationCommands.includes(command));
+  if (missingValidation.length > 0) changes.push(change("validation", phase2.id, phase2.validationCommands, brief.validationCommands, "The brief removes mandatory validation."));
+  if (!sameItems(dependencyIds(phase2), brief.dependencies)) changes.push(change("dependency", phase2.id, dependencyIds(phase2), brief.dependencies, "The brief changes phase dependencies."));
+  return changes;
+}
+function briefIsCurrent(state, phaseId) {
+  const brief = state.phaseBriefs?.[phaseId];
+  return Boolean(
+    brief && brief.workflowRevision === (state.approval?.workflowPlanRevision ?? state.revision) && brief.approvalStatus !== "stale" && brief.materialChangesFromWorkflowPlan.length === 0
+  );
+}
+function approvalPermitsExecution(state, phaseId) {
+  if (!briefIsCurrent(state, phaseId)) return false;
+  const policy = state.approval?.policy ?? defaultApprovalPolicy(state.mode);
+  if (policy === "workflow-authorized") return true;
+  const brief = state.phaseBriefs?.[phaseId];
+  return state.approval?.currentAuthorizedPhase === phaseId && brief?.approvalStatus === "approved";
+}
+function deterministicRiskReasons(state, phase2) {
+  const assessment = state.triage?.assessment;
+  const text = [state.request, phase2?.objective, phase2?.rationale, ...state.triage?.assumptions ?? []].filter(Boolean).join("\n");
+  const reasons = highRiskTerms.filter(([pattern]) => pattern.test(text)).map(([, reason]) => reason);
+  if (assessment?.ambiguity === "high") reasons.push("unresolved assumptions or high ambiguity");
+  if (assessment?.blastRadius === "high") reasons.push("wide blast radius");
+  if (phase2?.riskLevel === "high") reasons.push("high phase risk");
+  if (phase2 && dependencyIds(phase2).length > 0 && (state.triage?.assumptions.length ?? 0) > 0) reasons.push("later phase depends on unresolved earlier-phase findings");
+  return unique5(reasons);
+}
+function change(category, affectedPhase, previousValue, proposedValue, reason) {
+  return { category, previousValue, proposedValue, affectedPhase, severity: "high", reason, requiredTransition: "reapprove-plan" };
+}
+function sameItems(left, right) {
+  return left.length === right.length && left.every((value) => right.includes(value));
+}
+function unique5(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
 // src/core/scheduler.ts
 var PhaseDagError = class extends Error {
 };
@@ -22973,7 +23112,7 @@ function validatePhaseDag(plan) {
     visited.add(id);
   };
   for (const phase2 of plan.phases) visit(phase2.id);
-  return unique5(issues);
+  return unique6(issues);
 }
 function topologicalPhaseOrder(plan) {
   const issues = validatePhaseDag(plan);
@@ -23022,6 +23161,11 @@ function calculateReadyPhases(state, config2) {
   const readyPhases2 = [];
   for (const phase2 of candidates) {
     const blockedBy = [];
+    if (!briefIsCurrent(state, phase2.id)) {
+      blockedBy.push("Phase execution brief is missing, stale, or has unresolved material drift.");
+    } else if (!approvalPermitsExecution(state, phase2.id)) {
+      blockedBy.push("Current approval policy does not authorize this phase.");
+    }
     if ((state.mode === "standard" || state.mode === "rigorous") && !ownershipIsExplicit(phase2, state.mode)) {
       blockedBy.push(`${state.mode} mode requires explicit read/write ownership before parallel eligibility.`);
     }
@@ -23052,7 +23196,7 @@ function selectDispatchable(readyPhases2, activeIds, maxParallelPhases) {
   return selected;
 }
 function dependencyIds(phase2) {
-  return unique5([...phase2?.dependencies ?? [], ...phase2?.dependsOn ?? []]);
+  return unique6([...phase2?.dependencies ?? [], ...phase2?.dependsOn ?? []]);
 }
 var activePhaseStatuses = /* @__PURE__ */ new Set(["leased", "running", "completion_pending"]);
 var terminalPhaseStatuses = /* @__PURE__ */ new Set(["completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
@@ -23074,7 +23218,7 @@ function emptySchedule(state, maxParallelPhases, blockedReasons) {
     blockedReasons
   };
 }
-function unique5(values) {
+function unique6(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -25238,6 +25382,67 @@ var workflowConstraintsSchema = external_exports.object({
   effective: external_exports.array(constraintRecordSchema).default([]),
   audit: external_exports.array(constraintChangeSchema).default([])
 });
+var approvalRecommendationSchema = external_exports.object({
+  option: external_exports.enum(["approve-all-remaining", "approve-current-phase"]),
+  ruleId: external_exports.string().min(1),
+  reasons: external_exports.array(external_exports.string().min(1)),
+  workflowRevision: external_exports.number().int().min(0),
+  phaseId: external_exports.string().optional(),
+  createdAt: external_exports.string(),
+  overridable: external_exports.boolean()
+});
+var materialPlanChangeSchema = external_exports.object({
+  category: external_exports.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider"]),
+  previousValue: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
+  proposedValue: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
+  affectedPhase: external_exports.string().min(1),
+  severity: external_exports.enum(["medium", "high"]),
+  reason: external_exports.string().min(1),
+  requiredTransition: external_exports.enum(["reapprove-plan", "revise-plan", "revise-phase-brief"])
+});
+var phaseExecutionBriefSchema = external_exports.object({
+  phaseId: external_exports.string().min(1),
+  workflowRevision: external_exports.number().int().min(0),
+  briefRevision: external_exports.number().int().min(1),
+  generatedAt: external_exports.string(),
+  objective: external_exports.string().min(1),
+  deliverable: external_exports.string().min(1),
+  currentBehaviour: external_exports.string().optional(),
+  implementationApproach: external_exports.string().min(1),
+  readAreas: external_exports.array(external_exports.string()),
+  writeAreas: external_exports.array(external_exports.string()),
+  relevantSymbols: external_exports.array(external_exports.string()).optional(),
+  dependencies: external_exports.array(external_exports.string()),
+  assumptions: external_exports.array(external_exports.string()),
+  exclusions: external_exports.array(external_exports.string()),
+  acceptanceCriteria: external_exports.array(external_exports.string()),
+  testObligations: external_exports.array(external_exports.string()),
+  validationCommands: external_exports.array(external_exports.string()),
+  risks: external_exports.array(external_exports.string()),
+  provider: external_exports.string().optional(),
+  modelTier: modelProfileSchema.optional(),
+  materialChangesFromWorkflowPlan: external_exports.array(materialPlanChangeSchema),
+  approvalStatus: external_exports.enum(["not-required", "pending", "approved", "rejected", "stale"])
+});
+var workflowApprovalSchema = external_exports.object({
+  policy: external_exports.enum(["workflow-authorized", "phase-by-phase"]).optional(),
+  source: external_exports.enum(["user", "deterministic-policy", "legacy-default"]).optional(),
+  selectedAt: external_exports.string().optional(),
+  workflowPlanRevision: external_exports.number().int().min(0).optional(),
+  currentAuthorizedPhase: external_exports.string().optional(),
+  recommendation: approvalRecommendationSchema.optional(),
+  history: external_exports.array(external_exports.object({
+    policy: external_exports.enum(["workflow-authorized", "phase-by-phase"]),
+    source: external_exports.enum(["user", "deterministic-policy", "legacy-default"]),
+    timestamp: external_exports.string(),
+    workflowRevision: external_exports.number().int().min(0),
+    phaseId: external_exports.string().optional(),
+    briefRevision: external_exports.number().int().min(1).optional(),
+    recommendation: approvalRecommendationSchema.optional(),
+    recommendationOverridden: external_exports.boolean(),
+    action: external_exports.enum(["plan-approved", "phase-approved", "policy-changed", "reapproval-required"])
+  })).default([])
+});
 var workflowEventSchema = external_exports.object({
   eventId: external_exports.string().min(1),
   timestamp: external_exports.string(),
@@ -25357,6 +25562,8 @@ var workflowStateSchema = external_exports.object({
     rejectedReason: external_exports.string().optional()
   }).optional(),
   plan: planSchema.optional(),
+  approval: workflowApprovalSchema.optional(),
+  phaseBriefs: external_exports.record(external_exports.string(), phaseExecutionBriefSchema).default({}),
   validation: external_exports.array(validationEvidenceSchema),
   review: external_exports.object({
     status: external_exports.enum(["passed", "needs_repair", "needs_replan", "blocked"]),
@@ -25516,6 +25723,11 @@ async function revisePlan(root, workflowId2, feedback, config2, mutation, planni
     });
     next.plan = planningRun.plan;
     next.planningRun = planningRunMetadata(planningRun);
+    next.phaseBriefs = {};
+    next.approval = {
+      ...next.approval ?? { history: [] },
+      recommendation: approvalRecommendation(next)
+    };
     appendEvent(next, "planning_completed", planningEventSummary(planningRun));
     next.review = void 0;
     next.commitPlan = void 0;
@@ -25523,18 +25735,96 @@ async function revisePlan(root, workflowId2, feedback, config2, mutation, planni
     return transition(next, "awaiting_plan_approval", "Plan revised and awaiting approval.");
   }, { ...mutation, operation: "revise_plan" });
 }
-async function approvePlan(root, workflowId2, mutation) {
+async function approvePlan(root, workflowId2, mutation, selectedPolicy) {
   return updateFlowState(root, workflowId2, (state) => {
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
     const plan = state.plan;
+    const recommendation = approvalRecommendation(next);
+    const policy = selectedPolicy ?? (recommendation.option === "approve-current-phase" ? "phase-by-phase" : defaultApprovalPolicy(next.mode));
+    if (policy === "workflow-authorized" && requiresPhaseByPhase(next, recommendation.reasons)) {
+      throw new InvalidTransitionError(`Full-workflow approval is not permitted by ${recommendation.ruleId}; approve the current phase instead.`);
+    }
+    const approvalRevision = next.revision + 1;
+    const now = timestamp2();
     next.plan = { ...plan, approvedAt: timestamp2() };
     next.plan.phases = plan.phases.map((phase2) => ({ ...phase2, status: "planned" }));
+    next.phaseBriefs = {};
+    next.approval = {
+      policy,
+      source: selectedPolicy ? "user" : "legacy-default",
+      selectedAt: now,
+      workflowPlanRevision: approvalRevision,
+      recommendation: { ...recommendation, workflowRevision: approvalRevision, createdAt: now },
+      history: [{
+        policy,
+        source: selectedPolicy ? "user" : "legacy-default",
+        timestamp: now,
+        workflowRevision: approvalRevision,
+        recommendation: { ...recommendation, workflowRevision: approvalRevision, createdAt: now },
+        recommendationOverridden: policy !== (recommendation.option === "approve-current-phase" ? "phase-by-phase" : "workflow-authorized"),
+        action: "plan-approved"
+      }]
+    };
     const executing = transition(next, "executing", "Plan approved. Ready phases will be derived from DAG dependencies and ownership.");
     refreshPhaseReadiness(executing);
+    const firstReady = executing.plan?.phases.find((phase2) => phase2.status === "ready");
+    if (policy === "phase-by-phase" && firstReady) {
+      executing.approval.currentAuthorizedPhase = firstReady.id;
+      executing.phaseBriefs[firstReady.id] = buildPhaseExecutionBrief(executing, firstReady, void 0);
+    }
     return executing;
   }, { ...mutation, operation: "approve_plan" });
+}
+async function preparePhaseExecutionBrief(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    const phase2 = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
+    if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    if (!["planned", "ready"].includes(phase2.status)) throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only an unstarted phase can receive an execution brief.`);
+    const next = structuredClone(state);
+    const current = next.phaseBriefs?.[phase2.id];
+    if (current && briefIsCurrent(next, phase2.id)) return next;
+    next.phaseBriefs ??= {};
+    next.phaseBriefs[phase2.id] = buildPhaseExecutionBrief(next, phase2, args.provider, current);
+    if (next.phaseBriefs[phase2.id].materialChangesFromWorkflowPlan.length > 0) {
+      next.phaseBriefs[phase2.id].approvalStatus = "stale";
+      next.blockers = unique7([...next.blockers, `Material drift detected in ${phase2.id}; reapproval is required.`]);
+      appendEvent(next, "phase_brief_material_drift", `Phase ${phase2.id} execution brief contains material drift.`, phase2.id);
+    } else {
+      appendEvent(next, "phase_brief_generated", `Phase ${phase2.id} execution brief revision ${next.phaseBriefs[phase2.id].briefRevision} generated.`, phase2.id);
+    }
+    return next;
+  }, { ...args.mutation, operation: "phase_brief_prepare" });
+}
+async function approvePhase(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (state.approval?.policy !== "phase-by-phase") throw new InvalidTransitionError("Phase approval is available only under the phase-by-phase policy.");
+    const phase2 = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
+    const brief = state.phaseBriefs?.[args.phaseId];
+    if (!phase2 || phase2.status !== "ready") throw new InvalidTransitionError(`Phase ${args.phaseId} is not ready for approval.`);
+    if (!brief || !briefIsCurrent(state, args.phaseId) || brief.briefRevision !== args.briefRevision) throw new InvalidTransitionError(`Phase ${args.phaseId} has no current execution brief revision ${args.briefRevision}.`);
+    const next = structuredClone(state);
+    next.approval.currentAuthorizedPhase = args.phaseId;
+    next.phaseBriefs[args.phaseId] = { ...brief, approvalStatus: "approved" };
+    const recommendation = approvalRecommendation(next, args.phaseId);
+    next.approval.recommendation = recommendation;
+    next.approval.history.push({
+      policy: "phase-by-phase",
+      source: "user",
+      timestamp: timestamp2(),
+      workflowRevision: next.revision + 1,
+      phaseId: args.phaseId,
+      briefRevision: brief.briefRevision,
+      recommendation,
+      recommendationOverridden: false,
+      action: "phase-approved"
+    });
+    appendEvent(next, "phase_execution_approved", `Phase ${args.phaseId} brief revision ${brief.briefRevision} approved.`, args.phaseId);
+    return next;
+  }, { ...args.mutation, operation: "approve_phase" });
 }
 async function startPhase(root, workflowId2, phaseId, mutation) {
   return updateFlowState(root, workflowId2, (state) => {
@@ -25569,7 +25859,7 @@ async function completePhase(args) {
     }
     const inspected = await inspectPhaseWorkspaceChanges(next, phase2, ownerId);
     phase2.status = "completion_pending";
-    phase2.filesChanged = unique6([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
+    phase2.filesChanged = unique7([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
     phase2.commandsRun = [...phase2.commandsRun, ...args.commandsRun ?? []];
     for (const evidence2 of args.validation ?? []) {
       validateWorkflowEvidence(evidence2);
@@ -25577,7 +25867,7 @@ async function completePhase(args) {
       phase2.validationResults.push(evidence2);
     }
     const detectedDeviations = detectScopeDeviations(phase2, args.config);
-    phase2.scopeDeviations = unique6([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
+    phase2.scopeDeviations = unique7([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
     const completion = buildCompletionRecord({
       state: next,
       phase: phase2,
@@ -25596,7 +25886,7 @@ async function completePhase(args) {
       const gitEvidence = await captureApprovedPhaseChange(next, phase2, ownerId, args.config ?? defaultConfig());
       if (gitEvidence) {
         completion.gitEvidence = gitEvidence;
-        phase2.filesChanged = unique6([...phase2.filesChanged, ...gitEvidence.changedFiles]);
+        phase2.filesChanged = unique7([...phase2.filesChanged, ...gitEvidence.changedFiles]);
         completion.filesChanged = phase2.filesChanged;
         if (next.git?.phaseWorkspaces[phase2.id]) {
           next.git.phaseWorkspaces[phase2.id] = { ...next.git.phaseWorkspaces[phase2.id], status: "approved", updatedAt: timestamp2() };
@@ -25617,6 +25907,16 @@ async function completePhase(args) {
       return transition(next, "blocked", `Phase ${phase2.id} is blocked.`);
     }
     if (completion.decision !== "completed") return next;
+    if (next.approval?.policy === "phase-by-phase" && next.approval.currentAuthorizedPhase === phase2.id) {
+      next.approval.currentAuthorizedPhase = void 0;
+      const phaseForApproval = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById2(plan, id)?.status === "completed"));
+      next.approval.recommendation = approvalRecommendation(next, phaseForApproval?.id);
+      if (phaseForApproval) {
+        next.phaseBriefs ??= {};
+        next.phaseBriefs[phaseForApproval.id] = buildPhaseExecutionBrief(next, phaseForApproval);
+        appendEvent(next, "phase_approval_required", `Phase ${phaseForApproval.id} is ready for explicit approval.`, phaseForApproval.id);
+      }
+    }
     const nextPhase = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById2(plan, id)?.status === "completed"));
     if (nextPhase) {
       appendEvent(next, "phase_ready", `Phase ${nextPhase.id} became ready after completion gate passed.`, nextPhase.id);
@@ -26123,13 +26423,13 @@ function enforceOneClarification(triage, clarificationAlreadyAnswered) {
   if (!clarificationAlreadyAnswered || !triage.clarification.required) return triage;
   const next = structuredClone(triage);
   next.clarification = { required: false, question: null, reason: null };
-  next.assumptions = unique6([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
+  next.assumptions = unique7([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
   return next;
 }
 function initialiseWorkflowConstraints(triage, config2, workflowRevision, transitionName) {
   const createdAt = timestamp2();
-  const original = unique6(triage.constraints.mustNot).map((text) => constraintRecord(text, "triage", createdAt, workflowRevision, transitionName));
-  const policy = unique6(config2.instructions).map((text) => constraintRecord(text, "policy", createdAt, workflowRevision, transitionName));
+  const original = unique7(triage.constraints.mustNot).map((text) => constraintRecord(text, "triage", createdAt, workflowRevision, transitionName));
+  const policy = unique7(config2.instructions).map((text) => constraintRecord(text, "policy", createdAt, workflowRevision, transitionName));
   return recomputeConstraints({
     original,
     policy,
@@ -26149,34 +26449,34 @@ function applyApprovalConstraintChanges(state, config2, changes) {
   for (const text of changes?.remove ?? []) {
     const clean = cleanConstraint(text);
     if (!clean) throw new WorkflowStateError("Cannot remove an empty constraint.");
-    const change = constraintChange("remove", clean, void 0, now, revision);
-    next.userRemovals.push(change);
-    next.audit.push(change);
+    const change2 = constraintChange("remove", clean, void 0, now, revision);
+    next.userRemovals.push(change2);
+    next.audit.push(change2);
   }
   for (const override of changes?.override ?? []) {
     const target = cleanConstraint(override.target);
     const text = cleanConstraint(override.text);
     if (!target || !text) throw new WorkflowStateError("Constraint overrides require both target and replacement text.");
-    const change = constraintChange("override", text, target, now, revision);
-    next.userOverrides.push(change);
+    const change2 = constraintChange("override", text, target, now, revision);
+    next.userOverrides.push(change2);
     next.userAdditions.push(constraintRecord(text, "user", now, revision, "approve_approach"));
-    next.audit.push(change);
+    next.audit.push(change2);
   }
   for (const text of changes?.add ?? []) {
     const clean = cleanConstraint(text);
     if (!clean) throw new WorkflowStateError("Cannot add an empty constraint.");
-    const change = constraintChange("add", clean, void 0, now, revision);
+    const change2 = constraintChange("add", clean, void 0, now, revision);
     next.userAdditions.push(constraintRecord(clean, "user", now, revision, "approve_approach"));
-    next.audit.push(change);
+    next.audit.push(change2);
   }
   return recomputeConstraints(next);
 }
 function recomputeConstraints(model) {
-  const removals = model.userRemovals.map((change) => change.text);
-  const overrideTargets = model.userOverrides.map((change) => change.target).filter((target) => Boolean(target));
+  const removals = model.userRemovals.map((change2) => change2.text);
+  const overrideTargets = model.userOverrides.map((change2) => change2.target).filter((target) => Boolean(target));
   const compatibilityWaivers = [
     ...model.userAdditions.map((record2) => record2.text),
-    ...model.userOverrides.map((change) => change.text)
+    ...model.userOverrides.map((change2) => change2.text)
   ].filter(isBackwardCompatibilityNotRequired);
   const policyCompatibilityRequirements = model.policy.filter((record2) => requiresBackwardCompatibility(record2.text));
   if (compatibilityWaivers.length > 0 && policyCompatibilityRequirements.length > 0) {
@@ -26223,13 +26523,13 @@ function effectiveConstraintSet(state, triage, config2) {
     policy: constraints.policy.map((constraint) => constraint.text),
     triage: constraints.original.map((constraint) => constraint.text),
     userAdditions: constraints.userAdditions.map((constraint) => constraint.text),
-    userRemovals: constraints.userRemovals.map((change) => ({ target: change.target, text: change.text })),
-    userOverrides: constraints.userOverrides.map((change) => ({ target: change.target, text: change.text })),
+    userRemovals: constraints.userRemovals.map((change2) => ({ target: change2.target, text: change2.text })),
+    userOverrides: constraints.userOverrides.map((change2) => ({ target: change2.target, text: change2.text })),
     finalEffective: constraints.effective.map((constraint) => constraint.text)
   };
 }
 function approvalConstraintSummary(constraints) {
-  const changes = constraints.audit.filter((change) => change.transition === "approve_approach");
+  const changes = constraints.audit.filter((change2) => change2.transition === "approve_approach");
   if (changes.length === 0) return "Approach approved.";
   return `Approach approved with ${changes.length} constraint change${changes.length === 1 ? "" : "s"}.`;
 }
@@ -26281,9 +26581,14 @@ async function withPlan(state, config2, planningOptions) {
   });
   planning.plan = planningRun.plan;
   planning.planningRun = planningRunMetadata(planningRun);
+  planning.phaseBriefs = {};
+  planning.approval = {
+    ...planning.approval ?? { history: [] },
+    recommendation: approvalRecommendation(planning)
+  };
   appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
   if (planningRun.approvalBlockedReason) {
-    planning.blockers = unique6([...planning.blockers, planningRun.approvalBlockedReason]);
+    planning.blockers = unique7([...planning.blockers, planningRun.approvalBlockedReason]);
     return transition(planning, "blocked", "Plan approval disabled because deterministic fallback was too generic; revise the plan before continuing.");
   }
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
@@ -26368,7 +26673,7 @@ function validateModelPlan(raw, mode2, config2, revisionRequests, constraints) {
         id: candidate.id,
         objective: candidate.objective,
         rationale: candidate.rationale,
-        dependencies: unique6([...candidate.dependencies, ...candidate.dependsOn ?? []]),
+        dependencies: unique7([...candidate.dependencies, ...candidate.dependsOn ?? []]),
         areas,
         readAreas: candidate.expectedReadAreas ?? areas,
         acceptance: candidate.acceptanceCriteria,
@@ -26428,7 +26733,7 @@ function planningPrinciples(triage, constraints) {
     "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
     "Phase execution is dispatched through the configured execution coordinator unless manual execution was explicitly selected."
   ];
-  return unique6([
+  return unique7([
     ...principles,
     ...(constraints ?? triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: ${constraint}`)
   ]);
@@ -26602,7 +26907,7 @@ function standardPhases(targets, validationCommands, boundaries) {
         objective: "Add focused regression coverage for the changed behavior.",
         rationale: "Regression evidence should be reviewable separately from implementation edits.",
         dependencies: ["phase-2"],
-        areas: unique6([...targets, "nearby tests or package checks"]),
+        areas: unique7([...targets, "nearby tests or package checks"]),
         acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
         validationCommands,
         riskLevel: "medium",
@@ -26627,7 +26932,7 @@ function standardPhases(targets, validationCommands, boundaries) {
       objective: "Add focused regression coverage for the changed behavior.",
       rationale: "Coverage is materially distinct from implementation and proves the behavior under review.",
       dependencies: ["phase-1"],
-      areas: unique6([...targets, "nearby tests or package checks"]),
+      areas: unique7([...targets, "nearby tests or package checks"]),
       acceptance: ["Targeted evidence exists for the changed behavior.", "Any skipped check has a concise reason accepted by the completion policy."],
       validationCommands,
       riskLevel: "medium",
@@ -26650,7 +26955,7 @@ function standardPhases(targets, validationCommands, boundaries) {
   return phases;
 }
 function rigorousPhases(targets, validationCommands, triage, boundaries) {
-  const highRiskAreas = unique6([
+  const highRiskAreas = unique7([
     ...targets,
     ...triage.escalationReasons.map((reason) => `risk: ${reason}`)
   ]);
@@ -26683,7 +26988,7 @@ function rigorousPhases(targets, validationCommands, triage, boundaries) {
       objective: "Add high-risk regression and integration validation evidence.",
       rationale: "Rigorous mode requires broader evidence before final integrated review.",
       dependencies: ["phase-2"],
-      areas: unique6([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
+      areas: unique7([...targets, "targeted and broader tests", "security, migration, API, or production checks where relevant"]),
       acceptance: ["Targeted and broader checks are recorded or explicitly skipped with reasons.", "The diff is ready for deep integrated review."],
       validationCommands,
       riskLevel: "high",
@@ -26764,7 +27069,7 @@ function isInspectableCriterion(criterion) {
 }
 function mixedArchitecturalBoundary(phase2, mode2) {
   if (mode2 === "fast") return void 0;
-  const productionGroups = unique6((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(areaBoundary).filter((group) => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
+  const productionGroups = unique7((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(areaBoundary).filter((group) => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
   if (productionGroups.length <= 1) return void 0;
   return `Phase ${phase2.id} writes multiple architectural boundaries (${productionGroups.join(", ")}); split the phase or make the dependency boundary explicit.`;
 }
@@ -26796,8 +27101,8 @@ function uniqueDiagnostics(diagnostics) {
   return out;
 }
 function phase(args) {
-  const areas = unique6(args.areas);
-  const readAreas = unique6(args.readAreas ?? areas);
+  const areas = unique7(args.areas);
+  const readAreas = unique7(args.readAreas ?? areas);
   return {
     id: args.id,
     objective: args.objective,
@@ -26827,20 +27132,20 @@ function defaultValidationCommands(root, mode2, triage) {
   if (triage.task.type === "documentation") {
     if (scripts.lint) commands.push("npm run lint");
     commands.push("git diff --check");
-    return unique6(commands);
+    return unique7(commands);
   }
   if (mode2 === "fast") {
     if (scripts.typecheck) commands.push("npm run typecheck");
     if (scripts.test) commands.push("npm test -- --runInBand");
     commands.push("git diff --check");
-    return unique6(commands);
+    return unique7(commands);
   }
   if (scripts.test) commands.push("npm test");
   if (scripts.typecheck) commands.push("npm run typecheck");
   if (scripts.lint) commands.push("npm run lint");
   if (mode2 === "rigorous" && scripts.build) commands.push("npm run build");
   commands.push("git diff --check");
-  return unique6(commands);
+  return unique7(commands);
 }
 function readPackageJsonSync(root) {
   try {
@@ -26927,8 +27232,8 @@ function buildCompletionRecord(args) {
     filesChanged: args.phase.filesChanged,
     validation,
     scopeDeviations: args.phase.scopeDeviations,
-    assumptions: unique6(args.assumptions ?? []),
-    remainingRisks: unique6(args.remainingRisks ?? []),
+    assumptions: unique7(args.assumptions ?? []),
+    remainingRisks: unique7(args.remainingRisks ?? []),
     dependentPhasesMayProceed: decision === "completed",
     decision,
     reason: args.blockedReason ?? policy.reason ?? args.requestedRepairScope ?? "Completion gate evaluated.",
@@ -26947,7 +27252,7 @@ function normaliseCriteria(phase2, supplied) {
     return {
       criterion,
       status: suppliedCriterion?.status ?? "uncertain",
-      evidence: unique6(suppliedCriterion?.evidence ?? [])
+      evidence: unique7(suppliedCriterion?.evidence ?? [])
     };
   });
 }
@@ -27057,7 +27362,7 @@ function detectScopeDeviations(phase2, config2) {
       }
     }
   }
-  return unique6(deviations);
+  return unique7(deviations);
 }
 function gateRequiresEvidence(config2) {
   return config2?.completionGate.requireEvidence ?? true;
@@ -27237,6 +27542,17 @@ function migrateWorkflowState(raw, root, workflowId2) {
     const plan = migrated.plan;
     plan.phases = (plan.phases ?? []).map((phase2, index) => migratePhase(phase2, index));
   }
+  if (!migrated.approval && migrated.state === "executing") {
+    const mode2 = migrated.mode === "rigorous" ? "rigorous" : migrated.mode === "fast" ? "fast" : "standard";
+    migrated.approval = {
+      policy: defaultApprovalPolicy(mode2),
+      source: "legacy-default",
+      selectedAt: migrated.updatedAt,
+      workflowPlanRevision: migrated.revision,
+      history: []
+    };
+  }
+  migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   return migrated;
 }
 function migratePhase(raw, index) {
@@ -27298,7 +27614,7 @@ function label(mode2) {
 function timestamp2() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
-function unique6(values) {
+function unique7(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -27389,19 +27705,24 @@ function workflowNextSummary(state) {
     };
   }
   if (state.state === "awaiting_plan_approval") {
-    const commands = nextActions(state);
     const plan = state.plan;
     const readiness = planExecutionStructure(state);
+    const recommendation = state.approval?.recommendation ?? approvalRecommendation(state);
+    const root = quoteArg(state.root);
+    const executionActions = state.mode === "rigorous" ? [{ label: "Approve this phase only", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy phase-by-phase --root ${root}`, description: "Approve only the first ready phase; Rigorous mode requires approval before every later phase." }] : [
+      { label: "Approve all remaining phases", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy workflow-authorized --root ${root}`, description: "Authorize coordinator execution of later phases that remain within the approved Workflow Plan." },
+      { label: "Approve this phase only", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy phase-by-phase --root ${root}`, description: "Authorize only the first ready phase and return for approval before the next phase." }
+    ];
     return {
       ...base,
       label: "Plan approval",
       userDecisionRequired: true,
-      pendingDecision: "Approve this plan, request changes, or cancel.",
+      pendingDecision: "Approve this Workflow Plan, request changes, or cancel.",
       pendingAction: "Select an approval action or type a response.",
       allowedIntents: ["approve", "looks good", "continue", "revise", "cancel", "show status", "show plan"],
       approvalActions: [
-        { label: "Approve plan and start coordinator execution", intent: "approve", command: commands[0] ?? "", description: "Accept the plan; execution remains coordinator-managed and starts only through the execution command." },
-        { label: "Revise plan", intent: "revise", command: commands[1] ?? "", description: "Request plan changes with specific feedback." },
+        ...executionActions,
+        { label: "Revise plan", intent: "revise", command: `leanrigor flow revise-plan ${state.id} "<feedback>" --root ${root}`, description: "Request Workflow Plan changes with specific feedback." },
         { label: "View full details", intent: "show plan", command: `leanrigor flow status ${state.id} --json --root ${quoteArg(state.root)}`, description: "Show full persisted workflow, plan, constraints, and provenance." },
         { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${quoteArg(state.root)}`, description: "Cancel this workflow." }
       ],
@@ -27417,7 +27738,7 @@ function workflowNextSummary(state) {
         overallStrategy: {
           implementationDivision: plan?.summary ?? "Sequential implementation plan.",
           orderRationale: "Dependencies define execution order; each phase is independently reviewable before dependents unlock.",
-          architectureBoundaries: unique7(plan?.phases.flatMap((phase3) => phase3.expectedWriteAreas.map(architectureBoundaryForArea)) ?? []).filter(Boolean)
+          architectureBoundaries: unique8(plan?.phases.flatMap((phase3) => phase3.expectedWriteAreas.map(architectureBoundaryForArea)) ?? []).filter(Boolean)
         },
         phases: plan?.phases.map((candidate, index) => ({
           number: index + 1,
@@ -27434,7 +27755,7 @@ function workflowNextSummary(state) {
         executionStructure: readiness,
         validationStrategy: {
           perPhase: plan?.phases.map((phase3) => ({ phase: phase3.id, commands: phase3.validationCommands, criteria: phase3.acceptanceCriteria })) ?? [],
-          finalIntegratedChecks: unique7(plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+          finalIntegratedChecks: unique8(plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
           completionEvidence: "Each phase must record changed files, validation evidence, criteria evidence, assumptions, risks, and scope deviations before dependent phases proceed."
         },
         approvedConstraints: state.constraints?.effective.map((constraint) => ({ text: constraint.text, source: constraint.source })) ?? state.triage?.constraints.mustNot ?? [],
@@ -27448,6 +27769,12 @@ function workflowNextSummary(state) {
           mainWorkingTree: "remains untouched",
           manualExecution: "not selected",
           implementationStarted: false
+        },
+        approval: {
+          recommendation,
+          recommendedLabel: recommendation.option === "approve-all-remaining" ? "Approve all remaining phases" : "Approve this phase only",
+          reason: recommendation.reasons.join(" "),
+          permittedPolicies: state.mode === "rigorous" ? ["phase-by-phase"] : ["workflow-authorized", "phase-by-phase"]
         }
       }
     };
@@ -27455,6 +27782,33 @@ function workflowNextSummary(state) {
   if (state.state === "executing" && phase2) {
     const needsIntervention = ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status);
     const readiness = executingReadinessSummary(state);
+    const brief = state.phaseBriefs?.[phase2.id];
+    const needsPhaseApproval = phase2.status === "ready" && state.approval?.policy === "phase-by-phase" && Boolean(brief) && (state.approval.currentAuthorizedPhase !== phase2.id || brief?.approvalStatus !== "approved");
+    if (needsPhaseApproval) {
+      const root = quoteArg(state.root);
+      const recommendation = state.approval?.recommendation ?? approvalRecommendation(state, phase2.id);
+      return {
+        ...base,
+        label: "Phase execution brief",
+        userDecisionRequired: true,
+        pendingDecision: `Approve phase ${phase2.id} using its current execution brief.`,
+        pendingAction: "Review the phase brief and select an action.",
+        allowedIntents: ["approve", "revise", "view details", "show plan", "cancel"],
+        approvalActions: [
+          { label: "Approve this phase", intent: "approve", command: `leanrigor flow approve-phase ${state.id} ${phase2.id} --brief-revision ${brief?.briefRevision ?? 0} --root ${root}`, description: "Authorize exactly this persisted brief revision." },
+          { label: "Revise phase brief", intent: "revise", command: `leanrigor flow phase-brief ${state.id} ${phase2.id} --root ${root}`, description: "Refresh the bounded phase brief before approval." },
+          { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief ${state.id} ${phase2.id} --root ${root}`, description: "Show the persisted objective, boundaries, obligations, validation, risks, and drift findings." },
+          { label: "Return to Workflow Plan", intent: "show plan", command: `leanrigor flow status ${state.id} --json --root ${root}`, description: "Show the approved Workflow Plan and policy history." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel this workflow." }
+        ],
+        summary: {
+          phase: phase2.id,
+          brief,
+          recommendation,
+          withinApprovedPlan: brief?.materialChangesFromWorkflowPlan.length === 0
+        }
+      };
+    }
     return {
       ...base,
       label: needsIntervention ? "Phase completion review" : "Phase execution",
@@ -27474,7 +27828,9 @@ function workflowNextSummary(state) {
         scopeDeviations: phase2.scopeDeviations,
         recommendedNextPhase: readiness.recommendedNextPhase,
         otherDependencyReadyPhases: readiness.otherDependencyReadyPhases,
-        planOrderPrimary: state.mode === "standard" || state.mode === "rigorous"
+        planOrderPrimary: state.mode === "standard" || state.mode === "rigorous",
+        phaseBrief: brief,
+        approval: state.approval
       }
     };
   }
@@ -27535,9 +27891,9 @@ function currentPhaseObject(state) {
   return state.plan?.phases.find((phase2) => phase2.status === "running" || phase2.status === "leased" || phase2.status === "completion_pending") ?? state.plan?.phases.find((phase2) => phase2.status === "ready") ?? state.plan?.phases.find((phase2) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase2.status));
 }
 function executingReadinessSummary(state) {
-  const schedule = readyPhases(state);
-  const byId = new Map(state.plan?.phases.map((phase2) => [phase2.id, phase2]) ?? []);
-  const dependencyReady = schedule.readyPhases.filter((phase2) => phase2.blockedBy.length === 0).map((phase2) => byId.get(phase2.phaseId)).filter((phase2) => Boolean(phase2));
+  const phases = state.plan?.phases ?? [];
+  const byId = new Map(phases.map((phase2) => [phase2.id, phase2]));
+  const dependencyReady = phases.filter((phase2) => ["planned", "ready"].includes(phase2.status) && phase2.dependencies.every((dependency) => byId.get(dependency)?.status === "completed"));
   const recommended = dependencyReady[0];
   return {
     recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : void 0,
@@ -27672,7 +28028,7 @@ function summariseCriteria(criteria) {
     notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
   };
 }
-function unique7(values) {
+function unique8(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 function quoteArg(value) {
@@ -27944,9 +28300,10 @@ var ClaudeCliExecutionProvider = class {
     const controller = new AbortController();
     const stdout = await open3(stdoutPath, "w");
     const stderr = await open3(stderrPath, "w");
-    const child = spawn2(this.options.command ?? "claude", args, {
+    const invocation = windowsBatchInvocation(this.options.command ?? "claude", args);
+    const child = spawn2(invocation.command, invocation.args, {
       cwd: input.workspacePath,
-      detached: true,
+      detached: process.platform !== "win32",
       stdio: ["ignore", stdout.fd, stderr.fd],
       signal: controller.signal,
       env: boundedClaudeEnv(process.env)
@@ -28050,11 +28407,34 @@ ${stderr}`;
     execution.controller.abort();
   }
 };
+function windowsBatchInvocation(command, args) {
+  if (process.platform !== "win32" || !/\.(?:cmd|bat)$/i.test(command)) return { command, args };
+  return {
+    command: process.env.ComSpec ?? "cmd.exe",
+    args: ["/d", "/c", "call", command, ...args]
+  };
+}
 async function writeStatus(statusPath, status) {
-  const tempPath = `${statusPath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile9(tempPath, `${JSON.stringify(status, null, 2)}
-`, "utf8");
-  await rename3(tempPath, statusPath);
+  const content = `${JSON.stringify(status, null, 2)}
+`;
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const tempPath = `${statusPath}.${process.pid}.${Date.now()}.${attempt}.tmp`;
+    try {
+      await writeFile9(tempPath, content, "utf8");
+      await rename3(tempPath, statusPath);
+      return;
+    } catch (error51) {
+      lastError = error51;
+      if (error51.code !== "EPERM" && error51.code !== "EACCES") throw error51;
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+    }
+  }
+  try {
+    await writeFile9(statusPath, content, "utf8");
+  } catch {
+    throw lastError;
+  }
 }
 async function readPersistedStatus(handle) {
   const metadata = claudeMetadata(handle);
@@ -28694,6 +29074,17 @@ var ExecutionCoordinator = class {
     let state = await loadFlowState(this.root, this.workflowId);
     if (state.state !== "executing") return this.result(state, [], this.nextActionForState(state), "Workflow is not in an executable state.");
     if (!state.git) state = await workspaceInit({ root: this.root, workflowId: this.workflowId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
+    for (const phase2 of state.plan?.phases ?? []) {
+      if (!["planned", "ready"].includes(phase2.status)) continue;
+      if (!dependencyIds(phase2).every((dependency) => state.plan?.phases.find((candidate) => candidate.id === dependency)?.status === "completed")) continue;
+      state = await preparePhaseExecutionBrief({
+        root: this.root,
+        workflowId: this.workflowId,
+        phaseId: phase2.id,
+        provider: this.provider.id,
+        mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+      });
+    }
     const selected = this.selectDispatchable(state);
     const dispatched = [];
     for (const phase2 of selected) {
@@ -29431,7 +29822,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.21");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.22");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -29707,8 +30098,28 @@ flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reas
 flow.command("revise-approach").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
   printFlowState(await reviseApproach(options.root, workflowId2, feedback, mutationOptions(options)));
 });
-flow.command("approve-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
-  printFlowState(await approvePlan(options.root, workflowId2, mutationOptions(options)));
+flow.command("approve-plan").argument("<workflow-id>").option("--approval-policy <policy>", "workflow-authorized or phase-by-phase").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  if (options.approvalPolicy && !["workflow-authorized", "phase-by-phase"].includes(options.approvalPolicy)) {
+    throw new Error("Invalid --approval-policy. Use workflow-authorized or phase-by-phase.");
+  }
+  printFlowState(await approvePlan(options.root, workflowId2, mutationOptions(options), options.approvalPolicy));
+});
+flow.command("phase-brief").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider provenance").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, phaseId, options) => {
+  const state = await preparePhaseExecutionBrief({
+    root: options.root,
+    workflowId: workflowId2,
+    phaseId,
+    provider: options.provider,
+    mutation: mutationOptions(options)
+  });
+  const brief = state.phaseBriefs?.[phaseId];
+  if (!brief) throw new Error(`Phase ${phaseId} has no execution brief.`);
+  console.log(JSON.stringify(brief, null, 2));
+});
+flow.command("approve-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--brief-revision <revision>", "exact phase execution brief revision").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, phaseId, options) => {
+  const briefRevision = Number.parseInt(options.briefRevision, 10);
+  if (!Number.isInteger(briefRevision) || briefRevision < 1) throw new Error("--brief-revision must be a positive integer.");
+  printFlowState(await approvePhase({ root: options.root, workflowId: workflowId2, phaseId, briefRevision, mutation: mutationOptions(options) }));
 });
 flow.command("revise-plan").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
   const providerSelection = triageProviderSelection(options.provider);
@@ -30083,6 +30494,8 @@ function printFlowState(state) {
     } : void 0,
     clarification: state.clarification,
     approach: state.approach,
+    approval: state.approval,
+    phaseBriefs: state.phaseBriefs,
     phaseProgress: state.plan?.phases.map((phase2) => ({
       id: phase2.id,
       status: phase2.status,

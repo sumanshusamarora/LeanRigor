@@ -11,6 +11,7 @@ import {
   integrationStatus,
   leasePhase,
   loadFlowState,
+  preparePhaseExecutionBrief,
   recoverLeases,
   releasePhase,
   updateFlowState,
@@ -77,6 +78,18 @@ export class ExecutionCoordinator {
     let state = await loadFlowState(this.root, this.workflowId);
     if (state.state !== "executing") return this.result(state, [], this.nextActionForState(state), "Workflow is not in an executable state.");
     if (!state.git) state = await workspaceInit({ root: this.root, workflowId: this.workflowId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
+
+    for (const phase of state.plan?.phases ?? []) {
+      if (!["planned", "ready"].includes(phase.status)) continue;
+      if (!dependencyIds(phase).every((dependency) => state.plan?.phases.find((candidate) => candidate.id === dependency)?.status === "completed")) continue;
+      state = await preparePhaseExecutionBrief({
+        root: this.root,
+        workflowId: this.workflowId,
+        phaseId: phase.id,
+        provider: this.provider.id,
+        mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+      });
+    }
 
     const selected = this.selectDispatchable(state);
     const dispatched: DispatchSummary[] = [];
@@ -650,7 +663,9 @@ async function codeGraphUsable(target: string): Promise<boolean> {
     return false;
   }
   try {
-    await execFileAsync("codegraph", ["status", target], { encoding: "utf8", timeout: 3000, maxBuffer: 32 * 1024 });
+    const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "codegraph";
+    const args = process.platform === "win32" ? ["/d", "/c", "codegraph", "status", target] : ["status", target];
+    await execFileAsync(command, args, { encoding: "utf8", timeout: 3000, maxBuffer: 32 * 1024 });
     return true;
   } catch {
     return false;
