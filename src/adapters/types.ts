@@ -1,4 +1,7 @@
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
+import type { ExecutionProvider } from "../core/execution/provider.js";
+import type { PlanningProvider } from "../core/planning-runner.js";
+import type { TriageProvider } from "../core/triage-runner.js";
 
 export interface ModelResolver {
   resolve(tier: ModelTier, config: LeanRigorConfig): string | undefined;
@@ -35,4 +38,20 @@ export interface HarnessAdapter {
   install(root: string, config: LeanRigorConfig, force?: boolean): Promise<InstallReport>;
   uninstall(root: string): Promise<UninstallReport>;
   doctor(root: string, config: LeanRigorConfig): Promise<string[]>;
+  bootstrap?(root: string, config: LeanRigorConfig, force?: boolean): Promise<{
+    installed: string[];
+    alreadyCurrent: string[];
+    adopted: string[];
+    skipped: string[];
+    settingsModified: boolean;
+    settingsState: string;
+  }>;
+}
+
+export interface AdapterRuntime {
+  readonly id: string;
+  readonly adapter: HarnessAdapter;
+  createTriageProvider(): TriageProvider;
+  createPlanningProvider(): PlanningProvider;
+  createExecutionProvider(config: LeanRigorConfig): ExecutionProvider;
 }

@@ -153,7 +153,9 @@ export const repoPolicyConfigSchema = z.object({
     options: z.number().int().min(1).max(5).optional(),
     reviewRounds: z.number().int().min(0).optional(),
     repairRounds: z.number().int().min(0).optional(),
-    triageCalls: z.number().int().min(1).max(3).optional()
+    triageCalls: z.number().int().min(1).max(3).optional(),
+    planningMaxTurns: z.number().int().min(1).max(50).optional(),
+    planningRepairMaxTurns: z.number().int().min(1).max(50).optional()
   }).prefault({})
 });
 

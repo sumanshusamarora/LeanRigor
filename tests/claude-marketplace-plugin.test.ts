@@ -162,7 +162,7 @@ describe("Claude marketplace plugin manifests", () => {
 
   it("pins marketplace conversational starts to auto triage", async () => {
     const content = await readFile(path.join(repoRoot, "commands", "start.md"), "utf8");
-    expect(content).toContain("flow start \"$ARGUMENTS\" --provider auto");
+    expect(content).toContain("flow start --request-file <request-file> --provider auto");
     expect(content).toMatch(/Do not use\s+`--provider deterministic` unless the user/);
     expect(content).toContain("flow approve-approach <workflow-id> --provider auto");
     expect(content).toContain("flow revise-plan <workflow-id> \"<feedback>\" --provider auto");

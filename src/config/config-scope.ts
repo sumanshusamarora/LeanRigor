@@ -66,12 +66,7 @@ export function scopeLabel(scope: ConfigScope): string {
 export const REPO_POLICY_FORBIDDEN_KEYS: readonly string[] = [
   "$schema",
   "version",
-  "models.tiers.small.claude",
-  "models.tiers.medium.claude",
-  "models.tiers.large.claude",
-  "models.tiers.small.opencode",
-  "models.tiers.medium.opencode",
-  "models.tiers.large.opencode",
+  "models.tiers",
   "execution.workspaceRoot",
   "execution.maxWorkspacePathLength",
   "execution.workspaceBranchPrefix",

@@ -13,20 +13,18 @@ export const userConfigSchema = z.object({
   version: z.literal(1).default(1),
 
   /** Preferred harness adapter. */
-  adapter: z.enum(["claude"]).default("claude"),
+  adapter: z.string().min(1).default("claude"),
 
   /** Personal concrete model mappings per harness adapter. */
-  models: z.object({
-    claude: z.object({
-      small: z.string().min(1).optional(),
-      medium: z.string().min(1).optional(),
-      large: z.string().min(1).optional()
-    }).prefault({})
-  }).prefault({}),
+  models: z.record(z.string().min(1), z.object({
+    small: z.string().min(1).optional(),
+    medium: z.string().min(1).optional(),
+    large: z.string().min(1).optional()
+  })).default({}),
 
   /** Personal execution preferences. */
   execution: z.object({
-    defaultProvider: z.enum(["claude-cli", "scripted"]).optional(),
+    defaultProvider: z.string().min(1).optional(),
     defaultMode: z.enum(["coordinator", "manual"]).optional(),
     pollIntervalSeconds: z.number().int().min(1).max(3600).optional(),
     workerTimeoutSeconds: z.number().int().min(5).max(86400).optional(),

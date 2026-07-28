@@ -37,59 +37,31 @@
           "properties": {
             "small": {
               "type": "object",
-              "properties": {
-                "claude": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "opencode": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "additionalProperties": false
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
             },
             "medium": {
               "type": "object",
-              "properties": {
-                "claude": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "opencode": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "additionalProperties": false
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
             },
             "large": {
               "type": "object",
-              "properties": {
-                "claude": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "opencode": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "additionalProperties": false
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
             },
             "inherit": {
               "type": "object",
-              "properties": {
-                "claude": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "opencode": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "additionalProperties": false
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           },
           "additionalProperties": false
@@ -653,6 +625,18 @@
           "minimum": 5,
           "maximum": 600,
           "default": 120
+        },
+        "planningMaxTurns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 7
+        },
+        "planningRepairMaxTurns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 4
         }
       },
       "additionalProperties": false

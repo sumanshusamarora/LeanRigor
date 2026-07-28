@@ -4,6 +4,9 @@
 Use `leanrigor flow` as the persisted source of truth. Users should respond in
 plain language; Claude invokes LeanRigor transitions internally and renders
 concise summaries.
+Write user-provided request, answer, and feedback text through a tool-native
+file operation and pass the matching `--*-file` option. Never interpolate user
+text into a shell command.
 
 Normal flow:
 
@@ -68,7 +71,7 @@ Rules:
 
 - One active workflow: resume it.
 - No active workflow: start only when the user supplied a request. Invoke
-  `leanrigor flow start "$ARGUMENTS" --provider auto` so automatic triage can
+  `leanrigor flow start --request-file <request-file> --provider auto` so automatic triage can
   call Claude when available. Render from the returned `next` object when
   present or immediately read `leanrigor flow next --json` when it is absent.
   Do not end the turn from raw `flow start` JSON. Use `--provider
@@ -76,7 +79,7 @@ Rules:
 - Multiple active workflows: use `AskUserQuestion` to let the user choose among them (header: "Workflow"). Show ID, request, state, mode, and updated time in each option description. Do not render an ordinary text question first. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable.
 - When `flow start` or `flow next --json` returns `next.approvalActions`, call the `AskUserQuestion` tool in the same assistant turn to present a structured selector. This is mandatory whenever the tool is available. A prose summary is not a decision gate by itself, and the turn must not end after the summary while `approvalActions` are pending. Use input shape `{ "questions": [{ "question": "What should LeanRigor do next?", "header": "<Approach|Plan|Commit|Phase|Workflow>", "options": [{ "label": "<approvalActions[n].label>", "description": "<approvalActions[n].description>" }], "multiSelect": false }] }`. Map each action's `label` to the option label and `description` to the option description, include every persisted option in order, then match the selected label to the persisted action and run that action's deterministic transition internally. Use a short header (max 12 chars) derived from the current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for multi-workflow selection. Do not render an ordinary text question such as "Approve or reject this approach?" before calling the selector. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable. Each action has a deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response. Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 - At the post-triage approach gate, render a compact `Workflow created and triaged` summary with workflow ID, mode, assessment, key constraints, recommended approach, and `No implementation has started. Your approval is required before planning.` Then call `AskUserQuestion` in the same turn with exactly these options in order: `Approve approach and create plan`, `Revise approach`, `View workflow details`, `Cancel workflow`.
-- At the clarification gate (`state: awaiting_clarification`), render the persisted question explicitly and verbatim: `Question: <next.summary.question or clarification.question>`. Also render `Why this matters: <next.summary.reason or clarification.reason>` when present. If `next.summary.modeStatus` is `provisional`, label the shown mode as `Provisional recommendation` and do not present it as final. Do not invent additional triage questions from repository scope or planning uncertainty; LeanRigor core has already filtered model-requested clarification. Do not replace the question with the reason, and do not end with a blank prompt after "before continuing". If `AskUserQuestion` is available, ask exactly the persisted question there as well; otherwise ask for a free-form answer in plain language. Record the answer with `leanrigor flow answer <workflow-id> "<answer>" --provider auto`.
+- At the clarification gate (`state: awaiting_clarification`), render the persisted question explicitly and verbatim: `Question: <next.summary.question or clarification.question>`. Also render `Why this matters: <next.summary.reason or clarification.reason>` when present. If `next.summary.modeStatus` is `provisional`, label the shown mode as `Provisional recommendation` and do not present it as final. Do not invent additional triage questions from repository scope or planning uncertainty; LeanRigor core has already filtered model-requested clarification. Do not replace the question with the reason, and do not end with a blank prompt after "before continuing". If `AskUserQuestion` is available, ask exactly the persisted question there as well; otherwise ask for a free-form answer in plain language. Record the answer with `leanrigor flow answer <workflow-id> --answer-file <answer-file> --provider auto`.
 - Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
 - Approval at approach immediately generates and renders the actual phased plan
   through `leanrigor flow approve-approach <workflow-id> --provider auto`, so
@@ -88,9 +91,9 @@ Rules:
   deterministic planning only when explicitly requested or when the provider
   falls back with a recorded reason.
 - Approach revisions use `leanrigor flow revise-approach <workflow-id>
-  "<feedback>"`, then rerender the approach summary without starting planning.
+  --feedback-file <feedback-file>`, then rerender the approach summary without starting planning.
 - Plan revisions use
-  `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
+  `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
   unless deterministic planning was explicitly requested.
 - Approval at plan derives ready phases. When execution providers/workspaces are
   configured, use `execution.mode = coordinator`: invoke

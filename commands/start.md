@@ -11,12 +11,15 @@ That skill is the workflow UX contract.
 
 Invoke the plugin-owned runtime internally through
 `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor`.
+Write user-provided request, answer, and feedback text through a tool-native
+file operation and pass the matching `--*-file` option. Never interpolate user
+text into a Bash command.
 
 Behaviour:
 
 1. Read active workflow selection with `flow active --json`.
 2. If `$ARGUMENTS` is a new coding request and no active workflow exists, start
-   a workflow with `flow start "$ARGUMENTS" --provider auto`, then inspect the
+   a workflow with `flow start --request-file <request-file> --provider auto`, then inspect the
    returned `next` object when present or immediately read `flow next --json`
    when it is absent. If `next.approvalActions` exists, call `AskUserQuestion`
    in the same assistant turn before replying. Do not end the turn from raw
@@ -45,7 +48,7 @@ Behaviour:
    replace the question with the reason or leave a blank prompt after "before
    continuing".
 6. For plan revisions, invoke
-   `flow revise-plan <workflow-id> "<feedback>" --provider auto` internally.
+   `flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto` internally.
    Preserve any explicit user request for deterministic planning.
 7. During execution, use `execution.mode = coordinator` when execution
    providers/workspaces are configured: invoke `flow execute-next --provider auto`
