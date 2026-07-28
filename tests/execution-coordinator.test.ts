@@ -10,6 +10,24 @@ import { phaseWorkerPrompt } from "../src/core/execution/prompt.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("execution coordinator", () => {
+  it("does not start coordinator execution while the Phase 1 brief decision is pending", async () => {
+    const harness = await createExecutionHarness({
+      approveFirstPhase: false,
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": { edits: [{ path: "src/a.ts", content: "should not run\n" }], validation: [{ command: "npm test", exitCode: 0 }] }
+      }
+    });
+
+    const result = await harness.coordinator.runNext();
+    const state = await currentState(harness);
+
+    expect(result).toMatchObject({ nextAction: "await_user", dispatched: [] });
+    expect(state.approval?.pendingDecision).toMatchObject({ phaseId: "phase-a", status: "pending" });
+    expect(state.execution.records).toEqual({});
+    expect(state.git).toBeUndefined();
+  });
+
   it("runs sequential phases through gates, integration, combined validation, and final-review eligibility", async () => {
     const harness = await createExecutionHarness({
       phases: [testPhase("phase-a", ["src/a.ts"]), testPhase("phase-b", ["src/b.ts"], ["phase-a"])],

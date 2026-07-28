@@ -133,10 +133,10 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     const recommendation = state.approval?.recommendation ?? approvalRecommendation(state);
     const root = quoteArg(state.root);
     const executionActions: ApprovalAction[] = state.mode === "rigorous"
-      ? [{ label: "Approve this phase only", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy phase-by-phase --root ${root}`, description: "Approve only the first ready phase; Rigorous mode requires approval before every later phase." }]
+      ? [{ label: "Approve Workflow Plan and prepare Phase 1 brief", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy phase-by-phase --root ${root}`, description: "Approve the Workflow Plan only, then review the separate Phase 1 Execution Brief before any execution." }]
       : [
-        { label: "Approve all remaining phases", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy workflow-authorized --root ${root}`, description: "Authorize coordinator execution of later phases that remain within the approved Workflow Plan." },
-        { label: "Approve this phase only", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy phase-by-phase --root ${root}`, description: "Authorize only the first ready phase and return for approval before the next phase." }
+        { label: "Approve Workflow Plan and prepare Phase 1 brief", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy workflow-authorized --root ${root}`, description: "Approve the Workflow Plan policy, then review Phase 1's separate brief before execution." },
+        { label: "Approve Workflow Plan with phase-by-phase review", intent: "approve", command: `leanrigor flow approve-plan ${state.id} --approval-policy phase-by-phase --root ${root}`, description: "Approve the Workflow Plan and require a separate brief approval before every phase." }
       ];
     return {
       ...base,
@@ -197,7 +197,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         },
         approval: {
           recommendation,
-          recommendedLabel: recommendation.option === "approve-all-remaining" ? "Approve all remaining phases" : "Approve this phase only",
+          recommendedLabel: recommendation.option === "approve-all-remaining" ? "Approve Workflow Plan and prepare Phase 1 brief" : "Approve Workflow Plan with phase-by-phase review",
           reason: recommendation.reasons.join(" "),
           permittedPolicies: state.mode === "rigorous" ? ["phase-by-phase"] : ["workflow-authorized", "phase-by-phase"]
         }
@@ -208,10 +208,14 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     const needsIntervention = ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status);
     const readiness = executingReadinessSummary(state);
     const brief = state.phaseBriefs?.[phase.id];
+    const pendingDecision = state.approval?.pendingDecision;
     const needsPhaseApproval = phase.status === "ready"
-      && state.approval?.policy === "phase-by-phase"
       && Boolean(brief)
-      && (state.approval.currentAuthorizedPhase !== phase.id || brief?.approvalStatus !== "approved");
+      && pendingDecision?.type === "phase-brief-approval"
+      && pendingDecision.status === "pending"
+      && pendingDecision.phaseId === phase.id
+      && pendingDecision.briefRevision === brief?.briefRevision
+      && pendingDecision.workflowRevision === brief?.workflowRevision;
     if (needsPhaseApproval) {
       const root = quoteArg(state.root);
       const recommendation = state.approval?.recommendation ?? approvalRecommendation(state, phase.id);
@@ -219,19 +223,19 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         ...base,
         label: "Phase execution brief",
         userDecisionRequired: true,
-        pendingDecision: `Approve phase ${phase.id} using its current execution brief.`,
+        pendingDecision: `Approve phase ${phase.id} using Workflow Plan revision ${pendingDecision?.workflowRevision} and execution brief revision ${pendingDecision?.briefRevision}.`,
         pendingAction: "Review the phase brief and select an action.",
-        allowedIntents: ["approve", "revise", "view details", "show plan", "cancel"],
+        allowedIntents: ["approve", "revise", "view details", "cancel"],
         approvalActions: [
-          { label: "Approve this phase", intent: "approve", command: `leanrigor flow approve-phase ${state.id} ${phase.id} --brief-revision ${brief?.briefRevision ?? 0} --root ${root}`, description: "Authorize exactly this persisted brief revision." },
+          { label: `Approve ${phase.id}`, intent: "approve", command: `leanrigor flow approve-phase ${state.id} ${phase.id} --brief-revision ${brief?.briefRevision ?? 0} --workflow-revision ${pendingDecision?.workflowRevision ?? 0} --root ${root}`, description: "Authorize exactly this persisted Workflow Plan and Phase Execution Brief revision." },
           { label: "Revise phase brief", intent: "revise", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --root ${root}`, description: "Refresh the bounded phase brief before approval." },
           { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --root ${root}`, description: "Show the persisted objective, boundaries, obligations, validation, risks, and drift findings." },
-          { label: "Return to Workflow Plan", intent: "show plan", command: `leanrigor flow status ${state.id} --json --root ${root}`, description: "Show the approved Workflow Plan and policy history." },
           { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel this workflow." }
         ],
         summary: {
           phase: phase.id,
           brief,
+          pendingDecision,
           recommendation,
           withinApprovedPlan: brief?.materialChangesFromWorkflowPlan.length === 0
         }

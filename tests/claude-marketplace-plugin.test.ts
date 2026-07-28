@@ -179,6 +179,8 @@ describe("Claude marketplace plugin manifests", () => {
     expect(content).toMatch(/Do not use\s+`--provider deterministic` unless the user/);
     expect(content).toContain("flow approve-approach <workflow-id> --provider auto");
     expect(content).toContain("flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto");
+    expect(content).toContain("flow next --json");
+    expect(content).toContain("exact brief approval");
     expect(content).toContain("flow execute-next --provider auto");
     expect(content).toContain("flow execution-poll --provider auto");
     expect(content).toContain("next.approvalActions");
@@ -231,6 +233,8 @@ describe("Claude marketplace plugin manifests", () => {
     expect(startContent).toContain("Do not use `--provider deterministic` unless the");
     expect(startContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
     expect(startContent).toContain("leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto");
+    expect(startContent).toContain("flow next --json");
+    expect(startContent).toContain("exact brief approval");
     expect(startContent).toContain("flow execute-next --provider auto");
     expect(startContent).toContain("flow execution-poll --provider auto");
     expect(startContent).toContain("next.approvalActions");

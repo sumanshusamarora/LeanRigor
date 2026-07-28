@@ -78,7 +78,7 @@ import type { PlanningProvider } from "../core/planning-runner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.23");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.24");
 
 program.command("setup")
   .alias("init")
@@ -539,13 +539,16 @@ flow.command("approve-phase")
   .argument("<workflow-id>")
   .argument("<phase-id>")
   .requiredOption("--brief-revision <revision>", "exact phase execution brief revision")
+  .requiredOption("--workflow-revision <revision>", "Workflow Plan revision referenced by the phase brief")
   .option("--root <path>", "repository root", process.cwd())
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
     const briefRevision = Number.parseInt(options.briefRevision, 10);
+    const workflowRevision = Number.parseInt(options.workflowRevision, 10);
     if (!Number.isInteger(briefRevision) || briefRevision < 1) throw new Error("--brief-revision must be a positive integer.");
-    printFlowState(await approvePhase({ root: options.root, workflowId, phaseId, briefRevision, mutation: mutationOptions(options) }));
+    if (!Number.isInteger(workflowRevision) || workflowRevision < 0) throw new Error("--workflow-revision must be a non-negative integer.");
+    printFlowState(await approvePhase({ root: options.root, workflowId, phaseId, briefRevision, workflowRevision, mutation: mutationOptions(options) }));
   });
 
 flow.command("revise-plan")

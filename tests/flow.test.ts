@@ -187,8 +187,8 @@ describe("sequential workflow orchestration", () => {
       }
     });
     expect(approval.approvalActions?.map((action) => action.label)).toEqual([
-      "Approve all remaining phases",
-      "Approve this phase only",
+      "Approve Workflow Plan and prepare Phase 1 brief",
+      "Approve Workflow Plan with phase-by-phase review",
       "Revise plan",
       "View full details",
       "Cancel workflow"
@@ -217,18 +217,87 @@ describe("sequential workflow orchestration", () => {
     expect(approved.approval?.history.at(-1)).toMatchObject({ action: "plan-approved", recommendationOverridden: true });
   });
 
-  it("requires a current exact phase brief revision for phase-by-phase authorization", async () => {
+  it("separates Rigorous Workflow Plan approval from exact Phase 1 brief authorization", async () => {
     const root = await tempRepo();
-    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const started = await startFlow({ request: "Change authentication migration handling for production credentials", root, config: defaultConfig() });
     const planned = await approveApproach(root, started.id, defaultConfig());
+    const planGate = workflowNextSummary(planned);
+    expect(planGate.approvalActions?.map((action) => action.label)).toEqual([
+      "Approve Workflow Plan and prepare Phase 1 brief",
+      "Revise plan",
+      "View full details",
+      "Cancel workflow"
+    ]);
+    expect(JSON.stringify(planGate)).not.toContain("Approve this phase only");
     const executing = await approvePlan(root, planned.id, undefined, "phase-by-phase");
     const first = executing.plan!.phases[0]!;
-    expect(executing.phaseBriefs?.[first.id]).toMatchObject({ phaseId: first.id, approvalStatus: "approved", objective: first.objective, acceptanceCriteria: first.acceptanceCriteria });
+    const brief = executing.phaseBriefs?.[first.id];
+    if (!brief) throw new Error("expected Phase 1 execution brief");
+    expect(executing.approval?.currentAuthorizedPhase).toBeUndefined();
+    expect(brief).toMatchObject({ phaseId: first.id, approvalStatus: "pending", objective: first.objective, acceptanceCriteria: first.acceptanceCriteria });
+    expect(executing.approval?.pendingDecision).toMatchObject({
+      type: "phase-brief-approval",
+      workflowRevision: brief.workflowRevision,
+      phaseId: first.id,
+      briefRevision: brief.briefRevision,
+      status: "pending",
+      allowedActions: ["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"]
+    });
+    const next = workflowNextSummary(executing);
+    expect(next).toMatchObject({
+      label: "Phase execution brief",
+      userDecisionRequired: true
+    });
+    expect(next.approvalActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: `Approve ${first.id}` })
+    ]));
 
     const stale = await loadFlowState(root, executing.id);
     stale.phaseBriefs![first.id]!.workflowRevision -= 1;
     await saveFlowState(root, stale, { expectedRevision: stale.revision });
-    await expect(approvePhase({ root, workflowId: stale.id, phaseId: first.id, briefRevision: stale.phaseBriefs![first.id]!.briefRevision })).rejects.toThrow(/no current execution brief/i);
+    await expect(approvePhase({
+      root,
+      workflowId: stale.id,
+      phaseId: first.id,
+      briefRevision: stale.phaseBriefs![first.id]!.briefRevision,
+      workflowRevision: executing.approval!.pendingDecision!.workflowRevision
+    })).rejects.toThrow(/no current execution brief/i);
+
+    const current = await loadFlowState(root, executing.id);
+    current.phaseBriefs![first.id]!.workflowRevision = current.approval!.workflowPlanRevision!;
+    await saveFlowState(root, current, { expectedRevision: current.revision });
+    await expect(approvePhase({
+      root,
+      workflowId: current.id,
+      phaseId: first.id,
+      briefRevision: brief.briefRevision + 1,
+      workflowRevision: brief.workflowRevision
+    })).rejects.toThrow(/no pending approval decision/i);
+    await expect(approvePhase({
+      root,
+      workflowId: current.id,
+      phaseId: first.id,
+      briefRevision: brief.briefRevision,
+      workflowRevision: brief.workflowRevision + 1
+    })).rejects.toThrow(/no pending approval decision/i);
+
+    const approved = await approvePhase({
+      root,
+      workflowId: current.id,
+      phaseId: first.id,
+      briefRevision: brief.briefRevision,
+      workflowRevision: brief.workflowRevision
+    });
+    expect(approved.approval?.currentAuthorizedPhase).toBe(first.id);
+    expect(approved.plan?.phases.slice(1).every((phase) => phase.id !== approved.approval?.currentAuthorizedPhase)).toBe(true);
+    expect(approved.phaseBriefs?.[first.id]?.approvalStatus).toBe("approved");
+    expect(approved.approval?.pendingDecision).toBeUndefined();
+    expect(approved.approval?.decisionHistory.at(-1)).toMatchObject({
+      phaseId: first.id,
+      briefRevision: brief.briefRevision,
+      workflowRevision: brief.workflowRevision,
+      status: "approved"
+    });
   });
 
   it("generates a persisted execution brief before later phase authorization", async () => {
@@ -246,8 +315,30 @@ describe("sequential workflow orchestration", () => {
     const briefed = await preparePhaseExecutionBrief({ root, workflowId: state.id, phaseId: second!.id });
     const brief = briefed.phaseBriefs?.[second!.id];
     expect(brief).toMatchObject({ phaseId: second!.id, objective: second!.objective, deliverable: expect.any(String), approvalStatus: "pending" });
-    const approved = await approvePhase({ root, workflowId: state.id, phaseId: second!.id, briefRevision: brief!.briefRevision });
+    const approved = await approvePhase({
+      root,
+      workflowId: state.id,
+      phaseId: second!.id,
+      briefRevision: brief!.briefRevision,
+      workflowRevision: brief!.workflowRevision
+    });
     expect(approved.approval?.currentAuthorizedPhase).toBe(second!.id);
+  });
+
+  it("loads workflows persisted before phase approval decisions were added", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const planned = await approveApproach(root, started.id, defaultConfig());
+    const approved = await approvePlan(root, planned.id, undefined, "phase-by-phase");
+    const workflowPath = path.join(root, ".leanrigor", "workflows", `${approved.id}.json`);
+    const legacy = JSON.parse(await readFile(workflowPath, "utf8")) as { approval?: Record<string, unknown> };
+    delete legacy.approval?.pendingDecision;
+    delete legacy.approval?.decisionHistory;
+    await writeFile(workflowPath, JSON.stringify(legacy, null, 2));
+
+    const loaded = await loadFlowState(root, approved.id);
+    expect(loaded.approval?.decisionHistory).toEqual([]);
+    expect(loaded.state).toBe("executing");
   });
 
   it("uses model-backed planning after approach approval when a provider is available", async () => {

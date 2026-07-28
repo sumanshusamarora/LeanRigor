@@ -221,15 +221,16 @@ reasons, the selected policy, selection source, timestamp, workflow revision,
 phase authorisation, override, and later changes are persisted in workflow
 history.
 
-- Fast recommends **Approve all remaining phases**. It still requires explicit
-  Workflow Plan approval and creates every brief; execution continues only
-  while no material drift or approval-required risk appears.
-- Standard always presents **Approve all remaining phases**, **Approve this
-  phase only**, **Revise plan**, and **Cancel workflow**, with one execution
-  option marked recommended. The user may override unless deterministic policy
-  forbids workflow-wide approval.
-- Rigorous allows only **Approve this phase only**. Each completed phase clears
-  its authorisation and returns the next ready brief for approval.
+- Fast and Standard persist the selected later-phase approval policy, but
+  Workflow Plan approval still creates a separate pending Phase 1 brief
+  decision before execution.
+- Standard presents Workflow Plan policy choices, **Revise plan**, **View full
+  details**, and **Cancel workflow**. The user may override the recommended
+  later-phase policy unless deterministic policy forbids workflow-wide approval.
+- Rigorous presents **Approve Workflow Plan and prepare Phase 1 brief** at the
+  plan gate. Phase 1 remains unauthorized until its exact persisted brief
+  revision is shown and separately approved. Each completed phase clears its
+  authorisation and returns the next ready brief for approval.
 
 Workflow-wide authorisation never covers material drift. Scheduler eligibility
 requires complete dependencies, a prepared workspace, a current brief without

@@ -120,8 +120,8 @@ export function briefIsCurrent(state: SequentialWorkflowState, phaseId: string):
 export function approvalPermitsExecution(state: SequentialWorkflowState, phaseId: string): boolean {
   if (!briefIsCurrent(state, phaseId)) return false;
   const policy = state.approval?.policy ?? defaultApprovalPolicy(state.mode);
-  if (policy === "workflow-authorized") return true;
   const brief = state.phaseBriefs?.[phaseId];
+  if (policy === "workflow-authorized") return brief?.approvalStatus === "approved" || brief?.approvalStatus === "not-required";
   return state.approval?.currentAuthorizedPhase === phaseId && brief?.approvalStatus === "approved";
 }
 

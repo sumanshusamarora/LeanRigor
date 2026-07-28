@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { defaultConfig } from "../../src/config/defaults.js";
 import type { LeanRigorConfig } from "../../src/config/schema.js";
-import { approvePlan, loadFlowState, preparePhaseExecutionBrief, saveFlowState, startFlow } from "../../src/core/flow.js";
+import { approvePhase, approvePlan, loadFlowState, preparePhaseExecutionBrief, saveFlowState, startFlow } from "../../src/core/flow.js";
 import { ExecutionCoordinator } from "../../src/core/execution/coordinator.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../../src/core/execution/scripted-provider.js";
 import type { ExecutionPlan, SequentialWorkflowState, WorkflowPhase } from "../../src/core/types.js";
@@ -28,13 +28,18 @@ export async function createExecutionHarness(options: {
   maxParallelPhases?: number;
   workerTimeoutSeconds?: number;
   clock?: () => Date;
+  approveFirstPhase?: boolean;
 }): Promise<DisposableExecutionHarness> {
   const root = await gitRepo();
   const config = defaultConfig();
   config.execution.maxParallelPhases = options.maxParallelPhases ?? 1;
   config.execution.workerTimeoutSeconds = options.workerTimeoutSeconds ?? 1800;
   config.execution.heartbeatGraceSeconds = 5;
-  const workflow = await workflowWithPlan(root, { version: 1, summary: "Test execution plan", principles: ["Use coordinator."], phases: options.phases, revisionRequests: [] });
+  const workflow = await workflowWithPlan(
+    root,
+    { version: 1, summary: "Test execution plan", principles: ["Use coordinator."], phases: options.phases, revisionRequests: [] },
+    options.approveFirstPhase ?? true
+  );
   const provider = new ScriptedExecutionProvider(options.scripts, options.clock ? () => options.clock!().getTime() : undefined);
   const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, clock: options.clock });
   return {
@@ -90,7 +95,7 @@ export async function gitRepo(): Promise<string> {
   return root;
 }
 
-async function workflowWithPlan(root: string, plan: ExecutionPlan): Promise<SequentialWorkflowState> {
+async function workflowWithPlan(root: string, plan: ExecutionPlan, approveFirstPhase: boolean): Promise<SequentialWorkflowState> {
   const started = await startFlow({ request: "Update bounded internal assignment validation", root, config: defaultConfig() });
   const state = await loadFlowState(root, started.id);
   state.state = "awaiting_plan_approval";
@@ -102,6 +107,15 @@ async function workflowWithPlan(root: string, plan: ExecutionPlan): Promise<Sequ
   state.approach = { required: false, approved: true, proposed: "test", preferredBecause: "test", alternatives: [], primaryRisks: [], validationStrategy: [] };
   await saveFlowState(root, state, { expectedRevision: state.revision });
   let approved = await approvePlan(root, state.id, undefined, "workflow-authorized");
+  const firstBrief = approved.phaseBriefs?.[approved.plan!.phases[0]!.id];
+  if (!approveFirstPhase || !firstBrief) return approved;
+  approved = await approvePhase({
+    root,
+    workflowId: approved.id,
+    phaseId: firstBrief.phaseId,
+    briefRevision: firstBrief.briefRevision,
+    workflowRevision: firstBrief.workflowRevision
+  });
   for (const phase of approved.plan!.phases) {
     approved = await preparePhaseExecutionBrief({ root, workflowId: approved.id, phaseId: phase.id });
   }

@@ -99,18 +99,20 @@ Rules:
 - At the Workflow Plan gate, render the persisted Workflow Plan contract: strategy,
   phase DAG, effective constraints, validation strategy, provider/workspace
   policy, and deterministic approval recommendation with concise reasons. For
-  Standard, present exactly `Approve all remaining phases`, `Approve this phase
-  only`, `Revise plan`, and `Cancel workflow`. For Rigorous, present only the
-  permitted phase approval action plus revise and cancel. Match the selected
+  Standard, present the persisted Workflow Plan policy choices plus `Revise
+  plan`, `View full details`, and `Cancel workflow`. For Rigorous, present
+  `Approve Workflow Plan and prepare Phase 1 brief` plus revise, details, and
+  cancel. Match the selected
   persisted action to its deterministic transition; never infer an approval
   from conversational tone or use ExitPlanMode.
-- Before coordinator dispatch, render the persisted Phase Execution Brief when
-  phase-by-phase approval is required. Offer `Approve this phase`, `Revise phase
-  brief`, `View full details`, `Return to Workflow Plan`, and `Cancel workflow`.
-  A workflow-authorized phase remains inspectable but does not pause unless its
-  brief is stale or has material drift.
-- Approval at plan derives ready phases. When execution providers/workspaces are
-  configured, use `execution.mode = coordinator`: invoke
+- After Workflow Plan approval and before coordinator dispatch, refresh state
+  and render the persisted Phase Execution Brief approval decision. Offer
+  `Approve <phase-id>`, `Revise phase
+  brief`, `View full details`, and `Cancel workflow`.
+  Approval must reference the decision's exact workflow and brief revisions.
+- Approval at plan derives ready phases but does not authorize Phase 1. When
+  execution providers/workspaces are configured, use `execution.mode =
+  coordinator` only after exact Phase 1 brief approval: invoke
   `leanrigor flow execute-next --provider auto` or
   `leanrigor flow execution-poll --provider auto`, monitor persisted execution
   records, and present only persisted gates. Use `--provider scripted` only when

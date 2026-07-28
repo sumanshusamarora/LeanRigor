@@ -192,7 +192,7 @@ by targeted inspection or planning. When `next.summary.modeStatus` is
 The following typed responses remain supported as a fallback:
 
 - `approve`, `looks good`, `continue` at `awaiting_approach_approval`: approve approach with `flow approve-approach <workflow-id> --provider auto`, adding `--add-constraint`, `--remove-constraint`, or `--override-constraint "<old> => <new>"` for any user-supplied constraint changes, then immediately render the generated plan for plan approval. Use deterministic planning only when explicitly requested or when the model provider falls back with a recorded reason.
-- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve plan, then use coordinator execution with `flow execute-next --provider auto` or `flow execution-poll --provider auto`. Do not begin manual lease/start/workspace execution unless the user explicitly selected manual execution.
+- `approve`, `looks good`, `continue` at `awaiting_plan_approval`: approve only the Workflow Plan, then call `flow next --json` and render the persisted Phase Execution Brief approval decision. Do not invoke coordinator or manual execution until the user approves the exact brief revision.
 - `show status` during execution: render the persisted `recommendedNextPhase`
   as the primary action. Show `otherDependencyReadyPhases` separately as
   available only after explicit user choice. Do not replace Phase 2 with Phase
@@ -212,9 +212,10 @@ Ask one concise clarification for ambiguous responses.
 Execution mode is explicit:
 
 - `execution.mode = coordinator`: default when LeanRigor workspaces and an
-  execution provider are configured. Claude approves the plan, invokes or
-  resumes the coordinator, monitors persisted execution records, and presents
-  gates. Invoke `flow execute-next --provider auto` or
+  execution provider are configured. Claude approves the Workflow Plan, renders
+  and obtains exact approval for the persisted Phase Execution Brief, then
+  invokes or resumes the coordinator, monitors persisted execution records,
+  and presents gates. Invoke `flow execute-next --provider auto` or
   `flow execution-poll --provider auto`; use the scripted provider only when
   the user explicitly requests scripted/deterministic execution. Claude must
   not implement phase edits itself and must not edit the original working tree.

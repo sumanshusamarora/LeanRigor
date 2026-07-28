@@ -40,6 +40,7 @@ import type {
   ExecutionPlan,
   IntegratedReviewResult,
   ModelProfile,
+  PhaseApprovalDecision,
   PhaseCompletionRecord,
   PhaseRepairAttempt,
   RiskLevel,
@@ -476,6 +477,17 @@ const phaseExecutionBriefSchema = z.object({
   approvalStatus: z.enum(["not-required", "pending", "approved", "rejected", "stale"])
 });
 
+const phaseApprovalDecisionSchema = z.object({
+  type: z.literal("phase-brief-approval"),
+  workflowRevision: z.number().int().min(0),
+  phaseId: z.string().min(1),
+  briefRevision: z.number().int().min(1),
+  status: z.enum(["pending", "approved", "superseded", "cancelled"]),
+  allowedActions: z.array(z.enum(["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"])),
+  createdAt: z.string(),
+  resolvedAt: z.string().optional()
+});
+
 const workflowApprovalSchema = z.object({
   policy: z.enum(["workflow-authorized", "phase-by-phase"]).optional(),
   source: z.enum(["user", "deterministic-policy", "legacy-default"]).optional(),
@@ -493,7 +505,9 @@ const workflowApprovalSchema = z.object({
     recommendation: approvalRecommendationSchema.optional(),
     recommendationOverridden: z.boolean(),
     action: z.enum(["plan-approved", "phase-approved", "policy-changed", "reapproval-required"])
-  })).default([])
+  })).default([]),
+  pendingDecision: phaseApprovalDecisionSchema.optional(),
+  decisionHistory: z.array(phaseApprovalDecisionSchema).default([])
 });
 
 const workflowEventSchema = z.object({
@@ -825,8 +839,11 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
     next.plan = planningRun.plan;
     next.planningRun = planningRunMetadata(planningRun);
     next.phaseBriefs = {};
+    supersedePendingPhaseApproval(next);
     next.approval = {
-      ...(next.approval ?? { history: [] }),
+      ...(next.approval ?? { history: [], decisionHistory: [] }),
+      currentAuthorizedPhase: undefined,
+      pendingDecision: undefined,
       recommendation: approvalRecommendation(next)
     };
     appendEvent(next, "planning_completed", planningEventSummary(planningRun));
@@ -867,14 +884,22 @@ export async function approvePlan(root: string, workflowId: string, mutation?: M
         recommendation: { ...recommendation, workflowRevision: approvalRevision, createdAt: now },
         recommendationOverridden: policy !== (recommendation.option === "approve-current-phase" ? "phase-by-phase" : "workflow-authorized"),
         action: "plan-approved"
-      }]
+      }],
+      decisionHistory: next.approval?.decisionHistory ?? []
     };
-    const executing = transition(next, "executing", "Plan approved. Ready phases will be derived from DAG dependencies and ownership.");
+    const executing = transition(next, "executing", "Workflow Plan approved. The first Phase Execution Brief requires a separate approval.");
     refreshPhaseReadiness(executing);
     const firstReady = executing.plan?.phases.find((phase) => phase.status === "ready");
-    if (policy === "phase-by-phase" && firstReady) {
-      executing.approval!.currentAuthorizedPhase = firstReady.id;
-      executing.phaseBriefs![firstReady.id] = buildPhaseExecutionBrief(executing, firstReady, undefined);
+    if (firstReady) {
+      const brief = {
+        ...buildPhaseExecutionBrief(executing, firstReady, undefined),
+        approvalStatus: "pending" as const
+      };
+      executing.phaseBriefs![firstReady.id] = brief;
+      setPendingPhaseApproval(executing, brief);
+      executing.approval!.recommendation = approvalRecommendation(executing, firstReady.id);
+      appendEvent(executing, "phase_brief_generated", `Phase ${firstReady.id} execution brief revision ${brief.briefRevision} generated.`, firstReady.id);
+      appendEvent(executing, "phase_approval_required", `Phase ${firstReady.id} brief revision ${brief.briefRevision} requires explicit approval.`, firstReady.id);
     }
     return executing;
   }, { ...mutation, operation: "approve_plan" });
@@ -897,6 +922,9 @@ export async function preparePhaseExecutionBrief(args: {
     if (current && briefIsCurrent(next, phase.id)) return next;
     next.phaseBriefs ??= {};
     next.phaseBriefs[phase.id] = buildPhaseExecutionBrief(next, phase, args.provider, current);
+    if (["pending", "stale"].includes(next.phaseBriefs[phase.id].approvalStatus)) {
+      setPendingPhaseApproval(next, next.phaseBriefs[phase.id]);
+    }
     if (next.phaseBriefs[phase.id].materialChangesFromWorkflowPlan.length > 0) {
       next.phaseBriefs[phase.id].approvalStatus = "stale";
       next.blockers = unique([...next.blockers, `Material drift detected in ${phase.id}; reapproval is required.`]);
@@ -913,24 +941,40 @@ export async function approvePhase(args: {
   workflowId: string;
   phaseId: string;
   briefRevision: number;
+  workflowRevision: number;
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
-    if (state.approval?.policy !== "phase-by-phase") throw new InvalidTransitionError("Phase approval is available only under the phase-by-phase policy.");
     const phase = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
     const brief = state.phaseBriefs?.[args.phaseId];
+    const decision = state.approval?.pendingDecision;
     if (!phase || phase.status !== "ready") throw new InvalidTransitionError(`Phase ${args.phaseId} is not ready for approval.`);
+    if (
+      !decision
+      || decision.status !== "pending"
+      || decision.phaseId !== args.phaseId
+      || decision.briefRevision !== args.briefRevision
+      || decision.workflowRevision !== args.workflowRevision
+    ) {
+      throw new InvalidTransitionError(`Phase ${args.phaseId} has no pending approval decision for workflow revision ${args.workflowRevision} and brief revision ${args.briefRevision}.`);
+    }
     if (!brief || !briefIsCurrent(state, args.phaseId) || brief.briefRevision !== args.briefRevision) throw new InvalidTransitionError(`Phase ${args.phaseId} has no current execution brief revision ${args.briefRevision}.`);
+    if (brief.workflowRevision !== args.workflowRevision || state.approval?.workflowPlanRevision !== args.workflowRevision) {
+      throw new InvalidTransitionError(`Phase ${args.phaseId} brief revision ${args.briefRevision} does not belong to workflow revision ${args.workflowRevision}.`);
+    }
     const next = structuredClone(state);
+    const now = timestamp();
     next.approval!.currentAuthorizedPhase = args.phaseId;
+    next.approval!.decisionHistory.push({ ...decision, status: "approved", resolvedAt: now });
+    next.approval!.pendingDecision = undefined;
     next.phaseBriefs![args.phaseId] = { ...brief, approvalStatus: "approved" };
     const recommendation = approvalRecommendation(next, args.phaseId);
     next.approval!.recommendation = recommendation;
     next.approval!.history.push({
-      policy: "phase-by-phase",
+      policy: next.approval!.policy ?? "phase-by-phase",
       source: "user",
-      timestamp: timestamp(),
+      timestamp: now,
       workflowRevision: next.revision + 1,
       phaseId: args.phaseId,
       briefRevision: brief.briefRevision,
@@ -1045,13 +1089,16 @@ export async function completePhase(args: {
     }
     if (completion.decision !== "completed") return next;
 
-    if (next.approval?.policy === "phase-by-phase" && next.approval.currentAuthorizedPhase === phase.id) {
+    if (next.approval?.currentAuthorizedPhase === phase.id) {
       next.approval.currentAuthorizedPhase = undefined;
+    }
+    if (next.approval?.policy === "phase-by-phase") {
       const phaseForApproval = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
       next.approval.recommendation = approvalRecommendation(next, phaseForApproval?.id);
       if (phaseForApproval) {
         next.phaseBriefs ??= {};
         next.phaseBriefs[phaseForApproval.id] = buildPhaseExecutionBrief(next, phaseForApproval);
+        setPendingPhaseApproval(next, next.phaseBriefs[phaseForApproval.id]);
         appendEvent(next, "phase_approval_required", `Phase ${phaseForApproval.id} is ready for explicit approval.`, phaseForApproval.id);
       }
     }
@@ -1281,7 +1328,9 @@ export async function completeFlow(root: string, workflowId: string, mutation?: 
 export async function cancelFlow(root: string, workflowId: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     if (["completed", "cancelled"].includes(state.state)) throw new InvalidTransitionError(`Workflow is already ${state.state}.`);
-    return transition(structuredClone(state), "cancelled", "Workflow cancelled by user.");
+    const next = structuredClone(state);
+    resolvePendingPhaseApproval(next, "cancelled");
+    return transition(next, "cancelled", "Workflow cancelled by user.");
   }, { ...mutation, operation: "cancel_flow" });
 }
 
@@ -1898,8 +1947,11 @@ async function withPlan(state: SequentialWorkflowState, config?: LeanRigorConfig
   planning.plan = planningRun.plan;
   planning.planningRun = planningRunMetadata(planningRun);
   planning.phaseBriefs = {};
+  supersedePendingPhaseApproval(planning);
   planning.approval = {
-    ...(planning.approval ?? { history: [] }),
+    ...(planning.approval ?? { history: [], decisionHistory: [] }),
+    currentAuthorizedPhase: undefined,
+    pendingDecision: undefined,
     recommendation: approvalRecommendation(planning)
   };
   appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
@@ -3057,7 +3109,8 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
       source: "legacy-default",
       selectedAt: migrated.updatedAt,
       workflowPlanRevision: migrated.revision,
-      history: []
+      history: [],
+      decisionHistory: []
     };
   }
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
@@ -3129,6 +3182,38 @@ function label(mode: WorkflowMode): string {
 
 function timestamp(): string {
   return new Date().toISOString();
+}
+
+const PHASE_APPROVAL_ACTIONS: PhaseApprovalDecision["allowedActions"] = [
+  "approve-phase",
+  "revise-phase-brief",
+  "view-details",
+  "cancel-workflow"
+];
+
+function setPendingPhaseApproval(state: SequentialWorkflowState, brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string]): void {
+  if (!state.approval) throw new WorkflowStateError("Cannot request phase approval before the Workflow Plan is approved.");
+  supersedePendingPhaseApproval(state);
+  state.approval.pendingDecision = {
+    type: "phase-brief-approval",
+    workflowRevision: brief.workflowRevision,
+    phaseId: brief.phaseId,
+    briefRevision: brief.briefRevision,
+    status: "pending",
+    allowedActions: [...PHASE_APPROVAL_ACTIONS],
+    createdAt: timestamp()
+  };
+}
+
+function supersedePendingPhaseApproval(state: SequentialWorkflowState): void {
+  resolvePendingPhaseApproval(state, "superseded");
+}
+
+function resolvePendingPhaseApproval(state: SequentialWorkflowState, status: "superseded" | "cancelled"): void {
+  const decision = state.approval?.pendingDecision;
+  if (!decision) return;
+  state.approval!.decisionHistory.push({ ...decision, status, resolvedAt: timestamp() });
+  state.approval!.pendingDecision = undefined;
 }
 
 function unique(values: string[]): string[] {

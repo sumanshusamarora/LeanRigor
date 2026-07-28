@@ -128,6 +128,23 @@ export interface ApprovalHistoryEntry {
   action: "plan-approved" | "phase-approved" | "policy-changed" | "reapproval-required";
 }
 
+export type PhaseApprovalDecisionAction =
+  | "approve-phase"
+  | "revise-phase-brief"
+  | "view-details"
+  | "cancel-workflow";
+
+export interface PhaseApprovalDecision {
+  type: "phase-brief-approval";
+  workflowRevision: number;
+  phaseId: string;
+  briefRevision: number;
+  status: "pending" | "approved" | "superseded" | "cancelled";
+  allowedActions: PhaseApprovalDecisionAction[];
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 export interface WorkflowApprovalState {
   policy?: PhaseApprovalPolicy;
   source?: ApprovalSelectionSource;
@@ -136,6 +153,8 @@ export interface WorkflowApprovalState {
   currentAuthorizedPhase?: string;
   recommendation?: ApprovalRecommendation;
   history: ApprovalHistoryEntry[];
+  pendingDecision?: PhaseApprovalDecision;
+  decisionHistory: PhaseApprovalDecision[];
 }
 
 export interface MaterialPlanChange {

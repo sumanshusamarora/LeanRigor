@@ -62,7 +62,7 @@ describe("Claude conversational workflow UX support", () => {
     expect(next.label).toBe("Plan approval");
     expect(next.pendingAction).toBe("Select an approval action or type a response.");
     expect(next.approvalActions).toBeDefined();
-    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve all remaining phases");
+    expect(next.approvalActions?.find((a) => a.intent === "approve")?.label).toBe("Approve Workflow Plan and prepare Phase 1 brief");
     expect(next.approvalActions?.find((a) => a.intent === "revise")?.label).toBe("Revise plan");
     expect(next.approvalActions?.find((a) => a.intent === "show plan")?.label).toBe("View full details");
     expect(next.approvalActions?.find((a) => a.intent === "cancel")?.label).toBe("Cancel workflow");
@@ -132,17 +132,24 @@ describe("Claude conversational workflow UX support", () => {
     expect(next.pendingDecision).toContain("No implementation has started");
   });
 
-  it("plan approval transitions internally to phase execution", async () => {
+  it("plan approval presents the pending Phase 1 execution brief", async () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const planned = await approveApproach(root, started.id, defaultConfig());
 
     const executing = await approvePlan(root, planned.id);
 
-    expect(workflowNextSummary(executing)).toMatchObject({
-      label: "Phase execution",
-      userDecisionRequired: false
+    const next = workflowNextSummary(executing);
+    expect(next).toMatchObject({
+      label: "Phase execution brief",
+      userDecisionRequired: true
     });
+    expect(next.approvalActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Approve phase-1",
+        command: expect.stringContaining("--workflow-revision")
+      })
+    ]));
   });
 
   it("recommends the next plan-order phase while showing other dependency-ready phases separately", async () => {

@@ -54,7 +54,9 @@ AskUserQuestion selector contract at every decision gate.
 7. For plan revision feedback, use
    `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
    unless deterministic planning was explicitly requested.
-8. When execution providers/workspaces are configured, use the coordinator
+8. After Workflow Plan approval, call `flow next --json`, render the persisted
+   Phase Execution Brief decision, and wait for exact brief approval. When
+   execution providers/workspaces are configured, only then use the coordinator
    execution path (`flow execute-next --provider auto` /
    `flow execution-poll --provider auto`) and render only persisted
    coordinator gates. Do not use `--provider scripted` unless the user explicitly
