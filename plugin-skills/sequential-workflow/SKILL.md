@@ -12,6 +12,10 @@ Use the plugin-owned runtime internally:
 
 `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor`
 
+Write user-provided request, answer, and feedback text through a tool-native
+file operation and pass its path with `--request-file`, `--answer-file`, or
+`--feedback-file`. Never interpolate user text into a Bash command.
+
 ## Engineering Methodology
 
 LeanRigor's shared methodology lives under `methodology/` in the plugin root.
@@ -71,7 +75,7 @@ persisted phases exist.
 
 - One active workflow: resume it.
 - No active workflow: start only when the user supplied a request. Invoke
-  `flow start "$ARGUMENTS" --provider auto` so automatic triage can call Claude
+  `flow start --request-file <request-file> --provider auto` so automatic triage can call Claude
   when available. Render from the returned `next` object when present or
   immediately read `flow next --json` when it is absent. Do not end the turn
   from raw `flow start` JSON. Use `--provider deterministic` only when the user
@@ -176,7 +180,7 @@ Do not replace the question with the reason. Do not end with a blank prompt
 after "before continuing". If `AskUserQuestion` is available, ask exactly the
 persisted question there as well; otherwise ask for a free-form answer in plain
 language. The answer must be recorded through `flow answer <workflow-id>
-"<answer>" --provider auto`.
+--answer-file <answer-file> --provider auto`.
 
 Clarification is already filtered by LeanRigor core. Do not invent additional
 triage questions from repository scope or planning uncertainty; those are handled
@@ -193,8 +197,8 @@ The following typed responses remain supported as a fallback:
   as the primary action. Show `otherDependencyReadyPhases` separately as
   available only after explicit user choice. Do not replace Phase 2 with Phase
   4 merely because both are dependency-ready.
-- `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> "<feedback>"`, rerender the updated approach summary, and ask for approval again. Do not start planning.
-- `revise ...` at `awaiting_plan_approval`: use `flow revise-plan <workflow-id> "<feedback>" --provider auto` unless deterministic planning was explicitly requested.
+- `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> --feedback-file <feedback-file>`, rerender the updated approach summary, and ask for approval again. Do not start planning.
+- `revise ...` at `awaiting_plan_approval`: use `flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto` unless deterministic planning was explicitly requested.
 - `reject because ...`: reject the approach with the supplied reason.
 - `cancel`: cancel the workflow after confirming intent when destructive to progress.
 - `show plan` / `show status`: render persisted plan/status.

@@ -2,10 +2,7 @@ import { z } from "zod";
 
 export const modelTierSchema = z.enum(["small", "medium", "large", "inherit"]);
 const workflowMode = z.enum(["adaptive", "fast", "standard", "rigorous"]);
-const adapterModelMap = z.object({
-  claude: z.string().min(1).optional(),
-  opencode: z.string().min(1).optional()
-});
+const adapterModelMap = z.record(z.string().min(1), z.string().min(1));
 
 export const leanRigorConfigSchema = z.object({
   $schema: z.string().optional(),
@@ -166,7 +163,9 @@ export const leanRigorConfigSchema = z.object({
     triageInspectionMaxTurns: z.number().int().min(1).max(10).default(5),
     triageInspectionMaxReads: z.number().int().min(0).max(20).default(4),
     triageInspectionMaxBytes: z.number().int().min(1024).max(262144).default(30000),
-    triageInspectionTimeoutSeconds: z.number().int().min(5).max(600).default(120)
+    triageInspectionTimeoutSeconds: z.number().int().min(5).max(600).default(120),
+    planningMaxTurns: z.number().int().min(1).max(50).default(7),
+    planningRepairMaxTurns: z.number().int().min(1).max(50).default(4)
   }).prefault({})
 });
 

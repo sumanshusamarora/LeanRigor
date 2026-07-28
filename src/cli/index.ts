@@ -4,8 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { saveWorkflow, loadWorkflow } from "../core/workflow.js";
 import { ClaudeAdapter, cleanupProjectLocalAssets, type CleanupScope } from "../adapters/claude/adapter.js";
-import { ClaudeCliTriageProvider } from "../adapters/claude/triage-provider.js";
-import { ClaudeCliPlanningProvider } from "../adapters/claude/planning-provider.js";
+import { availableAdapterIds, getAdapterRuntime } from "../adapters/registry.js";
 import { runTriage, type TriageProviderSelection } from "../core/triage-runner.js";
 import { leanRigorConfigSchema, type LeanRigorConfig } from "../config/schema.js";
 import type { UninstallReport } from "../adapters/types.js";
@@ -71,11 +70,12 @@ import {
 import { RevisionConflictError } from "../core/workflow-store.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, WorkflowMode, WorkflowPhase } from "../core/types.js";
 import { completionEvidenceArtifactPath, persistCompletionEvidenceArtifact, readCompletionEvidenceFile } from "../core/completion-evidence.js";
-import { ClaudeCliExecutionProvider } from "../core/execution/claude-provider.js";
 import { ExecutionCoordinator } from "../core/execution/coordinator.js";
 import type { ExecutionProvider } from "../core/execution/provider.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution/scripted-provider.js";
 import type { CoordinatorResult } from "../core/execution/types.js";
+import type { PlanningProvider } from "../core/planning-runner.js";
+import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
 program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.22");
@@ -414,7 +414,8 @@ program.command("init-report")
 const flow = program.command("flow").description("Run the persisted sequential LeanRigor workflow");
 
 flow.command("start")
-  .argument("<request>")
+  .argument("[request]")
+  .option("--request-file <path>", "UTF-8 file containing the request")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .action(async (request, options) => {
@@ -422,7 +423,7 @@ flow.command("start")
     const { config } = await ensureBootstrapped(options.root);
     const providerSelection = triageProviderSelection(options.provider);
     const state = await startFlow({
-      request,
+      request: await textArgument(request, options.requestFile, "request"),
       root: options.root,
       config,
       provider: triageProvider(providerSelection),
@@ -434,7 +435,8 @@ flow.command("start")
 
 flow.command("answer")
   .argument("<workflow-id>")
-  .argument("<answer>")
+  .argument("[answer]")
+  .option("--answer-file <path>", "UTF-8 file containing the clarification answer")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
   .option("--expected-revision <revision>", "expected workflow revision")
@@ -445,7 +447,7 @@ flow.command("answer")
     printFlowState(await answerClarification({
       root: options.root,
       workflowId,
-      answer,
+      answer: await textArgument(answer, options.answerFile, "answer"),
       config,
       provider: triageProvider(providerSelection),
       planningProvider: planningProvider(providerSelection),
@@ -491,12 +493,13 @@ flow.command("reject-approach")
 
 flow.command("revise-approach")
   .argument("<workflow-id>")
-  .argument("<feedback>")
+  .argument("[feedback]")
+  .option("--feedback-file <path>", "UTF-8 file containing the approach feedback")
   .option("--root <path>", "repository root", process.cwd())
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, feedback, options) => {
-    printFlowState(await reviseApproach(options.root, workflowId, feedback, mutationOptions(options)));
+    printFlowState(await reviseApproach(options.root, workflowId, await textArgument(feedback, options.feedbackFile, "feedback"), mutationOptions(options)));
   });
 
 flow.command("approve-plan")
@@ -547,7 +550,8 @@ flow.command("approve-phase")
 
 flow.command("revise-plan")
   .argument("<workflow-id>")
-  .argument("<feedback>")
+  .argument("[feedback]")
+  .option("--feedback-file <path>", "UTF-8 file containing the plan feedback")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto")
   .option("--expected-revision <revision>", "expected workflow revision")
@@ -557,7 +561,7 @@ flow.command("revise-plan")
     printFlowState(await revisePlan(
       options.root,
       workflowId,
-      feedback,
+      await textArgument(feedback, options.feedbackFile, "feedback"),
       await effectiveRepositoryConfig(options.root),
       mutationOptions(options),
       { provider: planningProvider(providerSelection), providerSelection }
@@ -1106,16 +1110,18 @@ function printCleanupReport(report: { dryRun: boolean; scope: string; items: Arr
 
 function triageProviderSelection(provider: unknown): TriageProviderSelection {
   const selection = provider === undefined ? "auto" : String(provider);
-  if (!["auto", "claude", "deterministic"].includes(selection)) throw new Error(`Unsupported triage provider: ${selection}`);
-  return selection as TriageProviderSelection;
+  if (!["auto", "deterministic", ...availableAdapterIds()].includes(selection)) {
+    throw new Error(`Unsupported triage provider: ${selection}. Available adapters: ${availableAdapterIds().join(", ")}.`);
+  }
+  return selection;
 }
 
-function triageProvider(provider: TriageProviderSelection): ClaudeCliTriageProvider | undefined {
-  return provider === "deterministic" ? undefined : new ClaudeCliTriageProvider();
+function triageProvider(provider: TriageProviderSelection): TriageProvider | undefined {
+  return provider === "deterministic" ? undefined : getAdapterRuntime(provider === "auto" ? "claude" : provider).createTriageProvider();
 }
 
-function planningProvider(provider: TriageProviderSelection): ClaudeCliPlanningProvider | undefined {
-  return provider === "deterministic" ? undefined : new ClaudeCliPlanningProvider();
+function planningProvider(provider: TriageProviderSelection): PlanningProvider | undefined {
+  return provider === "deterministic" ? undefined : getAdapterRuntime(provider === "auto" ? "claude" : provider).createPlanningProvider();
 }
 
 function parseConstraintOverrides(values: string[]): Array<{ target: string; text: string }> {
@@ -1124,8 +1130,16 @@ function parseConstraintOverrides(values: string[]): Array<{ target: string; tex
     if (!match || !match[1]?.trim() || !match[2]?.trim()) {
       throw new Error(`Invalid --override-constraint value. Use '<old> => <new>': ${value}`);
     }
+
     return { target: match[1].trim(), text: match[2].trim() };
   });
+}
+
+async function textArgument(value: unknown, file: unknown, label: string): Promise<string> {
+  if (value !== undefined && file !== undefined) throw new Error(`Provide ${label} either as an argument or with --${label}-file, not both.`);
+  if (file !== undefined) return readFile(path.resolve(String(file)), "utf8");
+  if (typeof value === "string" && value.length > 0) return value;
+  throw new Error(`Missing ${label}. Provide it as an argument or with --${label}-file.`);
 }
 
 function printFlowState(state: SequentialWorkflowState): void {
@@ -1308,19 +1322,22 @@ async function effectiveRepositoryConfig(root: string) {
 
 async function executionProvider(providerName: string, scriptFile?: string, config?: LeanRigorConfig): Promise<{ provider: ExecutionProvider; fallbackReason?: string }> {
   if (providerName === "auto") {
-    const provider = new ClaudeCliExecutionProvider({ config });
+    const provider = getAdapterRuntime("claude").createExecutionProvider(config ?? await effectiveRepositoryConfig(process.cwd()));
     try {
       await provider.capabilities();
       return { provider };
     } catch (error) {
       throw new Error([
         `Configured execution provider unavailable before dispatch: ${messageOf(error)}`,
-        "Recovery options: retry configured provider, use --provider claude after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller."
+        `Recovery options: retry configured provider, use --provider ${availableAdapterIds().join(" or --provider ")} after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller.`
       ].join(" "), { cause: error });
     }
   }
   if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
-  if (providerName === "claude" || providerName === "claude-cli") return { provider: new ClaudeCliExecutionProvider({ config }) };
+  const adapterId = providerName.endsWith("-cli") ? providerName.slice(0, -4) : providerName;
+  if (availableAdapterIds().includes(adapterId)) {
+    return { provider: getAdapterRuntime(adapterId).createExecutionProvider(config ?? await effectiveRepositoryConfig(process.cwd())) };
+  }
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 

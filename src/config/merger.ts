@@ -205,6 +205,8 @@ export function applyRepoPolicy(
     if (policy.budgets.reviewRounds !== undefined) config.budgets.reviewRounds = policy.budgets.reviewRounds;
     if (policy.budgets.repairRounds !== undefined) config.budgets.repairRounds = policy.budgets.repairRounds;
     if (policy.budgets.triageCalls !== undefined) config.budgets.triageCalls = policy.budgets.triageCalls;
+    if (policy.budgets.planningMaxTurns !== undefined) config.budgets.planningMaxTurns = policy.budgets.planningMaxTurns;
+    if (policy.budgets.planningRepairMaxTurns !== undefined) config.budgets.planningRepairMaxTurns = policy.budgets.planningRepairMaxTurns;
   }
 
   if (policy.routing) {
@@ -230,9 +232,11 @@ export function applyUserConfig(
   const config = structuredClone(base);
 
   // Model mappings
-  if (user.models?.claude?.small) config.models.tiers.small.claude = user.models.claude.small;
-  if (user.models?.claude?.medium) config.models.tiers.medium.claude = user.models.claude.medium;
-  if (user.models?.claude?.large) config.models.tiers.large.claude = user.models.claude.large;
+  for (const [adapter, tiers] of Object.entries(user.models ?? {})) {
+    if (tiers.small) config.models.tiers.small[adapter] = tiers.small;
+    if (tiers.medium) config.models.tiers.medium[adapter] = tiers.medium;
+    if (tiers.large) config.models.tiers.large[adapter] = tiers.large;
+  }
 
   // Execution preferences
   if (user.execution?.pollIntervalSeconds !== undefined)

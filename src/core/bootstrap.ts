@@ -1,6 +1,7 @@
 import { ensureRepositoryConfig, ensureGitignore, findRepoRoot } from "../config/bootstrap.js";
 import { resolveEffectiveConfig } from "../config/resolver.js";
-import { ClaudeAdapter, type BootstrapReport, type InstallationMode, type ShadowingReport, detectInstallationMode, detectShadowing } from "../adapters/claude/adapter.js";
+import { type BootstrapReport, type InstallationMode, type ShadowingReport, detectInstallationMode, detectShadowing } from "../adapters/claude/adapter.js";
+import { getAdapterRuntime } from "../adapters/registry.js";
 import type { LeanRigorConfig } from "../config/schema.js";
 import path from "node:path";
 
@@ -78,10 +79,10 @@ export async function ensureBootstrapped(
   }
 
   // 6. Bootstrap Claude adapter assets (project-local or unknown mode)
-  const adapter = new ClaudeAdapter();
-  const hasBootstrap = typeof adapter.bootstrap === "function";
+  const adapter = getAdapterRuntime("claude").adapter;
+  const bootstrap = adapter.bootstrap;
 
-  if (!hasBootstrap) {
+  if (!bootstrap) {
     // Fallback to install (older adapter or custom)
     const report = await adapter.install(root, config, opts.force ?? false);
     const bootstrapped = report.installed.length > 0;
@@ -104,7 +105,7 @@ export async function ensureBootstrapped(
 
   let report: BootstrapReport;
   try {
-    report = await adapter.bootstrap(root, config, opts.force ?? false);
+    report = await bootstrap.call(adapter, root, config, opts.force ?? false);
   } catch (err: unknown) {
     // Bootstrap may fail when plugin source assets are unavailable
     // (e.g. running from a bare bundled runtime without plugin files).

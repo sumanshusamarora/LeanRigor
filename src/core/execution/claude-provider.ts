@@ -11,6 +11,7 @@ import { phaseWorkerPrompt } from "./prompt.js";
 import type { ExecutionCapabilities, ExecutionHandle, ExecutionStatus, PhaseExecutionInput, PhaseExecutionResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+export const DEFAULT_CLAUDE_PERMISSION_MODE = "acceptEdits";
 
 interface ClaudeExecution {
   handle: ExecutionHandle;
@@ -53,7 +54,7 @@ export interface ClaudeCliExecutionProviderOptions {
   command?: string;
   maxTurns?: number;
   model?: string;
-  permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "manual" | "bypassPermissions";
+  permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "manual";
   environmentMode?: "bare" | "safe-mode" | "default";
   config?: LeanRigorConfig;
 }
@@ -96,7 +97,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     const prompt = resumeMode === "same-session" ? resumePrompt(input) : phaseWorkerPrompt(input);
     const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
     const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
-    const permissionMode = this.options.permissionMode ?? "bypassPermissions";
+    const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const resolved = resolveClaudeModel(input, this.options);
     const args = buildClaudeArgs({
       prompt,
@@ -134,7 +135,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       sessionId,
       resumeMode,
       resolvedModel: resolved.model,
-      toolEnforcement: permissionMode === "bypassPermissions" ? "allowedTools_not_assumed_under_bypass" : "allowedTools_requested",
+      toolEnforcement: "allowedTools_requested",
       workerControls: input.workerControls
     };
     const handle: ExecutionHandle = {

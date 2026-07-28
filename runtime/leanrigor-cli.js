@@ -3492,7 +3492,7 @@ function resolveModelTier(tier, harness, config2) {
   if (tier === "inherit") return { tier, source: "inherit" };
   const suffix = tier.toUpperCase();
   const claudeAlias = harness === "claude" ? CLAUDE_ALIAS_DEFAULTS[suffix] : void 0;
-  const platform = process.env[`${ENV_PREFIX[harness]}${suffix}`]?.trim();
+  const platform = process.env[`LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}`]?.trim();
   if (platform) return { tier, model: platform, resolvedModel: platform, adapterAlias: claudeAlias, source: "platform-env" };
   const generic = process.env[`LEANRIGOR_MODEL_${suffix}`]?.trim();
   if (generic) return { tier, model: generic, resolvedModel: generic, adapterAlias: claudeAlias, source: "generic-env" };
@@ -3519,7 +3519,7 @@ function resolveModelTier(tier, harness, config2) {
 function isClaudeAlias(model) {
   return ["haiku", "sonnet", "opus", "default"].includes(model);
 }
-var CLAUDE_ADAPTER_ENV, CLAUDE_ALIAS_DEFAULTS, ENV_PREFIX, ModelConfigurationError;
+var CLAUDE_ADAPTER_ENV, CLAUDE_ALIAS_DEFAULTS, ModelConfigurationError;
 var init_models = __esm({
   "src/config/models.ts"() {
     "use strict";
@@ -3532,10 +3532,6 @@ var init_models = __esm({
       SMALL: "haiku",
       MEDIUM: "sonnet",
       LARGE: "opus"
-    };
-    ENV_PREFIX = {
-      claude: "LEANRIGOR_CLAUDE_MODEL_",
-      opencode: "LEANRIGOR_OPENCODE_MODEL_"
     };
     ModelConfigurationError = class extends Error {
     };
@@ -18706,10 +18702,7 @@ var init_schema = __esm({
     init_zod();
     modelTierSchema = external_exports.enum(["small", "medium", "large", "inherit"]);
     workflowMode = external_exports.enum(["adaptive", "fast", "standard", "rigorous"]);
-    adapterModelMap = external_exports.object({
-      claude: external_exports.string().min(1).optional(),
-      opencode: external_exports.string().min(1).optional()
-    });
+    adapterModelMap = external_exports.record(external_exports.string().min(1), external_exports.string().min(1));
     leanRigorConfigSchema = external_exports.object({
       $schema: external_exports.string().optional(),
       version: external_exports.literal(1).default(1),
@@ -18869,7 +18862,9 @@ var init_schema = __esm({
         triageInspectionMaxTurns: external_exports.number().int().min(1).max(10).default(5),
         triageInspectionMaxReads: external_exports.number().int().min(0).max(20).default(4),
         triageInspectionMaxBytes: external_exports.number().int().min(1024).max(262144).default(3e4),
-        triageInspectionTimeoutSeconds: external_exports.number().int().min(5).max(600).default(120)
+        triageInspectionTimeoutSeconds: external_exports.number().int().min(5).max(600).default(120),
+        planningMaxTurns: external_exports.number().int().min(1).max(50).default(7),
+        planningRepairMaxTurns: external_exports.number().int().min(1).max(50).default(4)
       }).prefault({})
     });
   }
@@ -18903,18 +18898,16 @@ var init_user = __esm({
       $schema: external_exports.string().optional(),
       version: external_exports.literal(1).default(1),
       /** Preferred harness adapter. */
-      adapter: external_exports.enum(["claude"]).default("claude"),
+      adapter: external_exports.string().min(1).default("claude"),
       /** Personal concrete model mappings per harness adapter. */
-      models: external_exports.object({
-        claude: external_exports.object({
-          small: external_exports.string().min(1).optional(),
-          medium: external_exports.string().min(1).optional(),
-          large: external_exports.string().min(1).optional()
-        }).prefault({})
-      }).prefault({}),
+      models: external_exports.record(external_exports.string().min(1), external_exports.object({
+        small: external_exports.string().min(1).optional(),
+        medium: external_exports.string().min(1).optional(),
+        large: external_exports.string().min(1).optional()
+      })).default({}),
       /** Personal execution preferences. */
       execution: external_exports.object({
-        defaultProvider: external_exports.enum(["claude-cli", "scripted"]).optional(),
+        defaultProvider: external_exports.string().min(1).optional(),
         defaultMode: external_exports.enum(["coordinator", "manual"]).optional(),
         pollIntervalSeconds: external_exports.number().int().min(1).max(3600).optional(),
         workerTimeoutSeconds: external_exports.number().int().min(5).max(86400).optional(),
@@ -19073,7 +19066,9 @@ var init_repo_policy = __esm({
         options: external_exports.number().int().min(1).max(5).optional(),
         reviewRounds: external_exports.number().int().min(0).optional(),
         repairRounds: external_exports.number().int().min(0).optional(),
-        triageCalls: external_exports.number().int().min(1).max(3).optional()
+        triageCalls: external_exports.number().int().min(1).max(3).optional(),
+        planningMaxTurns: external_exports.number().int().min(1).max(50).optional(),
+        planningRepairMaxTurns: external_exports.number().int().min(1).max(50).optional()
       }).prefault({})
     });
   }
@@ -19126,12 +19121,7 @@ var init_config_scope = __esm({
     REPO_POLICY_FORBIDDEN_KEYS = [
       "$schema",
       "version",
-      "models.tiers.small.claude",
-      "models.tiers.medium.claude",
-      "models.tiers.large.claude",
-      "models.tiers.small.opencode",
-      "models.tiers.medium.opencode",
-      "models.tiers.large.opencode",
+      "models.tiers",
       "execution.workspaceRoot",
       "execution.maxWorkspacePathLength",
       "execution.workspaceBranchPrefix",
@@ -19337,6 +19327,8 @@ function applyRepoPolicy(base, policy) {
     if (policy.budgets.reviewRounds !== void 0) config2.budgets.reviewRounds = policy.budgets.reviewRounds;
     if (policy.budgets.repairRounds !== void 0) config2.budgets.repairRounds = policy.budgets.repairRounds;
     if (policy.budgets.triageCalls !== void 0) config2.budgets.triageCalls = policy.budgets.triageCalls;
+    if (policy.budgets.planningMaxTurns !== void 0) config2.budgets.planningMaxTurns = policy.budgets.planningMaxTurns;
+    if (policy.budgets.planningRepairMaxTurns !== void 0) config2.budgets.planningRepairMaxTurns = policy.budgets.planningRepairMaxTurns;
   }
   if (policy.routing) {
     for (const key of Object.keys(policy.routing)) {
@@ -19350,9 +19342,11 @@ function applyRepoPolicy(base, policy) {
 }
 function applyUserConfig(base, user) {
   const config2 = structuredClone(base);
-  if (user.models?.claude?.small) config2.models.tiers.small.claude = user.models.claude.small;
-  if (user.models?.claude?.medium) config2.models.tiers.medium.claude = user.models.claude.medium;
-  if (user.models?.claude?.large) config2.models.tiers.large.claude = user.models.claude.large;
+  for (const [adapter, tiers] of Object.entries(user.models ?? {})) {
+    if (tiers.small) config2.models.tiers.small[adapter] = tiers.small;
+    if (tiers.medium) config2.models.tiers.medium[adapter] = tiers.medium;
+    if (tiers.large) config2.models.tiers.large[adapter] = tiers.large;
+  }
   if (user.execution?.pollIntervalSeconds !== void 0)
     config2.execution.pollIntervalSeconds = user.execution.pollIntervalSeconds;
   if (user.execution?.workerTimeoutSeconds !== void 0)
@@ -22162,7 +22156,7 @@ var ClaudeCliPlanningProvider = class {
   async plan(input) {
     const tier = planningTier(input);
     const prompt = buildPlanningPrompt(input);
-    const baseArgs = ["-p", prompt, "--output-format", "json", "--max-turns", "7", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const baseArgs = ["-p", prompt, "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     const attempted = await runClaudeWithTierFallback({
       runCommand: this.runCommand,
       root: input.root,
@@ -22175,7 +22169,7 @@ var ClaudeCliPlanningProvider = class {
   }
   async repair(input, request) {
     const prompt = buildPlanningRepairPrompt(input, request);
-    const args = ["-p", prompt, "--output-format", "json", "--max-turns", "4", "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+    const args = ["-p", prompt, "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
     if (request.model) args.push("--model", request.model);
     const result = await this.runCommand("claude", args, input.root);
     if (result.exitCode !== 0) {
@@ -22286,6 +22280,786 @@ function compactFailure(reason) {
   return compact.slice(0, 500);
 }
 
+// src/core/execution/claude-provider.ts
+init_models();
+import { execFile as execFile3, spawn as spawn2 } from "node:child_process";
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir6, open, readFile as readFile9, rename as rename2, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
+import path11 from "node:path";
+import { promisify as promisify3 } from "node:util";
+
+// src/core/execution/errors.ts
+var ExecutionError = class extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.code = code;
+    this.details = details;
+  }
+  code;
+  details;
+};
+
+// src/core/execution/prompt.ts
+function phaseWorkerPrompt(input) {
+  const controls = input.workerControls ?? defaultWorkerControls(input.selectedMode);
+  return [
+    "LeanRigor bounded phase worker",
+    `Workflow: ${input.workflowId} revision ${input.workflowRevision}`,
+    `Phase: ${input.phaseId} | Mode: ${input.selectedMode} | Tier: ${input.modelTier}`,
+    `Workspace: ${input.workspacePath}`,
+    "",
+    "Objective:",
+    input.objective,
+    "",
+    "Acceptance criteria:",
+    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    "",
+    "Likely files and scope:",
+    `- Read: ${input.allowedReadAreas.join(", ") || "(none declared)"}`,
+    `- Write: ${input.allowedWriteAreas.join(", ") || "(none declared)"}`,
+    `- Dependencies: ${input.dependencies.join(", ") || "(none)"}`,
+    input.codeIntelligence ? `- Code intelligence: CodeGraph ${input.codeIntelligence.codegraph}${input.codeIntelligence.note ? ` (${input.codeIntelligence.note})` : ""}` : void 0,
+    "",
+    "Validation commands:",
+    ...input.validationExpectations.map((command) => `- ${command}`),
+    "",
+    "Workspace preparation:",
+    input.workspacePreparation?.worktreePath ? `- Worktree path: ${input.workspacePreparation.worktreePath}` : void 0,
+    input.workspacePreparation?.repositoryIdentity ? `- Repository identity: ${input.workspacePreparation.repositoryIdentity}` : void 0,
+    input.workspacePreparation?.basis?.branch || input.workspacePreparation?.basis?.commit ? `- Basis: ${[input.workspacePreparation.basis.branch, input.workspacePreparation.basis.commit].filter(Boolean).join(" @ ")}` : void 0,
+    `- Prepared: ${input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "yes" : "no"}`,
+    input.workspacePreparation ? `- Package manager: ${input.workspacePreparation.packageManager ?? "unknown"}` : "- Package manager: unknown",
+    input.workspacePreparation ? `- Dependencies: ${input.workspacePreparation.dependencies}` : "- Dependencies: unknown",
+    input.workspacePreparation ? `- Validation commands available: ${input.workspacePreparation.validationCommandsAvailable === false ? "no" : "yes"}` : "- Validation commands available: unknown",
+    input.workspacePreparation?.bootstrapCommand ? `- Bootstrap command: ${input.workspacePreparation.bootstrapCommand}` : "- Bootstrap command: none",
+    input.workspacePreparation ? `- Bootstrap result: ${input.workspacePreparation.status}` : "- Bootstrap result: unknown",
+    input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "- Workspace status: prepared. Do not install dependencies unless LeanRigor explicitly marks preparation incomplete." : void 0,
+    input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status) ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result." : void 0,
+    "",
+    "Constraints:",
+    ...input.approvedConstraints.map((constraint) => `- Approved constraint: ${constraint}`),
+    ...input.safetyInstructions.map((instruction) => `- ${instruction}`),
+    `- Allowed write scope is limited to the assigned workspace and declared write areas.`,
+    `- Do not commit, push, merge, deploy, or modify files outside the assigned workspace.`,
+    "",
+    input.resume ? [
+      "Resume/checkpoint:",
+      `- Mode: ${input.resume.mode}`,
+      `- Attempt: ${input.resume.attempt}`,
+      `- Prior failure: ${input.resume.failureReason}`,
+      "- Continue from the existing workspace state; do not repeat broad repository discovery."
+    ].join("\n") : void 0,
+    input.previousCheckpoint?.dirty ? [
+      "Existing worktree changes:",
+      `- Changed: ${input.previousCheckpoint.changedFiles.join(", ") || "(none)"}`,
+      `- Deleted: ${input.previousCheckpoint.deletedFiles.join(", ") || "(none)"}`,
+      `- Untracked: ${input.previousCheckpoint.untrackedFiles.join(", ") || "(none)"}`,
+      input.previousCheckpoint.diffSummary.text ? `- Bounded diff summary:
+${input.previousCheckpoint.diffSummary.text}` : void 0
+    ].filter(Boolean).join("\n") : void 0,
+    "",
+    "Execution budget:",
+    `- Discovery turns before implementation is expected: ${controls.maxDiscoveryTurns}`,
+    `- Reserve at least ${controls.reservedValidationTurns} turn(s) for validation and ${controls.reservedFinalResultTurns} turn(s) for final structured output.`,
+    `- Warn and summarize instead of repeatedly reading the same file more than ${controls.repeatedReadWarningThreshold} time(s).`,
+    `- Keep individual large tool outputs below about ${controls.largeToolOutputBytes} bytes when possible.`,
+    "- If progress is partial near the limit, preserve the worktree state and return a failed or blocked structured result with exact evidence.",
+    "",
+    "Return only the JSON object required by the supplied json-schema. Include concise validation evidence and changed files; do not include hidden reasoning."
+  ].filter((line) => line !== void 0).join("\n");
+}
+function defaultWorkerControls(mode2) {
+  if (mode2 === "fast") return { maxDiscoveryTurns: 1, reservedValidationTurns: 1, reservedFinalResultTurns: 1, repeatedReadWarningThreshold: 2, largeToolOutputBytes: 32768 };
+  if (mode2 === "rigorous") return { maxDiscoveryTurns: 4, reservedValidationTurns: 2, reservedFinalResultTurns: 1, repeatedReadWarningThreshold: 2, largeToolOutputBytes: 32768 };
+  return { maxDiscoveryTurns: 2, reservedValidationTurns: 1, reservedFinalResultTurns: 1, repeatedReadWarningThreshold: 2, largeToolOutputBytes: 32768 };
+}
+
+// src/core/execution/claude-provider.ts
+var execFileAsync3 = promisify3(execFile3);
+var DEFAULT_CLAUDE_PERMISSION_MODE = "acceptEdits";
+var ClaudeCliExecutionProvider = class {
+  constructor(options = {}) {
+    this.options = options;
+  }
+  options;
+  id = "claude-cli";
+  executions = /* @__PURE__ */ new Map();
+  providerVersion;
+  async capabilities() {
+    try {
+      const version2 = await execFileAsync3(this.options.command ?? "claude", ["--version"], { timeout: 5e3, encoding: "utf8" });
+      this.providerVersion = (version2.stdout || version2.stderr).trim() || void 0;
+    } catch (error51) {
+      throw new ExecutionError("provider_unavailable", "Claude CLI is not available on PATH.", { cause: error51 instanceof Error ? error51.message : String(error51) });
+    }
+    return {
+      parallel: false,
+      cancellation: true,
+      heartbeats: false,
+      maxConcurrent: 1,
+      structuredResults: true,
+      sessions: { persistent: true, resume: true, fork: true },
+      diagnostics: ["claude CLI print mode", "JSON result parsing", "persistent session IDs", "bounded worker environment"]
+    };
+  }
+  async dispatch(input) {
+    const executionId = `claude-${input.workflowId}-${input.phaseId}-${Date.now()}`;
+    const canResume = input.resume?.mode === "same-session" && input.resume.providerSession?.providerId === this.id && input.resume.providerSession.workflowId === input.workflowId && input.resume.providerSession.phaseId === input.phaseId && input.resume.providerSession.workingDirectory === input.workspacePath && input.resume.providerSession.resumePermitted;
+    const sessionId = canResume ? input.resume.providerSession.sessionId : randomUUID2();
+    const resumeMode = canResume ? "same-session" : input.resume ? "compact-retry" : "fresh";
+    const prompt = resumeMode === "same-session" ? resumePrompt(input) : phaseWorkerPrompt(input);
+    const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
+    const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
+    const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
+    const resolved = resolveClaudeModel(input, this.options);
+    const args = buildClaudeArgs({
+      prompt,
+      maxTurns,
+      permissionMode,
+      environmentMode,
+      model: resolved.model,
+      sessionId,
+      resume: canResume
+    });
+    const safeArgs = buildSafeArgs({
+      maxTurns,
+      permissionMode,
+      environmentMode,
+      model: resolved.model,
+      sessionId,
+      resume: canResume
+    });
+    const startedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const artifactDir = path11.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
+    await mkdir6(artifactDir, { recursive: true });
+    const statusPath = path11.join(artifactDir, "status.json");
+    const stdoutPath = path11.join(artifactDir, "stdout.json");
+    const stderrPath = path11.join(artifactDir, "stderr.txt");
+    const providerMetadata = {
+      command: this.options.command ?? "claude",
+      safeArgs,
+      maxTurns,
+      permissionMode,
+      environmentMode,
+      artifactDir,
+      statusPath,
+      stdoutPath,
+      stderrPath,
+      sessionId,
+      resumeMode,
+      resolvedModel: resolved.model,
+      toolEnforcement: "allowedTools_requested",
+      workerControls: input.workerControls
+    };
+    const handle = {
+      providerId: this.id,
+      providerExecutionId: executionId,
+      workflowId: input.workflowId,
+      phaseId: input.phaseId,
+      leaseOwnerId: input.leaseOwnerId,
+      workspacePath: input.workspacePath,
+      startedAt,
+      lastKnownStatus: "running",
+      providerMetadata,
+      providerSession: {
+        providerId: this.id,
+        sessionId,
+        workflowId: input.workflowId,
+        phaseId: input.phaseId,
+        executionAttemptId: executionId,
+        workingDirectory: input.workspacePath,
+        createdAt: canResume ? input.resume.providerSession.createdAt : startedAt,
+        updatedAt: startedAt,
+        status: "running",
+        requestedTier: input.modelTier,
+        resolvedModel: resolved.model,
+        providerVersion: this.providerVersion,
+        safeCliArgs: safeArgs,
+        resumePermitted: true,
+        resumedFromSessionId: canResume ? sessionId : void 0,
+        replacementReason: resumeMode === "compact-retry" ? input.resume?.failureReason : void 0
+      },
+      nativeSessionId: sessionId
+    };
+    const controller = new AbortController();
+    const stdout = await open(stdoutPath, "w");
+    const stderr = await open(stderrPath, "w");
+    const invocation = windowsBatchInvocation(this.options.command ?? "claude", args);
+    const child = spawn2(invocation.command, invocation.args, {
+      cwd: input.workspacePath,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", stdout.fd, stderr.fd],
+      signal: controller.signal,
+      env: boundedClaudeEnv(process.env)
+    });
+    await stdout.close();
+    await stderr.close();
+    providerMetadata.pid = child.pid;
+    await writeStatus(statusPath, { status: "running", pid: child.pid, startedAt });
+    const execution = {
+      handle,
+      controller,
+      status: "running",
+      startedAt,
+      diagnostics: {}
+    };
+    this.executions.set(executionId, execution);
+    const timeout = setTimeout(() => {
+      controller.abort();
+      if (child.pid) killProcessGroup(child.pid, "SIGTERM");
+    }, input.timeoutSeconds * 1e3);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      execution.status = controller.signal.aborted ? "timed_out" : code === 0 ? "completed" : "failed";
+      execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
+      execution.diagnostics = signal || code ? { exitCode: code, signal } : {};
+      void writeStatus(statusPath, {
+        status: execution.status,
+        pid: child.pid,
+        startedAt,
+        completedAt: execution.completedAt,
+        exitCode: code,
+        signal,
+        diagnostics: execution.diagnostics
+      });
+    });
+    child.once("error", (error51) => {
+      clearTimeout(timeout);
+      execution.status = "failed";
+      execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
+      execution.diagnostics = redactDiagnostics({ error: error51.message });
+      void writeStatus(statusPath, { status: "failed", pid: child.pid, startedAt, completedAt: execution.completedAt, diagnostics: execution.diagnostics });
+    });
+    child.unref();
+    return handle;
+  }
+  async getStatus(handle) {
+    const persisted = await readPersistedStatus(handle);
+    if (persisted) {
+      if (persisted.status === "running" && persisted.pid && !pidIsRunning(persisted.pid)) {
+        return { status: "completed", heartbeatAt: (/* @__PURE__ */ new Date()).toISOString(), diagnostics: { ...persisted.diagnostics, pid: persisted.pid, statusInferredFromPid: true } };
+      }
+      const metadata = claudeMetadata(handle);
+      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? (/* @__PURE__ */ new Date()).toISOString() : persisted.completedAt, diagnostics: { ...persisted.diagnostics, artifactDir: metadata?.artifactDir, sessionId: metadata?.sessionId, resumeMode: metadata?.resumeMode } };
+    }
+    const execution = this.executions.get(handle.providerExecutionId);
+    if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
+    return {
+      status: execution.status,
+      heartbeatAt: execution.status === "running" ? (/* @__PURE__ */ new Date()).toISOString() : execution.completedAt,
+      diagnostics: execution.diagnostics
+    };
+  }
+  async collectResult(handle) {
+    const metadata = claudeMetadata(handle);
+    if (metadata) {
+      const status = await readCollectibleStatus(handle);
+      if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
+      if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
+      const stdout = await readFile9(metadata.stdoutPath, "utf8").catch(() => "");
+      const stderr = await readFile9(metadata.stderrPath, "utf8").catch(() => "");
+      if (status?.status === "failed") {
+        return failureResult(handle, metadata, stdout, stderr, status, "Claude CLI exited before returning a successful provider result.");
+      }
+      try {
+        const result = parseClaudeResult(stdout, stderr);
+        return { ...result, providerDiagnostics: { ...result.providerDiagnostics, ...artifactDiagnostics(handle, metadata, stdout, stderr, status) } };
+      } catch (error51) {
+        const message = `${error51 instanceof Error ? error51.message : String(error51)}
+${stdout}
+${stderr}`;
+        if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
+        return failureResult(handle, metadata, stdout, stderr, status, error51 instanceof Error ? error51.message : String(error51), { providerErrorCode: errorCode(error51), ...errorDetailsFromUnknown(error51) });
+      }
+    }
+    const execution = this.executions.get(handle.providerExecutionId);
+    if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
+    throw new ExecutionError("execution_not_found", `Claude execution has no persisted result artifacts: ${handle.providerExecutionId}`);
+  }
+  async cancel(handle, reason) {
+    const metadata = claudeMetadata(handle);
+    if (metadata) {
+      const status = await readPersistedStatus(handle);
+      if (status?.pid && pidIsRunning(status.pid)) killProcessGroup(status.pid, "SIGTERM");
+      await writeStatus(metadata.statusPath, { status: "cancelled", pid: status?.pid, startedAt: status?.startedAt ?? handle.startedAt, completedAt: (/* @__PURE__ */ new Date()).toISOString(), diagnostics: { reason } });
+    }
+    const execution = this.executions.get(handle.providerExecutionId);
+    if (!execution) return;
+    execution.status = "cancelled";
+    execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
+    execution.diagnostics = { reason };
+    execution.controller.abort();
+  }
+};
+function windowsBatchInvocation(command, args) {
+  if (process.platform !== "win32" || !/\.(?:cmd|bat)$/i.test(command)) return { command, args };
+  return {
+    command: process.env.ComSpec ?? "cmd.exe",
+    args: ["/d", "/c", "call", command, ...args]
+  };
+}
+async function writeStatus(statusPath, status) {
+  const content = `${JSON.stringify(status, null, 2)}
+`;
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const tempPath = `${statusPath}.${process.pid}.${Date.now()}.${attempt}.tmp`;
+    try {
+      await writeFile6(tempPath, content, "utf8");
+      await rename2(tempPath, statusPath);
+      return;
+    } catch (error51) {
+      lastError = error51;
+      if (error51.code !== "EPERM" && error51.code !== "EACCES") throw error51;
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+    }
+  }
+  try {
+    await writeFile6(statusPath, content, "utf8");
+  } catch {
+    throw lastError;
+  }
+}
+async function readPersistedStatus(handle) {
+  const metadata = claudeMetadata(handle);
+  if (!metadata) return void 0;
+  try {
+    await stat2(metadata.statusPath);
+    return JSON.parse(await readFile9(metadata.statusPath, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+async function readCollectibleStatus(handle) {
+  let status = await readPersistedStatus(handle);
+  if (status?.status === "running" && status.pid && !pidIsRunning(status.pid)) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    status = await readPersistedStatus(handle);
+  }
+  return status;
+}
+function claudeMetadata(handle) {
+  const metadata = handle.providerMetadata;
+  if (!metadata || typeof metadata.statusPath !== "string" || typeof metadata.stdoutPath !== "string" || typeof metadata.stderrPath !== "string") return void 0;
+  return metadata;
+}
+function pidIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function killProcessGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+    }
+  }
+}
+function buildClaudeArgs(args) {
+  const cliArgs = [];
+  if (args.environmentMode === "bare") cliArgs.push("--bare");
+  if (args.environmentMode === "safe-mode") cliArgs.push("--safe-mode");
+  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p", args.prompt);
+  else cliArgs.push("-p", args.prompt, "--session-id", args.sessionId);
+  cliArgs.push(
+    "--output-format",
+    "json",
+    "--json-schema",
+    JSON.stringify(phaseExecutionResultJsonSchema()),
+    "--max-turns",
+    String(args.maxTurns),
+    "--permission-mode",
+    args.permissionMode,
+    "--tools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--allowedTools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--disallowedTools",
+    "WebFetch,WebSearch,Task",
+    "--strict-mcp-config",
+    "--mcp-config",
+    JSON.stringify({ mcpServers: {} }),
+    "--disable-slash-commands",
+    "--setting-sources",
+    "user"
+  );
+  if (args.model) cliArgs.push("--model", args.model);
+  return cliArgs;
+}
+function buildSafeArgs(args) {
+  const safe = [];
+  if (args.environmentMode === "bare") safe.push("--bare");
+  if (args.environmentMode === "safe-mode") safe.push("--safe-mode");
+  if (args.resume) safe.push("--resume", args.sessionId, "-p", "[compact-resume-prompt]");
+  else safe.push("-p", "[bounded-phase-prompt]", "--session-id", args.sessionId);
+  safe.push(
+    "--output-format",
+    "json",
+    "--json-schema",
+    "[phase-execution-result-schema]",
+    "--max-turns",
+    String(args.maxTurns),
+    "--permission-mode",
+    args.permissionMode,
+    "--tools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--allowedTools",
+    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
+    "--disallowedTools",
+    "WebFetch,WebSearch,Task",
+    "--strict-mcp-config",
+    "--mcp-config",
+    '{"mcpServers":{}}',
+    "--disable-slash-commands",
+    "--setting-sources",
+    "user"
+  );
+  if (args.model) safe.push("--model", args.model);
+  return safe;
+}
+function maxTurnsForMode(mode2) {
+  if (mode2 === "fast") return 8;
+  if (mode2 === "rigorous") return 16;
+  return 12;
+}
+function resolveClaudeModel(input, options) {
+  if (options.model) return { model: options.model };
+  if (!options.config) return {};
+  const resolved = resolveModelTier(input.modelTier, "claude", options.config);
+  return { model: resolved.resolvedModel };
+}
+function resumePrompt(input) {
+  return [
+    "LeanRigor compact resume request",
+    `Workflow: ${input.workflowId}`,
+    `Phase: ${input.phaseId}`,
+    `Workspace: ${input.workspacePath}`,
+    `Objective: ${input.objective}`,
+    input.resume ? `Recoverable failure: ${input.resume.failureReason}` : void 0,
+    input.previousCheckpoint ? `Existing changed files: ${input.previousCheckpoint.changedFiles.join(", ") || "(none)"}` : void 0,
+    input.previousCheckpoint?.diffSummary.text ? `Bounded diff summary:
+${input.previousCheckpoint.diffSummary.text}` : void 0,
+    "Remaining acceptance criteria:",
+    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    "Validation commands:",
+    ...input.validationExpectations.map((command) => `- ${command}`),
+    "Continue from the existing session and worktree. Do not restart broad repository discovery. Return only the JSON object required by the supplied json-schema."
+  ].filter((line) => line !== void 0).join("\n");
+}
+function boundedClaudeEnv(env) {
+  return {
+    ...env,
+    CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1"
+  };
+}
+function parseClaudeResult(stdout, stderr) {
+  const envelopes = parseClaudeOutput(stdout, stderr);
+  for (const envelope of envelopes) {
+    const candidate = extractPhaseResultCandidate(envelope);
+    if (candidate === void 0) continue;
+    if (!isPhaseExecutionResult(candidate)) throw new ExecutionError("result_malformed", "Claude result did not match the phase execution result contract.");
+    return candidate;
+  }
+  throw new ExecutionError("result_malformed", "No structured phase result was found in Claude's result envelope.");
+}
+function parseClaudeOutput(stdout, stderr) {
+  const trimmed = stdout.trim();
+  if (trimmed.length === 0) throw new ExecutionError("provider_protocol_error", "Claude CLI returned empty stdout.", { stderr: redact(stderr).slice(0, 1e3) });
+  try {
+    return [JSON.parse(trimmed)];
+  } catch {
+    const envelopes = [];
+    for (const line of trimmed.split(/\r?\n/)) {
+      const candidate = line.trim();
+      if (!candidate.startsWith("{")) continue;
+      try {
+        const parsed = JSON.parse(candidate);
+        if (isClaudeResultEnvelope(parsed)) envelopes.push(parsed);
+      } catch {
+      }
+    }
+    if (envelopes.length > 0) return envelopes;
+    throw new ExecutionError("provider_protocol_error", "Claude CLI did not return a documented JSON result envelope.", { stdout: redact(trimmed).slice(0, 1e3), stderr: redact(stderr).slice(0, 1e3) });
+  }
+}
+function extractPhaseResultCandidate(envelope) {
+  if (!envelope || typeof envelope !== "object") return envelope;
+  const record2 = envelope;
+  if (record2.is_error && /login|auth|api key|unauthorized/i.test(String(record2.result ?? ""))) {
+    throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(String(record2.result ?? "")) });
+  }
+  if (isPhaseExecutionResult(record2.structured_output)) return record2.structured_output;
+  if (record2.structured_output !== void 0) return record2.structured_output;
+  if (record2.type === "result" && "result" in record2) return parseResultField(record2.result);
+  return envelope;
+}
+function parseResultField(value) {
+  if (typeof value === "object" && value !== null) return value;
+  if (typeof value !== "string") return void 0;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return void 0;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/i.exec(trimmed);
+    if (fenced) {
+      try {
+        return JSON.parse(fenced[1] ?? "");
+      } catch {
+        throw new ExecutionError("result_malformed", "Claude result contained malformed fenced JSON.");
+      }
+    }
+    return void 0;
+  }
+}
+function isClaudeResultEnvelope(value) {
+  return Boolean(value && typeof value === "object" && value.type === "result");
+}
+function isPhaseExecutionResult(value) {
+  if (!value || typeof value !== "object") return false;
+  const result = value;
+  return ["completed", "failed", "cancelled", "timed_out", "blocked"].includes(result.status) && typeof result.summary === "string" && Array.isArray(result.changedFiles) && Array.isArray(result.validation) && Array.isArray(result.criterionEvidence) && Array.isArray(result.assumptions) && Array.isArray(result.scopeDeviations) && Array.isArray(result.remainingRisks);
+}
+function phaseExecutionResultJsonSchema() {
+  const validation = {
+    type: "object",
+    properties: {
+      command: { type: "string" },
+      exitCode: { type: ["number", "null"] },
+      status: { enum: ["passed", "failed", "skipped"] },
+      result: { type: "string" },
+      skipped: { type: "boolean" },
+      skippedReason: { type: "string" },
+      timestamp: { type: "string" }
+    },
+    required: ["command", "status", "result"],
+    additionalProperties: false
+  };
+  const criterion = {
+    type: "object",
+    properties: {
+      criterion: { type: "string" },
+      status: { enum: ["met", "not_met", "uncertain", "not_applicable"] },
+      evidence: { type: "array", items: { type: "string" } }
+    },
+    required: ["criterion", "status", "evidence"],
+    additionalProperties: false
+  };
+  const deviation = {
+    type: "object",
+    properties: {
+      path: { type: "string" },
+      reason: { type: "string" }
+    },
+    required: ["reason"],
+    additionalProperties: false
+  };
+  return {
+    type: "object",
+    properties: {
+      status: { enum: ["completed", "failed", "cancelled", "timed_out", "blocked"] },
+      summary: { type: "string" },
+      changedFiles: { type: "array", items: { type: "string" } },
+      validation: { type: "array", items: validation },
+      criterionEvidence: { type: "array", items: criterion },
+      assumptions: { type: "array", items: { type: "string" } },
+      scopeDeviations: { type: "array", items: deviation },
+      remainingRisks: { type: "array", items: { type: "string" } }
+    },
+    required: ["status", "summary", "changedFiles", "validation", "criterionEvidence", "assumptions", "scopeDeviations", "remainingRisks"],
+    additionalProperties: false
+  };
+}
+function failureResult(handle, metadata, stdout, stderr, status, summary, details = {}) {
+  const message = `${summary}
+${stdout}
+${stderr}`;
+  if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
+  try {
+    const parsed = parseClaudeResult(stdout, stderr);
+    if (parsed.status !== "completed") {
+      return { ...parsed, providerDiagnostics: { ...parsed.providerDiagnostics, ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details } };
+    }
+  } catch {
+  }
+  const diagnostics = { ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details };
+  const terminalReason = typeof diagnostics.providerErrorCode === "string" ? diagnostics.providerErrorCode : typeof diagnostics.terminalReason === "string" ? diagnostics.terminalReason : "provider_process_exited";
+  return {
+    status: "failed",
+    summary: `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`,
+    changedFiles: [],
+    validation: [],
+    criterionEvidence: [],
+    assumptions: [],
+    scopeDeviations: [],
+    remainingRisks: [],
+    providerDiagnostics: diagnostics
+  };
+}
+function artifactDiagnostics(handle, metadata, stdout, stderr, status) {
+  const envelope = parseClaudeDiagnostics(stdout);
+  return redactDiagnostics({
+    providerExecutionId: handle.providerExecutionId,
+    artifactDir: metadata.artifactDir,
+    statusPath: metadata.statusPath,
+    stdoutPath: metadata.stdoutPath,
+    stderrPath: metadata.stderrPath,
+    sessionId: metadata.sessionId ?? envelope.sessionId,
+    resumeMode: metadata.resumeMode,
+    resolvedModel: metadata.resolvedModel,
+    maxTurns: metadata.maxTurns,
+    permissionMode: metadata.permissionMode,
+    environmentMode: metadata.environmentMode,
+    toolEnforcement: metadata.toolEnforcement,
+    safeArgs: metadata.safeArgs,
+    workerControls: metadata.workerControls,
+    exitCode: status?.exitCode,
+    signal: status?.signal,
+    terminalReason: envelope.terminalReason,
+    stopReason: envelope.stopReason,
+    turnCount: envelope.turnCount,
+    usage: envelope.usage,
+    modelUsage: envelope.modelUsage,
+    costUsd: envelope.costUsd,
+    stdoutExcerpt: redact(stdout).slice(0, 1e3),
+    stderrExcerpt: redact(stderr).slice(0, 1e3),
+    partialProgressAccepted: false
+  });
+}
+function parseClaudeDiagnostics(stdout) {
+  const out = {};
+  const toolCounts = {};
+  const readCounts = {};
+  const largeToolResults = [];
+  let toolIndex = 0;
+  let firstEditToolIndex;
+  for (const envelope of parseClaudeOutputLenient(stdout)) {
+    if (!envelope || typeof envelope !== "object") continue;
+    const record2 = envelope;
+    if (typeof record2.session_id === "string") out.sessionId = record2.session_id;
+    if (typeof record2.sessionId === "string") out.sessionId = record2.sessionId;
+    if (typeof record2.subtype === "string") out.terminalReason = record2.subtype;
+    if (typeof record2.stop_reason === "string") out.stopReason = record2.stop_reason;
+    if (typeof record2.num_turns === "number") out.turnCount = record2.num_turns;
+    if (typeof record2.total_cost_usd === "number") out.costUsd = record2.total_cost_usd;
+    if (record2.usage && typeof record2.usage === "object") out.usage = record2.usage;
+    if (record2.modelUsage && typeof record2.modelUsage === "object") out.modelUsage = record2.modelUsage;
+    if (record2.is_error === true && typeof record2.result === "string" && !out.terminalReason) out.terminalReason = compactReason2(record2.result);
+    for (const tool of toolUsesFromEnvelope(record2)) {
+      toolIndex += 1;
+      toolCounts[tool.name] = (toolCounts[tool.name] ?? 0) + 1;
+      if ((tool.name === "Edit" || tool.name === "MultiEdit" || tool.name === "Write") && firstEditToolIndex === void 0) firstEditToolIndex = toolIndex;
+      if (tool.name === "Read" && tool.filePath) readCounts[tool.filePath] = (readCounts[tool.filePath] ?? 0) + 1;
+    }
+    for (const result of toolResultsFromEnvelope(record2)) {
+      if (result.bytes > 32768) largeToolResults.push(result);
+    }
+  }
+  const repeatedReads = Object.entries(readCounts).filter(([, count]) => count > 2).map(([file2, count]) => ({ file: file2, count }));
+  if (Object.keys(toolCounts).length > 0) out.toolCounts = toolCounts;
+  if (repeatedReads.length > 0) out.repeatedReads = repeatedReads;
+  if (largeToolResults.length > 0) out.largeToolResults = largeToolResults;
+  if (firstEditToolIndex !== void 0) out.firstEditToolIndex = firstEditToolIndex;
+  return out;
+}
+function toolUsesFromEnvelope(record2) {
+  const message = record2.message;
+  const content = message && typeof message === "object" ? message.content : record2.content;
+  if (!Array.isArray(content)) return [];
+  const out = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item;
+    if (entry.type !== "tool_use" || typeof entry.name !== "string") continue;
+    const input = entry.input && typeof entry.input === "object" ? entry.input : {};
+    const filePath = typeof input.file_path === "string" ? input.file_path : typeof input.path === "string" ? input.path : void 0;
+    out.push({ name: entry.name, filePath });
+  }
+  return out;
+}
+function toolResultsFromEnvelope(record2) {
+  const content = record2.content;
+  if (!Array.isArray(content)) return [];
+  const out = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const entry = item;
+    if (entry.type !== "tool_result") continue;
+    const text = typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content ?? "");
+    out.push({ toolUseId: typeof entry.tool_use_id === "string" ? entry.tool_use_id : void 0, bytes: Buffer.byteLength(text) });
+  }
+  return out;
+}
+function parseClaudeOutputLenient(stdout) {
+  const trimmed = stdout.trim();
+  if (!trimmed) return [];
+  try {
+    return [JSON.parse(trimmed)];
+  } catch {
+    const out = [];
+    for (const line of trimmed.split(/\r?\n/)) {
+      const candidate = line.trim();
+      if (!candidate.startsWith("{")) continue;
+      try {
+        out.push(JSON.parse(candidate));
+      } catch {
+      }
+    }
+    return out;
+  }
+}
+function compactReason2(reason) {
+  const compact = reason.replace(/\s+/g, " ").trim();
+  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return "error_max_turns";
+  if (/budget|cost|spend/i.test(compact)) return "error_max_budget_usd";
+  return compact.slice(0, 120);
+}
+function errorDetailsFromUnknown(error51) {
+  if (!error51 || typeof error51 !== "object") return {};
+  const details = error51.details;
+  return details && typeof details === "object" ? details : {};
+}
+function errorCode(error51) {
+  return error51 && typeof error51 === "object" && typeof error51.code === "string" ? error51.code : void 0;
+}
+function emptyResult(status, summary) {
+  return { status, summary, changedFiles: [], validation: [], criterionEvidence: [], assumptions: [], scopeDeviations: [], remainingRisks: [] };
+}
+function redactDiagnostics(value) {
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, typeof item === "string" ? redact(item) : item]));
+}
+function redact(value) {
+  return value.replace(/(api[_-]?key|token|secret|password)[=:]\S+/gi, "$1=[REDACTED]");
+}
+
+// src/adapters/registry.ts
+var runtimes = /* @__PURE__ */ new Map();
+function registerAdapter(runtime) {
+  if (runtimes.has(runtime.id)) throw new Error(`Adapter '${runtime.id}' is already registered.`);
+  runtimes.set(runtime.id, runtime);
+}
+function getAdapterRuntime(id) {
+  const runtime = runtimes.get(id);
+  if (!runtime) throw new Error(`Unsupported adapter: ${id}. Available adapters: ${availableAdapterIds().join(", ") || "(none)"}.`);
+  return runtime;
+}
+function availableAdapterIds() {
+  return [...runtimes.keys()].sort();
+}
+registerAdapter({
+  id: "claude",
+  adapter: new ClaudeAdapter(),
+  createTriageProvider: () => new ClaudeCliTriageProvider(),
+  createPlanningProvider: () => new ClaudeCliPlanningProvider(),
+  createExecutionProvider: (config2) => new ClaudeCliExecutionProvider({ config: config2 })
+});
+
 // src/cli/index.ts
 init_schema();
 init_resolver();
@@ -22297,9 +23071,9 @@ init_load();
 init_config_scope();
 init_resolver();
 init_model_display();
-import { readFile as readFile9 } from "node:fs/promises";
+import { readFile as readFile10 } from "node:fs/promises";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import path11 from "node:path";
+import path12 from "node:path";
 var VALID_EXAMPLES = [
   {
     description: "Set personal small-tier model for all repos",
@@ -22407,7 +23181,7 @@ function buildExampleCommands() {
 }
 async function readVersion(filePath) {
   try {
-    const parsed = JSON.parse(await readFile9(filePath, "utf8"));
+    const parsed = JSON.parse(await readFile10(filePath, "utf8"));
     return typeof parsed.version === "string" && parsed.version.length > 0 ? parsed.version : null;
   } catch {
     return null;
@@ -22419,8 +23193,8 @@ async function resolvePluginVersion(mode2) {
     const pluginRoot = process.env.LEANRIGOR_CLAUDE_PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
     if (pluginRoot) {
       candidates.push(
-        path11.join(pluginRoot, ".claude-plugin", "plugin.json"),
-        path11.join(pluginRoot, "package.json")
+        path12.join(pluginRoot, ".claude-plugin", "plugin.json"),
+        path12.join(pluginRoot, "package.json")
       );
     }
   }
@@ -22522,7 +23296,7 @@ async function buildInitReport(root, bootstrapResult) {
   }
   return {
     configurationFiles,
-    gitignore: await ensureGitignore(path11.join(root, ".leanrigor")),
+    gitignore: await ensureGitignore(path12.join(root, ".leanrigor")),
     models,
     execution,
     assets,
@@ -22732,12 +23506,12 @@ function renderSettingsState(settings, isMarketplace) {
 
 // src/core/bootstrap.ts
 init_resolver();
-import path12 from "node:path";
+import path13 from "node:path";
 async function ensureBootstrapped(root, opts = {}) {
   const warnings = [];
   await ensureRepositoryConfig(root);
   const config2 = (await resolveEffectiveConfig(root)).values;
-  await ensureGitignore(path12.join(root, ".leanrigor"));
+  await ensureGitignore(path13.join(root, ".leanrigor"));
   const installationMode = await detectInstallationMode(root);
   let shadowing = null;
   if (installationMode === "marketplace") {
@@ -22758,9 +23532,9 @@ async function ensureBootstrapped(root, opts = {}) {
       shadowing
     };
   }
-  const adapter = new ClaudeAdapter();
-  const hasBootstrap = typeof adapter.bootstrap === "function";
-  if (!hasBootstrap) {
+  const adapter = getAdapterRuntime("claude").adapter;
+  const bootstrap = adapter.bootstrap;
+  if (!bootstrap) {
     const report2 = await adapter.install(root, config2, opts.force ?? false);
     const bootstrapped2 = report2.installed.length > 0;
     return {
@@ -22781,7 +23555,7 @@ async function ensureBootstrapped(root, opts = {}) {
   }
   let report;
   try {
-    report = await adapter.bootstrap(root, config2, opts.force ?? false);
+    report = await bootstrap.call(adapter, root, config2, opts.force ?? false);
   } catch (err) {
     warnings.push(`Bootstrap skipped: ${err.message}`);
     return {
@@ -22824,10 +23598,10 @@ init_repo_policy();
 init_zod();
 init_defaults();
 init_models();
-import { randomUUID as randomUUID3 } from "node:crypto";
-import { mkdir as mkdir8, readFile as readFile13 } from "node:fs/promises";
+import { randomUUID as randomUUID4 } from "node:crypto";
+import { mkdir as mkdir9, readFile as readFile14 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import path17 from "node:path";
+import path18 from "node:path";
 
 // src/core/commit-planner.ts
 function proposeCommits(graph) {
@@ -22849,13 +23623,13 @@ function commitCommands(proposal) {
 
 // src/core/git-workspace.ts
 import { createHash as createHash2 } from "node:crypto";
-import { execFile as execFile3 } from "node:child_process";
-import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir6, readFile as readFile10, readdir as readdir3, readlink, realpath, stat as stat2, writeFile as writeFile6 } from "node:fs/promises";
-import path14 from "node:path";
-import { promisify as promisify3 } from "node:util";
+import { execFile as execFile4 } from "node:child_process";
+import { access as access3, constants as constants2, lstat as lstat2, mkdir as mkdir7, readFile as readFile11, readdir as readdir3, readlink, realpath, stat as stat3, writeFile as writeFile7 } from "node:fs/promises";
+import path15 from "node:path";
+import { promisify as promisify4 } from "node:util";
 
 // src/core/ownership.ts
-import path13 from "node:path";
+import path14 from "node:path";
 var DEFAULT_SENSITIVE_PATHS = [
   "package.json",
   "package-lock.json",
@@ -22872,7 +23646,7 @@ var OwnershipPatternError = class extends Error {
 };
 function normalizeOwnershipPattern(value) {
   const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!trimmed || path13.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
+  if (!trimmed || path14.posix.isAbsolute(trimmed) || trimmed.split("/").includes("..")) {
     throw new OwnershipPatternError(`Invalid repository-relative ownership path: ${value}`);
   }
   return trimmed.replace(/\/+/g, "/");
@@ -23223,7 +23997,7 @@ function unique6(values) {
 }
 
 // src/core/git-workspace.ts
-var execFileAsync3 = promisify3(execFile3);
+var execFileAsync4 = promisify4(execFile4);
 var OWNERSHIP_VERSION = 1;
 var MAX_GIT_OUTPUT = 64 * 1024 * 1024;
 var GitWorkspaceError = class extends Error {
@@ -23271,7 +24045,7 @@ async function preflightGitRepository(root, config2) {
   if (workspaceRoot.length > config2.execution.maxWorkspacePathLength) {
     return { ok: false, code: "workspace_path_too_long", repositoryRoot, gitCommonDir, workspaceRoot };
   }
-  const writable = await mkdir6(workspaceRoot, { recursive: true }).then(() => access3(workspaceRoot, constants2.W_OK)).then(() => true).catch(() => false);
+  const writable = await mkdir7(workspaceRoot, { recursive: true }).then(() => access3(workspaceRoot, constants2.W_OK)).then(() => true).catch(() => false);
   if (!writable) return { ok: false, code: "workspace_root_not_writable", repositoryRoot, gitCommonDir, workspaceRoot };
   const canonicalWorkspaceRoot = await canonical(workspaceRoot);
   if (isSamePath(canonicalWorkspaceRoot, repositoryRoot) || isPathInside(canonicalWorkspaceRoot, repositoryRoot) || isPathInside(repositoryRoot, canonicalWorkspaceRoot)) {
@@ -23302,13 +24076,13 @@ async function ensureIntegrationWorkspace(state, config2) {
   const existing = state.git;
   if (existing && await ownedWorktreeExists(existing.integration.path, state.id, "integration")) return existing;
   const names = workspaceNames(state.id, void 0, config2);
-  const workflowRoot = path14.join(preflight.workspaceRoot, state.id);
-  const integrationPath = path14.join(workflowRoot, "integration");
+  const workflowRoot = path15.join(preflight.workspaceRoot, state.id);
+  const integrationPath = path15.join(workflowRoot, "integration");
   ensurePathLength(integrationPath, config2);
   await ensurePathAvailable(integrationPath, state.id, "integration");
   const integrationBranch = existing?.context.integrationBranch ?? names.integrationBranch;
   const integrationBranchExists = await ensureBranchAvailable(preflight.repositoryRoot, integrationBranch, existing?.context.integrationBranch === integrationBranch);
-  await mkdir6(path14.dirname(integrationPath), { recursive: true });
+  await mkdir7(path15.dirname(integrationPath), { recursive: true });
   await addWorktree(preflight.repositoryRoot, integrationPath, integrationBranch, integrationBranchExists ? integrationBranch : preflight.baseCommit, !integrationBranchExists);
   const headCommit = (await git(integrationPath, ["rev-parse", "HEAD"])).trim();
   const now = timestamp();
@@ -23371,12 +24145,12 @@ async function createPhaseWorkspace(state, phaseId, ownerId, config2) {
     throw new GitWorkspaceError("phase_dependencies_not_integrated", `Phase ${phaseId} dependencies are not integrated: ${missingDependencies.join(", ")}`, { missingDependencies });
   }
   const names = workspaceNames(state.id, phaseId, config2);
-  const workflowRoot = path14.join(gitState.context.workspaceRoot, state.id);
-  const phasePath = path14.join(workflowRoot, "phases", names.phasePathSegment);
+  const workflowRoot = path15.join(gitState.context.workspaceRoot, state.id);
+  const phasePath = path15.join(workflowRoot, "phases", names.phasePathSegment);
   ensurePathLength(phasePath, config2);
   await ensurePathAvailable(phasePath, state.id, "phase", phaseId);
   const phaseBranchExists = await ensureBranchAvailable(gitState.context.repositoryRoot, names.phaseBranch, existing?.branch === names.phaseBranch);
-  await mkdir6(path14.dirname(phasePath), { recursive: true });
+  await mkdir7(path15.dirname(phasePath), { recursive: true });
   await addWorktree(gitState.context.repositoryRoot, phasePath, names.phaseBranch, phaseBranchExists ? names.phaseBranch : gitState.integration.headCommit, !phaseBranchExists);
   const now = timestamp();
   await writeOwnershipMetadata(workflowRoot, {
@@ -23757,31 +24531,31 @@ function sanitizeRefSegment(value) {
   return value.trim().replace(/\\/g, "/").replace(/[~^:?*[\]\s]+/g, "-").replace(/@{/g, "-").replace(/\.\.+/g, ".").replace(/^[/.-]+|[/.-]+$/g, "").replace(/\/+/g, "/").replace(/\.lock$/i, "-lock") || "workspace";
 }
 function resolveWorkspaceRoot(repositoryRoot, config2, repositoryIdentity = repositoryIdentityFor(repositoryRoot)) {
-  if (config2.execution.workspaceRoot) return path14.resolve(repositoryRoot, config2.execution.workspaceRoot);
+  if (config2.execution.workspaceRoot) return path15.resolve(repositoryRoot, config2.execution.workspaceRoot);
   const identity = safeIdentitySegment(repositoryIdentity);
-  return path14.join(path14.dirname(repositoryRoot), ".leanrigor-worktrees", `${path14.basename(repositoryRoot)}-${identity}`);
+  return path15.join(path15.dirname(repositoryRoot), ".leanrigor-worktrees", `${path15.basename(repositoryRoot)}-${identity}`);
 }
 function repositoryIdentityFor(repositoryRoot) {
-  return `root-sha256:${createHash2("sha256").update(path14.resolve(repositoryRoot)).digest("hex")}`;
+  return `root-sha256:${createHash2("sha256").update(path15.resolve(repositoryRoot)).digest("hex")}`;
 }
 function safeIdentitySegment(repositoryIdentity) {
   return (repositoryIdentity.includes(":") ? repositoryIdentity.split(":").at(-1) : repositoryIdentity).replace(/[^a-f0-9]/gi, "").slice(0, 12) || createHash2("sha256").update(repositoryIdentity).digest("hex").slice(0, 12);
 }
 async function writeOwnershipMetadata(workflowRoot, metadata) {
-  const dir = path14.join(workflowRoot, ".leanrigor-owned-worktrees");
-  await mkdir6(dir, { recursive: true });
+  const dir = path15.join(workflowRoot, ".leanrigor-owned-worktrees");
+  await mkdir7(dir, { recursive: true });
   const name = metadata.workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(metadata.phaseId ?? "unknown")}.json`;
-  await writeFile6(path14.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
+  await writeFile7(path15.join(dir, name), JSON.stringify(metadata, null, 2) + "\n", "utf8");
 }
 async function readOwnershipMetadata(worktreePath, workflowId2, workspaceType, phaseId) {
-  const workflowRoot = workspaceType === "integration" ? path14.dirname(worktreePath) : path14.dirname(path14.dirname(worktreePath));
-  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path14.basename(worktreePath))}.json`;
-  const file2 = path14.join(workflowRoot, ".leanrigor-owned-worktrees", name);
+  const workflowRoot = workspaceType === "integration" ? path15.dirname(worktreePath) : path15.dirname(path15.dirname(worktreePath));
+  const name = workspaceType === "integration" ? "integration.json" : `phase-${sanitizeRefSegment(phaseId ?? path15.basename(worktreePath))}.json`;
+  const file2 = path15.join(workflowRoot, ".leanrigor-owned-worktrees", name);
   try {
-    const parsed = JSON.parse(await readFile10(file2, "utf8"));
+    const parsed = JSON.parse(await readFile11(file2, "utf8"));
     if (parsed.generatedBy !== "leanrigor" || parsed.workflowId !== workflowId2 || parsed.workspaceType !== workspaceType) return void 0;
     if (phaseId && parsed.phaseId !== phaseId) return void 0;
-    if (path14.resolve(parsed.path) !== path14.resolve(worktreePath)) return void 0;
+    if (path15.resolve(parsed.path) !== path15.resolve(worktreePath)) return void 0;
     return parsed;
   } catch {
     return void 0;
@@ -23796,12 +24570,12 @@ async function worktreeDirty(worktreePath) {
   return statusText.trim().length > 0;
 }
 async function git(cwd, args, options = {}) {
-  const { stdout } = await execFileAsync3("git", args, { cwd, encoding: "utf8", maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024 });
+  const { stdout } = await execFileAsync4("git", args, { cwd, encoding: "utf8", maxBuffer: options.maxBuffer ?? 10 * 1024 * 1024 });
   return stdout;
 }
 async function runShellCommand(command, cwd) {
   try {
-    const { stdout, stderr } = await execFileAsync3("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
+    const { stdout, stderr } = await execFileAsync4("bash", ["-lc", command], { cwd, encoding: "utf8", maxBuffer: MAX_GIT_OUTPUT });
     return { exitStatus: 0, output: `${stdout}${stderr}`.trim() || "Command completed successfully." };
   } catch (error51) {
     const failed = error51;
@@ -23810,14 +24584,14 @@ async function runShellCommand(command, cwd) {
 }
 async function gitOperationInProgress(commonDir, gitDir) {
   const checks = [
-    [path14.join(gitDir, "MERGE_HEAD"), "merge"],
-    [path14.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
-    [path14.join(gitDir, "REVERT_HEAD"), "revert"],
-    [path14.join(gitDir, "BISECT_LOG"), "bisect"],
-    [path14.join(gitDir, "rebase-merge"), "rebase"],
-    [path14.join(gitDir, "rebase-apply"), "rebase"],
-    [path14.join(commonDir, "rebase-merge"), "rebase"],
-    [path14.join(commonDir, "rebase-apply"), "rebase"]
+    [path15.join(gitDir, "MERGE_HEAD"), "merge"],
+    [path15.join(gitDir, "CHERRY_PICK_HEAD"), "cherry-pick"],
+    [path15.join(gitDir, "REVERT_HEAD"), "revert"],
+    [path15.join(gitDir, "BISECT_LOG"), "bisect"],
+    [path15.join(gitDir, "rebase-merge"), "rebase"],
+    [path15.join(gitDir, "rebase-apply"), "rebase"],
+    [path15.join(commonDir, "rebase-merge"), "rebase"],
+    [path15.join(commonDir, "rebase-apply"), "rebase"]
   ];
   for (const [file2, operation] of checks) {
     if (await pathExists(file2)) return operation;
@@ -23825,10 +24599,10 @@ async function gitOperationInProgress(commonDir, gitDir) {
   return void 0;
 }
 async function resolveGitPath(cwd, gitPath) {
-  return path14.isAbsolute(gitPath) ? gitPath : path14.resolve(cwd, gitPath);
+  return path15.isAbsolute(gitPath) ? gitPath : path15.resolve(cwd, gitPath);
 }
 async function canonical(value) {
-  return realpath(path14.resolve(value));
+  return realpath(path15.resolve(value));
 }
 function gitVersionSupportsWorktree(versionText) {
   const match = versionText.match(/git version (\d+)\.(\d+)/);
@@ -23849,9 +24623,9 @@ async function findNestedRepositories(repositoryRoot) {
     }
     for (const entry of entries) {
       if (!entry.isDirectory() || [".git", "node_modules", "dist", ".leanrigor", ".codegraph"].includes(entry.name)) continue;
-      const child = path14.join(dir, entry.name);
-      if (await pathExists(path14.join(child, ".git"))) {
-        nested.push(path14.relative(repositoryRoot, child));
+      const child = path15.join(dir, entry.name);
+      if (await pathExists(path15.join(child, ".git"))) {
+        nested.push(path15.relative(repositoryRoot, child));
         continue;
       }
       await walk(child, depth + 1);
@@ -23888,7 +24662,7 @@ function parseModeChanges(raw) {
 }
 async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
   for (const file2 of changedFiles) {
-    const full = path14.join(worktreePath, file2);
+    const full = path15.join(worktreePath, file2);
     let info;
     try {
       info = await lstat2(full);
@@ -23897,7 +24671,7 @@ async function rejectUnsafeSymlinks(worktreePath, changedFiles) {
     }
     if (!info.isSymbolicLink()) continue;
     const target = await readlink(full);
-    if (path14.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
+    if (path15.isAbsolute(target) || target.split(/[\\/]+/).includes("..")) {
       throw new GitWorkspaceError("unsafe_symlink", `Changed symlink escapes the repository: ${file2}`, { file: file2, target });
     }
   }
@@ -23915,14 +24689,14 @@ function timestamp() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function isPathInside(child, parent) {
-  const relative = path14.relative(path14.resolve(parent), path14.resolve(child));
-  return relative === "" || !relative.startsWith("..") && !path14.isAbsolute(relative);
+  const relative = path15.relative(path15.resolve(parent), path15.resolve(child));
+  return relative === "" || !relative.startsWith("..") && !path15.isAbsolute(relative);
 }
 function isSamePath(left, right) {
-  return path14.resolve(left) === path14.resolve(right);
+  return path15.resolve(left) === path15.resolve(right);
 }
 async function pathExists(target) {
-  return stat2(target).then(() => true).catch(() => false);
+  return stat3(target).then(() => true).catch(() => false);
 }
 
 // node_modules/jsonrepair/lib/esm/utils/JSONRepairError.js
@@ -24904,14 +25678,14 @@ function messageOf3(error51) {
 }
 
 // src/core/workflow-lock.ts
-import { open as open2, readFile as readFile12, mkdir as mkdir7, rm as rm2, writeFile as writeFile7 } from "node:fs/promises";
+import { open as open3, readFile as readFile13, mkdir as mkdir8, rm as rm2, writeFile as writeFile8 } from "node:fs/promises";
 import os from "node:os";
-import path16 from "node:path";
+import path17 from "node:path";
 
 // src/core/workflow-store.ts
-import { open, readFile as readFile11, rename as rename2, rm } from "node:fs/promises";
-import { randomUUID as randomUUID2 } from "node:crypto";
-import path15 from "node:path";
+import { open as open2, readFile as readFile12, rename as rename3, rm } from "node:fs/promises";
+import { randomUUID as randomUUID3 } from "node:crypto";
+import path16 from "node:path";
 var RevisionConflictError = class extends Error {
   constructor(expectedRevision, actualRevision) {
     super(`Workflow revision conflict: expected ${expectedRevision}, actual ${actualRevision}.`);
@@ -24923,9 +25697,9 @@ var RevisionConflictError = class extends Error {
   code = "revision_conflict";
 };
 async function atomicWriteJson2(file2, value) {
-  const dir = path15.dirname(file2);
-  const temp = path15.join(dir, `.${path15.basename(file2)}.${process.pid}.${randomUUID2()}.tmp`);
-  const handle = await open(temp, "wx");
+  const dir = path16.dirname(file2);
+  const temp = path16.join(dir, `.${path16.basename(file2)}.${process.pid}.${randomUUID3()}.tmp`);
+  const handle = await open2(temp, "wx");
   try {
     await handle.writeFile(JSON.stringify(value, null, 2) + "\n", "utf8");
     await handle.sync();
@@ -24933,7 +25707,7 @@ async function atomicWriteJson2(file2, value) {
     await handle.close();
   }
   try {
-    await rename2(temp, file2);
+    await rename3(temp, file2);
     await fsyncDirectory(dir);
   } catch (error51) {
     await rm(temp, { force: true }).catch(() => void 0);
@@ -24942,7 +25716,7 @@ async function atomicWriteJson2(file2, value) {
 }
 async function fsyncDirectory(dir) {
   try {
-    const handle = await open(dir, "r");
+    const handle = await open2(dir, "r");
     try {
       await handle.sync();
     } finally {
@@ -24965,15 +25739,15 @@ var WorkflowLockOwnershipError = class extends Error {
   code = "workflow_lock_owner_mismatch";
 };
 function lockPath(root, workflowId2) {
-  return path16.join(path16.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
+  return path17.join(path17.resolve(root), ".leanrigor", "workflows", `${workflowId2}.lock.json`);
 }
 async function acquireWorkflowLock(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const lock = buildLock(options, now);
   const file2 = lockPath(options.root, options.workflowId);
-  await mkdir7(path16.dirname(file2), { recursive: true });
+  await mkdir8(path17.dirname(file2), { recursive: true });
   try {
-    const handle = await open2(file2, "wx");
+    const handle = await open3(file2, "wx");
     try {
       await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
       await handle.sync();
@@ -24989,7 +25763,7 @@ async function acquireWorkflowLock(options) {
   if (Date.parse(existing.expiresAt) > now.getTime()) throw new WorkflowLockBusyError(existing);
   await rm2(file2, { force: true });
   try {
-    const handle = await open2(file2, "wx");
+    const handle = await open3(file2, "wx");
     try {
       await handle.writeFile(JSON.stringify(lock, null, 2) + "\n", "utf8");
       await handle.sync();
@@ -25013,7 +25787,7 @@ async function releaseWorkflowLock(root, workflowId2, ownerId) {
 }
 async function readWorkflowLock(root, workflowId2) {
   try {
-    return JSON.parse(await readFile12(lockPath(root, workflowId2), "utf8"));
+    return JSON.parse(await readFile13(lockPath(root, workflowId2), "utf8"));
   } catch (error51) {
     if (error51.code === "ENOENT") return void 0;
     throw error51;
@@ -25034,7 +25808,7 @@ function buildLock(options, now) {
 }
 
 // src/core/flow.ts
-var WORKFLOW_DIR = path17.join(".leanrigor", "workflows");
+var WORKFLOW_DIR = path18.join(".leanrigor", "workflows");
 var STATE_VERSION = 2;
 var require2 = createRequire(import.meta.url);
 var lifecycleStateSchema = external_exports.enum([
@@ -25604,7 +26378,7 @@ var DEFAULT_LOCK_TIMEOUT_SECONDS = 30;
 var DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS = 900;
 var MAX_EVENTS = 200;
 async function startFlow(options) {
-  const root = path17.resolve(options.root);
+  const root = path18.resolve(options.root);
   const now = timestamp2();
   let state = {
     version: STATE_VERSION,
@@ -26252,7 +27026,7 @@ function workflowEvents(state) {
   return state.events;
 }
 async function listFlows(root) {
-  const dir = path17.join(path17.resolve(root), WORKFLOW_DIR);
+  const dir = path18.join(path18.resolve(root), WORKFLOW_DIR);
   let entries;
   try {
     const fs = await import("node:fs/promises");
@@ -26276,7 +27050,7 @@ async function loadFlowState(root, workflowId2) {
   const file2 = workflowPath(root, workflowId2);
   let raw;
   try {
-    raw = await readFile13(file2, "utf8");
+    raw = await readFile14(file2, "utf8");
   } catch (error51) {
     if (error51.code === "ENOENT") throw new WorkflowNotFoundError(`Workflow not found: ${workflowId2}`);
     throw error51;
@@ -26289,12 +27063,12 @@ async function loadFlowState(root, workflowId2) {
 }
 async function saveFlowState(root, state, options = {}) {
   const parsed = workflowStateSchema.parse(migrateWorkflowState({ ...state, updatedAt: state.updatedAt }, root, state.id));
-  const dir = path17.join(path17.resolve(root), WORKFLOW_DIR);
-  await mkdir8(dir, { recursive: true });
+  const dir = path18.join(path18.resolve(root), WORKFLOW_DIR);
+  await mkdir9(dir, { recursive: true });
   const target = workflowPath(root, parsed.id);
   if (options.create) {
     try {
-      await readFile13(target, "utf8");
+      await readFile14(target, "utf8");
       throw new StaleWorkflowError(`Workflow already exists: ${parsed.id}`);
     } catch (error51) {
       if (error51.code !== "ENOENT") throw error51;
@@ -27150,7 +27924,7 @@ function defaultValidationCommands(root, mode2, triage) {
 function readPackageJsonSync(root) {
   try {
     const fs = require2("node:fs");
-    return JSON.parse(fs.readFileSync(path17.join(root, "package.json"), "utf8"));
+    return JSON.parse(fs.readFileSync(path18.join(root, "package.json"), "utf8"));
   } catch {
     return void 0;
   }
@@ -27391,7 +28165,7 @@ function areaMatchesFile(area, file2) {
     const pattern = `^${normalArea.split("*").map(escapeRegex2).join(".*")}$`;
     return new RegExp(pattern).test(normalFile);
   }
-  if (!path17.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
+  if (!path18.posix.extname(normalArea)) return normalFile === normalArea || normalFile.startsWith(`${normalArea}/`);
   return normalFile === normalArea;
 }
 function matchesConfiguredPath(file2, patterns) {
@@ -27481,7 +28255,7 @@ function appendEvent(state, type, summary, phaseId, actorId = DEFAULT_OWNER_ID) 
 }
 function workflowEvent(args) {
   return {
-    eventId: `evt-${randomUUID3().slice(0, 12)}`,
+    eventId: `evt-${randomUUID4().slice(0, 12)}`,
     timestamp: args.at ?? timestamp2(),
     actorId: args.actorId,
     type: args.type,
@@ -27513,7 +28287,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
       revision: 0,
       state: "created",
       request: typeof value.request === "string" ? value.request : "Migrated legacy workflow",
-      root: path17.resolve(root),
+      root: path18.resolve(root),
       mode: value.mode === "fast" || value.mode === "rigorous" ? value.mode : "standard",
       createdAt: now,
       updatedAt: now,
@@ -27529,7 +28303,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.version = STATE_VERSION;
   migrated.id = typeof migrated.id === "string" ? migrated.id : workflowId2;
   migrated.revision = typeof migrated.revision === "number" ? migrated.revision : 0;
-  migrated.root = typeof migrated.root === "string" ? migrated.root : path17.resolve(root);
+  migrated.root = typeof migrated.root === "string" ? migrated.root : path18.resolve(root);
   migrated.updatedAt = typeof migrated.updatedAt === "string" ? migrated.updatedAt : timestamp2();
   migrated.createdAt = typeof migrated.createdAt === "string" ? migrated.createdAt : migrated.updatedAt;
   migrated.validation = Array.isArray(migrated.validation) ? migrated.validation : [];
@@ -27603,10 +28377,10 @@ function assertState(state, allowed) {
 }
 function workflowPath(root, workflowId2) {
   if (!/^[a-zA-Z0-9._-]+$/.test(workflowId2)) throw new WorkflowNotFoundError(`Invalid workflow ID: ${workflowId2}`);
-  return path17.join(path17.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
+  return path18.join(path18.resolve(root), WORKFLOW_DIR, `${workflowId2}.json`);
 }
 function workflowId() {
-  return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID3().slice(0, 8)}`;
+  return `lr-${(/* @__PURE__ */ new Date()).toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomUUID4().slice(0, 8)}`;
 }
 function label(mode2) {
   return mode2[0].toUpperCase() + mode2.slice(1);
@@ -28036,13 +28810,13 @@ function quoteArg(value) {
 }
 
 // src/core/completion-evidence.ts
-import { mkdir as mkdir9, readFile as readFile14, writeFile as writeFile8 } from "node:fs/promises";
-import path18 from "node:path";
+import { mkdir as mkdir10, readFile as readFile15, writeFile as writeFile9 } from "node:fs/promises";
+import path19 from "node:path";
 async function readCompletionEvidenceFile(root, workflowId2, phaseId, file2) {
-  const resolved = path18.resolve(file2);
+  const resolved = path19.resolve(file2);
   let rawText;
   try {
-    rawText = await readFile14(resolved, "utf8");
+    rawText = await readFile15(resolved, "utf8");
   } catch (error51) {
     throw new Error(`Completion evidence file is unavailable: ${resolved}`, { cause: error51 });
   }
@@ -28084,774 +28858,17 @@ function validateCompletionEvidenceFile(raw, state, phaseId, file2) {
   if (raw.validation !== void 0 && !Array.isArray(raw.validation)) throw new Error("Completion evidence validation must be an array.");
 }
 async function persistCompletionEvidenceArtifact(root, workflowId2, phaseId, file2) {
-  const sourcePath = path18.resolve(file2);
-  const raw = await readFile14(sourcePath, "utf8");
+  const sourcePath = path19.resolve(file2);
+  const raw = await readFile15(sourcePath, "utf8");
   const artifactPath = completionEvidenceArtifactPath(root, workflowId2, phaseId);
-  const artifactDir = path18.dirname(artifactPath);
-  await mkdir9(artifactDir, { recursive: true });
-  await writeFile8(artifactPath, raw.endsWith("\n") ? raw : `${raw}
+  const artifactDir = path19.dirname(artifactPath);
+  await mkdir10(artifactDir, { recursive: true });
+  await writeFile9(artifactPath, raw.endsWith("\n") ? raw : `${raw}
 `, "utf8");
   return { path: artifactPath, sourcePath, recordedAt: (/* @__PURE__ */ new Date()).toISOString() };
 }
 function completionEvidenceArtifactPath(root, workflowId2, phaseId) {
-  return path18.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
-}
-
-// src/core/execution/claude-provider.ts
-init_models();
-import { execFile as execFile4, spawn as spawn2 } from "node:child_process";
-import { randomUUID as randomUUID4 } from "node:crypto";
-import { mkdir as mkdir10, open as open3, readFile as readFile15, rename as rename3, stat as stat3, writeFile as writeFile9 } from "node:fs/promises";
-import path19 from "node:path";
-import { promisify as promisify4 } from "node:util";
-
-// src/core/execution/errors.ts
-var ExecutionError = class extends Error {
-  constructor(code, message, details = {}) {
-    super(message);
-    this.code = code;
-    this.details = details;
-  }
-  code;
-  details;
-};
-
-// src/core/execution/prompt.ts
-function phaseWorkerPrompt(input) {
-  const controls = input.workerControls ?? defaultWorkerControls(input.selectedMode);
-  return [
-    "LeanRigor bounded phase worker",
-    `Workflow: ${input.workflowId} revision ${input.workflowRevision}`,
-    `Phase: ${input.phaseId} | Mode: ${input.selectedMode} | Tier: ${input.modelTier}`,
-    `Workspace: ${input.workspacePath}`,
-    "",
-    "Objective:",
-    input.objective,
-    "",
-    "Acceptance criteria:",
-    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
-    "",
-    "Likely files and scope:",
-    `- Read: ${input.allowedReadAreas.join(", ") || "(none declared)"}`,
-    `- Write: ${input.allowedWriteAreas.join(", ") || "(none declared)"}`,
-    `- Dependencies: ${input.dependencies.join(", ") || "(none)"}`,
-    input.codeIntelligence ? `- Code intelligence: CodeGraph ${input.codeIntelligence.codegraph}${input.codeIntelligence.note ? ` (${input.codeIntelligence.note})` : ""}` : void 0,
-    "",
-    "Validation commands:",
-    ...input.validationExpectations.map((command) => `- ${command}`),
-    "",
-    "Workspace preparation:",
-    input.workspacePreparation?.worktreePath ? `- Worktree path: ${input.workspacePreparation.worktreePath}` : void 0,
-    input.workspacePreparation?.repositoryIdentity ? `- Repository identity: ${input.workspacePreparation.repositoryIdentity}` : void 0,
-    input.workspacePreparation?.basis?.branch || input.workspacePreparation?.basis?.commit ? `- Basis: ${[input.workspacePreparation.basis.branch, input.workspacePreparation.basis.commit].filter(Boolean).join(" @ ")}` : void 0,
-    `- Prepared: ${input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "yes" : "no"}`,
-    input.workspacePreparation ? `- Package manager: ${input.workspacePreparation.packageManager ?? "unknown"}` : "- Package manager: unknown",
-    input.workspacePreparation ? `- Dependencies: ${input.workspacePreparation.dependencies}` : "- Dependencies: unknown",
-    input.workspacePreparation ? `- Validation commands available: ${input.workspacePreparation.validationCommandsAvailable === false ? "no" : "yes"}` : "- Validation commands available: unknown",
-    input.workspacePreparation?.bootstrapCommand ? `- Bootstrap command: ${input.workspacePreparation.bootstrapCommand}` : "- Bootstrap command: none",
-    input.workspacePreparation ? `- Bootstrap result: ${input.workspacePreparation.status}` : "- Bootstrap result: unknown",
-    input.workspacePreparation && ["available", "prepared"].includes(input.workspacePreparation.status) ? "- Workspace status: prepared. Do not install dependencies unless LeanRigor explicitly marks preparation incomplete." : void 0,
-    input.workspacePreparation && !["available", "prepared"].includes(input.workspacePreparation.status) ? "- Dependencies are unavailable. Do not run install commands; return blocked status with this preparation result." : void 0,
-    "",
-    "Constraints:",
-    ...input.approvedConstraints.map((constraint) => `- Approved constraint: ${constraint}`),
-    ...input.safetyInstructions.map((instruction) => `- ${instruction}`),
-    `- Allowed write scope is limited to the assigned workspace and declared write areas.`,
-    `- Do not commit, push, merge, deploy, or modify files outside the assigned workspace.`,
-    "",
-    input.resume ? [
-      "Resume/checkpoint:",
-      `- Mode: ${input.resume.mode}`,
-      `- Attempt: ${input.resume.attempt}`,
-      `- Prior failure: ${input.resume.failureReason}`,
-      "- Continue from the existing workspace state; do not repeat broad repository discovery."
-    ].join("\n") : void 0,
-    input.previousCheckpoint?.dirty ? [
-      "Existing worktree changes:",
-      `- Changed: ${input.previousCheckpoint.changedFiles.join(", ") || "(none)"}`,
-      `- Deleted: ${input.previousCheckpoint.deletedFiles.join(", ") || "(none)"}`,
-      `- Untracked: ${input.previousCheckpoint.untrackedFiles.join(", ") || "(none)"}`,
-      input.previousCheckpoint.diffSummary.text ? `- Bounded diff summary:
-${input.previousCheckpoint.diffSummary.text}` : void 0
-    ].filter(Boolean).join("\n") : void 0,
-    "",
-    "Execution budget:",
-    `- Discovery turns before implementation is expected: ${controls.maxDiscoveryTurns}`,
-    `- Reserve at least ${controls.reservedValidationTurns} turn(s) for validation and ${controls.reservedFinalResultTurns} turn(s) for final structured output.`,
-    `- Warn and summarize instead of repeatedly reading the same file more than ${controls.repeatedReadWarningThreshold} time(s).`,
-    `- Keep individual large tool outputs below about ${controls.largeToolOutputBytes} bytes when possible.`,
-    "- If progress is partial near the limit, preserve the worktree state and return a failed or blocked structured result with exact evidence.",
-    "",
-    "Return only the JSON object required by the supplied json-schema. Include concise validation evidence and changed files; do not include hidden reasoning."
-  ].filter((line) => line !== void 0).join("\n");
-}
-function defaultWorkerControls(mode2) {
-  if (mode2 === "fast") return { maxDiscoveryTurns: 1, reservedValidationTurns: 1, reservedFinalResultTurns: 1, repeatedReadWarningThreshold: 2, largeToolOutputBytes: 32768 };
-  if (mode2 === "rigorous") return { maxDiscoveryTurns: 4, reservedValidationTurns: 2, reservedFinalResultTurns: 1, repeatedReadWarningThreshold: 2, largeToolOutputBytes: 32768 };
-  return { maxDiscoveryTurns: 2, reservedValidationTurns: 1, reservedFinalResultTurns: 1, repeatedReadWarningThreshold: 2, largeToolOutputBytes: 32768 };
-}
-
-// src/core/execution/claude-provider.ts
-var execFileAsync4 = promisify4(execFile4);
-var ClaudeCliExecutionProvider = class {
-  constructor(options = {}) {
-    this.options = options;
-  }
-  options;
-  id = "claude-cli";
-  executions = /* @__PURE__ */ new Map();
-  providerVersion;
-  async capabilities() {
-    try {
-      const version2 = await execFileAsync4(this.options.command ?? "claude", ["--version"], { timeout: 5e3, encoding: "utf8" });
-      this.providerVersion = (version2.stdout || version2.stderr).trim() || void 0;
-    } catch (error51) {
-      throw new ExecutionError("provider_unavailable", "Claude CLI is not available on PATH.", { cause: error51 instanceof Error ? error51.message : String(error51) });
-    }
-    return {
-      parallel: false,
-      cancellation: true,
-      heartbeats: false,
-      maxConcurrent: 1,
-      structuredResults: true,
-      sessions: { persistent: true, resume: true, fork: true },
-      diagnostics: ["claude CLI print mode", "JSON result parsing", "persistent session IDs", "bounded worker environment"]
-    };
-  }
-  async dispatch(input) {
-    const executionId = `claude-${input.workflowId}-${input.phaseId}-${Date.now()}`;
-    const canResume = input.resume?.mode === "same-session" && input.resume.providerSession?.providerId === this.id && input.resume.providerSession.workflowId === input.workflowId && input.resume.providerSession.phaseId === input.phaseId && input.resume.providerSession.workingDirectory === input.workspacePath && input.resume.providerSession.resumePermitted;
-    const sessionId = canResume ? input.resume.providerSession.sessionId : randomUUID4();
-    const resumeMode = canResume ? "same-session" : input.resume ? "compact-retry" : "fresh";
-    const prompt = resumeMode === "same-session" ? resumePrompt(input) : phaseWorkerPrompt(input);
-    const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
-    const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
-    const permissionMode = this.options.permissionMode ?? "bypassPermissions";
-    const resolved = resolveClaudeModel(input, this.options);
-    const args = buildClaudeArgs({
-      prompt,
-      maxTurns,
-      permissionMode,
-      environmentMode,
-      model: resolved.model,
-      sessionId,
-      resume: canResume
-    });
-    const safeArgs = buildSafeArgs({
-      maxTurns,
-      permissionMode,
-      environmentMode,
-      model: resolved.model,
-      sessionId,
-      resume: canResume
-    });
-    const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    const artifactDir = path19.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
-    await mkdir10(artifactDir, { recursive: true });
-    const statusPath = path19.join(artifactDir, "status.json");
-    const stdoutPath = path19.join(artifactDir, "stdout.json");
-    const stderrPath = path19.join(artifactDir, "stderr.txt");
-    const providerMetadata = {
-      command: this.options.command ?? "claude",
-      safeArgs,
-      maxTurns,
-      permissionMode,
-      environmentMode,
-      artifactDir,
-      statusPath,
-      stdoutPath,
-      stderrPath,
-      sessionId,
-      resumeMode,
-      resolvedModel: resolved.model,
-      toolEnforcement: permissionMode === "bypassPermissions" ? "allowedTools_not_assumed_under_bypass" : "allowedTools_requested",
-      workerControls: input.workerControls
-    };
-    const handle = {
-      providerId: this.id,
-      providerExecutionId: executionId,
-      workflowId: input.workflowId,
-      phaseId: input.phaseId,
-      leaseOwnerId: input.leaseOwnerId,
-      workspacePath: input.workspacePath,
-      startedAt,
-      lastKnownStatus: "running",
-      providerMetadata,
-      providerSession: {
-        providerId: this.id,
-        sessionId,
-        workflowId: input.workflowId,
-        phaseId: input.phaseId,
-        executionAttemptId: executionId,
-        workingDirectory: input.workspacePath,
-        createdAt: canResume ? input.resume.providerSession.createdAt : startedAt,
-        updatedAt: startedAt,
-        status: "running",
-        requestedTier: input.modelTier,
-        resolvedModel: resolved.model,
-        providerVersion: this.providerVersion,
-        safeCliArgs: safeArgs,
-        resumePermitted: true,
-        resumedFromSessionId: canResume ? sessionId : void 0,
-        replacementReason: resumeMode === "compact-retry" ? input.resume?.failureReason : void 0
-      },
-      nativeSessionId: sessionId
-    };
-    const controller = new AbortController();
-    const stdout = await open3(stdoutPath, "w");
-    const stderr = await open3(stderrPath, "w");
-    const invocation = windowsBatchInvocation(this.options.command ?? "claude", args);
-    const child = spawn2(invocation.command, invocation.args, {
-      cwd: input.workspacePath,
-      detached: process.platform !== "win32",
-      stdio: ["ignore", stdout.fd, stderr.fd],
-      signal: controller.signal,
-      env: boundedClaudeEnv(process.env)
-    });
-    await stdout.close();
-    await stderr.close();
-    providerMetadata.pid = child.pid;
-    await writeStatus(statusPath, { status: "running", pid: child.pid, startedAt });
-    const execution = {
-      handle,
-      controller,
-      status: "running",
-      startedAt,
-      diagnostics: {}
-    };
-    this.executions.set(executionId, execution);
-    const timeout = setTimeout(() => {
-      controller.abort();
-      if (child.pid) killProcessGroup(child.pid, "SIGTERM");
-    }, input.timeoutSeconds * 1e3);
-    child.once("exit", (code, signal) => {
-      clearTimeout(timeout);
-      execution.status = controller.signal.aborted ? "timed_out" : code === 0 ? "completed" : "failed";
-      execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
-      execution.diagnostics = signal || code ? { exitCode: code, signal } : {};
-      void writeStatus(statusPath, {
-        status: execution.status,
-        pid: child.pid,
-        startedAt,
-        completedAt: execution.completedAt,
-        exitCode: code,
-        signal,
-        diagnostics: execution.diagnostics
-      });
-    });
-    child.once("error", (error51) => {
-      clearTimeout(timeout);
-      execution.status = "failed";
-      execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
-      execution.diagnostics = redactDiagnostics({ error: error51.message });
-      void writeStatus(statusPath, { status: "failed", pid: child.pid, startedAt, completedAt: execution.completedAt, diagnostics: execution.diagnostics });
-    });
-    child.unref();
-    return handle;
-  }
-  async getStatus(handle) {
-    const persisted = await readPersistedStatus(handle);
-    if (persisted) {
-      if (persisted.status === "running" && persisted.pid && !pidIsRunning(persisted.pid)) {
-        return { status: "completed", heartbeatAt: (/* @__PURE__ */ new Date()).toISOString(), diagnostics: { ...persisted.diagnostics, pid: persisted.pid, statusInferredFromPid: true } };
-      }
-      const metadata = claudeMetadata(handle);
-      return { status: persisted.status, heartbeatAt: persisted.status === "running" ? (/* @__PURE__ */ new Date()).toISOString() : persisted.completedAt, diagnostics: { ...persisted.diagnostics, artifactDir: metadata?.artifactDir, sessionId: metadata?.sessionId, resumeMode: metadata?.resumeMode } };
-    }
-    const execution = this.executions.get(handle.providerExecutionId);
-    if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
-    return {
-      status: execution.status,
-      heartbeatAt: execution.status === "running" ? (/* @__PURE__ */ new Date()).toISOString() : execution.completedAt,
-      diagnostics: execution.diagnostics
-    };
-  }
-  async collectResult(handle) {
-    const metadata = claudeMetadata(handle);
-    if (metadata) {
-      const status = await readCollectibleStatus(handle);
-      if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
-      if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
-      const stdout = await readFile15(metadata.stdoutPath, "utf8").catch(() => "");
-      const stderr = await readFile15(metadata.stderrPath, "utf8").catch(() => "");
-      if (status?.status === "failed") {
-        return failureResult(handle, metadata, stdout, stderr, status, "Claude CLI exited before returning a successful provider result.");
-      }
-      try {
-        const result = parseClaudeResult(stdout, stderr);
-        return { ...result, providerDiagnostics: { ...result.providerDiagnostics, ...artifactDiagnostics(handle, metadata, stdout, stderr, status) } };
-      } catch (error51) {
-        const message = `${error51 instanceof Error ? error51.message : String(error51)}
-${stdout}
-${stderr}`;
-        if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
-        return failureResult(handle, metadata, stdout, stderr, status, error51 instanceof Error ? error51.message : String(error51), { providerErrorCode: errorCode(error51), ...errorDetailsFromUnknown(error51) });
-      }
-    }
-    const execution = this.executions.get(handle.providerExecutionId);
-    if (!execution) throw new ExecutionError("execution_not_found", `Unknown Claude execution: ${handle.providerExecutionId}`);
-    throw new ExecutionError("execution_not_found", `Claude execution has no persisted result artifacts: ${handle.providerExecutionId}`);
-  }
-  async cancel(handle, reason) {
-    const metadata = claudeMetadata(handle);
-    if (metadata) {
-      const status = await readPersistedStatus(handle);
-      if (status?.pid && pidIsRunning(status.pid)) killProcessGroup(status.pid, "SIGTERM");
-      await writeStatus(metadata.statusPath, { status: "cancelled", pid: status?.pid, startedAt: status?.startedAt ?? handle.startedAt, completedAt: (/* @__PURE__ */ new Date()).toISOString(), diagnostics: { reason } });
-    }
-    const execution = this.executions.get(handle.providerExecutionId);
-    if (!execution) return;
-    execution.status = "cancelled";
-    execution.completedAt = (/* @__PURE__ */ new Date()).toISOString();
-    execution.diagnostics = { reason };
-    execution.controller.abort();
-  }
-};
-function windowsBatchInvocation(command, args) {
-  if (process.platform !== "win32" || !/\.(?:cmd|bat)$/i.test(command)) return { command, args };
-  return {
-    command: process.env.ComSpec ?? "cmd.exe",
-    args: ["/d", "/c", "call", command, ...args]
-  };
-}
-async function writeStatus(statusPath, status) {
-  const content = `${JSON.stringify(status, null, 2)}
-`;
-  let lastError;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const tempPath = `${statusPath}.${process.pid}.${Date.now()}.${attempt}.tmp`;
-    try {
-      await writeFile9(tempPath, content, "utf8");
-      await rename3(tempPath, statusPath);
-      return;
-    } catch (error51) {
-      lastError = error51;
-      if (error51.code !== "EPERM" && error51.code !== "EACCES") throw error51;
-      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
-    }
-  }
-  try {
-    await writeFile9(statusPath, content, "utf8");
-  } catch {
-    throw lastError;
-  }
-}
-async function readPersistedStatus(handle) {
-  const metadata = claudeMetadata(handle);
-  if (!metadata) return void 0;
-  try {
-    await stat3(metadata.statusPath);
-    return JSON.parse(await readFile15(metadata.statusPath, "utf8"));
-  } catch {
-    return void 0;
-  }
-}
-async function readCollectibleStatus(handle) {
-  let status = await readPersistedStatus(handle);
-  if (status?.status === "running" && status.pid && !pidIsRunning(status.pid)) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    status = await readPersistedStatus(handle);
-  }
-  return status;
-}
-function claudeMetadata(handle) {
-  const metadata = handle.providerMetadata;
-  if (!metadata || typeof metadata.statusPath !== "string" || typeof metadata.stdoutPath !== "string" || typeof metadata.stderrPath !== "string") return void 0;
-  return metadata;
-}
-function pidIsRunning(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function killProcessGroup(pid, signal) {
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {
-    }
-  }
-}
-function buildClaudeArgs(args) {
-  const cliArgs = [];
-  if (args.environmentMode === "bare") cliArgs.push("--bare");
-  if (args.environmentMode === "safe-mode") cliArgs.push("--safe-mode");
-  if (args.resume) cliArgs.push("--resume", args.sessionId, "-p", args.prompt);
-  else cliArgs.push("-p", args.prompt, "--session-id", args.sessionId);
-  cliArgs.push(
-    "--output-format",
-    "json",
-    "--json-schema",
-    JSON.stringify(phaseExecutionResultJsonSchema()),
-    "--max-turns",
-    String(args.maxTurns),
-    "--permission-mode",
-    args.permissionMode,
-    "--tools",
-    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
-    "--allowedTools",
-    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
-    "--disallowedTools",
-    "WebFetch,WebSearch,Task",
-    "--strict-mcp-config",
-    "--mcp-config",
-    JSON.stringify({ mcpServers: {} }),
-    "--disable-slash-commands",
-    "--setting-sources",
-    "user"
-  );
-  if (args.model) cliArgs.push("--model", args.model);
-  return cliArgs;
-}
-function buildSafeArgs(args) {
-  const safe = [];
-  if (args.environmentMode === "bare") safe.push("--bare");
-  if (args.environmentMode === "safe-mode") safe.push("--safe-mode");
-  if (args.resume) safe.push("--resume", args.sessionId, "-p", "[compact-resume-prompt]");
-  else safe.push("-p", "[bounded-phase-prompt]", "--session-id", args.sessionId);
-  safe.push(
-    "--output-format",
-    "json",
-    "--json-schema",
-    "[phase-execution-result-schema]",
-    "--max-turns",
-    String(args.maxTurns),
-    "--permission-mode",
-    args.permissionMode,
-    "--tools",
-    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
-    "--allowedTools",
-    "Read,Edit,MultiEdit,Write,Bash,Glob,Grep",
-    "--disallowedTools",
-    "WebFetch,WebSearch,Task",
-    "--strict-mcp-config",
-    "--mcp-config",
-    '{"mcpServers":{}}',
-    "--disable-slash-commands",
-    "--setting-sources",
-    "user"
-  );
-  if (args.model) safe.push("--model", args.model);
-  return safe;
-}
-function maxTurnsForMode(mode2) {
-  if (mode2 === "fast") return 8;
-  if (mode2 === "rigorous") return 16;
-  return 12;
-}
-function resolveClaudeModel(input, options) {
-  if (options.model) return { model: options.model };
-  if (!options.config) return {};
-  const resolved = resolveModelTier(input.modelTier, "claude", options.config);
-  return { model: resolved.resolvedModel };
-}
-function resumePrompt(input) {
-  return [
-    "LeanRigor compact resume request",
-    `Workflow: ${input.workflowId}`,
-    `Phase: ${input.phaseId}`,
-    `Workspace: ${input.workspacePath}`,
-    `Objective: ${input.objective}`,
-    input.resume ? `Recoverable failure: ${input.resume.failureReason}` : void 0,
-    input.previousCheckpoint ? `Existing changed files: ${input.previousCheckpoint.changedFiles.join(", ") || "(none)"}` : void 0,
-    input.previousCheckpoint?.diffSummary.text ? `Bounded diff summary:
-${input.previousCheckpoint.diffSummary.text}` : void 0,
-    "Remaining acceptance criteria:",
-    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
-    "Validation commands:",
-    ...input.validationExpectations.map((command) => `- ${command}`),
-    "Continue from the existing session and worktree. Do not restart broad repository discovery. Return only the JSON object required by the supplied json-schema."
-  ].filter((line) => line !== void 0).join("\n");
-}
-function boundedClaudeEnv(env) {
-  return {
-    ...env,
-    CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1"
-  };
-}
-function parseClaudeResult(stdout, stderr) {
-  const envelopes = parseClaudeOutput(stdout, stderr);
-  for (const envelope of envelopes) {
-    const candidate = extractPhaseResultCandidate(envelope);
-    if (candidate === void 0) continue;
-    if (!isPhaseExecutionResult(candidate)) throw new ExecutionError("result_malformed", "Claude result did not match the phase execution result contract.");
-    return candidate;
-  }
-  throw new ExecutionError("result_malformed", "No structured phase result was found in Claude's result envelope.");
-}
-function parseClaudeOutput(stdout, stderr) {
-  const trimmed = stdout.trim();
-  if (trimmed.length === 0) throw new ExecutionError("provider_protocol_error", "Claude CLI returned empty stdout.", { stderr: redact(stderr).slice(0, 1e3) });
-  try {
-    return [JSON.parse(trimmed)];
-  } catch {
-    const envelopes = [];
-    for (const line of trimmed.split(/\r?\n/)) {
-      const candidate = line.trim();
-      if (!candidate.startsWith("{")) continue;
-      try {
-        const parsed = JSON.parse(candidate);
-        if (isClaudeResultEnvelope(parsed)) envelopes.push(parsed);
-      } catch {
-      }
-    }
-    if (envelopes.length > 0) return envelopes;
-    throw new ExecutionError("provider_protocol_error", "Claude CLI did not return a documented JSON result envelope.", { stdout: redact(trimmed).slice(0, 1e3), stderr: redact(stderr).slice(0, 1e3) });
-  }
-}
-function extractPhaseResultCandidate(envelope) {
-  if (!envelope || typeof envelope !== "object") return envelope;
-  const record2 = envelope;
-  if (record2.is_error && /login|auth|api key|unauthorized/i.test(String(record2.result ?? ""))) {
-    throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(String(record2.result ?? "")) });
-  }
-  if (isPhaseExecutionResult(record2.structured_output)) return record2.structured_output;
-  if (record2.structured_output !== void 0) return record2.structured_output;
-  if (record2.type === "result" && "result" in record2) return parseResultField(record2.result);
-  return envelope;
-}
-function parseResultField(value) {
-  if (typeof value === "object" && value !== null) return value;
-  if (typeof value !== "string") return void 0;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return void 0;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/i.exec(trimmed);
-    if (fenced) {
-      try {
-        return JSON.parse(fenced[1] ?? "");
-      } catch {
-        throw new ExecutionError("result_malformed", "Claude result contained malformed fenced JSON.");
-      }
-    }
-    return void 0;
-  }
-}
-function isClaudeResultEnvelope(value) {
-  return Boolean(value && typeof value === "object" && value.type === "result");
-}
-function isPhaseExecutionResult(value) {
-  if (!value || typeof value !== "object") return false;
-  const result = value;
-  return ["completed", "failed", "cancelled", "timed_out", "blocked"].includes(result.status) && typeof result.summary === "string" && Array.isArray(result.changedFiles) && Array.isArray(result.validation) && Array.isArray(result.criterionEvidence) && Array.isArray(result.assumptions) && Array.isArray(result.scopeDeviations) && Array.isArray(result.remainingRisks);
-}
-function phaseExecutionResultJsonSchema() {
-  const validation = {
-    type: "object",
-    properties: {
-      command: { type: "string" },
-      exitCode: { type: ["number", "null"] },
-      status: { enum: ["passed", "failed", "skipped"] },
-      result: { type: "string" },
-      skipped: { type: "boolean" },
-      skippedReason: { type: "string" },
-      timestamp: { type: "string" }
-    },
-    required: ["command", "status", "result"],
-    additionalProperties: false
-  };
-  const criterion = {
-    type: "object",
-    properties: {
-      criterion: { type: "string" },
-      status: { enum: ["met", "not_met", "uncertain", "not_applicable"] },
-      evidence: { type: "array", items: { type: "string" } }
-    },
-    required: ["criterion", "status", "evidence"],
-    additionalProperties: false
-  };
-  const deviation = {
-    type: "object",
-    properties: {
-      path: { type: "string" },
-      reason: { type: "string" }
-    },
-    required: ["reason"],
-    additionalProperties: false
-  };
-  return {
-    type: "object",
-    properties: {
-      status: { enum: ["completed", "failed", "cancelled", "timed_out", "blocked"] },
-      summary: { type: "string" },
-      changedFiles: { type: "array", items: { type: "string" } },
-      validation: { type: "array", items: validation },
-      criterionEvidence: { type: "array", items: criterion },
-      assumptions: { type: "array", items: { type: "string" } },
-      scopeDeviations: { type: "array", items: deviation },
-      remainingRisks: { type: "array", items: { type: "string" } }
-    },
-    required: ["status", "summary", "changedFiles", "validation", "criterionEvidence", "assumptions", "scopeDeviations", "remainingRisks"],
-    additionalProperties: false
-  };
-}
-function failureResult(handle, metadata, stdout, stderr, status, summary, details = {}) {
-  const message = `${summary}
-${stdout}
-${stderr}`;
-  if (/login|auth|api key|unauthorized/i.test(message)) throw new ExecutionError("provider_unauthenticated", "Claude CLI is not authenticated.", { message: redact(message) });
-  try {
-    const parsed = parseClaudeResult(stdout, stderr);
-    if (parsed.status !== "completed") {
-      return { ...parsed, providerDiagnostics: { ...parsed.providerDiagnostics, ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details } };
-    }
-  } catch {
-  }
-  const diagnostics = { ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details };
-  const terminalReason = typeof diagnostics.providerErrorCode === "string" ? diagnostics.providerErrorCode : typeof diagnostics.terminalReason === "string" ? diagnostics.terminalReason : "provider_process_exited";
-  return {
-    status: "failed",
-    summary: `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`,
-    changedFiles: [],
-    validation: [],
-    criterionEvidence: [],
-    assumptions: [],
-    scopeDeviations: [],
-    remainingRisks: [],
-    providerDiagnostics: diagnostics
-  };
-}
-function artifactDiagnostics(handle, metadata, stdout, stderr, status) {
-  const envelope = parseClaudeDiagnostics(stdout);
-  return redactDiagnostics({
-    providerExecutionId: handle.providerExecutionId,
-    artifactDir: metadata.artifactDir,
-    statusPath: metadata.statusPath,
-    stdoutPath: metadata.stdoutPath,
-    stderrPath: metadata.stderrPath,
-    sessionId: metadata.sessionId ?? envelope.sessionId,
-    resumeMode: metadata.resumeMode,
-    resolvedModel: metadata.resolvedModel,
-    maxTurns: metadata.maxTurns,
-    permissionMode: metadata.permissionMode,
-    environmentMode: metadata.environmentMode,
-    toolEnforcement: metadata.toolEnforcement,
-    safeArgs: metadata.safeArgs,
-    workerControls: metadata.workerControls,
-    exitCode: status?.exitCode,
-    signal: status?.signal,
-    terminalReason: envelope.terminalReason,
-    stopReason: envelope.stopReason,
-    turnCount: envelope.turnCount,
-    usage: envelope.usage,
-    modelUsage: envelope.modelUsage,
-    costUsd: envelope.costUsd,
-    stdoutExcerpt: redact(stdout).slice(0, 1e3),
-    stderrExcerpt: redact(stderr).slice(0, 1e3),
-    partialProgressAccepted: false
-  });
-}
-function parseClaudeDiagnostics(stdout) {
-  const out = {};
-  const toolCounts = {};
-  const readCounts = {};
-  const largeToolResults = [];
-  let toolIndex = 0;
-  let firstEditToolIndex;
-  for (const envelope of parseClaudeOutputLenient(stdout)) {
-    if (!envelope || typeof envelope !== "object") continue;
-    const record2 = envelope;
-    if (typeof record2.session_id === "string") out.sessionId = record2.session_id;
-    if (typeof record2.sessionId === "string") out.sessionId = record2.sessionId;
-    if (typeof record2.subtype === "string") out.terminalReason = record2.subtype;
-    if (typeof record2.stop_reason === "string") out.stopReason = record2.stop_reason;
-    if (typeof record2.num_turns === "number") out.turnCount = record2.num_turns;
-    if (typeof record2.total_cost_usd === "number") out.costUsd = record2.total_cost_usd;
-    if (record2.usage && typeof record2.usage === "object") out.usage = record2.usage;
-    if (record2.modelUsage && typeof record2.modelUsage === "object") out.modelUsage = record2.modelUsage;
-    if (record2.is_error === true && typeof record2.result === "string" && !out.terminalReason) out.terminalReason = compactReason2(record2.result);
-    for (const tool of toolUsesFromEnvelope(record2)) {
-      toolIndex += 1;
-      toolCounts[tool.name] = (toolCounts[tool.name] ?? 0) + 1;
-      if ((tool.name === "Edit" || tool.name === "MultiEdit" || tool.name === "Write") && firstEditToolIndex === void 0) firstEditToolIndex = toolIndex;
-      if (tool.name === "Read" && tool.filePath) readCounts[tool.filePath] = (readCounts[tool.filePath] ?? 0) + 1;
-    }
-    for (const result of toolResultsFromEnvelope(record2)) {
-      if (result.bytes > 32768) largeToolResults.push(result);
-    }
-  }
-  const repeatedReads = Object.entries(readCounts).filter(([, count]) => count > 2).map(([file2, count]) => ({ file: file2, count }));
-  if (Object.keys(toolCounts).length > 0) out.toolCounts = toolCounts;
-  if (repeatedReads.length > 0) out.repeatedReads = repeatedReads;
-  if (largeToolResults.length > 0) out.largeToolResults = largeToolResults;
-  if (firstEditToolIndex !== void 0) out.firstEditToolIndex = firstEditToolIndex;
-  return out;
-}
-function toolUsesFromEnvelope(record2) {
-  const message = record2.message;
-  const content = message && typeof message === "object" ? message.content : record2.content;
-  if (!Array.isArray(content)) return [];
-  const out = [];
-  for (const item of content) {
-    if (!item || typeof item !== "object") continue;
-    const entry = item;
-    if (entry.type !== "tool_use" || typeof entry.name !== "string") continue;
-    const input = entry.input && typeof entry.input === "object" ? entry.input : {};
-    const filePath = typeof input.file_path === "string" ? input.file_path : typeof input.path === "string" ? input.path : void 0;
-    out.push({ name: entry.name, filePath });
-  }
-  return out;
-}
-function toolResultsFromEnvelope(record2) {
-  const content = record2.content;
-  if (!Array.isArray(content)) return [];
-  const out = [];
-  for (const item of content) {
-    if (!item || typeof item !== "object") continue;
-    const entry = item;
-    if (entry.type !== "tool_result") continue;
-    const text = typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content ?? "");
-    out.push({ toolUseId: typeof entry.tool_use_id === "string" ? entry.tool_use_id : void 0, bytes: Buffer.byteLength(text) });
-  }
-  return out;
-}
-function parseClaudeOutputLenient(stdout) {
-  const trimmed = stdout.trim();
-  if (!trimmed) return [];
-  try {
-    return [JSON.parse(trimmed)];
-  } catch {
-    const out = [];
-    for (const line of trimmed.split(/\r?\n/)) {
-      const candidate = line.trim();
-      if (!candidate.startsWith("{")) continue;
-      try {
-        out.push(JSON.parse(candidate));
-      } catch {
-      }
-    }
-    return out;
-  }
-}
-function compactReason2(reason) {
-  const compact = reason.replace(/\s+/g, " ").trim();
-  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return "error_max_turns";
-  if (/budget|cost|spend/i.test(compact)) return "error_max_budget_usd";
-  return compact.slice(0, 120);
-}
-function errorDetailsFromUnknown(error51) {
-  if (!error51 || typeof error51 !== "object") return {};
-  const details = error51.details;
-  return details && typeof details === "object" ? details : {};
-}
-function errorCode(error51) {
-  return error51 && typeof error51 === "object" && typeof error51.code === "string" ? error51.code : void 0;
-}
-function emptyResult(status, summary) {
-  return { status, summary, changedFiles: [], validation: [], criterionEvidence: [], assumptions: [], scopeDeviations: [], remainingRisks: [] };
-}
-function redactDiagnostics(value) {
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, typeof item === "string" ? redact(item) : item]));
-}
-function redact(value) {
-  return value.replace(/(api[_-]?key|token|secret|password)[=:]\S+/gi, "$1=[REDACTED]");
+  return path19.resolve(root, ".leanrigor", "workflows", workflowId2, "artifacts", `${phaseId}-completion-evidence.json`);
 }
 
 // src/core/execution/coordinator.ts
@@ -29613,7 +29630,9 @@ async function codeGraphUsable(target) {
     return false;
   }
   try {
-    await execFileAsync6("codegraph", ["status", target], { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
+    const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "codegraph";
+    const args = process.platform === "win32" ? ["/d", "/c", "codegraph", "status", target] : ["status", target];
+    await execFileAsync6(command, args, { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
     return true;
   } catch {
     return false;
@@ -30050,11 +30069,11 @@ program2.command("init-report").description("Produce a deterministic structured 
   }
 });
 var flow = program2.command("flow").description("Run the persisted sequential LeanRigor workflow");
-flow.command("start").argument("<request>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, options) => {
+flow.command("start").argument("[request]").option("--request-file <path>", "UTF-8 file containing the request").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").action(async (request, options) => {
   const { config: config2 } = await ensureBootstrapped(options.root);
   const providerSelection = triageProviderSelection(options.provider);
   const state = await startFlow({
-    request,
+    request: await textArgument(request, options.requestFile, "request"),
     root: options.root,
     config: config2,
     provider: triageProvider(providerSelection),
@@ -30063,13 +30082,13 @@ flow.command("start").argument("<request>").option("--root <path>", "repository 
   });
   printFlowState(state);
 });
-flow.command("answer").argument("<workflow-id>").argument("<answer>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, answer, options) => {
+flow.command("answer").argument("<workflow-id>").argument("[answer]").option("--answer-file <path>", "UTF-8 file containing the clarification answer").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, answer, options) => {
   const config2 = await effectiveRepositoryConfig(options.root);
   const providerSelection = triageProviderSelection(options.provider);
   printFlowState(await answerClarification({
     root: options.root,
     workflowId: workflowId2,
-    answer,
+    answer: await textArgument(answer, options.answerFile, "answer"),
     config: config2,
     provider: triageProvider(providerSelection),
     planningProvider: planningProvider(providerSelection),
@@ -30095,8 +30114,8 @@ flow.command("approve-approach").argument("<workflow-id>").option("--root <path>
 flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reason <reason>", "reason for rejection").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   printFlowState(await rejectApproach(options.root, workflowId2, options.reason, mutationOptions(options)));
 });
-flow.command("revise-approach").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
-  printFlowState(await reviseApproach(options.root, workflowId2, feedback, mutationOptions(options)));
+flow.command("revise-approach").argument("<workflow-id>").argument("[feedback]").option("--feedback-file <path>", "UTF-8 file containing the approach feedback").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
+  printFlowState(await reviseApproach(options.root, workflowId2, await textArgument(feedback, options.feedbackFile, "feedback"), mutationOptions(options)));
 });
 flow.command("approve-plan").argument("<workflow-id>").option("--approval-policy <policy>", "workflow-authorized or phase-by-phase").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   if (options.approvalPolicy && !["workflow-authorized", "phase-by-phase"].includes(options.approvalPolicy)) {
@@ -30121,12 +30140,12 @@ flow.command("approve-phase").argument("<workflow-id>").argument("<phase-id>").r
   if (!Number.isInteger(briefRevision) || briefRevision < 1) throw new Error("--brief-revision must be a positive integer.");
   printFlowState(await approvePhase({ root: options.root, workflowId: workflowId2, phaseId, briefRevision, mutation: mutationOptions(options) }));
 });
-flow.command("revise-plan").argument("<workflow-id>").argument("<feedback>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
+flow.command("revise-plan").argument("<workflow-id>").argument("[feedback]").option("--feedback-file <path>", "UTF-8 file containing the plan feedback").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
   const providerSelection = triageProviderSelection(options.provider);
   printFlowState(await revisePlan(
     options.root,
     workflowId2,
-    feedback,
+    await textArgument(feedback, options.feedbackFile, "feedback"),
     await effectiveRepositoryConfig(options.root),
     mutationOptions(options),
     { provider: planningProvider(providerSelection), providerSelection }
@@ -30420,14 +30439,16 @@ ${report.summary}`);
 }
 function triageProviderSelection(provider) {
   const selection = provider === void 0 ? "auto" : String(provider);
-  if (!["auto", "claude", "deterministic"].includes(selection)) throw new Error(`Unsupported triage provider: ${selection}`);
+  if (!["auto", "deterministic", ...availableAdapterIds()].includes(selection)) {
+    throw new Error(`Unsupported triage provider: ${selection}. Available adapters: ${availableAdapterIds().join(", ")}.`);
+  }
   return selection;
 }
 function triageProvider(provider) {
-  return provider === "deterministic" ? void 0 : new ClaudeCliTriageProvider();
+  return provider === "deterministic" ? void 0 : getAdapterRuntime(provider === "auto" ? "claude" : provider).createTriageProvider();
 }
 function planningProvider(provider) {
-  return provider === "deterministic" ? void 0 : new ClaudeCliPlanningProvider();
+  return provider === "deterministic" ? void 0 : getAdapterRuntime(provider === "auto" ? "claude" : provider).createPlanningProvider();
 }
 function parseConstraintOverrides(values) {
   return values.map((value) => {
@@ -30437,6 +30458,12 @@ function parseConstraintOverrides(values) {
     }
     return { target: match[1].trim(), text: match[2].trim() };
   });
+}
+async function textArgument(value, file2, label2) {
+  if (value !== void 0 && file2 !== void 0) throw new Error(`Provide ${label2} either as an argument or with --${label2}-file, not both.`);
+  if (file2 !== void 0) return readFile17(path23.resolve(String(file2)), "utf8");
+  if (typeof value === "string" && value.length > 0) return value;
+  throw new Error(`Missing ${label2}. Provide it as an argument or with --${label2}-file.`);
 }
 function printFlowState(state) {
   console.log(JSON.stringify({
@@ -30614,19 +30641,22 @@ async function effectiveRepositoryConfig(root) {
 }
 async function executionProvider(providerName, scriptFile, config2) {
   if (providerName === "auto") {
-    const provider = new ClaudeCliExecutionProvider({ config: config2 });
+    const provider = getAdapterRuntime("claude").createExecutionProvider(config2 ?? await effectiveRepositoryConfig(process.cwd()));
     try {
       await provider.capabilities();
       return { provider };
     } catch (error51) {
       throw new Error([
         `Configured execution provider unavailable before dispatch: ${messageOf4(error51)}`,
-        "Recovery options: retry configured provider, use --provider claude after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller."
+        `Recovery options: retry configured provider, use --provider ${availableAdapterIds().join(" or --provider ")} after fixing authentication/PATH, use --provider scripted with an explicit --script-file, or explicitly switch to manual execution in the controller.`
       ].join(" "), { cause: error51 });
     }
   }
   if (providerName === "scripted") return { provider: await scriptedExecutionProvider(scriptFile) };
-  if (providerName === "claude" || providerName === "claude-cli") return { provider: new ClaudeCliExecutionProvider({ config: config2 }) };
+  const adapterId = providerName.endsWith("-cli") ? providerName.slice(0, -4) : providerName;
+  if (availableAdapterIds().includes(adapterId)) {
+    return { provider: getAdapterRuntime(adapterId).createExecutionProvider(config2 ?? await effectiveRepositoryConfig(process.cwd())) };
+  }
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 async function scriptedExecutionProvider(scriptFile) {

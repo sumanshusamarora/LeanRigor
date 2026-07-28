@@ -44,8 +44,10 @@ describe("built CLI verification", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Verified executable LeanRigor CLI 1.2.3");
-    const mode = (await stat(path.join(root, "dist", "cli", "index.js"))).mode & 0o777;
-    expect(mode).toBe(0o755);
+    if (process.platform !== "win32") {
+      const mode = (await stat(path.join(root, "dist", "cli", "index.js"))).mode & 0o777;
+      expect(mode).toBe(0o755);
+    }
   });
 
   it("fails when the built CLI version differs from package.json", async () => {

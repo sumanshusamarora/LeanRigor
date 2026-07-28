@@ -151,6 +151,25 @@ describe("Claude provider model tier fallback", () => {
     expect(modelArgs(calls)).toEqual(["sonnet", "opus"]);
     expect(result.warnings?.join("\n")).toContain("max_turns_reached");
   });
+
+  it("uses configured planning and repair turn budgets", async () => {
+    clearModelEnv();
+    const config = defaultConfig();
+    config.budgets.planningMaxTurns = 11;
+    config.budgets.planningRepairMaxTurns = 6;
+    const calls: string[][] = [];
+    const provider = new ClaudeCliPlanningProvider(commandRunner({
+      failModels: [],
+      output: compactPlan(),
+      calls
+    }));
+
+    await provider.plan(planningInput(config));
+    await provider.repair(planningInput(config), { plan: compactPlan(), diagnostics: [], tier: "medium" });
+
+    expect(calls[0]?.[calls[0].indexOf("--max-turns") + 1]).toBe("11");
+    expect(calls[1]?.[calls[1].indexOf("--max-turns") + 1]).toBe("6");
+  });
 });
 
 function recommendation(): ModelTriageRecommendation {

@@ -10,13 +10,16 @@ Load `plugin-skills/sequential-workflow` before handling any workflow gate.
 That skill is the workflow UX contract.
 
 Invoke `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor` internally.
+Write user-provided request and feedback text through a tool-native file
+operation and pass the matching `--*-file` option. Never interpolate user text
+into a Bash command.
 
 Behaviour:
 
 1. Discover active workflows with `flow active --json`.
 2. If one active workflow exists, inspect it with `flow next --json`.
 3. If no active workflow exists and `$ARGUMENTS` is a coding request, start one
-   with `flow start "$ARGUMENTS" --provider auto`, then inspect the returned
+   with `flow start --request-file <request-file> --provider auto`, then inspect the returned
    `next` object when present or immediately read `flow next --json` when it is
    absent. If `next.approvalActions` exists, call `AskUserQuestion` in the same
    assistant turn before replying.
@@ -30,7 +33,7 @@ Behaviour:
    planning.
 6. If a plan exists, show the persisted phases and validation expectations.
 7. If the user gives revision feedback, invoke
-   `flow revise-plan <workflow-id> "<feedback>" --provider auto` internally and
+   `flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto` internally and
    render the revised plan.
 
 Do not create a duplicate workflow when an active relevant workflow already

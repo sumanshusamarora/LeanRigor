@@ -60,7 +60,7 @@ export interface TriageRunResult {
   };
 }
 
-export type TriageProviderSelection = "auto" | "claude" | "deterministic";
+export type TriageProviderSelection = "auto" | "deterministic" | (string & {});
 
 export class TriageExecutionError extends Error {}
 export class TriageProviderError extends Error {

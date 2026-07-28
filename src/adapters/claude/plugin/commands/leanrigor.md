@@ -9,6 +9,10 @@ allowed-tools: AskUserQuestion, Bash(leanrigor *)
 
 Primary conversational LeanRigor workflow command.
 
+Write user-provided request, answer, and feedback text through a tool-native
+file operation and pass the matching `--*-file` option. Never interpolate user
+text into a Bash command.
+
 Read `.claude/leanrigor/sequential-workflow.md` first and follow its
 AskUserQuestion selector contract at every decision gate.
 
@@ -17,7 +21,7 @@ AskUserQuestion selector contract at every decision gate.
 1. Use `leanrigor flow active --json` and `leanrigor flow next --json`
    internally to find the current gate.
 2. If `$ARGUMENTS` is a new request and no active workflow exists, start the
-   workflow internally with `leanrigor flow start "$ARGUMENTS" --provider auto`,
+   workflow internally with `leanrigor flow start --request-file <request-file> --provider auto`,
    then inspect the returned `next` object when present or immediately read
    `leanrigor flow next --json` when it is absent. If `next.approvalActions`
    exists, call `AskUserQuestion` in the same assistant turn before replying.
@@ -48,7 +52,7 @@ AskUserQuestion selector contract at every decision gate.
    `--provider deterministic` unless the user explicitly asks for deterministic
    planning.
 7. For plan revision feedback, use
-   `leanrigor flow revise-plan <workflow-id> "<feedback>" --provider auto`
+   `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
    unless deterministic planning was explicitly requested.
 8. When execution providers/workspaces are configured, use the coordinator
    execution path (`flow execute-next --provider auto` /

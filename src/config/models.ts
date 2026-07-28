@@ -1,6 +1,6 @@
 import type { LeanRigorConfig, ModelTier } from "./schema.js";
 
-export type Harness = "claude" | "opencode";
+export type Harness = string;
 
 /**
  * Adapter-specific default environment variables. For Claude, these are the
@@ -21,11 +21,6 @@ const CLAUDE_ALIAS_DEFAULTS: Record<string, string> = {
   SMALL: "haiku",
   MEDIUM: "sonnet",
   LARGE: "opus"
-};
-
-const ENV_PREFIX: Record<Harness, string> = {
-  claude: "LEANRIGOR_CLAUDE_MODEL_",
-  opencode: "LEANRIGOR_OPENCODE_MODEL_"
 };
 
 export type ModelSource = "inherit" | "adapter-env" | "platform-env" | "generic-env" | "config" | "adapter-default";
@@ -69,7 +64,7 @@ export function resolveModelTier(tier: ModelTier, harness: Harness, config: Lean
   const claudeAlias = harness === "claude" ? CLAUDE_ALIAS_DEFAULTS[suffix] : undefined;
 
   // 1. Platform-specific environment (LEANRIGOR_CLAUDE_MODEL_*, etc.)
-  const platform = process.env[`${ENV_PREFIX[harness]}${suffix}`]?.trim();
+  const platform = process.env[`LEANRIGOR_${harness.toUpperCase()}_MODEL_${suffix}`]?.trim();
   if (platform) return { tier, model: platform, resolvedModel: platform, adapterAlias: claudeAlias, source: "platform-env" };
 
   // 2. Generic LEANRIGOR_MODEL_* environment
