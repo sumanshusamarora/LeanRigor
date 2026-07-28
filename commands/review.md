@@ -14,13 +14,16 @@ Invoke `${CLAUDE_PLUGIN_ROOT}/bin/leanrigor` internally.
 Behaviour:
 
 1. Inspect the active or supplied workflow with `flow next --json`.
-2. If a phase gate is pending, show `Phase completion review`, explain failed
-   or uncertain criteria, validation state, deviations, and repair/replan needs.
+2. If a phase gate is pending, read `flow phase-result <workflow-id>
+   <phase-id> --json` and render provider completion, identity/scope checks,
+   completion-gate acceptance, and integration separately. Explain failed or
+   uncertain criteria, validation state, deviations, and repair/replan needs.
    Use `AskUserQuestion` for repair, review, replan, status, and cancel choices
    when available. Do not render an ordinary text question first.
-3. If all phases are complete and the workflow is validating/reviewing, perform
-   the final integrated review for the current diff and record the result
-   internally.
+3. If all phases are accepted and integrated and the workflow is
+   validating/reviewing, use persisted integrated evidence for final review and
+   record the result internally. Do not inspect phase worktrees in the normal
+   path.
 4. If a final review already produced a commit proposal, show `Commit proposal`
    and do not create a duplicate review workflow.
 

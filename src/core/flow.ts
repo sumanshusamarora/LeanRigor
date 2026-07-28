@@ -50,6 +50,7 @@ import type {
   WorkflowConstraintChange,
   WorkflowConstraintRecord,
   WorkflowConstraints,
+  WorkflowDecisionType,
   WorkflowLifecycleState,
   WorkflowMode,
   WorkflowEvent,
@@ -61,10 +62,21 @@ import { RevisionConflictError, atomicWriteJson } from "./workflow-store.js";
 import { calculateReadyPhases, dependencyIds, refreshPhaseReadiness, validatePhaseDag } from "./scheduler.js";
 import { approvalRecommendation, briefIsCurrent, defaultApprovalPolicy, requiresPhaseByPhase } from "./approval.js";
 import {
+  evaluatePhaseDispatchEligibility,
+  PHASE_PREPARATION_CAPABILITY,
+  TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY
+} from "./dispatch-eligibility.js";
+import {
   generateInspectedPhaseExecutionBrief,
   type PhaseBriefGenerationOutcome,
   type PhaseBriefPlanningProvider
 } from "./phase-brief-planner.js";
+import {
+  migrateWorkflowDecision,
+  requirePendingDecision,
+  resolvePendingDecision,
+  setPendingDecision
+} from "./workflow-decision.js";
 
 export const WORKFLOW_DIR = path.join(".leanrigor", "workflows");
 export const STATE_VERSION = 2;
@@ -231,6 +243,8 @@ const phaseWorkspaceSchema = z.object({
   updatedAt: z.string(),
   status: z.enum(["not_created", "ready", "active", "completion_pending", "approved", "integrated", "needs_repair", "conflicted", "abandoned"]),
   preparation: z.object({
+    preparationRevision: z.number().int().min(1).optional(),
+    workspaceIdentity: z.string().min(1).optional(),
     status: z.enum(["available", "prepared", "blocked", "failed"]),
     worktreePath: z.string().min(1).optional(),
     repositoryIdentity: z.string().min(1).optional(),
@@ -400,7 +414,20 @@ const phaseExecutionRecordSchema = z.object({
   diagnostics: boundedRecord.optional(),
   providerMetadata: boundedRecord.optional(),
   providerSession: providerSessionSchema.optional(),
-  checkpoint: phaseWorkspaceCheckpointSchema.optional()
+  checkpoint: phaseWorkspaceCheckpointSchema.optional(),
+  executionIdentity: z.object({
+    workflowId: z.string().min(1),
+    workflowRevision: z.number().int().min(0),
+    phaseId: z.string().min(1),
+    briefRevision: z.number().int().min(1),
+    workspaceIdentity: z.string().min(1),
+    workspacePath: z.string().min(1),
+    baseCommit: z.string().min(1),
+    constraintHash: z.string().min(1),
+    providerId: z.string().min(1),
+    providerSessionId: z.string().optional(),
+    dispatchedAt: z.string()
+  }).optional()
 });
 
 const workflowExecutionStateSchema = z.object({
@@ -570,7 +597,11 @@ const phaseExecutionBriefSchema = z.object({
     repositoryRevision: z.string().min(1),
     constraintHash: z.string().min(1),
     inspectionResultId: z.string().min(1),
-    inspectedPaths: z.array(z.string())
+    inspectedPaths: z.array(z.string()),
+    planFingerprint: z.string().optional(),
+    dependencyFingerprint: z.string().optional(),
+    priorPhaseOutcomesHash: z.string().optional(),
+    executionPolicyHash: z.string().optional()
   }).default({
     repositoryRevision: "legacy-unverified",
     constraintHash: "legacy-unverified",
@@ -627,16 +658,66 @@ const phaseBriefGenerationFailureSchema = z.object({
   failedAt: z.string()
 });
 
-const phaseApprovalDecisionSchema = z.object({
-  type: z.literal("phase-brief-approval"),
+const workflowDecisionBaseShape = {
+  id: z.string().min(1),
   workflowRevision: z.number().int().min(0),
+  stateRevision: z.number().int().min(0),
+  question: z.string().min(1),
+  status: z.enum(["pending", "approved", "answered", "rejected", "superseded", "cancelled"]),
+  createdAt: z.string(),
+  resolvedAt: z.string().optional(),
+  selectedAction: z.string().min(1).optional(),
+  source: z.enum(["user", "controller", "system", "legacy-migration"]),
+  supersedesDecisionId: z.string().min(1).optional()
+};
+
+const phaseApprovalDecisionSchema = z.object({
+  ...workflowDecisionBaseShape,
+  type: z.literal("phase-brief-approval"),
   phaseId: z.string().min(1),
   briefRevision: z.number().int().min(1),
-  status: z.enum(["pending", "approved", "superseded", "cancelled"]),
-  allowedActions: z.array(z.enum(["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"])),
-  createdAt: z.string(),
-  resolvedAt: z.string().optional()
+  preparationRevision: z.number().int().min(1).optional(),
+  integrationRevision: z.number().int().min(0).optional(),
+  allowedActions: z.array(z.enum(["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"]))
 });
+
+const workspaceBootstrapDecisionSchema = z.object({
+  ...workflowDecisionBaseShape,
+  type: z.literal("workspace-bootstrap-approval"),
+  phaseId: z.string().min(1),
+  briefRevision: z.number().int().min(1),
+  preparationRevision: z.number().int().min(1),
+  integrationRevision: z.number().int().min(0).optional(),
+  workspaceIdentity: z.string().min(1),
+  command: z.string().min(1),
+  riskSummary: z.array(z.string().min(1)),
+  allowedActions: z.array(z.enum(["approve-bootstrap", "retry-preparation", "view-details", "cancel-workflow"]))
+});
+
+const workflowActionDecisionSchema = z.object({
+  ...workflowDecisionBaseShape,
+  type: z.enum([
+    "clarification",
+    "approach-approval",
+    "workflow-plan-approval",
+    "material-drift-review",
+    "execution-recovery",
+    "integration-conflict",
+    "final-review",
+    "final-completion"
+  ]),
+  phaseId: z.string().min(1).optional(),
+  briefRevision: z.number().int().min(1).optional(),
+  preparationRevision: z.number().int().min(1).optional(),
+  integrationRevision: z.number().int().min(0).optional(),
+  allowedActions: z.array(z.string().min(1))
+});
+
+const workflowPendingDecisionSchema = z.discriminatedUnion("type", [
+  phaseApprovalDecisionSchema,
+  workspaceBootstrapDecisionSchema,
+  workflowActionDecisionSchema
+]);
 
 const workflowApprovalSchema = z.object({
   policy: z.enum(["workflow-authorized", "phase-by-phase"]).optional(),
@@ -656,8 +737,8 @@ const workflowApprovalSchema = z.object({
     recommendationOverridden: z.boolean(),
     action: z.enum(["plan-approved", "phase-approved", "policy-changed", "reapproval-required"])
   })).default([]),
-  pendingDecision: phaseApprovalDecisionSchema.optional(),
-  decisionHistory: z.array(phaseApprovalDecisionSchema).default([])
+  pendingDecision: workflowPendingDecisionSchema.optional(),
+  decisionHistory: z.array(workflowPendingDecisionSchema).default([])
 });
 
 const workflowEventSchema = z.object({
@@ -822,6 +903,7 @@ export interface MutationOptions {
   expectedRevision?: number;
   ownerId?: string;
   ownerType?: WorkflowLockOwnerType;
+  decisionId?: string;
   operation?: string;
   lockTimeoutSeconds?: number;
 }
@@ -860,6 +942,7 @@ export async function startFlow(options: FlowStartOptions): Promise<SequentialWo
     createdAt: now,
     updatedAt: now,
     validation: [],
+    approval: { history: [], decisionHistory: [] },
     phaseLeases: {},
     execution: { records: {} },
     repairAttempts: 0,
@@ -898,6 +981,7 @@ export async function answerClarification(args: {
     assertState(state, ["awaiting_clarification"]);
     if (!state.clarification) throw new WorkflowStateError("Workflow is awaiting clarification but has no persisted question.");
     const answered = structuredClone(state);
+    resolveDecisionAction(answered, "answer", args.mutation, "answered", "clarification");
     answered.clarification = {
       question: state.clarification.question,
       reason: state.clarification.reason,
@@ -934,6 +1018,7 @@ export async function approveApproach(
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
+    resolveDecisionAction(next, "approve-approach", mutation, "approved", "approach-approval");
     next.constraints = applyApprovalConstraintChanges(next, config ?? defaultConfig(), constraintChanges);
     next.approach = { ...state.approach, approved: true };
     appendEvent(next, "approach_approved", approvalConstraintSummary(next.constraints));
@@ -956,6 +1041,7 @@ export async function reviseApproach(root: string, workflowId: string, feedback:
     assertState(state, ["awaiting_approach_approval"]);
     if (!state.approach) throw new WorkflowStateError("No approach recommendation is available.");
     const next = structuredClone(state);
+    resolveDecisionAction(next, "revise-approach", mutation, "answered", "approach-approval");
     next.approach = {
       ...state.approach,
       approved: false,
@@ -972,6 +1058,7 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
     if (state.state === "blocked" && !state.planningRun?.approvalBlockedReason) throw new WorkflowStateError("Cannot revise this blocked workflow through the plan revision path.");
     if (!state.triage) throw new WorkflowStateError("Cannot revise a plan before triage completes.");
     const next = structuredClone(state);
+    resolveDecisionAction(next, "revise-plan", mutation, "answered");
     const triage = state.triage;
     const previousRequests = next.plan?.revisionRequests ?? [];
     const revisionRequests = [...previousRequests, { feedback, timestamp: timestamp() }];
@@ -1018,6 +1105,7 @@ export async function approvePlan(
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
+    resolveDecisionAction(next, "approve-plan", mutation, "approved", "workflow-plan-approval");
     const plan = state.plan;
     const recommendation = approvalRecommendation(next);
     const policy = selectedPolicy ?? (recommendation.option === "approve-current-phase" ? "phase-by-phase" : defaultApprovalPolicy(next.mode));
@@ -1049,7 +1137,9 @@ export async function approvePlan(
     };
     const executing = transition(next, "executing", "Workflow Plan approved. The first Phase Execution Brief requires a separate approval.");
     refreshPhaseReadiness(executing);
-    const firstReady = executing.plan?.phases.find((phase) => phase.status === "ready");
+    const firstReady = executing.plan?.phases.find((phase) =>
+      ["planned", "ready"].includes(phase.status)
+      && dependencyIds(phase).every((id) => executing.plan?.phases.find((candidate) => candidate.id === id)?.status === "completed"));
     if (firstReady) {
       const outcome = await generateInspectedPhaseExecutionBrief({
         state: executing,
@@ -1072,6 +1162,7 @@ export async function preparePhaseExecutionBrief(args: {
   provider?: PhaseBriefPlanningProvider;
   feedback?: string;
   refresh?: boolean;
+  requireApproval?: boolean;
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   if (!args.feedback && !args.refresh) {
@@ -1084,6 +1175,9 @@ export async function preparePhaseExecutionBrief(args: {
     if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
     if (!["planned", "ready"].includes(phase.status)) throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an unstarted phase can receive an execution brief.`);
     const next = structuredClone(state);
+    if (args.feedback && next.approval?.pendingDecision?.type === "phase-brief-approval") {
+      resolveDecisionAction(next, "revise-phase-brief", args.mutation, "superseded", "phase-brief-approval");
+    }
     const current = next.phaseBriefs?.[phase.id];
     if (current) current.approvalStatus = "stale";
     if (next.approval?.currentAuthorizedPhase === phase.id) next.approval.currentAuthorizedPhase = undefined;
@@ -1096,7 +1190,8 @@ export async function preparePhaseExecutionBrief(args: {
       feedback: args.feedback,
       provider: args.provider
     });
-    const requiresApproval = next.approval?.policy === "phase-by-phase"
+    const requiresApproval = args.requireApproval === true
+      || next.approval?.policy === "phase-by-phase"
       || !next.approval?.history.some((entry) => entry.action === "phase-approved");
     persistPhaseBriefOutcome(next, phase, outcome, requiresApproval);
     return next;
@@ -1116,9 +1211,13 @@ export async function approvePhase(args: {
     const phase = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
     const brief = state.phaseBriefs?.[args.phaseId];
     const decision = state.approval?.pendingDecision;
-    if (!phase || phase.status !== "ready") throw new InvalidTransitionError(`Phase ${args.phaseId} is not ready for approval.`);
+    requirePendingDecision(state, "phase-brief-approval", "approve-phase", args.mutation?.decisionId);
+    if (!phase || !["planned", "ready"].includes(phase.status) || !dependencyIds(phase).every((id) => state.plan?.phases.find((candidate) => candidate.id === id)?.status === "completed")) {
+      throw new InvalidTransitionError(`Phase ${args.phaseId} is not dependency-ready for approval.`);
+    }
     if (
       !decision
+      || decision.type !== "phase-brief-approval"
       || decision.status !== "pending"
       || decision.phaseId !== args.phaseId
       || decision.briefRevision !== args.briefRevision
@@ -1133,8 +1232,7 @@ export async function approvePhase(args: {
     const next = structuredClone(state);
     const now = timestamp();
     next.approval!.currentAuthorizedPhase = args.phaseId;
-    next.approval!.decisionHistory.push({ ...decision, status: "approved", resolvedAt: now });
-    next.approval!.pendingDecision = undefined;
+    resolvePendingDecision(next, "approved", "approve-phase", args.mutation?.decisionId ? "controller" : "user", args.mutation?.decisionId);
     next.phaseBriefs![args.phaseId] = { ...brief, approvalStatus: "approved" };
     const recommendation = approvalRecommendation(next, args.phaseId);
     next.approval!.recommendation = recommendation;
@@ -1154,10 +1252,59 @@ export async function approvePhase(args: {
   }, { ...args.mutation, operation: "approve_phase" });
 }
 
-export async function startPhase(root: string, workflowId: string, phaseId?: string, mutation?: MutationOptions & { config?: LeanRigorConfig }): Promise<SequentialWorkflowState> {
+export async function approveWorkspaceBootstrap(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  briefRevision: number;
+  preparationRevision: number;
+  workspaceIdentity: string;
+  command: string;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    const decision = state.approval?.pendingDecision;
+    requirePendingDecision(state, "workspace-bootstrap-approval", "approve-bootstrap", args.mutation?.decisionId);
+    if (
+      !decision
+      || decision.type !== "workspace-bootstrap-approval"
+      || decision.status !== "pending"
+      || decision.phaseId !== args.phaseId
+      || decision.briefRevision !== args.briefRevision
+      || decision.preparationRevision !== args.preparationRevision
+      || decision.workspaceIdentity !== args.workspaceIdentity
+      || decision.command !== args.command
+    ) {
+      throw new InvalidTransitionError(`Phase ${args.phaseId} has no exact pending bootstrap approval for preparation revision ${args.preparationRevision}.`);
+    }
+    const brief = state.phaseBriefs?.[args.phaseId];
+    const workspace = state.git?.phaseWorkspaces[args.phaseId];
+    if (!brief || brief.briefRevision !== args.briefRevision || !briefIsCurrent(state, args.phaseId)) {
+      throw new InvalidTransitionError(`Phase ${args.phaseId} bootstrap approval does not reference the current approved brief.`);
+    }
+    if (!workspace?.preparation || workspace.preparation.preparationRevision !== args.preparationRevision || workspace.preparation.workspaceIdentity !== args.workspaceIdentity) {
+      throw new InvalidTransitionError(`Phase ${args.phaseId} workspace preparation identity changed before bootstrap approval.`);
+    }
+    resolvePendingDecision(state, "approved", "approve-bootstrap", args.mutation?.decisionId ? "controller" : "user", args.mutation?.decisionId);
+    appendEvent(state, "workspace_bootstrap_approved", `Phase ${args.phaseId} preparation revision ${args.preparationRevision} bootstrap command approved.`, args.phaseId);
+    return state;
+  }, { ...args.mutation, operation: "workspace_bootstrap_approve" });
+}
+
+export async function startPhase(root: string, workflowId: string, phaseId?: string, mutation?: MutationOptions & { config?: LeanRigorConfig; internalCapability?: symbol }): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["executing"]);
     const next = structuredClone(state);
+    if (!phaseId) throw new InvalidTransitionError("Starting a phase requires an explicit phase ID.");
+    const trustedInternal = mutation?.internalCapability === TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY;
+    if (!trustedInternal) {
+      const eligibility = evaluatePhaseDispatchEligibility(next, phaseId, mutation?.config, {
+        explicitlySelected: true,
+        ownerId: mutation?.ownerId
+      });
+      if (!eligibility.eligible) throw new InvalidTransitionError(formatDispatchBlockers(eligibility.blockers));
+    }
     const phase = selectStartablePhase(next, phaseId);
     const ownerId = mutation?.ownerId ?? DEFAULT_OWNER_ID;
     phase.status = "running";
@@ -1248,39 +1395,38 @@ export async function completePhase(args: {
       repair.validation = phase.validationResults;
       repair.outcome = completion.decision;
     }
-    appendEvent(next, "phase_completion_evaluated", `Phase ${phase.id} completion gate: ${completion.decision}. ${completion.reason}`, phase.id);
+    appendEvent(
+      next,
+      "phase_completion_gate_evaluated",
+      completion.decision === "completed"
+        ? `Phase ${phase.id} completion gate passed. Phase accepted; integration has not completed.`
+        : `Phase ${phase.id} completion gate did not pass: ${completion.decision}. ${completion.reason}`,
+      phase.id
+    );
 
     if (completion.decision === "blocked") {
       next.blockers = [completion.reason];
       return transition(next, "blocked", `Phase ${phase.id} is blocked.`);
     }
-    if (completion.decision !== "completed") return next;
+    if (completion.decision !== "completed") {
+      setPendingDecision(next, {
+        type: "execution-recovery",
+        phaseId: phase.id,
+        briefRevision: next.phaseBriefs?.[phase.id]?.briefRevision,
+        question: completion.reason,
+        allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"]
+      });
+      return next;
+    }
 
     if (next.approval?.currentAuthorizedPhase === phase.id) {
       next.approval.currentAuthorizedPhase = undefined;
     }
-    if (next.approval?.policy === "phase-by-phase") {
-      const phaseForApproval = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
-      next.approval.recommendation = approvalRecommendation(next, phaseForApproval?.id);
-      if (phaseForApproval) {
-        const outcome = await generateInspectedPhaseExecutionBrief({
-          state: next,
-          phase: phaseForApproval,
-          config: args.config ?? defaultConfig()
-        });
-        persistPhaseBriefOutcome(next, phaseForApproval, outcome, true);
-      }
+    appendEvent(next, "phase_accepted", `Phase ${phase.id} accepted by the deterministic completion gate. Integration is pending.`, phase.id);
+    if (!next.git && plan.phases.every((candidate) => candidate.status === "completed")) {
+      return transition(next, "validating", "All phase completion gates passed without a configured integration workspace; final validation is required.");
     }
-
-    const nextPhase = plan.phases.find((candidate) => candidate.status === "planned" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
-    if (nextPhase) {
-      appendEvent(next, "phase_ready", `Phase ${nextPhase.id} became ready after completion gate passed.`, nextPhase.id);
-      return next;
-    }
-
-    const unfinished = plan.phases.find((candidate) => candidate.status !== "completed");
-    if (unfinished) return next;
-    return transition(next, "validating", "All phases completed; targeted validation is required.");
+    return next;
   }, { ...args.mutation, operation: "phase_complete" });
 }
 
@@ -1448,6 +1594,7 @@ export async function recordReview(args: {
       throw new InvalidTransitionError("Final review requires persisted validation evidence or an explicit skipped-validation reason.");
     }
     const next = structuredClone(state);
+    resolveDecisionAction(next, "record-review", args.mutation, "answered", "final-review");
     next.review = {
       status: args.status,
       summary: args.summary,
@@ -1490,7 +1637,9 @@ export async function getCommitPlan(root: string, workflowId: string): Promise<C
 export async function completeFlow(root: string, workflowId: string, mutation?: MutationOptions): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, (state) => {
     assertState(state, ["awaiting_commit_approval"]);
-    return transition(structuredClone(state), "completed", "Workflow completed by explicit user action. No commit was executed.");
+    const next = structuredClone(state);
+    resolveDecisionAction(next, "complete-workflow", mutation, "approved", "final-completion");
+    return transition(next, "completed", "Final integrated review passed and the user approved workflow completion. No commit was executed.");
   }, { ...mutation, operation: "complete_flow" });
 }
 
@@ -1498,7 +1647,7 @@ export async function cancelFlow(root: string, workflowId: string, mutation?: Mu
   return updateFlowState(root, workflowId, (state) => {
     if (["completed", "cancelled"].includes(state.state)) throw new InvalidTransitionError(`Workflow is already ${state.state}.`);
     const next = structuredClone(state);
-    resolvePendingPhaseApproval(next, "cancelled");
+    resolveDecisionAction(next, "cancel-workflow", mutation, "cancelled");
     return transition(next, "cancelled", "Workflow cancelled by user.");
   }, { ...mutation, operation: "cancel_flow" });
 }
@@ -1560,6 +1709,7 @@ export async function integratePhase(args: {
   workflowId: string;
   phaseId: string;
   ownerId: string;
+  config?: LeanRigorConfig;
   mutation?: MutationOptions;
 }): Promise<IntegrationOperationResult> {
   let operation: Omit<IntegrationOperationResult, "state"> | undefined;
@@ -1577,6 +1727,24 @@ export async function integratePhase(args: {
       args.phaseId,
       args.ownerId
     );
+    if (applied.result.ok && next.plan && next.git) {
+      const integratedIds = new Set(next.git.integration.integratedPhaseIds);
+      const nextPhase = next.plan.phases.find((phase) =>
+        ["planned", "ready"].includes(phase.status)
+        && dependencyIds(phase).every((id) => phaseById(next.plan!, id)?.status === "completed" && integratedIds.has(id)));
+      if (nextPhase && (!next.phaseBriefs?.[nextPhase.id] || !briefIsCurrent(next, nextPhase.id))) {
+        const outcome = await generateInspectedPhaseExecutionBrief({
+          state: next,
+          phase: nextPhase,
+          config: args.config ?? defaultConfig()
+        });
+        const requiresApproval = next.approval?.policy === "phase-by-phase"
+          || !next.approval?.history.some((entry) => entry.action === "phase-approved");
+        persistPhaseBriefOutcome(next, nextPhase, outcome, requiresApproval);
+        next.approval!.recommendation = approvalRecommendation(next, nextPhase.id);
+        appendEvent(next, "next_phase_preflight_created", `Phase ${nextPhase.id} brief was generated after dependency integration completed.`, nextPhase.id, args.ownerId);
+      }
+    }
     return next;
   }, { ...args.mutation, ownerId: args.mutation?.ownerId ?? args.ownerId, operation: "integrate_phase" });
   return { ...(operation ?? { ok: false, code: "integration_rejected", phaseId: args.phaseId }), state } as IntegrationOperationResult;
@@ -1592,7 +1760,16 @@ export async function validateIntegration(args: {
   mutation?: MutationOptions;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, async (state) => {
-    const next = await runIntegrationValidation(state);
+    let current = state;
+    if (current.state === "executing" && current.plan && current.git) {
+      const integrated = new Set(current.git.integration.integratedPhaseIds);
+      const allAcceptedAndIntegrated = current.plan.phases.length > 0
+        && current.plan.phases.every((phase) => phase.status === "completed" && integrated.has(phase.id));
+      if (allAcceptedAndIntegrated) {
+        current = transition(current, "validating", "All accepted phases are integrated; final integrated validation is running.");
+      }
+    }
+    const next = await runIntegrationValidation(current);
     next.validation.push(...(next.git?.integrationValidation?.commands ?? []));
     appendEvent(next, "integration_validation_recorded", `Combined integration validation ${next.git?.integrationValidation?.status ?? "recorded"}.`);
     if (next.git?.integrationValidation?.status === "passed" && next.state === "validating") return transition(next, "reviewing", "Combined integration validation passed; final integrated review is ready.");
@@ -1647,18 +1824,25 @@ export async function leasePhase(args: {
   ownerType?: WorkflowLockOwnerType;
   config?: LeanRigorConfig;
   mutation?: MutationOptions;
+  internalCapability?: symbol;
 }): Promise<SequentialWorkflowState> {
   return updateFlowState(args.root, args.workflowId, (state) => {
     assertState(state, ["executing"]);
     if (!state.plan) throw new WorkflowStateError("Cannot lease a phase without a plan.");
-    refreshPhaseReadiness(state, args.config);
     const phase = phaseById(state.plan, args.phaseId);
     if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
     const existing = state.phaseLeases[phase.id];
     if (existing && !existing.releasedAt && Date.parse(existing.expiresAt) > Date.now()) {
       throw new InvalidTransitionError(`Phase ${phase.id} already has an active lease held by ${existing.ownerId}.`);
     }
-    if (phase.status !== "ready") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only ready phases can be leased.`);
+    const preparationLease = args.internalCapability === PHASE_PREPARATION_CAPABILITY;
+    const eligibility = evaluatePhaseDispatchEligibility(state, phase.id, args.config, {
+      stage: preparationLease ? "preparation" : "dispatch",
+      explicitlySelected: true,
+      ownerId: args.ownerId
+    });
+    if (!eligibility.eligible) throw new InvalidTransitionError(formatDispatchBlockers(eligibility.blockers));
+    if (!["planned", "ready"].includes(phase.status)) throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an unstarted eligible phase can be leased.`);
     phase.status = "leased";
     state.phaseLeases[phase.id] = phaseLease(phase, args.ownerId, args.ownerType ?? "cli", state.revision, args.config?.execution.phaseLeaseTimeoutSeconds ?? DEFAULT_PHASE_LEASE_TIMEOUT_SECONDS);
     appendEvent(state, "phase_lease_acquired", `Phase ${phase.id} leased by ${args.ownerId}.`, phase.id, args.ownerId);
@@ -1857,6 +2041,19 @@ export function nextActions(state: SequentialWorkflowState): string[] {
         `leanrigor flow revise-plan ${id} "<feedback>" --root "${state.root}"`
       ];
     case "executing": {
+      const decision = state.approval?.pendingDecision;
+      if (decision?.type === "phase-brief-approval" && decision.status === "pending") {
+        return [
+          `leanrigor flow approve-phase ${id} ${decision.phaseId} --brief-revision ${decision.briefRevision} --workflow-revision ${decision.workflowRevision} --root "${state.root}"`,
+          `leanrigor flow phase-brief-show ${id} ${decision.phaseId} --root "${state.root}"`
+        ];
+      }
+      if (decision?.type === "workspace-bootstrap-approval" && decision.status === "pending") {
+        return [
+          `leanrigor flow approve-bootstrap ${id} ${decision.phaseId} --brief-revision ${decision.briefRevision} --preparation-revision ${decision.preparationRevision} --workspace-identity "${decision.workspaceIdentity}" --command "${decision.command}" --root "${state.root}"`,
+          `leanrigor flow status ${id} --root "${state.root}"`
+        ];
+      }
       const active = state.plan?.phases.find((phase) => phase.status === "running" || phase.status === "leased" || phase.status === "completion_pending");
       const repair = state.plan?.phases.find((phase) => phase.status === "needs_repair");
       const review = state.plan?.phases.find((phase) => phase.status === "needs_review");
@@ -3117,7 +3314,7 @@ function selectStartablePhase(state: SequentialWorkflowState, phaseId?: string):
     ? plan.phases.find((candidate) => candidate.id === phaseId)
     : plan.phases.find((candidate) => candidate.status === "ready" && dependencyIds(candidate).every((id) => phaseById(plan, id)?.status === "completed"));
   if (!phase) throw new WorkflowStateError("No startable phase found.");
-  if (phase.status !== "ready") throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only a ready phase can be started.`);
+  if (!["planned", "ready"].includes(phase.status)) throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an unstarted eligible phase can be started.`);
   const blockedDependency = dependencyIds(phase).find((id) => phaseById(plan, id)?.status !== "completed");
   if (blockedDependency) throw new InvalidTransitionError(`Phase ${phase.id} depends on incomplete phase ${blockedDependency}.`);
   return phase;
@@ -3272,20 +3469,76 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
     const plan = migrated.plan as { phases?: unknown[] };
     plan.phases = (plan.phases ?? []).map((phase, index) => migratePhase(phase, index));
   }
-  if (!migrated.approval && migrated.state === "executing") {
+  if (!migrated.approval) {
     const mode = migrated.mode === "rigorous" ? "rigorous" : migrated.mode === "fast" ? "fast" : "standard";
     migrated.approval = {
-      policy: defaultApprovalPolicy(mode),
-      source: "legacy-default",
-      selectedAt: migrated.updatedAt,
-      workflowPlanRevision: migrated.revision,
+      ...(migrated.state === "executing" ? {
+        policy: defaultApprovalPolicy(mode),
+        source: "legacy-default",
+        selectedAt: migrated.updatedAt,
+        workflowPlanRevision: migrated.revision
+      } : {}),
       history: [],
       decisionHistory: []
     };
   }
+  if (migrated.approval && typeof migrated.approval === "object") {
+    const approval = migrated.approval as Record<string, unknown>;
+    approval.history = Array.isArray(approval.history) ? approval.history : [];
+    const decisionHistory = Array.isArray(approval.decisionHistory)
+      ? approval.decisionHistory.map((decision, index) => migrateWorkflowDecision(decision, index))
+      : [];
+    approval.decisionHistory = decisionHistory;
+    if (approval.pendingDecision) {
+      approval.pendingDecision = migrateWorkflowDecision(approval.pendingDecision, decisionHistory.length);
+    } else {
+      const pending = legacyPendingDecision(migrated);
+      if (pending) approval.pendingDecision = migrateWorkflowDecision(pending, decisionHistory.length);
+    }
+  }
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   return migrated;
+}
+
+function legacyPendingDecision(state: Record<string, unknown>): Record<string, unknown> | undefined {
+  const revision = typeof state.revision === "number" ? state.revision : 0;
+  const createdAt = typeof state.updatedAt === "string" ? state.updatedAt : timestamp();
+  const base = { workflowRevision: revision, stateRevision: revision, status: "pending", createdAt, source: "legacy-migration" };
+  if (state.state === "awaiting_clarification") {
+    const clarification = state.clarification as Record<string, unknown> | undefined;
+    return { ...base, type: "clarification", question: clarification?.question ?? "Answer the persisted clarification question.", allowedActions: ["answer", "cancel-workflow"] };
+  }
+  if (state.state === "awaiting_approach_approval") {
+    return { ...base, type: "approach-approval", question: "Approve the persisted approach before planning?", allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"] };
+  }
+  if (state.state === "awaiting_plan_approval") {
+    return { ...base, type: "workflow-plan-approval", question: "Approve the persisted Workflow Plan structure and policy?", allowedActions: ["approve-plan", "revise-plan", "view-details", "cancel-workflow"] };
+  }
+  if (state.state === "reviewing") {
+    return { ...base, type: "final-review", question: "Record the final integrated review?", allowedActions: ["record-review", "view-details", "cancel-workflow"] };
+  }
+  if (state.state === "awaiting_commit_approval") {
+    return { ...base, type: "final-completion", question: "Complete the workflow after final integrated review?", allowedActions: ["complete-workflow", "view-details", "cancel-workflow"] };
+  }
+  if (state.state === "blocked") {
+    const blockers = Array.isArray(state.blockers) ? state.blockers : [];
+    return { ...base, type: "execution-recovery", question: blockers[0] ?? "Choose a safe recovery action.", allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"] };
+  }
+  const briefs = state.phaseBriefs && typeof state.phaseBriefs === "object" ? Object.values(state.phaseBriefs as Record<string, unknown>) : [];
+  const pendingBrief = briefs.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).approvalStatus === "pending") as Record<string, unknown> | undefined;
+  if (pendingBrief) {
+    return {
+      ...base,
+      type: "phase-brief-approval",
+      workflowRevision: typeof pendingBrief.workflowRevision === "number" ? pendingBrief.workflowRevision : revision,
+      phaseId: pendingBrief.phaseId,
+      briefRevision: pendingBrief.briefRevision,
+      question: `Review and approve ${String(pendingBrief.phaseId)} Execution Brief revision ${String(pendingBrief.briefRevision)}?`,
+      allowedActions: ["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"]
+    };
+  }
+  return undefined;
 }
 
 function migratePhase(raw: unknown, index: number): unknown {
@@ -3329,7 +3582,64 @@ function transition(state: SequentialWorkflowState, nextState: WorkflowLifecycle
   next.state = nextState;
   next.updatedAt = timestamp();
   appendEvent(next, "workflow_state_changed", message);
+  syncLifecycleDecision(next, nextState);
   return next;
+}
+
+function syncLifecycleDecision(state: SequentialWorkflowState, lifecycle: WorkflowLifecycleState): void {
+  if (lifecycle === "awaiting_clarification") {
+    setPendingDecision(state, {
+      type: "clarification",
+      question: state.clarification?.question ?? "What specific behaviour should change?",
+      allowedActions: ["answer", "cancel-workflow"]
+    });
+    return;
+  }
+  if (lifecycle === "awaiting_approach_approval") {
+    setPendingDecision(state, {
+      type: "approach-approval",
+      question: "Approve the persisted approach before Workflow Plan generation?",
+      allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
+    });
+    return;
+  }
+  if (lifecycle === "awaiting_plan_approval") {
+    setPendingDecision(state, {
+      type: "workflow-plan-approval",
+      question: "Approve the Workflow Plan structure and approval policy?",
+      allowedActions: ["approve-plan", "revise-plan", "view-details", "cancel-workflow"]
+    });
+    return;
+  }
+  if (lifecycle === "reviewing") {
+    setPendingDecision(state, {
+      type: "final-review",
+      integrationRevision: state.revision + 1,
+      question: "Record the final integrated review against the persisted validation evidence?",
+      allowedActions: ["record-review", "view-details", "cancel-workflow"]
+    });
+    return;
+  }
+  if (lifecycle === "awaiting_commit_approval") {
+    setPendingDecision(state, {
+      type: "final-completion",
+      integrationRevision: state.revision + 1,
+      question: "Complete the workflow after the passed final integrated review?",
+      allowedActions: ["complete-workflow", "view-details", "cancel-workflow"]
+    });
+    return;
+  }
+  if (lifecycle === "blocked") {
+    setPendingDecision(state, {
+      type: "execution-recovery",
+      question: state.blockers[0] ?? "Choose a safe recovery action for the blocked workflow.",
+      allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"]
+    });
+    return;
+  }
+  if (lifecycle === "completed" || lifecycle === "cancelled") {
+    resolvePendingDecision(state, lifecycle === "completed" ? "approved" : "cancelled", lifecycle === "completed" ? "complete-workflow" : "cancel-workflow", "user");
+  }
 }
 
 function assertState(state: SequentialWorkflowState, allowed: WorkflowLifecycleState[]): void {
@@ -3379,6 +3689,12 @@ function persistPhaseBriefOutcome(
     state.phaseBriefFailures[phase.id] = outcome.failure;
     state.blockers = unique([...state.blockers, `${blockerPrefix} ${outcome.failure.message}`]);
     supersedePendingPhaseApproval(state);
+    setPendingDecision(state, {
+      type: "execution-recovery",
+      phaseId: phase.id,
+      question: outcome.failure.message,
+      allowedActions: ["retry-brief", "revise-plan", "view-details", "cancel-workflow"]
+    });
     appendEvent(state, "phase_brief_blocked", `${outcome.failure.message} ${outcome.failure.diagnostics.map((item) => item.message).join(" ")}`, phase.id);
     return;
   }
@@ -3401,16 +3717,16 @@ function persistPhaseBriefOutcome(
 
 function setPendingPhaseApproval(state: SequentialWorkflowState, brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string]): void {
   if (!state.approval) throw new WorkflowStateError("Cannot request phase approval before the Workflow Plan is approved.");
-  supersedePendingPhaseApproval(state);
-  state.approval.pendingDecision = {
+  setPendingDecision(state, {
     type: "phase-brief-approval",
     workflowRevision: brief.workflowRevision,
+    stateRevision: state.revision + 1,
     phaseId: brief.phaseId,
     briefRevision: brief.briefRevision,
-    status: "pending",
+    question: `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`,
     allowedActions: [...PHASE_APPROVAL_ACTIONS],
-    createdAt: timestamp()
-  };
+    source: "system"
+  });
 }
 
 function supersedePendingPhaseApproval(state: SequentialWorkflowState): void {
@@ -3418,10 +3734,36 @@ function supersedePendingPhaseApproval(state: SequentialWorkflowState): void {
 }
 
 function resolvePendingPhaseApproval(state: SequentialWorkflowState, status: "superseded" | "cancelled"): void {
-  const decision = state.approval?.pendingDecision;
-  if (!decision) return;
-  state.approval!.decisionHistory.push({ ...decision, status, resolvedAt: timestamp() });
-  state.approval!.pendingDecision = undefined;
+  resolvePendingDecision(state, status, undefined, "system");
+}
+
+function resolveDecisionAction(
+  state: SequentialWorkflowState,
+  action: string,
+  mutation: MutationOptions | undefined,
+  status: "approved" | "answered" | "superseded" | "cancelled",
+  expectedType?: WorkflowDecisionType
+): void {
+  const current = state.approval?.pendingDecision;
+  if (!current) {
+    if (mutation?.decisionId) resolvePendingDecision(state, status, action, "controller", mutation.decisionId);
+    return;
+  }
+  if (expectedType && current.type !== expectedType && !mutation?.decisionId) {
+    resolvePendingDecision(state, "superseded", undefined, "system");
+    return;
+  }
+  if (expectedType) requirePendingDecision(state, expectedType, action, mutation?.decisionId);
+  else if (!(current.allowedActions as string[]).includes(action)) {
+    throw new InvalidTransitionError(`Action ${action} is not allowed for decision ${current.id}. Refresh the workflow before answering.`);
+  }
+  resolvePendingDecision(state, status, action, mutation?.decisionId ? "controller" : "user", mutation?.decisionId);
+}
+
+function formatDispatchBlockers(blockers: Array<{ code: string; message: string }>): string {
+  return blockers.length > 0
+    ? `Phase dispatch blocked: ${blockers.map((blocker) => `${blocker.code}: ${blocker.message}`).join("; ")}`
+    : "Phase dispatch blocked.";
 }
 
 function unique(values: string[]): string[] {

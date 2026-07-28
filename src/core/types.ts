@@ -138,15 +138,101 @@ export type PhaseApprovalDecisionAction =
   | "view-details"
   | "cancel-workflow";
 
-export interface PhaseApprovalDecision {
-  type: "phase-brief-approval";
+export type WorkflowDecisionStatus = "pending" | "approved" | "answered" | "rejected" | "superseded" | "cancelled";
+export type WorkflowDecisionSource = "user" | "controller" | "system" | "legacy-migration";
+export type WorkflowDecisionType =
+  | "clarification"
+  | "approach-approval"
+  | "workflow-plan-approval"
+  | "phase-brief-approval"
+  | "workspace-bootstrap-approval"
+  | "material-drift-review"
+  | "execution-recovery"
+  | "integration-conflict"
+  | "final-review"
+  | "final-completion";
+
+export interface WorkflowDecisionBase {
+  id: string;
+  type: WorkflowDecisionType;
   workflowRevision: number;
-  phaseId: string;
-  briefRevision: number;
-  status: "pending" | "approved" | "superseded" | "cancelled";
-  allowedActions: PhaseApprovalDecisionAction[];
+  stateRevision: number;
+  phaseId?: string;
+  briefRevision?: number;
+  preparationRevision?: number;
+  integrationRevision?: number;
+  question: string;
+  status: WorkflowDecisionStatus;
+  allowedActions: string[];
   createdAt: string;
   resolvedAt?: string;
+  selectedAction?: string;
+  source: WorkflowDecisionSource;
+  supersedesDecisionId?: string;
+}
+
+export interface PhaseApprovalDecision extends WorkflowDecisionBase {
+  type: "phase-brief-approval";
+  phaseId: string;
+  briefRevision: number;
+  allowedActions: PhaseApprovalDecisionAction[];
+}
+
+export type WorkspaceBootstrapDecisionAction =
+  | "approve-bootstrap"
+  | "retry-preparation"
+  | "view-details"
+  | "cancel-workflow";
+
+export interface WorkspaceBootstrapDecision extends WorkflowDecisionBase {
+  type: "workspace-bootstrap-approval";
+  phaseId: string;
+  briefRevision: number;
+  preparationRevision: number;
+  workspaceIdentity: string;
+  command: string;
+  riskSummary: string[];
+  allowedActions: WorkspaceBootstrapDecisionAction[];
+}
+
+export interface WorkflowActionDecision extends WorkflowDecisionBase {
+  type: Exclude<WorkflowDecisionType, "phase-brief-approval" | "workspace-bootstrap-approval">;
+}
+
+export type WorkflowPendingDecision = PhaseApprovalDecision | WorkspaceBootstrapDecision | WorkflowActionDecision;
+
+export interface WorkflowDecisionOption {
+  intent: string;
+  label: string;
+  description: string;
+  command?: string;
+}
+
+export interface WorkflowDecisionEnvelope {
+  workflowId: string;
+  workflowRevision: number;
+  state: WorkflowLifecycleState;
+  status: {
+    code: string;
+    summary: string;
+    phaseId?: string;
+    briefRevision?: number;
+  };
+  decision?: {
+    id: string;
+    type: WorkflowDecisionType;
+    workflowRevision: number;
+    phaseId?: string;
+    briefRevision?: number;
+    preparationRevision?: number;
+    integrationRevision?: number;
+    question: string;
+    options: WorkflowDecisionOption[];
+  };
+  nextOperation?: {
+    type: string;
+    automaticallyPermitted: boolean;
+  };
 }
 
 export interface WorkflowApprovalState {
@@ -157,8 +243,8 @@ export interface WorkflowApprovalState {
   currentAuthorizedPhase?: string;
   recommendation?: ApprovalRecommendation;
   history: ApprovalHistoryEntry[];
-  pendingDecision?: PhaseApprovalDecision;
-  decisionHistory: PhaseApprovalDecision[];
+  pendingDecision?: WorkflowPendingDecision;
+  decisionHistory: WorkflowPendingDecision[];
 }
 
 export interface MaterialPlanChange {
@@ -244,6 +330,10 @@ export interface PhaseBriefRepositoryProvenance {
   constraintHash: string;
   inspectionResultId: string;
   inspectedPaths: string[];
+  planFingerprint?: string;
+  dependencyFingerprint?: string;
+  priorPhaseOutcomesHash?: string;
+  executionPolicyHash?: string;
 }
 
 export interface PhaseBriefGenerationProvenance {
@@ -741,6 +831,8 @@ export interface PhaseWorkspace {
 }
 
 export interface WorkspacePreparation {
+  preparationRevision?: number;
+  workspaceIdentity?: string;
   status: WorkspacePreparationStatus;
   worktreePath?: string;
   repositoryIdentity?: string;
@@ -854,6 +946,38 @@ export interface PhaseExecutionRecord {
   providerMetadata?: Record<string, unknown>;
   providerSession?: ProviderSessionRef;
   checkpoint?: PhaseWorkspaceCheckpoint;
+  executionIdentity?: PhaseExecutionIdentity;
+}
+
+export interface PhaseExecutionIdentity {
+  workflowId: string;
+  workflowRevision: number;
+  phaseId: string;
+  briefRevision: number;
+  workspaceIdentity: string;
+  workspacePath: string;
+  baseCommit: string;
+  constraintHash: string;
+  providerId: string;
+  providerSessionId?: string;
+  dispatchedAt: string;
+}
+
+export interface PhaseDispatchBlocker {
+  code: string;
+  message: string;
+  recovery?: string;
+}
+
+export interface PhaseDispatchEligibility {
+  eligible: boolean;
+  phaseId: string;
+  workflowRevision: number;
+  briefRevision?: number;
+  dependencyReady: boolean;
+  dispatchReady: boolean;
+  recommendedPhaseId?: string;
+  blockers: PhaseDispatchBlocker[];
 }
 
 export interface WorkflowExecutionState {

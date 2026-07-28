@@ -1,10 +1,10 @@
+import { createHash } from "node:crypto";
 import type {
   ApprovalRecommendation,
   PhaseApprovalPolicy,
   SequentialWorkflowState,
   WorkflowPhase
 } from "./types.js";
-import { dependencyIds } from "./scheduler.js";
 
 const highRiskTerms: Array<[RegExp, string]> = [
   [/\bmigrat(e|ion)\b/i, "migration risk"],
@@ -61,12 +61,32 @@ export function briefIsCurrent(state: SequentialWorkflowState, phaseId: string):
   const brief = state.phaseBriefs?.[phaseId];
   return Boolean(
     brief
-    && brief.workflowRevision === (state.approval?.workflowPlanRevision ?? state.revision)
+    && briefStalenessReasons(state, phaseId).length === 0
     && brief.approvalStatus !== "stale"
     && brief.validation.status === "valid"
     && brief.repository.repositoryRevision
     && !brief.materialChangesFromWorkflowPlan.some((change) => change.material)
   );
+}
+
+export function briefStalenessReasons(state: SequentialWorkflowState, phaseId: string): Array<{ code: string; message: string }> {
+  const brief = state.phaseBriefs?.[phaseId];
+  const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+  if (!brief || !phase) return [];
+  const reasons: Array<{ code: string; message: string }> = [];
+  const planRevision = state.approval?.workflowPlanRevision ?? state.revision;
+  if (brief.workflowRevision !== planRevision) reasons.push({ code: "brief_plan_revision_stale", message: `Phase ${phaseId} brief belongs to Workflow Plan revision ${brief.workflowRevision}, not ${planRevision}.` });
+  if (brief.approvalStatus === "stale") reasons.push({ code: "brief_superseded", message: `Phase ${phaseId} brief revision ${brief.briefRevision} was superseded.` });
+  if (!brief.repository.planFingerprint || !brief.repository.dependencyFingerprint || !brief.repository.priorPhaseOutcomesHash || !brief.repository.executionPolicyHash) {
+    reasons.push({ code: "brief_provenance_legacy", message: `Phase ${phaseId} brief lacks current dispatch provenance and must be regenerated.` });
+  }
+  if (brief.repository.constraintHash !== constraintHash(state)) reasons.push({ code: "brief_constraints_stale", message: `Phase ${phaseId} effective constraints changed after brief generation.` });
+  if (brief.repository.planFingerprint && brief.repository.planFingerprint !== planFingerprint(phase)) reasons.push({ code: "brief_plan_stale", message: `Phase ${phaseId} approved Workflow Plan content changed after brief generation.` });
+  if (brief.repository.dependencyFingerprint && brief.repository.dependencyFingerprint !== stableHash(dependencyIds(phase))) reasons.push({ code: "brief_dependencies_stale", message: `Phase ${phaseId} dependency definition changed after brief generation.` });
+  if (brief.repository.priorPhaseOutcomesHash && brief.repository.priorPhaseOutcomesHash !== priorOutcomesHash(state, phase)) reasons.push({ code: "brief_prior_outcome_stale", message: `Phase ${phaseId} assumptions are stale because a prior phase outcome changed.` });
+  if (state.git?.context.baseCommit && brief.repository.baseCommit && state.git.context.baseCommit !== brief.repository.baseCommit) reasons.push({ code: "brief_repository_stale", message: `Phase ${phaseId} brief repository base ${brief.repository.baseCommit} differs from workflow base ${state.git.context.baseCommit}.` });
+  if (brief.modelTier && brief.modelTier !== phase.modelTier) reasons.push({ code: "brief_provider_policy_stale", message: `Phase ${phaseId} model policy changed after brief generation.` });
+  return reasons;
 }
 
 export function approvalPermitsExecution(state: SequentialWorkflowState, phaseId: string): boolean {
@@ -90,4 +110,57 @@ function deterministicRiskReasons(state: SequentialWorkflowState, phase?: Workfl
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function dependencyIds(phase: WorkflowPhase): string[] {
+  return unique([...phase.dependencies, ...phase.dependsOn]);
+}
+
+function constraintHash(state: SequentialWorkflowState): string {
+  return stableHash(state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? []);
+}
+
+function planFingerprint(phase: WorkflowPhase): string {
+  return stableHash({
+    id: phase.id,
+    objective: phase.objective,
+    rationale: phase.rationale,
+    dependencies: dependencyIds(phase),
+    expectedReadAreas: phase.expectedReadAreas,
+    expectedWriteAreas: phase.expectedWriteAreas,
+    expectedFilesOrAreas: phase.expectedFilesOrAreas,
+    acceptanceCriteria: phase.acceptanceCriteria,
+    validationCommands: phase.validationCommands,
+    riskLevel: phase.riskLevel,
+    modelTier: phase.modelTier
+  });
+}
+
+function priorOutcomesHash(state: SequentialWorkflowState, phase: WorkflowPhase): string {
+  return stableHash(dependencyIds(phase).map((id) => {
+    const dependency = state.plan?.phases.find((candidate) => candidate.id === id);
+    return {
+      id,
+      status: dependency?.status,
+      completion: dependency?.completion
+        ? {
+            decision: dependency.completion.decision,
+            filesChanged: dependency.completion.filesChanged,
+            assumptions: dependency.completion.assumptions,
+            remainingRisks: dependency.completion.remainingRisks,
+            scopeDeviations: dependency.completion.scopeDeviations
+          }
+        : undefined
+    };
+  }));
+}
+
+function stableHash(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(sortValue(value))).digest("hex");
+}
+
+function sortValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sortValue(item)]));
 }

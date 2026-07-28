@@ -25,12 +25,12 @@ import {
   phaseRepairBudget,
   resolveSingleActiveWorkflow,
   workflowNextSummary,
-  type ActiveWorkflowSelection,
-  type WorkflowNextSummary
+  type ActiveWorkflowSelection
 } from "../core/ux.js";
 import {
   answerClarification,
   approvePhase,
+  approveWorkspaceBootstrap,
   approveApproach,
   approvePlan,
   cancelFlow,
@@ -71,15 +71,16 @@ import {
 import { RevisionConflictError } from "../core/workflow-store.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, WorkflowMode, WorkflowPhase } from "../core/types.js";
 import { completionEvidenceArtifactPath, persistCompletionEvidenceArtifact, readCompletionEvidenceFile } from "../core/completion-evidence.js";
-import { ExecutionCoordinator } from "../core/execution/coordinator.js";
+import { coordinatorResultForState, ExecutionCoordinator } from "../core/execution/coordinator.js";
 import type { ExecutionProvider } from "../core/execution/provider.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution/scripted-provider.js";
 import type { CoordinatorResult } from "../core/execution/types.js";
+import { phaseResultView, workflowDecisionEnvelope } from "../core/workflow-envelope.js";
 import type { PlanningProvider } from "../core/planning-runner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.25");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.27");
 
 program.command("setup")
   .alias("init")
@@ -440,6 +441,7 @@ flow.command("answer")
   .option("--answer-file <path>", "UTF-8 file containing the clarification answer")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "triage provider: auto, claude, or deterministic", "auto")
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, answer, options) => {
@@ -464,6 +466,7 @@ flow.command("approve-approach")
   .option("--add-constraint <constraint>", "constraint to add before planning", collect, [])
   .option("--remove-constraint <constraint>", "triage constraint to remove before planning", collect, [])
   .option("--override-constraint <override>", "constraint override as '<old> => <new>'", collect, [])
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
@@ -486,6 +489,7 @@ flow.command("reject-approach")
   .argument("<workflow-id>")
   .requiredOption("--reason <reason>", "reason for rejection")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
@@ -497,6 +501,7 @@ flow.command("revise-approach")
   .argument("[feedback]")
   .option("--feedback-file <path>", "UTF-8 file containing the approach feedback")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, feedback, options) => {
@@ -507,6 +512,7 @@ flow.command("approve-plan")
   .argument("<workflow-id>")
   .option("--approval-policy <policy>", "workflow-authorized or phase-by-phase")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
@@ -529,6 +535,7 @@ flow.command("phase-brief")
   .option("--feedback-file <path>", "UTF-8 file containing phase brief revision feedback")
   .option("--refresh", "rerun bounded inspection and brief planning without revision feedback")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, phaseId, feedback, options) => {
@@ -570,6 +577,7 @@ flow.command("approve-phase")
   .requiredOption("--brief-revision <revision>", "exact phase execution brief revision")
   .requiredOption("--workflow-revision <revision>", "Workflow Plan revision referenced by the phase brief")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, phaseId, options) => {
@@ -580,12 +588,41 @@ flow.command("approve-phase")
     printFlowState(await approvePhase({ root: options.root, workflowId, phaseId, briefRevision, workflowRevision, mutation: mutationOptions(options) }));
   });
 
+flow.command("approve-bootstrap")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .requiredOption("--brief-revision <revision>", "exact approved phase brief revision")
+  .requiredOption("--preparation-revision <revision>", "exact workspace preparation revision")
+  .requiredOption("--workspace-identity <identity>", "exact prepared workspace identity")
+  .requiredOption("--command <command>", "exact proposed bootstrap command")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, phaseId, options) => {
+    const briefRevision = Number.parseInt(options.briefRevision, 10);
+    const preparationRevision = Number.parseInt(options.preparationRevision, 10);
+    if (!Number.isInteger(briefRevision) || briefRevision < 1) throw new Error("--brief-revision must be a positive integer.");
+    if (!Number.isInteger(preparationRevision) || preparationRevision < 1) throw new Error("--preparation-revision must be a positive integer.");
+    printFlowState(await approveWorkspaceBootstrap({
+      root: options.root,
+      workflowId,
+      phaseId,
+      briefRevision,
+      preparationRevision,
+      workspaceIdentity: options.workspaceIdentity,
+      command: options.command,
+      mutation: mutationOptions(options)
+    }));
+  });
+
 flow.command("revise-plan")
   .argument("<workflow-id>")
   .argument("[feedback]")
   .option("--feedback-file <path>", "UTF-8 file containing the plan feedback")
   .option("--root <path>", "repository root", process.cwd())
   .option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto")
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, feedback, options) => {
@@ -602,7 +639,7 @@ flow.command("revise-plan")
 
 flow.command("phase-start")
   .argument("<workflow-id>")
-  .argument("[phase-id]")
+  .argument("<phase-id>")
   .option("--root <path>", "repository root", process.cwd())
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "phase lease owner ID", "cli")
@@ -851,8 +888,8 @@ flow.command("integrate-phase")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--json", "print structured integration result")
   .action(async (workflowId, phaseId, options) => {
-    const result = await integratePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, mutation: mutationOptions(options) });
-    if (options.json) console.log(JSON.stringify(result, null, 2));
+    const result = await integratePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    if (options.json) console.log(JSON.stringify({ ...result, decisionEnvelope: workflowDecisionEnvelope(result.state) }, null, 2));
     else if (result.ok) console.log(result.code === "already_integrated" ? `Phase ${phaseId} was already integrated.` : `Phase ${phaseId} integrated.`);
     else console.log(`Phase ${phaseId} integration failed: ${result.code}`);
   });
@@ -920,9 +957,18 @@ flow.command("phase-status")
   .option("--root <path>", "repository root", process.cwd())
   .action(async (workflowId, phaseId, { root }) => {
     const state = await resumeFlow(root, workflowId);
-    const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
-    if (!phase) throw new Error(`Unknown phase: ${phaseId}`);
-    console.log(JSON.stringify(formatPhaseStatus(state, phaseId), null, 2));
+    console.log(JSON.stringify(phaseResultView(state, phaseId), null, 2));
+  });
+
+flow.command("phase-result")
+  .argument("<workflow-id>")
+  .argument("<phase-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--json", "print authoritative persisted phase result")
+  .action(async (workflowId, phaseId, { root, json }) => {
+    const result = phaseResultView(await resumeFlow(root, workflowId), phaseId);
+    if (json) console.log(JSON.stringify(result, null, 2));
+    else console.log(renderPhaseResult(result));
   });
 
 flow.command("repair")
@@ -975,6 +1021,7 @@ flow.command("record-review")
   .requiredOption("--status <status>", "passed, needs_repair, needs_replan, or blocked")
   .requiredOption("--summary <summary>", "concise review summary")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--finding <finding>", "review finding", collect, [])
   .option("--repair-scope <scope>", "smallest repair scope when repair is needed")
   .option("--expected-revision <revision>", "expected workflow revision")
@@ -1003,6 +1050,7 @@ flow.command("commit-plan")
 flow.command("complete")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
@@ -1038,9 +1086,9 @@ flow.command("next")
   .option("--json", "print structured next-step data")
   .action(async (workflowId, { root, json }) => {
     const state = workflowId ? await resumeFlow(root, workflowId) : await resolveSingleActiveWorkflow(root);
-    const summary = workflowNextSummary(state);
-    if (json) console.log(JSON.stringify(summary, null, 2));
-    else printNextSummary(summary);
+    const envelope = workflowDecisionEnvelope(state);
+    if (json) console.log(JSON.stringify(envelope, null, 2));
+    else printDecisionEnvelope(envelope);
   });
 
 flow.command("resume")
@@ -1059,6 +1107,7 @@ flow.command("list")
 flow.command("cancel")
   .argument("<workflow-id>")
   .option("--root <path>", "repository root", process.cwd())
+  .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, options) => {
@@ -1175,7 +1224,9 @@ async function textArgument(value: unknown, file: unknown, label: string): Promi
 }
 
 function printFlowState(state: SequentialWorkflowState): void {
+  const envelope = workflowDecisionEnvelope(state);
   console.log(JSON.stringify({
+    ...envelope,
     id: state.id,
     revision: state.revision,
     state: state.state,
@@ -1309,6 +1360,8 @@ function printFlowState(state: SequentialWorkflowState): void {
 function printHumanStatus(state: SequentialWorkflowState): void {
   const next = workflowNextSummary(state);
   const phase = currentPhaseObject(state);
+  const result = phase ? phaseResultView(state, phase.id) : undefined;
+  const envelope = workflowDecisionEnvelope(state);
   const lines = [
     `LeanRigor - ${next.label}`,
     "",
@@ -1324,11 +1377,13 @@ function printHumanStatus(state: SequentialWorkflowState): void {
     state.triage?.constraints.mustNot.length ? `Constraints: ${state.triage.constraints.mustNot.join("; ")}` : undefined,
     state.approach ? `Recommended approach: ${state.approach.proposed}` : undefined,
     phase ? `Current phase: ${phase.id} - ${phase.objective}` : undefined,
-    phase ? `Completion gate: ${phase.completion?.decision ?? (["leased", "running", "completion_pending"].includes(phase.status) ? "pending" : "not started")}` : undefined,
+    result ? `Provider: ${result.lifecycle.providerDispatch} / ${result.lifecycle.providerResult}` : undefined,
+    result ? `Completion gate: ${result.lifecycle.completionGate}; phase acceptance: ${result.lifecycle.phaseAcceptance}` : undefined,
+    result ? `Integration: ${result.lifecycle.integration}; integrated validation: ${result.lifecycle.integratedValidation}` : undefined,
     phase ? `Repair attempts: ${phase.repairAttempts.length}/${phaseRepairBudget(state)}` : undefined,
     state.blockers.length > 0 ? `Blockers: ${state.blockers.join("; ")}` : undefined,
-    next.pendingDecision ? `Pending decision: ${next.pendingDecision}` : undefined,
-    `Next action: ${next.pendingAction}`
+    envelope.decision ? `Pending decision: ${envelope.decision.question}` : undefined,
+    envelope.nextOperation ? `Next operation: ${envelope.nextOperation.type}` : `Next action: ${next.pendingAction}`
   ].filter((line): line is string => line !== undefined);
   console.log(lines.join("\n"));
 }
@@ -1385,6 +1440,16 @@ async function runCoordinatorCommand(
   scriptFile: string | undefined,
   run: (coordinator: ExecutionCoordinator) => Promise<CoordinatorResult> | CoordinatorResult
 ): Promise<CoordinatorResult> {
+  const current = await resumeFlow(root, workflowId);
+  if (current.approval?.pendingDecision?.status === "pending") {
+    return coordinatorResultForState(
+      current,
+      "not-dispatched",
+      [],
+      "await_user",
+      "Coordinator execution is blocked by the current persisted decision."
+    );
+  }
   const selected = await executionCoordinator(root, workflowId, providerName, scriptFile);
   const result = await run(selected.coordinator);
   if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
@@ -1398,6 +1463,7 @@ function printCoordinatorResult(result: CoordinatorResult, json: boolean): void 
   }
   const lines = [
     `Workflow ${result.workflowId} revision ${result.revision}: ${result.state}`,
+    result.status.summary,
     result.message,
     result.executionMode ? `Execution mode: ${result.executionMode}` : undefined,
     result.provider ? `Provider: ${result.provider}` : undefined,
@@ -1410,9 +1476,11 @@ function printCoordinatorResult(result: CoordinatorResult, json: boolean): void 
     result.pendingUserGate ? `Pending user gate: ${result.pendingUserGate}` : undefined,
     result.dispatched.length > 0 ? `Dispatched: ${result.dispatched.map((item) => `${item.phaseId} (${item.provider})`).join(", ")}` : undefined,
     result.running.length > 0 ? `Running: ${result.running.map((item) => `${item.phaseId} (${item.status})`).join(", ")}` : undefined,
-    result.completed.length > 0 ? `Completed evidence: ${result.completed.map((item) => item.phaseId).join(", ")}` : undefined,
+    result.completed.length > 0 ? `Provider results collected: ${result.completed.map((item) => item.phaseId).join(", ")}` : undefined,
     result.providerSessions && result.providerSessions.length > 0 ? `Provider sessions: ${result.providerSessions.map((item) => `${item.phaseId} ${item.provider}:${item.sessionId} (${item.status}${item.resumePermitted ? ", resumable" : ""})`).join("; ")}` : undefined,
     result.blocked.length > 0 ? `Blocked: ${result.blocked.map((item) => `${item.phaseId}: ${item.reason}`).join("; ")}` : undefined,
+    result.decision ? `Pending decision: ${result.decision.question}` : undefined,
+    ...(result.decision?.options.map((option) => `- ${option.label}: ${option.description}`) ?? []),
     `Next action: ${result.nextValidAction ?? result.nextAction}`
   ].filter((line): line is string => Boolean(line));
   console.log(lines.join("\n"));
@@ -1429,18 +1497,34 @@ function printActiveSelection(selection: ActiveWorkflowSelection): void {
   }
 }
 
-function printNextSummary(summary: WorkflowNextSummary): void {
+function printDecisionEnvelope(envelope: ReturnType<typeof workflowDecisionEnvelope>): void {
   const lines = [
-    `LeanRigor - ${summary.label}`,
-    "",
-    `Workflow: ${summary.workflow.id}`,
-    `Request: ${summary.workflow.request}`,
-    `Mode: ${labelMode(summary.workflow.mode)}`,
-    `State: ${summary.workflow.state}`,
-    summary.pendingDecision ? `Pending decision: ${summary.pendingDecision}` : undefined,
-    `Next action: ${summary.pendingAction}`
-  ].filter((line): line is string => line !== undefined);
+    `Workflow ${envelope.workflowId} revision ${envelope.workflowRevision}: ${envelope.state}`,
+    envelope.status.summary,
+    envelope.decision ? `Decision: ${envelope.decision.question}` : undefined,
+    ...(envelope.decision?.options.map((option) => `- ${option.label}: ${option.description}`) ?? []),
+    envelope.nextOperation ? `Next operation: ${envelope.nextOperation.type} (${envelope.nextOperation.automaticallyPermitted ? "automatically permitted" : "user decision required"})` : undefined
+  ].filter((line): line is string => Boolean(line));
   console.log(lines.join("\n"));
+}
+
+function renderPhaseResult(result: ReturnType<typeof phaseResultView>): string {
+  return [
+    `Phase ${result.phaseId}`,
+    `Brief approval: ${result.lifecycle.briefApproval}`,
+    `Workspace preparation: ${result.lifecycle.workspacePreparation}`,
+    `Provider dispatch: ${result.lifecycle.providerDispatch}`,
+    `Provider result: ${result.lifecycle.providerResult}`,
+    `Result identity: ${result.lifecycle.resultIdentity}`,
+    `Scope check: ${result.lifecycle.scopeCheck}`,
+    `Completion gate: ${result.lifecycle.completionGate}`,
+    `Phase acceptance: ${result.lifecycle.phaseAcceptance}`,
+    `Integration: ${result.lifecycle.integration}`,
+    `Integrated validation: ${result.lifecycle.integratedValidation}`,
+    result.evidence.changedFiles.length > 0 ? `Changed files: ${result.evidence.changedFiles.join(", ")}` : undefined,
+    result.blockers.length > 0 ? `Blockers: ${result.blockers.join("; ")}` : undefined,
+    `Next safe actions: ${result.nextSafeActions.join(", ")}`
+  ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
 function labelMode(mode: WorkflowMode): string {
@@ -1459,13 +1543,18 @@ function phaseReadinessStatus(state: SequentialWorkflowState): unknown {
   const schedule = readyPhases(state);
   const byId = new Map(state.plan.phases.map((phase) => [phase.id, phase]));
   const dependencyReady = schedule.readyPhases
-    .filter((phase) => phase.blockedBy.length === 0)
     .map((phase) => byId.get(phase.phaseId))
     .filter((phase): phase is WorkflowPhase => Boolean(phase));
   const recommended = dependencyReady[0];
   return {
     recommendedNextPhase: recommended ? { id: recommended.id, objective: recommended.objective } : null,
     otherDependencyReadyPhases: dependencyReady.slice(1).map((phase) => ({ id: phase.id, objective: phase.objective })),
+    readiness: schedule.readyPhases.map((phase) => ({
+      phaseId: phase.phaseId,
+      dependencyReady: phase.dependencyReady,
+      dispatchReady: phase.dispatchReady,
+      dispatchBlockers: phase.dispatchBlockers
+    })),
     policy: "Plan order is the primary CTA for Standard and Rigorous workflows; out-of-order ready phases require explicit user selection."
   };
 }
@@ -1507,10 +1596,11 @@ function pendingUserAction(state: SequentialWorkflowState): string | null {
   return null;
 }
 
-function mutationOptions(options: { expectedRevision?: string; owner?: string }) {
+function mutationOptions(options: { expectedRevision?: string; owner?: string; decisionId?: string }) {
   return {
     expectedRevision: options.expectedRevision === undefined ? undefined : Number.parseInt(options.expectedRevision, 10),
-    ownerId: options.owner ?? "cli"
+    ownerId: options.owner ?? "cli",
+    decisionId: options.decisionId
   };
 }
 

@@ -172,7 +172,7 @@ describe("detailed phase brief approval lifecycle", () => {
     expect(rendered).not.toContain("Approve this phase only");
   });
 
-  it("persists an actionable blocker and no approval decision when brief scope is vague", async () => {
+  it("persists an actionable recovery decision when brief scope is vague", async () => {
     const fixture = await lifecycleFixture();
     const state = await loadFlowState(fixture.root, fixture.workflowId);
     state.plan!.phases[0]!.expectedReadAreas = ["relevant implementation boundary"];
@@ -184,7 +184,12 @@ describe("detailed phase brief approval lifecycle", () => {
 
     expect(approvedPlan.phaseBriefs?.["phase-1"]).toBeUndefined();
     expect(approvedPlan.phaseBriefFailures?.["phase-1"]).toMatchObject({ status: "quality-blocked" });
-    expect(approvedPlan.approval?.pendingDecision).toBeUndefined();
+    expect(approvedPlan.approval?.pendingDecision).toMatchObject({
+      type: "execution-recovery",
+      phaseId: "phase-1",
+      status: "pending",
+      allowedActions: ["retry-brief", "revise-plan", "view-details", "cancel-workflow"]
+    });
     expect(approvedPlan.approval?.currentAuthorizedPhase).toBeUndefined();
     expect(workflowNextSummary(approvedPlan)).toMatchObject({
       label: "Phase Execution Brief unavailable",

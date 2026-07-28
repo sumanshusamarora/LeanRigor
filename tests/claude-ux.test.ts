@@ -21,6 +21,7 @@ import {
 } from "../src/core/flow.js";
 import { activeWorkflowSelection, workflowNextSummary } from "../src/core/ux.js";
 import type { CriterionCompletionEvidence, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
+import { TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY } from "../src/core/dispatch-eligibility.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -242,7 +243,7 @@ describe("Claude conversational workflow UX support", () => {
 
     const next = workflowNextSummary(failed);
 
-    expect(next.label).toBe("Phase completion review");
+    expect(next.label).toBe("Phase recovery decision");
     expect(next.allowedIntents).not.toContain("continue");
     expect(next.pendingAction).toMatch(/cannot bypass repair/);
   });
@@ -277,7 +278,7 @@ describe("Claude conversational workflow UX support", () => {
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const executing = await approvePlan(root, (await approveApproach(root, started.id, defaultConfig())).id);
     const failed = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"], "failed");
-    expect(workflowNextSummary(failed).label).toBe("Phase completion review");
+    expect(workflowNextSummary(failed).label).toBe("Phase recovery decision");
 
     const fastRoot = await tempRepo();
     const validating = await completeFastPhase(fastRoot);
@@ -329,18 +330,16 @@ describe("Claude conversational workflow UX support", () => {
 
     for (const content of [marketplace, local]) {
       expect(content).toContain("AskUserQuestion");
-      expect(content).toContain("mandatory");
+      expect(content).toContain("decision.question");
+      expect(content).toContain("decision.options");
       expect(content).toContain("Approve approach and create plan");
       expect(content).toContain("No implementation has started");
-      expect(content).toContain("Do not render an ordinary text question");
       expect(content).toMatch(/Fall back to a numbered list|numbered list.*when.*AskUserQuestion.*genuinely unavailable/);
       expect(content).toMatch(/same\s+assistant\s+turn/);
-      expect(content).toMatch(/A prose summary is\s+not a decision gate by itself/);
-      expect(content).toContain("multiSelect");
-      expect(content).toContain("deterministic");
-      expect(content).toMatch(/remains the[\s]*authority/);
-      expect(content).toContain("Do not infer approval from conversational tone");
-      expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
+      expect(content).toContain("automaticallyPermitted");
+      expect(content).toMatch(/Never infer, cache, or reconstruct a question/);
+      expect(content).toMatch(/Never call `AskUserQuestion` without a\s+current `decision`/);
+      expect(content).toContain("ExitPlanMode");
     }
   });
 
@@ -354,7 +353,8 @@ describe("Claude conversational workflow UX support", () => {
 
     for (const file of files) {
       const content = await readFile(file, "utf8");
-      expect(content).toContain("next.approvalActions");
+      expect(content).toContain("decision");
+      expect(content).toContain("flow next --json");
       expect(content).toMatch(/same\s+assistant\s+turn/);
       expect(content).toMatch(/summary-only triage\s+report|multiSelect = false/);
     }
@@ -465,7 +465,7 @@ describe("approval actions", () => {
     const failed = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"], "failed");
     const next = workflowNextSummary(failed);
 
-    expect(next.label).toBe("Phase completion review");
+    expect(next.label).toBe("Phase recovery decision");
     expect(next.approvalActions).toBeDefined();
     expect(next.approvalActions?.find((a) => a.intent === "repair it")?.command).toContain("leanrigor flow repair");
     expect(next.approvalActions?.find((a) => a.intent === "revise")?.command).toContain("leanrigor flow revise-plan");
@@ -511,7 +511,9 @@ async function completePhaseWithEvidence(
   const current = await resumeFlow(root, state.id);
   const phase = current.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!phase) throw new Error(`Missing phase ${phaseId}`);
-  const executable = phase.status === "ready" ? await startPhase(root, state.id, phaseId) : current;
+  const executable = ["planned", "ready"].includes(phase.status)
+    ? await startPhase(root, state.id, phaseId, { internalCapability: TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY })
+    : current;
   const runningPhase = executable.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!runningPhase) throw new Error(`Missing phase ${phaseId}`);
   for (const evidence of validationEvidenceFor(runningPhase, validationStatus)) {

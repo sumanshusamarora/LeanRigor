@@ -29,6 +29,7 @@ export async function createExecutionHarness(options: {
   workerTimeoutSeconds?: number;
   clock?: () => Date;
   approveFirstPhase?: boolean;
+  approvalPolicy?: "workflow-authorized" | "phase-by-phase";
 }): Promise<DisposableExecutionHarness> {
   const root = await gitRepo();
   const config = defaultConfig();
@@ -38,7 +39,8 @@ export async function createExecutionHarness(options: {
   const workflow = await workflowWithPlan(
     root,
     { version: 1, summary: "Test execution plan", principles: ["Use coordinator."], phases: options.phases, revisionRequests: [] },
-    options.approveFirstPhase ?? true
+    options.approveFirstPhase ?? true,
+    options.approvalPolicy ?? "workflow-authorized"
   );
   const provider = new ScriptedExecutionProvider(options.scripts, options.clock ? () => options.clock!().getTime() : undefined);
   const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, clock: options.clock });
@@ -95,7 +97,12 @@ export async function gitRepo(): Promise<string> {
   return root;
 }
 
-async function workflowWithPlan(root: string, plan: ExecutionPlan, approveFirstPhase: boolean): Promise<SequentialWorkflowState> {
+async function workflowWithPlan(
+  root: string,
+  plan: ExecutionPlan,
+  approveFirstPhase: boolean,
+  approvalPolicy: "workflow-authorized" | "phase-by-phase"
+): Promise<SequentialWorkflowState> {
   const started = await startFlow({ request: "Update bounded internal assignment validation", root, config: defaultConfig() });
   const state = await loadFlowState(root, started.id);
   state.state = "awaiting_plan_approval";
@@ -106,7 +113,7 @@ async function workflowWithPlan(root: string, plan: ExecutionPlan, approveFirstP
   state.plan = plan;
   state.approach = { required: false, approved: true, proposed: "test", preferredBecause: "test", alternatives: [], primaryRisks: [], validationStrategy: [] };
   await saveFlowState(root, state, { expectedRevision: state.revision });
-  let approved = await approvePlan(root, state.id, undefined, "workflow-authorized");
+  let approved = await approvePlan(root, state.id, undefined, approvalPolicy);
   const firstBrief = approved.phaseBriefs?.[approved.plan!.phases[0]!.id];
   if (!approveFirstPhase || !firstBrief) return approved;
   approved = await approvePhase({
@@ -116,8 +123,10 @@ async function workflowWithPlan(root: string, plan: ExecutionPlan, approveFirstP
     briefRevision: firstBrief.briefRevision,
     workflowRevision: firstBrief.workflowRevision
   });
-  for (const phase of approved.plan!.phases) {
-    approved = await preparePhaseExecutionBrief({ root, workflowId: approved.id, phaseId: phase.id });
+  if (approvalPolicy === "workflow-authorized") {
+    for (const phase of approved.plan!.phases) {
+      approved = await preparePhaseExecutionBrief({ root, workflowId: approved.id, phaseId: phase.id });
+    }
   }
   return approved;
 }

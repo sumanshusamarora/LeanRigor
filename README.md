@@ -57,8 +57,16 @@ LeanRigor approves the overall Workflow Plan first, then performs bounded
 read-only repository inspection and persists a validated, exact-revision Phase
 Execution Brief before phase approval. Shallow briefs fail closed, revision
 feedback supersedes prior approval, and material scope or risk changes remain
-structured and visible. Propagating the approved brief into every provider and
-hardening every dispatch entry point are the next execution-lifecycle phase.
+structured and visible. One central eligibility guard distinguishes
+dependency-ready from dispatch-ready phases, requires exact current brief
+approval and workspace preparation, and binds provider input and results to the
+approved brief and workspace identities. Completion/controller terminology and
+the installed conversational lifecycle use one persisted decision envelope:
+controllers refresh after every transition, render exact persisted options,
+present provider completion, completion-gate acceptance, and integration
+separately, and use the persisted phase-result view rather than normal-path
+worktree inspection. A bundled-runtime scripted Rigorous smoke verifies the
+transition through a fresh Phase 2 approval decision.
 
 📖 **New to LeanRigor?** Follow the [first-workflow guide](docs/first-workflow.md) for a step-by-step walkthrough — from installation to your first commit proposal.
 
@@ -172,6 +180,9 @@ A provider process exiting successfully does **not** complete a phase. LeanRigor
 - Provider-neutral `ExecutionCoordinator` and `ExecutionProvider` boundary.
 - Deterministic scripted provider and disposable real-Git test harness.
 - Persisted dispatch, provider-session provenance, polling, heartbeat, timeout, cancellation, recovery, partial-diff checkpoints, result collection, completion-gate, integration, and final-review progression.
+- Exact approved-brief provider input, deterministic brief staleness, workspace preparation and bootstrap decisions, result identity checks, and write-boundary enforcement.
+- Stable exact-revision decision envelopes shared by flow, execution, polling, recovery, and integration commands.
+- Persisted phase-result presentation that separates provider completion, deterministic acceptance, and integration without normal-path main-session worktree inspection.
 - Bounded Claude CLI execution provider prototype for authenticated headless smoke testing with preserved partial progress on provider failure.
 
 ### Claude Code integration

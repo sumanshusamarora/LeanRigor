@@ -6,6 +6,7 @@ import { defaultConfig } from "../src/config/defaults.js";
 import { completionEvidenceArtifactPath, persistCompletionEvidenceArtifact, readCompletionEvidenceFile } from "../src/core/completion-evidence.js";
 import { approvePhase, approvePlan, completePhase, saveFlowState, startFlow, startPhase } from "../src/core/flow.js";
 import type { WorkflowPhase } from "../src/core/types.js";
+import { TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY } from "../src/core/dispatch-eligibility.js";
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-evidence-"));
@@ -102,7 +103,7 @@ async function runningFastPhase(): Promise<{ root: string; workflowId: string; p
     briefRevision: brief.briefRevision,
     workflowRevision: brief.workflowRevision
   });
-  const running = await startPhase(root, executing.id, "phase-1");
+  const running = await startPhase(root, executing.id, "phase-1", { internalCapability: TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY });
   const phase = running.plan?.phases[0];
   if (!phase) throw new Error("Expected phase-1");
   return { root, workflowId: running.id, phase };

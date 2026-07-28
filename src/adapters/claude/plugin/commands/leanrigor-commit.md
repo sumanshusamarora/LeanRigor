@@ -4,7 +4,7 @@ argument-hint: "[workflow-id]"
 allowed-tools: AskUserQuestion, Bash(leanrigor *)
 ---
 
-<!-- generated_by: leanrigor | asset_version: 6 -->
+<!-- generated_by: leanrigor | asset_version: 7 -->
 # /leanrigor-commit
 
 Show the persisted LeanRigor commit proposal without executing it.

@@ -63,11 +63,12 @@ Primary conversational workflow entry point. It:
 3. presents a post-triage approach gate for Standard and Rigorous work with
    approve, revise, view-details, and cancel actions, and states that no
    implementation has started;
-4. creates and presents the phased plan for explicit approval;
-5. advances provider-driven coordinator execution or the approved manual fallback;
-6. reports persisted phase-gate outcomes rather than model confidence;
-7. advances through integration, combined validation, and final integrated review;
-8. presents a commit proposal without creating the final commit or pushing.
+4. separately approves the Workflow Plan and exact detailed Phase Execution Brief;
+5. refreshes the normalized persisted decision envelope after every transition;
+6. advances provider-driven coordinator execution only when the envelope permits it;
+7. reports provider, completion-gate, and integration outcomes from persisted phase results;
+8. generates the next phase brief after integration or advances through final validation and review;
+9. records explicit final completion without creating the final commit or pushing.
 
 ### `/leanrigor:init`
 
@@ -81,8 +82,8 @@ Shows or advances the current approach and plan. It can accept revision feedback
 
 ### `/leanrigor:status`
 
-Reports the persisted workflow state, selected mode, current phase, provider
-status, completion gate, integration status, validation status, pending user
+Reports the normalized persisted status, selected mode, current phase, provider
+status, completion gate, integration status, validation status, exact pending user
 decision, blocker, and next safe action. During execution it keeps the
 plan-order `recommendedNextPhase` separate from
 `otherDependencyReadyPhases`; later ready phases are not the primary action
@@ -90,7 +91,9 @@ unless the user explicitly selects out-of-order execution.
 
 ### `/leanrigor:review`
 
-Handles phase-completion review outcomes and final integrated review. It records review state rather than creating a second independent review workflow.
+Uses `flow phase-result` for phase evidence and handles persisted recovery or
+final integrated review decisions. It does not inspect phase worktrees in the
+normal path.
 
 ### `/leanrigor:commit`
 
@@ -122,6 +125,11 @@ Provider process success alone does not complete a phase.
 Provider-owned phase leases are completed through the coordinator. The
 interactive Claude session must not infer, probe, or reuse the provider lease
 owner string to call `phase-complete` directly.
+
+The main Claude session refreshes `flow next --json` after each mutation and
+renders its exact question/options when a decision exists. It does not cache
+question state, invent a `Continue` gate, or call AskUserQuestion without a
+persisted decision.
 
 Current providers:
 
@@ -296,6 +304,7 @@ leanrigor flow active --json --root /path/to/repository
 leanrigor flow next <workflow-id> --json --root /path/to/repository
 leanrigor flow execution-status <workflow-id> --json --root /path/to/repository
 leanrigor flow execution-poll <workflow-id> --provider claude-cli --json --root /path/to/repository
+leanrigor flow phase-result <workflow-id> <phase-id> --json --root /path/to/repository
 leanrigor flow workspace-status <workflow-id> --json --root /path/to/repository
 leanrigor flow integration-status <workflow-id> --json --root /path/to/repository
 leanrigor flow status <workflow-id> --json --root /path/to/repository

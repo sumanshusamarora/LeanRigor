@@ -141,7 +141,8 @@ You:     /leanrigor:start Fix the typo in the README
 Claude:  [triage summary] Fast mode. Here is the plan: [one phase]. Approve?
 You:     approve
 Claude:  [executes the phase, records evidence, presents completion gate]
-         Phase complete. Running final integrated review…
+         Provider completed. Completion gate passed. Phase accepted.
+         Integration completed. Running final integrated review…
          [review summary]
          Commit proposal: [suggested message]. Review and commit when ready.
 ```

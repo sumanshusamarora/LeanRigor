@@ -32,6 +32,7 @@ import type { PlanningProvider } from "../src/core/planning-runner.js";
 import type { TriageProvider } from "../src/core/triage-runner.js";
 import type { CriterionCompletionEvidence, ModelTriageRecommendation, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
 import { workflowNextSummary } from "../src/core/ux.js";
+import { TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY } from "../src/core/dispatch-eligibility.js";
 import recoveredRejectedPlan from "./fixtures/recovered-rejected-plan.json" with { type: "json" };
 
 async function tempRepo(): Promise<string> {
@@ -848,7 +849,7 @@ describe("sequential workflow orchestration", () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
     const executing = await approvePlan(root, started.id);
-    const running = await startPhase(root, executing.id, "phase-1", { ownerId: "owner-a" });
+    const running = await startPhase(root, executing.id, "phase-1", { ownerId: "owner-a", internalCapability: TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY });
 
     await expect(completePhase({
       root,
@@ -873,11 +874,11 @@ describe("sequential workflow orchestration", () => {
     const planned = await approveApproach(root, started.id);
     const executing = await approvePlan(root, planned.id);
 
-    expect(executing.plan?.phases.map((phase) => phase.status)).toEqual(["ready", "planned"]);
+    expect(executing.plan?.phases.map((phase) => phase.status)).toEqual(["planned", "planned"]);
 
     const afterPhase1 = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"]);
     expect(afterPhase1.state).toBe("executing");
-    expect(afterPhase1.plan?.phases.map((phase) => phase.status)).toEqual(["completed", "ready"]);
+    expect(afterPhase1.plan?.phases.map((phase) => phase.status)).toEqual(["completed", "planned"]);
     expect(afterPhase1.plan?.phases[0]?.completion?.dependentPhasesMayProceed).toBe(true);
   });
 
@@ -885,7 +886,7 @@ describe("sequential workflow orchestration", () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
     const executing = await approvePlan(root, started.id);
-    await startPhase(root, executing.id, "phase-1");
+    await startPhase(root, executing.id, "phase-1", { internalCapability: TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY });
 
     const gated = await completePhase({
       root,
@@ -905,7 +906,7 @@ describe("sequential workflow orchestration", () => {
     const executing = await approvePlan(root, (await approveApproach(root, started.id, defaultConfig(), undefined, undefined, {
       add: ["Backward compatibility is not required", "Tests must be updated", "All checks must pass"]
     })).id);
-    const running = await startPhase(root, executing.id, "phase-1");
+    const running = await startPhase(root, executing.id, "phase-1", { internalCapability: TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY });
     const phase = running.plan!.phases[0]!;
     for (const evidence of validationEvidenceFor(phase, "passed")) {
       await recordValidation({
@@ -966,7 +967,7 @@ describe("sequential workflow orchestration", () => {
 
     expect(repaired.plan?.phases[0]?.status).toBe("completed");
     expect(repaired.plan?.phases[0]?.validationResults.some((evidence) => evidence.status === "failed")).toBe(true);
-    expect(repaired.plan?.phases[1]?.status).toBe("ready");
+    expect(repaired.plan?.phases[1]?.status).toBe("planned");
   });
 
   it("uncertain criteria require review", async () => {
@@ -1363,7 +1364,7 @@ async function completePhaseWithEvidence(root: string, state: SequentialWorkflow
 } = {}): Promise<SequentialWorkflowState> {
     let current = await resumeFlow(root, state.id);
     const pending = current.approval?.pendingDecision;
-    if (pending?.phaseId === phaseId) {
+    if (pending?.type === "phase-brief-approval" && pending.phaseId === phaseId) {
       current = await approvePhase({
         root,
         workflowId: state.id,
@@ -1374,7 +1375,9 @@ async function completePhaseWithEvidence(root: string, state: SequentialWorkflow
     }
     const phase = current.plan?.phases.find((candidate) => candidate.id === phaseId);
     if (!phase) throw new Error(`Missing phase ${phaseId}`);
-  const executable = phase.status === "ready" ? await startPhase(root, state.id, phaseId) : current;
+  const executable = ["planned", "ready"].includes(phase.status)
+    ? await startPhase(root, state.id, phaseId, { internalCapability: TRUSTED_INTERNAL_PHASE_EXECUTION_CAPABILITY })
+    : current;
   const runningPhase = executable.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!runningPhase) throw new Error(`Missing phase ${phaseId}`);
   for (const evidence of validationEvidenceFor(runningPhase, options.validationStatus ?? "passed")) {

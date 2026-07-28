@@ -95,7 +95,11 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       && input.resume.providerSession.resumePermitted;
     const sessionId = canResume ? input.resume!.providerSession!.sessionId : randomUUID();
     const resumeMode = canResume ? "same-session" : input.resume ? "compact-retry" : "fresh";
-    const prompt = resumeMode === "same-session" ? resumePrompt(input) : phaseWorkerPrompt(input);
+    const executionInput: PhaseExecutionInput = {
+      ...input,
+      executionIdentity: { ...input.executionIdentity, providerSessionId: sessionId }
+    };
+    const prompt = resumeMode === "same-session" ? resumePrompt(executionInput) : phaseWorkerPrompt(executionInput);
     const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
     const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
     const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
@@ -147,6 +151,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       workspacePath: input.workspacePath,
       startedAt,
       lastKnownStatus: "running",
+      executionIdentity: executionInput.executionIdentity,
       providerMetadata: providerMetadata as unknown as Record<string, unknown>,
       providerSession: {
         providerId: this.id,
@@ -248,8 +253,8 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
     const metadata = claudeMetadata(handle);
     if (metadata) {
       const status = await readCollectibleStatus(handle);
-      if (status?.status === "timed_out") return emptyResult("timed_out", "Claude execution timed out.");
-      if (status?.status === "cancelled") return emptyResult("cancelled", "Claude execution was cancelled.");
+      if (status?.status === "timed_out") return emptyResult(handle, "timed_out", "Claude execution timed out.");
+      if (status?.status === "cancelled") return emptyResult(handle, "cancelled", "Claude execution was cancelled.");
       const stdout = await readFile(metadata.stdoutPath, "utf8").catch(() => "");
       const stderr = await readFile(metadata.stderrPath, "utf8").catch(() => "");
       if (status?.status === "failed") {
@@ -550,7 +555,8 @@ function isClaudeResultEnvelope(value: unknown): boolean {
 function isPhaseExecutionResult(value: unknown): value is PhaseExecutionResult {
   if (!value || typeof value !== "object") return false;
   const result = value as PhaseExecutionResult;
-  return ["completed", "failed", "cancelled", "timed_out", "blocked"].includes(result.status)
+  return ["completed", "needs_replan", "needs_review", "failed", "cancelled", "timed_out", "blocked"].includes(result.status)
+    && Boolean(result.executionIdentity && typeof result.executionIdentity === "object")
     && typeof result.summary === "string"
     && Array.isArray(result.changedFiles)
     && Array.isArray(result.validation)
@@ -561,6 +567,24 @@ function isPhaseExecutionResult(value: unknown): value is PhaseExecutionResult {
 }
 
 function phaseExecutionResultJsonSchema(): Record<string, unknown> {
+  const executionIdentity = {
+    type: "object",
+    properties: {
+      workflowId: { type: "string" },
+      workflowRevision: { type: "number" },
+      phaseId: { type: "string" },
+      briefRevision: { type: "number" },
+      workspaceIdentity: { type: "string" },
+      workspacePath: { type: "string" },
+      baseCommit: { type: "string" },
+      constraintHash: { type: "string" },
+      providerId: { type: "string" },
+      providerSessionId: { type: "string" },
+      dispatchedAt: { type: "string" }
+    },
+    required: ["workflowId", "workflowRevision", "phaseId", "briefRevision", "workspaceIdentity", "workspacePath", "baseCommit", "constraintHash", "providerId", "dispatchedAt"],
+    additionalProperties: false
+  };
   const validation = {
     type: "object",
     properties: {
@@ -597,16 +621,18 @@ function phaseExecutionResultJsonSchema(): Record<string, unknown> {
   return {
     type: "object",
     properties: {
-      status: { enum: ["completed", "failed", "cancelled", "timed_out", "blocked"] },
+      status: { enum: ["completed", "needs_replan", "needs_review", "failed", "cancelled", "timed_out", "blocked"] },
+      executionIdentity,
       summary: { type: "string" },
       changedFiles: { type: "array", items: { type: "string" } },
       validation: { type: "array", items: validation },
       criterionEvidence: { type: "array", items: criterion },
       assumptions: { type: "array", items: { type: "string" } },
       scopeDeviations: { type: "array", items: deviation },
+      discoveredMaterialChanges: { type: "array", items: { type: "object" } },
       remainingRisks: { type: "array", items: { type: "string" } }
     },
-    required: ["status", "summary", "changedFiles", "validation", "criterionEvidence", "assumptions", "scopeDeviations", "remainingRisks"],
+    required: ["status", "executionIdentity", "summary", "changedFiles", "validation", "criterionEvidence", "assumptions", "scopeDeviations", "discoveredMaterialChanges", "remainingRisks"],
     additionalProperties: false
   };
 }
@@ -626,12 +652,14 @@ function failureResult(handle: ExecutionHandle, metadata: PersistedClaudeMetadat
   const terminalReason = typeof diagnostics.providerErrorCode === "string" ? diagnostics.providerErrorCode : typeof diagnostics.terminalReason === "string" ? diagnostics.terminalReason : "provider_process_exited";
   return {
     status: "failed",
+    executionIdentity: handle.executionIdentity,
     summary: `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`,
     changedFiles: [],
     validation: [],
     criterionEvidence: [],
     assumptions: [],
     scopeDeviations: [],
+    discoveredMaterialChanges: [],
     remainingRisks: [],
     providerDiagnostics: diagnostics
   };
@@ -772,8 +800,19 @@ function errorCode(error: unknown): string | undefined {
   return error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : undefined;
 }
 
-function emptyResult(status: PhaseExecutionResult["status"], summary: string): PhaseExecutionResult {
-  return { status, summary, changedFiles: [], validation: [], criterionEvidence: [], assumptions: [], scopeDeviations: [], remainingRisks: [] };
+function emptyResult(handle: ExecutionHandle, status: PhaseExecutionResult["status"], summary: string): PhaseExecutionResult {
+  return {
+    status,
+    executionIdentity: handle.executionIdentity,
+    summary,
+    changedFiles: [],
+    validation: [],
+    criterionEvidence: [],
+    assumptions: [],
+    scopeDeviations: [],
+    discoveredMaterialChanges: [],
+    remainingRisks: []
+  };
 }
 
 function redactDiagnostics(value: Record<string, unknown>): Record<string, unknown> {

@@ -1,6 +1,7 @@
 import { listFlows, nextActions, resumeFlow } from "./flow.js";
 import { approvalRecommendation } from "./approval.js";
-import type { CommitPlan, SequentialWorkflowState, WorkflowLifecycleState, WorkflowMode, WorkflowPhase } from "./types.js";
+import { workflowDecisionEnvelope } from "./workflow-envelope.js";
+import type { CommitPlan, SequentialWorkflowState, WorkflowDecisionEnvelope, WorkflowLifecycleState, WorkflowMode, WorkflowPhase } from "./types.js";
 
 export interface WorkflowListSummary {
   id: string;
@@ -26,6 +27,7 @@ export interface ApprovalAction {
 
 export interface WorkflowNextSummary {
   workflow: WorkflowListSummary;
+  decisionEnvelope: WorkflowDecisionEnvelope;
   label: string;
   userDecisionRequired: boolean;
   pendingDecision: string | null;
@@ -70,6 +72,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
   const phase = currentPhaseObject(state);
   const base = {
     workflow,
+    decisionEnvelope: workflowDecisionEnvelope(state),
     troubleshooting: {
       showCommandsOnlyOnFailure: true as const,
       internalOperations: internalOperationsFor(state)
@@ -233,8 +236,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         }
       };
     }
-    const needsPhaseApproval = phase.status === "ready"
-      && Boolean(brief)
+    const needsPhaseApproval = Boolean(brief)
       && pendingDecision?.type === "phase-brief-approval"
       && pendingDecision.status === "pending"
       && pendingDecision.phaseId === phase.id
@@ -296,9 +298,43 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         }
       };
     }
+    if (pendingDecision?.type === "workspace-bootstrap-approval" && pendingDecision.status === "pending" && pendingDecision.phaseId === phase.id) {
+      const root = quoteArg(state.root);
+      return {
+        ...base,
+        label: "Workspace preparation approval",
+        userDecisionRequired: true,
+        pendingDecision: pendingDecision.question,
+        pendingAction: `Review the exact command and risks for preparation revision ${pendingDecision.preparationRevision}. No provider has been dispatched.`,
+        allowedIntents: ["approve bootstrap", "retry", "view details", "cancel"],
+        approvalActions: [
+          {
+            label: "Approve bootstrap",
+            intent: "approve bootstrap",
+            command: `leanrigor flow approve-bootstrap ${state.id} ${phase.id} --brief-revision ${pendingDecision.briefRevision} --preparation-revision ${pendingDecision.preparationRevision} --workspace-identity ${quoteArg(pendingDecision.workspaceIdentity)} --command ${quoteArg(pendingDecision.command)} --root ${root}`,
+            description: "Approve only this command for this brief, workspace, and preparation revision."
+          },
+          { label: "Retry preparation", intent: "retry", command: `leanrigor flow execute-next ${state.id} --provider auto --root ${root}`, description: "Rerun deterministic preparation without authorising a different command." },
+          { label: "View full details", intent: "view details", command: `leanrigor flow status ${state.id} --root ${root}`, description: "Show preparation evidence, command risk, and exact identities." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel without dispatching a provider." }
+        ],
+        summary: {
+          phase: phase.id,
+          dependencyReady: true,
+          dispatchReady: false,
+          blocker: "workspace_bootstrap_pending",
+          briefRevision: pendingDecision.briefRevision,
+          preparationRevision: pendingDecision.preparationRevision,
+          workspaceIdentity: pendingDecision.workspaceIdentity,
+          command: pendingDecision.command,
+          riskSummary: pendingDecision.riskSummary,
+          providerDispatched: false
+        }
+      };
+    }
     return {
       ...base,
-      label: needsIntervention ? "Phase completion review" : "Phase execution",
+      label: needsIntervention ? "Phase recovery decision" : "Phase execution status",
       userDecisionRequired: needsIntervention,
       pendingDecision: needsIntervention ? phase.completion?.reason ?? "The active phase needs intervention." : null,
       pendingAction: phase.status === "ready" && readiness.recommendedNextPhase

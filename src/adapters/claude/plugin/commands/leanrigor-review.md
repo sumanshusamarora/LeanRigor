@@ -4,7 +4,7 @@ argument-hint: "[workflow-id or review response]"
 allowed-tools: AskUserQuestion, Bash(leanrigor *)
 ---
 
-<!-- generated_by: leanrigor | asset_version: 6 -->
+<!-- generated_by: leanrigor | asset_version: 7 -->
 # /leanrigor-review
 
 Show or perform the valid LeanRigor review step.
@@ -16,11 +16,13 @@ AskUserQuestion selector contract at every decision gate.
 
 1. Use `leanrigor flow next --json` internally for the active or supplied
    workflow.
-2. If a phase gate needs attention, render `Phase completion review` with
-   failed/uncertain criteria, validation state, scope deviations, and required
-   repair/replan action.
-3. If all phases passed and final review is pending, inspect the current diff,
-   perform the configured integrated review, and record the result internally.
+2. If a phase gate needs attention, read `leanrigor flow phase-result
+   <workflow-id> <phase-id> --json` and render provider completion,
+   identity/scope checks, completion-gate acceptance, and integration
+   separately with the required recovery action.
+3. If all phases are accepted and integrated and final review is pending, use
+   persisted integrated evidence and record the configured review result.
+   Do not inspect phase worktrees in the normal path.
 4. If a commit proposal already exists, show `Commit proposal`; do not create a
    duplicate review workflow.
 

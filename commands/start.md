@@ -19,9 +19,8 @@ Behaviour:
 
 1. Read active workflow selection with `flow active --json`.
 2. If `$ARGUMENTS` is a new coding request and no active workflow exists, start
-   a workflow with `flow start --request-file <request-file> --provider auto`, then inspect the
-   returned `next` object when present or immediately read `flow next --json`
-   when it is absent. If `next.approvalActions` exists, call `AskUserQuestion`
+   a workflow with `flow start --request-file <request-file> --provider auto`, then refresh with
+   `flow next --json`. If its normalized `decision` exists, call `AskUserQuestion`
    in the same assistant turn before replying. Do not end the turn from raw
    `flow start` JSON or from a summary-only triage report. Do not use
    `--provider deterministic` unless the user explicitly asks for deterministic
@@ -31,7 +30,7 @@ Behaviour:
 4. If multiple active workflows exist, use `AskUserQuestion` for the workflow
    selector when available. Do not render an ordinary text question first.
    Do not guess.
-5. At approval gates, render `Approach approval` or `Plan approval` with a
+5. At approval gates, render the persisted envelope `status` with a
    concise summary and use `AskUserQuestion` for the action selector when
    available. The post-triage approach selector options are exactly `Approve
    approach and create plan`, `Revise approach`, `View workflow details`, and
@@ -42,7 +41,8 @@ Behaviour:
    `--remove-constraint`, or `--override-constraint "<old> => <new>"` for any
    user-supplied approval constraint changes. Do not use
    `--provider deterministic` unless the user explicitly asks for deterministic
-   planning. Continue to the next meaningful gate before responding.
+   planning. After every transition, refresh with `flow next --json`; invoke
+   another operation only when `nextOperation.automaticallyPermitted` is true.
    At `awaiting_clarification`, render `Question: <persisted question>`
    verbatim and `Why this matters: <persisted reason>` when present. Do not
    replace the question with the reason or leave a blank prompt after "before
@@ -61,12 +61,12 @@ Behaviour:
    the user explicitly asks for a scripted/deterministic execution provider. Do
    not edit the original working tree or implement the phase directly in
    coordinator mode.
-8. If provider dispatch cannot start, present explicit recovery choices:
-   retry configured provider, use another available provider, switch to manual
-   execution, or cancel. Use `execution.mode = manual` only after explicit user
-   selection. In manual mode, work only in the active phase workspace and record
-   validation/completion evidence before presenting a phase gate.
-9. Render the persisted final review and commit proposal conversationally. Never commit or
+8. Present only persisted recovery choices. Never switch to manual execution
+   or main-session implementation unless a persisted decision offers it and the
+   user explicitly selects it. Use `flow phase-result <workflow-id> <phase-id>
+   --json` for normal completion presentation; do not inspect phase worktrees.
+9. Render provider completion, completion-gate acceptance, integration, final
+   validation, final review, and user-approved completion separately. Never commit or
    push automatically.
 
 At every LeanRigor decision gate, `AskUserQuestion` is mandatory when the tool
@@ -76,7 +76,9 @@ approval from conversational tone. Do not use
 `ExitPlanMode` as a substitute for LeanRigor approval.
 Use the selector input shape `questions[0].question`, `questions[0].header`,
 `questions[0].options`, and `questions[0].multiSelect = false`, with option
-labels and descriptions copied from persisted `approvalActions` in order.
+labels and descriptions copied from persisted `decision.options` in order.
+Use `decision.question` verbatim. Never call `AskUserQuestion` without a
+current decision or reconstruct one from conversational context.
 
 Never compensate for an unavailable workflow transition by narrating that the
 workflow is complete. Report the persisted state and the exact blocker.

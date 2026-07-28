@@ -18,9 +18,10 @@ Behaviour:
 3. If multiple active workflows exist, show ID, request, state, mode, and
    updated time in `AskUserQuestion` option descriptions when available. Do not
    render an ordinary text question first.
-4. Render a concise status report: workflow ID, request, mode, state, current
-   phase, pending decision, completion-gate status, repair attempts, blockers,
-   and next action.
+4. Render the normalized envelope `status` and exact `decision` when present.
+   For phase evidence, use `flow phase-result <workflow-id> <phase-id> --json`
+   and keep provider completion, completion-gate acceptance, and integration
+   distinct.
 
 Do not print raw JSON or shell commands in normal status output. Show underlying
 commands only in troubleshooting mode or when explicitly requested.

@@ -19,9 +19,8 @@ Behaviour:
 1. Discover active workflows with `flow active --json`.
 2. If one active workflow exists, inspect it with `flow next --json`.
 3. If no active workflow exists and `$ARGUMENTS` is a coding request, start one
-   with `flow start --request-file <request-file> --provider auto`, then inspect the returned
-   `next` object when present or immediately read `flow next --json` when it is
-   absent. If `next.approvalActions` exists, call `AskUserQuestion` in the same
+   with `flow start --request-file <request-file> --provider auto`, then refresh with
+   `flow next --json`. If the normalized `decision` exists, call `AskUserQuestion` in the same
    assistant turn before replying.
 4. If multiple active workflows exist, use `AskUserQuestion` for the workflow
    selector when available. Do not render an ordinary text question first.
@@ -52,6 +51,8 @@ approval from conversational tone. Do not use
 `ExitPlanMode` as a substitute for LeanRigor approval.
 Use the selector input shape `questions[0].question`, `questions[0].header`,
 `questions[0].options`, and `questions[0].multiSelect = false`, with option
-labels and descriptions copied from persisted `approvalActions` in order.
+labels and descriptions copied from persisted `decision.options` in order.
+Use `decision.question` verbatim. Refresh after every transition and do not
+reconstruct questions from conversational context.
 
 $ARGUMENTS

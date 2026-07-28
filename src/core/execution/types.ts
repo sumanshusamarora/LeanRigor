@@ -1,9 +1,23 @@
-import type { CriterionCompletionEvidence, ModelProfile, PhaseExecutionRecordStatus, ValidationEvidence, WorkflowMode, WorkspacePreparation } from "../types.js";
+import type {
+  CriterionCompletionEvidence,
+  MaterialPlanChange,
+  ModelProfile,
+  PhaseExecutionBrief,
+  PhaseExecutionIdentity,
+  PhaseExecutionRecordStatus,
+  PhaseBriefInspectionResult,
+  ValidationEvidence,
+  WorkflowDecisionEnvelope,
+  WorkflowMode,
+  WorkspacePreparation
+} from "../types.js";
+import type { PersistedPhaseResultView } from "../workflow-envelope.js";
 
 export type ExecutionStatusState = "queued" | "running" | "completed" | "failed" | "cancelled" | "timed_out" | "blocked" | "unknown";
 export type ExecutionNextAction =
   | "dispatch"
   | "poll"
+  | "refresh"
   | "await_user"
   | "repair"
   | "review"
@@ -83,9 +97,23 @@ export interface PhaseExecutionInput {
   workflowId: string;
   workflowRevision: number;
   phaseId: string;
+  briefRevision: number;
+  executionIdentity: PhaseExecutionIdentity;
+  approvedBrief: PhaseExecutionBrief;
   objective: string;
+  deliverable: string;
+  currentBehaviour?: string;
+  implementationApproach: string;
   acceptanceCriteria: string[];
+  testObligations: string[];
   dependencies: string[];
+  assumptions: string[];
+  exclusions: string[];
+  risks: string[];
+  materialChanges: MaterialPlanChange[];
+  relevantFiles: string[];
+  relevantSymbols: string[];
+  inspectionProvenance: PhaseBriefInspectionResult["provenance"];
   selectedMode: WorkflowMode;
   modelTier: ModelProfile;
   workspacePath: string;
@@ -133,6 +161,7 @@ export interface ExecutionHandle {
   providerMetadata?: Record<string, unknown>;
   providerSession?: ProviderSessionRef;
   nativeSessionId?: string;
+  executionIdentity: PhaseExecutionIdentity;
 }
 
 export interface ExecutionStatus {
@@ -158,13 +187,15 @@ export interface ScopeDeviation {
 }
 
 export type PhaseExecutionResult = {
-  status: "completed" | "failed" | "cancelled" | "timed_out" | "blocked";
+  status: "completed" | "needs_replan" | "needs_review" | "failed" | "cancelled" | "timed_out" | "blocked";
+  executionIdentity: PhaseExecutionIdentity;
   summary: string;
   changedFiles: string[];
   validation: ExecutionValidationResult[];
   criterionEvidence: CriterionCompletionEvidence[];
   assumptions: string[];
   scopeDeviations: ScopeDeviation[];
+  discoveredMaterialChanges: MaterialPlanChange[];
   remainingRisks: string[];
   providerDiagnostics?: Record<string, unknown>;
 };
@@ -194,13 +225,12 @@ export interface ProviderSessionSummary {
   resolvedModel?: string;
 }
 
-export interface CoordinatorResult {
-  workflowId: string;
+export interface CoordinatorResult extends WorkflowDecisionEnvelope {
   revision: number;
-  state: string;
   executionMode?: "coordinator" | "manual";
   provider?: string;
   providerFallbackReason?: string;
+  phaseResult?: PersistedPhaseResultView;
   runningPhase?: string;
   lastProviderStatus?: string;
   phaseGateStatus?: string;

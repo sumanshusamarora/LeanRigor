@@ -5,6 +5,7 @@ import path from "node:path";
 import { ClaudeCliExecutionProvider, parseClaudeResult } from "../src/core/execution/claude-provider.js";
 import { ScriptedExecutionProvider } from "../src/core/execution/scripted-provider.js";
 import type { PhaseExecutionInput } from "../src/core/execution/types.js";
+import type { PhaseExecutionBrief } from "../src/core/types.js";
 
 describe("scripted execution provider", () => {
   it("dispatches, reports status, collects evidence, and cancels deterministically", async () => {
@@ -278,12 +279,67 @@ describe("Claude CLI execution provider", () => {
 });
 
 function input(workspacePath: string): PhaseExecutionInput {
+  const executionIdentity = {
+    workflowId: "lr-test",
+    workflowRevision: 1,
+    phaseId: "phase-api",
+    briefRevision: 1,
+    workspaceIdentity: "workspace-test",
+    workspacePath,
+    baseCommit: "base-test",
+    constraintHash: "constraints-test",
+    providerId: "claude-cli",
+    dispatchedAt: "2026-01-01T00:00:00.000Z"
+  };
+  const approvedBrief: PhaseExecutionBrief = {
+    phaseId: "phase-api",
+    workflowRevision: 1,
+    briefRevision: 1,
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    objective: "Implement API.",
+    deliverable: "Update src/api.ts so the API works.",
+    currentBehaviour: "The API is not implemented.",
+    implementationApproach: "1. Inspect src/api.ts.\n2. Update the API contract.\n3. Run npm test.",
+    readAreas: ["src/api.ts"],
+    writeAreas: ["src/api.ts"],
+    relevantFiles: ["src/api.ts"],
+    relevantSymbols: ["api"],
+    dependencies: [],
+    assumptions: [],
+    exclusions: [],
+    acceptanceCriteria: ["API works."],
+    testObligations: ["Targeted API regression test."],
+    validationCommands: ["npm test"],
+    risks: ["No additional material risk was found."],
+    inspectionRequest: { workflowId: "lr-test", phaseId: "phase-api", workflowRevision: 1, questions: [], allowedPaths: ["src/api.ts"], scopeExpansions: [], maxReads: 1, maxBytes: 1024, timeoutSeconds: 1 },
+    inspectionResult: { status: "completed", findings: [], filesRead: ["src/api.ts"], bytesRead: 1, unresolvedQuestions: [], warnings: [], relevantFiles: ["src/api.ts"], relevantSymbols: ["api"], validationCommands: ["npm test"], completedAt: "2026-01-01T00:00:00.000Z", provenance: { source: "test" } },
+    repository: { baseCommit: "base-test", repositoryRevision: "base-test", constraintHash: "constraints-test", inspectionResultId: "inspection-test", inspectedPaths: ["src/api.ts"] },
+    generation: { source: "deterministic", provider: "test", modelTier: "medium", warnings: [] },
+    validation: { status: "valid", diagnostics: [], repairAttempts: 0, validatedAt: "2026-01-01T00:00:00.000Z" },
+    revisionRequests: [],
+    materialChangesFromWorkflowPlan: [],
+    approvalStatus: "approved"
+  };
   return {
     workflowId: "lr-test",
     workflowRevision: 1,
     phaseId: "phase-api",
+    briefRevision: 1,
+    executionIdentity,
+    approvedBrief,
     objective: "Implement API.",
+    deliverable: approvedBrief.deliverable,
+    currentBehaviour: approvedBrief.currentBehaviour,
+    implementationApproach: approvedBrief.implementationApproach,
     acceptanceCriteria: ["API works."],
+    testObligations: ["Targeted API regression test."],
+    assumptions: [],
+    exclusions: [],
+    risks: ["No additional material risk was found."],
+    materialChanges: [],
+    relevantFiles: ["src/api.ts"],
+    relevantSymbols: ["api"],
+    inspectionProvenance: { source: "test" },
     approvedConstraints: [],
     dependencies: [],
     selectedMode: "standard",
@@ -323,12 +379,25 @@ function phaseResultJson(): string {
 function phaseResult() {
   const result = {
     status: "completed",
+    executionIdentity: {
+      workflowId: "lr-test",
+      workflowRevision: 1,
+      phaseId: "phase-api",
+      briefRevision: 1,
+      workspaceIdentity: "workspace-test",
+      workspacePath: "/tmp/workspace",
+      baseCommit: "base-test",
+      constraintHash: "constraints-test",
+      providerId: "claude-cli",
+      dispatchedAt: "2026-01-01T00:00:00.000Z"
+    },
     summary: "Verified: fake Claude completed.",
     changedFiles: ["src/math.js"],
     validation: [{ command: "npm test", exitCode: 0, status: "passed", result: "pass" }],
     criterionEvidence: [{ criterion: "API works.", status: "met", evidence: ["fake"] }],
     assumptions: [],
     scopeDeviations: [],
+    discoveredMaterialChanges: [],
     remainingRisks: []
   };
   return result;

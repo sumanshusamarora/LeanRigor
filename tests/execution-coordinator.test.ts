@@ -3,10 +3,11 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ExecutionCoordinator, detectCodeIntelligence } from "../src/core/execution/coordinator.js";
-import { completePhase, integrationStatus } from "../src/core/flow.js";
+import { approvePhase, approveWorkspaceBootstrap, completePhase, integrationStatus, preparePhaseExecutionBrief } from "../src/core/flow.js";
 import type { ExecutionProvider } from "../src/core/execution/provider.js";
 import type { PhaseExecutionInput, PhaseExecutionResult } from "../src/core/execution/types.js";
 import { phaseWorkerPrompt } from "../src/core/execution/prompt.js";
+import { workflowNextSummary } from "../src/core/ux.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("execution coordinator", () => {
@@ -30,6 +31,7 @@ describe("execution coordinator", () => {
 
   it("runs sequential phases through gates, integration, combined validation, and final-review eligibility", async () => {
     const harness = await createExecutionHarness({
+      approvalPolicy: "phase-by-phase",
       phases: [testPhase("phase-a", ["src/a.ts"]), testPhase("phase-b", ["src/b.ts"], ["phase-a"])],
       scripts: {
         "phase-a": { edits: [{ path: "src/a.ts", content: "export const a = 1;\n" }], validation: [{ command: "npm test", exitCode: 0 }] },
@@ -38,12 +40,23 @@ describe("execution coordinator", () => {
     });
 
     expect((await harness.coordinator.runNext()).running.map((phase) => phase.phaseId)).toEqual(["phase-a"]);
-    expect((await harness.coordinator.poll()).nextAction).toBe("dispatch");
+    expect((await harness.coordinator.poll()).nextAction).toBe("await_user");
+    const phaseBDecision = (await currentState(harness)).approval?.pendingDecision;
+    expect(phaseBDecision).toMatchObject({ type: "phase-brief-approval", phaseId: "phase-b", status: "pending" });
+    if (!phaseBDecision || phaseBDecision.type !== "phase-brief-approval") throw new Error("expected Phase B brief approval");
+    await approvePhase({
+      root: harness.root,
+      workflowId: harness.workflow.id,
+      phaseId: "phase-b",
+      briefRevision: phaseBDecision.briefRevision,
+      workflowRevision: phaseBDecision.workflowRevision
+    });
     expect((await harness.coordinator.runNext()).running.map((phase) => phase.phaseId)).toEqual(["phase-b"]);
     const result = await harness.coordinator.poll();
 
     const state = await currentState(harness);
-    expect(result.nextAction).toBe("final_review");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "final-review" });
     expect(state.state).toBe("reviewing");
     expect(integrationStatus(state).finalReviewEligible).toBe(true);
     await expect(readFile(path.join(state.git!.integration.path, "src", "a.ts"), "utf8")).resolves.toSatisfy((content) => content.replaceAll("\r\n", "\n") === "export const a = 1;\n");
@@ -118,10 +131,11 @@ describe("execution coordinator", () => {
     const result = await harness.coordinator.poll();
     const state = await currentState(harness);
 
-    expect(result.nextAction).toBe("resolve_conflict");
-    expect(state.git?.integration.integratedPhaseIds).toEqual(["phase-left"]);
-    expect(state.git?.integration.conflictingPhaseIds).toEqual(["phase-right"]);
-    expect(state.execution.records["phase-right"]?.status).toBe("result_recorded");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "material-drift-review" });
+    expect(state.git?.integration.integratedPhaseIds).toEqual([]);
+    expect(state.plan?.phases.every((phase) => phase.status === "needs_replan")).toBe(true);
+    expect(state.execution.records["phase-right"]?.status).toBe("blocked");
   });
 
   it("keeps failed validation out of integration", async () => {
@@ -136,7 +150,8 @@ describe("execution coordinator", () => {
     const result = await harness.coordinator.poll();
     const state = await currentState(harness);
 
-    expect(result.nextAction).toBe("repair");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "execution-recovery" });
     expect(state.plan?.phases[0]?.status).toBe("needs_repair");
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
   });
@@ -155,6 +170,23 @@ describe("execution coordinator", () => {
     await writeFile(path.join(harness.root, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": { devDependencies: { vitest: "^3.2.0" } } } }));
     await harness.git(["add", "package.json", "package-lock.json"]);
     await harness.git(["commit", "-m", "add locked dependencies"]);
+    const refreshed = await preparePhaseExecutionBrief({
+      root: harness.root,
+      workflowId: harness.workflow.id,
+      phaseId: "phase-a",
+      config: harness.config,
+      refresh: true,
+      requireApproval: true
+    });
+    const decision = refreshed.approval?.pendingDecision;
+    if (!decision || decision.type !== "phase-brief-approval") throw new Error("expected refreshed phase approval");
+    await approvePhase({
+      root: harness.root,
+      workflowId: harness.workflow.id,
+      phaseId: "phase-a",
+      briefRevision: decision.briefRevision,
+      workflowRevision: decision.workflowRevision
+    });
 
     const result = await harness.coordinator.dispatchReady();
     const state = await currentState(harness);
@@ -171,6 +203,51 @@ describe("execution coordinator", () => {
       approvalRequired: true
     });
     expect(state.execution.records["phase-a"]).toBeUndefined();
+    expect(state.approval?.pendingDecision).toMatchObject({
+      type: "workspace-bootstrap-approval",
+      phaseId: "phase-a",
+      briefRevision: state.phaseBriefs?.["phase-a"]?.briefRevision,
+      preparationRevision: workspace?.preparation?.preparationRevision,
+      workspaceIdentity: workspace?.preparation?.workspaceIdentity,
+      command: "npm ci",
+      status: "pending"
+    });
+    expect(workflowNextSummary(state)).toMatchObject({
+      label: "Workspace preparation approval",
+      userDecisionRequired: true,
+      summary: {
+        dependencyReady: true,
+        dispatchReady: false,
+        blocker: "workspace_bootstrap_pending",
+        providerDispatched: false
+      }
+    });
+    const bootstrapDecision = state.approval?.pendingDecision;
+    if (!bootstrapDecision || bootstrapDecision.type !== "workspace-bootstrap-approval") throw new Error("expected bootstrap approval");
+    await expect(approveWorkspaceBootstrap({
+      root: harness.root,
+      workflowId: harness.workflow.id,
+      phaseId: "phase-a",
+      briefRevision: bootstrapDecision.briefRevision,
+      preparationRevision: bootstrapDecision.preparationRevision,
+      workspaceIdentity: bootstrapDecision.workspaceIdentity,
+      command: "npm install"
+    })).rejects.toThrow(/no exact pending bootstrap approval/);
+    const approvedBootstrap = await approveWorkspaceBootstrap({
+      root: harness.root,
+      workflowId: harness.workflow.id,
+      phaseId: "phase-a",
+      briefRevision: bootstrapDecision.briefRevision,
+      preparationRevision: bootstrapDecision.preparationRevision,
+      workspaceIdentity: bootstrapDecision.workspaceIdentity,
+      command: bootstrapDecision.command
+    });
+    expect(approvedBootstrap.approval?.pendingDecision).toBeUndefined();
+    expect(approvedBootstrap.approval?.decisionHistory.at(-1)).toMatchObject({
+      type: "workspace-bootstrap-approval",
+      status: "approved",
+      command: "npm ci"
+    });
     await expect(readFile(path.join(workspace!.path, "src", "a.ts"), "utf8")).rejects.toThrow();
   });
 
@@ -197,7 +274,8 @@ describe("execution coordinator", () => {
           leaseOwnerId: input.leaseOwnerId,
           workspacePath: input.workspacePath,
           startedAt: new Date().toISOString(),
-          lastKnownStatus: "running"
+          lastKnownStatus: "running",
+          executionIdentity: input.executionIdentity
         };
       },
       async getStatus() {
@@ -217,6 +295,12 @@ describe("execution coordinator", () => {
     expect(dispatched.dispatched).toHaveLength(1);
     expect(capturedInput).toMatchObject({
       phaseId: "phase-a",
+      briefRevision: state.phaseBriefs?.["phase-a"]?.briefRevision,
+      approvedBrief: {
+        phaseId: "phase-a",
+        approvalStatus: "approved",
+        validation: { status: "valid" }
+      },
       leaseOwnerId: lease.ownerId,
       selectedMode: "standard",
       workspacePreparation: {
@@ -229,6 +313,9 @@ describe("execution coordinator", () => {
       }
     });
     const prompt = phaseWorkerPrompt(capturedInput!);
+    expect(prompt).toContain("This is the approved Phase Execution Brief.");
+    expect(prompt).toContain(`Approved brief revision: ${capturedInput!.briefRevision}`);
+    expect(prompt).toContain("If implementation reveals material scope, risk, dependency, or architecture changes, stop and return needs_replan.");
     expect(prompt).toContain("Workspace status: prepared");
     expect(prompt).toContain("Do not install dependencies unless LeanRigor explicitly marks preparation incomplete");
     expect(lease.ownerType).toBe("agent");
@@ -257,7 +344,8 @@ describe("execution coordinator", () => {
     const state = await currentState(harness);
     const workspace = state.git!.phaseWorkspaces["phase-a"]!.path;
 
-    expect(result.nextAction).toBe("review");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "execution-recovery" });
     expect(state.execution.records["phase-a"]?.status).toBe("timed_out");
     expect(state.execution.records["phase-a"]?.checkpoint).toMatchObject({
       dirty: true,
@@ -289,8 +377,9 @@ describe("execution coordinator", () => {
     const state = await currentState(harness);
     const record = state.execution.records["phase-a"];
 
-    expect(result.nextAction).toBe("review");
-    expect(record?.status).toBe("failed");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "material-drift-review" });
+    expect(record?.status).toBe("blocked");
     expect(record?.checkpoint).toMatchObject({
       dirty: true,
       trackedModified: [],
@@ -299,7 +388,7 @@ describe("execution coordinator", () => {
     });
     expect(record?.checkpoint?.diffSummary.text).toContain("src/shared.txt");
     expect(record?.diagnostics).toMatchObject({ partialProgressPreserved: true, partialProgressAccepted: false });
-    expect(state.plan?.phases[0]?.status).toBe("needs_review");
+    expect(state.plan?.phases[0]?.status).toBe("needs_replan");
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
     await expect(readFile(path.join(state.git!.phaseWorkspaces["phase-a"]!.path, "notes.txt"), "utf8")).resolves.toBe("partial note\n");
   });
@@ -314,7 +403,8 @@ describe("execution coordinator", () => {
     const restarted = new ExecutionCoordinator({ root: harness.root, workflowId: harness.workflow.id, config: harness.config, provider: harness.provider });
     const result = await restarted.poll();
 
-    expect(result.nextAction).toBe("final_review");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "final-review" });
     expect((await currentState(harness)).execution.records["phase-a"]?.status).toBe("result_recorded");
   });
 
@@ -335,7 +425,8 @@ describe("execution coordinator", () => {
     expect(state.plan?.phases.find((phase) => phase.id === "phase-good")?.status).toBe("completed");
     expect(state.git?.integration.integratedPhaseIds).toEqual(["phase-good"]);
     expect(state.execution.records["phase-bad"]?.status).toBe("failed");
-    expect(result.nextAction).toBe("review");
+    expect(result.nextAction).toBe("await_user");
+    expect(result.decision).toMatchObject({ type: "execution-recovery" });
   });
 
   it("distinguishes CodeGraph support for exact worktrees, root-advisory indexes, and unavailable indexes", async () => {

@@ -3,6 +3,7 @@ import { access, constants, lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../config/schema.js";
+import { workspaceIdentity } from "./dispatch-eligibility.js";
 import type { WorkspacePreparation } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -14,12 +15,26 @@ export async function preparePhaseWorkspace(args: {
   basis?: { branch?: string; commit?: string };
   validationCommands: string[];
   config: LeanRigorConfig;
+  preparationRevision?: number;
+  approvedBootstrap?: {
+    preparationRevision: number;
+    workspaceIdentity: string;
+    command: string;
+  };
 }): Promise<WorkspacePreparation> {
   const checkedAt = new Date().toISOString();
+  const preparationRevision = args.preparationRevision ?? 1;
+  const identity = workspaceIdentity({
+    repositoryIdentity: args.repositoryIdentity,
+    workspacePath: args.workspacePath,
+    baseCommit: args.basis?.commit ?? "unknown"
+  });
   const packageJson = path.join(args.workspacePath, "package.json");
   if (!await exists(packageJson)) {
     return preparation({
       status: "available",
+      preparationRevision,
+      workspaceIdentity: identity,
       worktreePath: args.workspacePath,
       repositoryIdentity: args.repositoryIdentity,
       basis: args.basis,
@@ -38,6 +53,8 @@ export async function preparePhaseWorkspace(args: {
   if (!hasDeclaredDependencies(packageJsonData)) {
     return preparation({
       status: "available",
+      preparationRevision,
+      workspaceIdentity: identity,
       worktreePath: args.workspacePath,
       repositoryIdentity: args.repositoryIdentity,
       basis: args.basis,
@@ -54,6 +71,8 @@ export async function preparePhaseWorkspace(args: {
   if (dependenciesAvailable) {
     return preparation({
       status: "available",
+      preparationRevision,
+      workspaceIdentity: identity,
       worktreePath: args.workspacePath,
       repositoryIdentity: args.repositoryIdentity,
       basis: args.basis,
@@ -68,8 +87,13 @@ export async function preparePhaseWorkspace(args: {
   }
 
   const command = manager.bootstrapCommand ?? fallbackBootstrapCommand();
+  const approved = args.approvedBootstrap?.preparationRevision === preparationRevision
+    && args.approvedBootstrap.workspaceIdentity === identity
+    && args.approvedBootstrap.command === command.join(" ");
   const result = preparation({
-    status: args.config.execution.dependencyBootstrap === "auto-lockfile" && manager.lockfilePreserving ? "prepared" : "blocked",
+    status: (args.config.execution.dependencyBootstrap === "auto-lockfile" && manager.lockfilePreserving) || approved ? "prepared" : "blocked",
+    preparationRevision,
+    workspaceIdentity: identity,
     worktreePath: args.workspacePath,
     repositoryIdentity: args.repositoryIdentity,
     basis: args.basis,
@@ -78,7 +102,7 @@ export async function preparePhaseWorkspace(args: {
     bootstrapRequired: true,
     validationCommandsAvailable: false,
     bootstrapCommand: command,
-    approvalRequired: args.config.execution.dependencyBootstrap !== "auto-lockfile" || !manager.lockfilePreserving,
+    approvalRequired: !approved && (args.config.execution.dependencyBootstrap !== "auto-lockfile" || !manager.lockfilePreserving),
     reason: manager.lockfilePreserving
       ? "Dependencies are missing in the isolated phase worktree; a lockfile-preserving bootstrap is required before provider dispatch."
       : "Dependencies are missing in the isolated phase worktree and no lockfile-preserving bootstrap was detected.",
@@ -87,6 +111,9 @@ export async function preparePhaseWorkspace(args: {
   });
 
   if (result.status !== "prepared") return result;
+  if (args.approvedBootstrap && !approved) {
+    return { ...result, status: "blocked", approvalRequired: true, reason: "The recorded bootstrap approval does not match this workspace, command, or preparation revision." };
+  }
   const before = await manifestIdentity(args.workspacePath);
   try {
     const install = await execFileAsync(command[0]!, command.slice(1), { cwd: args.workspacePath, encoding: "utf8", maxBuffer: 1024 * 1024 * 8 }) as { stdout: string; stderr: string };

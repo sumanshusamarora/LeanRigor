@@ -9,11 +9,14 @@ In Claude Code, the normal user experience is conversational:
 /leanrigor:start Add campaign selection to lead assignments
 -> triage summary
 -> Approach approval, when required
--> Plan approval
--> sequential execution
--> per-phase completion gate
+-> Workflow Plan approval
+-> exact Phase Execution Brief approval
+-> workspace preparation and provider dispatch
+-> provider result and deterministic completion gate
+-> phase integration
+-> next Phase Execution Brief
 -> Final integrated review
--> Commit proposal
+-> explicit final completion
 ```
 
 Claude invokes LeanRigor transitions internally. Users normally reply with
@@ -52,6 +55,7 @@ leanrigor flow integrate-phase <workflow-id> phase-1 --owner <session-id> --json
 leanrigor flow integration-status <workflow-id> --json
 leanrigor flow validate-integration <workflow-id> --json
 leanrigor flow phase-status <workflow-id> phase-1
+leanrigor flow phase-result <workflow-id> phase-1 --json
 leanrigor flow repair <workflow-id> phase-1 --reason "Targeted validation failed"
 leanrigor flow record-review <workflow-id> --status passed --summary "Integrated review passed"
 leanrigor flow commit-plan <workflow-id>
@@ -65,10 +69,11 @@ leanrigor flow complete <workflow-id>
 - multiple: show ID, request, state, mode, and updated time;
 - completed and cancelled workflows are not selected by default.
 
-`flow next --json` returns the current gate label, pending decision, allowed
-natural-language intents, human-readable summary data, and internal operation
-names. It intentionally treats shell commands as troubleshooting details rather
-than normal user-facing output.
+`flow next --json` returns the normalized persisted decision envelope used by
+execution, polling, recovery, completion, and integration commands. Every
+`await_user` result includes the stable decision ID, exact revision identity,
+question, and ordered options. `nextOperation.automaticallyPermitted`
+distinguishes a safe automatic transition from a user decision.
 
 ## Lifecycle
 
@@ -239,10 +244,53 @@ carry forward. Inspection or quality failure remains at phase preflight with
 retry, plan-boundary revision, diagnostics, and cancellation actions; it does
 not prepare a workspace or dispatch an implementation provider.
 
-Current limitation: the approved detailed brief is not yet propagated as the
-implementation provider's execution contract, and universal dispatch hardening
-across every legacy/runtime entry point remains Phase 3 work. The complete live
-provider lifecycle is therefore not claimed as verified by this phase.
+The approved detailed brief is the implementation provider contract. One
+central guard evaluates workflow state, dependencies and selection, brief
+quality/currentness/material drift, exact approval, ownership conflicts,
+workspace preparation, and safety blockers. Dependency-ready is therefore
+distinct from dispatch-ready. Provider input includes the approved brief,
+effective constraints, inspection and workspace evidence, and exact workflow,
+brief, and workspace identities.
+
+Provider results must repeat that identity. LeanRigor quarantines mismatched or
+stale results, validation outside the approved brief, material discoveries, and
+actual writes outside approved write boundaries. Provider `completed` is
+evidence, not authority. Legacy unexecuted phases receive a new inspected brief
+and exact approval before future dispatch; completed legacy phases remain
+preserved.
+
+### Decision and presentation contract
+
+Every pending decision persists its stable ID, workflow/state revision, phase,
+brief/preparation/integration identity where applicable, allowed actions,
+creation and resolution timestamps, selected action, source, and superseded
+decision ID. Resolved, duplicate, stale, and old-revision answers are rejected.
+
+Controllers apply one transition, read its returned envelope, refresh with
+`flow next --json` after state changes, then render the persisted status or
+decision. They invoke another operation only when the refreshed envelope marks
+it automatically permitted. AskUserQuestion options are copied directly from
+the current decision; conversational memory does not create question state.
+
+`flow phase-result <workflow-id> <phase-id> --json` is the authoritative
+presentation view for brief approval, workspace preparation, provider
+dispatch/result identity, changed files, scope deviations, validation
+evidence, completion-gate acceptance, integration, remaining risks, blockers,
+and safe actions. Normal Claude presentation uses this evidence and does not
+inspect phase worktrees. Manual inspection remains explicit and exceptional.
+
+Provider completion, result identity verification, scope checking,
+completion-gate acceptance, phase integration, final integrated validation,
+final review, and explicit user completion are distinct persisted facts. After
+Phase N is accepted and integrated, LeanRigor generates or refreshes the
+plan-order next phase brief. Phase-by-phase workflows receive a fresh exact
+approval decision; workflow-authorized Standard workflows continue only while
+policy permits and no material change requires another decision.
+
+Recovery decisions cover workspace preparation, provider failure or
+interruption, stale results, completion-gate failure, integration conflicts,
+stale briefs, and material drift. Recovery never silently switches to
+main-session implementation.
 
 ### Adaptive Approval
 
@@ -420,11 +468,23 @@ availability, validation-command availability, any bootstrap command, command
 risk, approval requirements, and evidence. Existing dependencies proceed.
 Missing JavaScript dependencies block by default with the exact
 lockfile-preserving command, such as `npm ci` when `package-lock.json` is
-present. Automatic bootstrap is allowed only by
+present. The pending decision binds approval to the workflow, phase, brief,
+workspace identity, command, and preparation revision. No provider handle or
+execution record exists while preparation is blocked. Automatic bootstrap is allowed only by
 `execution.dependencyBootstrap = "auto-lockfile"` and must preserve manifests
 and lockfiles; otherwise provider dispatch stops before implementation. The
 provider handoff states that dependencies were prepared and instructs workers
 not to improvise package installation.
+
+Preparation order is authoritative:
+
+```text
+brief approved
+-> workspace created
+-> preparation evidence persisted
+-> dispatch guard re-evaluated
+-> provider dispatched
+```
 
 ## Integration Workspace
 

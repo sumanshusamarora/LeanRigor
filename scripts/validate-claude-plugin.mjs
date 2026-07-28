@@ -181,15 +181,19 @@ if (!marketplaceWorkflowFm["allowed-tools"]?.includes("AskUserQuestion")) fail("
 if (!marketplaceWorkflowSkill.includes("methodology/core.md")) fail("marketplace workflow skill must reference shared methodology/core.md");
 if (!marketplaceWorkflowSkill.includes("methodology/modes/<fast|standard|rigorous>.md")) fail("marketplace workflow skill must reference mode overlays");
 if (!marketplaceWorkflowSkill.includes("mandatory whenever the tool is available")) fail("marketplace workflow skill must require AskUserQuestion when available");
-if (!marketplaceWorkflowSkill.includes("same assistant turn")) fail("marketplace workflow skill must require same-turn AskUserQuestion selectors");
+if (!/same\s+assistant\s+turn/.test(marketplaceWorkflowSkill)) fail("marketplace workflow skill must require same-turn AskUserQuestion selectors");
 if (!marketplaceWorkflowSkill.includes("\"multiSelect\": false")) fail("marketplace workflow skill must document AskUserQuestion selector payload shape");
 if (!marketplaceWorkflowSkill.includes("genuinely unavailable")) fail("marketplace workflow skill must restrict text fallback to genuine AskUserQuestion unavailability");
 if (!marketplaceWorkflowSkill.includes("Do not use `ExitPlanMode` as a substitute")) fail("marketplace workflow skill must prohibit ExitPlanMode as LeanRigor approval");
+if (!marketplaceWorkflowSkill.includes("decision.question") || !marketplaceWorkflowSkill.includes("decision.options")) fail("marketplace workflow skill must render the normalized persisted decision");
+if (!marketplaceWorkflowSkill.includes("automaticallyPermitted")) fail("marketplace workflow skill must distinguish automatic operations from decisions");
+if (!marketplaceWorkflowSkill.includes("flow phase-result")) fail("marketplace workflow skill must use persisted phase results");
+if (!/Never call `AskUserQuestion` without a\s+current `decision`/.test(marketplaceWorkflowSkill)) fail("marketplace workflow skill must prohibit stale question presentation");
 for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
   if (!marketplaceWorkflowSkill.includes(option)) fail(`marketplace workflow skill must document post-triage option: ${option}`);
 }
 if (!marketplaceWorkflowSkill.includes("No implementation has started")) fail("marketplace workflow skill must state that no implementation has started at the approach gate");
-if (!/Do not end the turn\s+from raw `flow start` JSON/.test(marketplaceWorkflowSkill)) fail("marketplace workflow skill must prohibit report-only flow-start handling");
+if (!/Do not end the\s+turn\s+from raw `flow start` JSON/.test(marketplaceWorkflowSkill)) fail("marketplace workflow skill must prohibit report-only flow-start handling");
 for (const file of methodologyFiles.filter((file) => !file.startsWith("modes/"))) {
   if (!marketplaceWorkflowSkill.includes(`methodology/${file}`)) fail(`marketplace workflow skill must reference methodology/${file}`);
 }
@@ -197,16 +201,18 @@ for (const file of methodologyFiles.filter((file) => !file.startsWith("modes/"))
 const localWorkflow = await readFile(path.join(root, "src", "adapters", "claude", "plugin", "leanrigor", "sequential-workflow.md"), "utf8");
 if (!localWorkflow.includes(".claude/leanrigor/methodology/core.md")) fail("project-local workflow reference must use installed methodology path");
 if (!localWorkflow.includes(".claude/leanrigor/methodology/modes/<fast|standard|rigorous>.md")) fail("project-local workflow reference must use installed mode overlays");
-if (!localWorkflow.includes("mandatory whenever the tool is available")) fail("project-local workflow must require AskUserQuestion when available");
-if (!localWorkflow.includes("same assistant turn")) fail("project-local workflow must require same-turn AskUserQuestion selectors");
-if (!localWorkflow.includes("multiSelect")) fail("project-local workflow must document AskUserQuestion selector payload shape");
+if (!localWorkflow.includes("decision.question") || !localWorkflow.includes("decision.options")) fail("project-local workflow must render the normalized persisted decision");
+if (!/same\s+assistant\s+turn/.test(localWorkflow)) fail("project-local workflow must require same-turn AskUserQuestion selectors");
 if (!localWorkflow.includes("genuinely unavailable")) fail("project-local workflow must restrict text fallback to genuine AskUserQuestion unavailability");
-if (!localWorkflow.includes("Do not use `ExitPlanMode` as a substitute")) fail("project-local workflow must prohibit ExitPlanMode as LeanRigor approval");
+if (!localWorkflow.includes("ExitPlanMode")) fail("project-local workflow must prohibit ExitPlanMode as LeanRigor approval");
+if (!localWorkflow.includes("automaticallyPermitted")) fail("project-local workflow must distinguish automatic operations from decisions");
+if (!localWorkflow.includes("flow phase-result")) fail("project-local workflow must use persisted phase results");
+if (!localWorkflow.includes("Never call `AskUserQuestion` without a")) fail("project-local workflow must prohibit stale question presentation");
 for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
   if (!localWorkflow.includes(option)) fail(`project-local workflow must document post-triage option: ${option}`);
 }
 if (!localWorkflow.includes("No implementation has started")) fail("project-local workflow must state that no implementation has started at the approach gate");
-if (!/Do not end the turn\s+from raw `flow start` JSON/.test(localWorkflow)) fail("project-local workflow must prohibit report-only flow-start handling");
+if (!/Do not end the\s+turn\s+from raw `flow start` JSON/.test(localWorkflow)) fail("project-local workflow must prohibit report-only flow-start handling");
 
 try {
   const runtime = await stat(path.join(root, "runtime", "leanrigor-cli.js"));

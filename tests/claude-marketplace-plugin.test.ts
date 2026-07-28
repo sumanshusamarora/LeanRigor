@@ -65,7 +65,25 @@ async function fakeClaudePath(): Promise<string> {
       expectedReadAreas: ["src/core/flow.ts", "tests/claude-marketplace-plugin.test.ts"],
       expectedWriteAreas: ["src/core/flow.ts", "tests/claude-marketplace-plugin.test.ts"],
       expectedFilesOrAreas: ["src/core/flow.ts", "tests/claude-marketplace-plugin.test.ts"],
-      acceptanceCriteria: ["Planning metadata reports a model source.", "The generated phase is not the deterministic generic baseline."],
+      acceptanceCriteria: [
+        "src/core/flow.ts contains the Phase 1 flow behavior exercised by tests/claude-marketplace-plugin.test.ts.",
+        "npm test passes after the Phase 1 change."
+      ],
+      validationCommands: ["npm test"],
+      riskLevel: "medium",
+      modelTier: "medium"
+    }, {
+      id: "phase-2",
+      objective: "Extend the persisted workflow contract after Phase 1 integration.",
+      rationale: "The installed conversational smoke must prove the next phase decision is fresh.",
+      dependencies: ["phase-1"],
+      expectedReadAreas: ["src/core/types.ts", "tests/types.test.ts"],
+      expectedWriteAreas: ["src/core/types.ts", "tests/types.test.ts"],
+      expectedFilesOrAreas: ["src/core/types.ts", "tests/types.test.ts"],
+      acceptanceCriteria: [
+        "src/core/types.ts contains a loadable State contract exercised by tests/types.test.ts.",
+        "npm test passes after the Phase 2 change."
+      ],
       validationCommands: ["npm test"],
       riskLevel: "medium",
       modelTier: "medium"
@@ -183,7 +201,8 @@ describe("Claude marketplace plugin manifests", () => {
     expect(content).toContain("exact brief approval");
     expect(content).toContain("flow execute-next --provider auto");
     expect(content).toContain("flow execution-poll --provider auto");
-    expect(content).toContain("next.approvalActions");
+    expect(content).toContain("decision");
+    expect(content).toContain("nextOperation.automaticallyPermitted");
     expect(content).toMatch(/same\s+assistant\s+turn/);
     expect(content).toMatch(/summary-only triage\s+report/);
   });
@@ -205,7 +224,8 @@ describe("Claude marketplace plugin manifests", () => {
     expect(fm["allowed-tools"]).toContain("AskUserQuestion");
     expect(content).toContain("mandatory whenever the tool is available");
     expect(content).toMatch(/same\s+assistant\s+turn/);
-    expect(content).toMatch(/A prose summary is\s+not a decision gate by itself/);
+    expect(content).toContain("decision.question");
+    expect(content).toContain("decision.options");
     expect(content).toContain("\"multiSelect\": false");
     expect(content).toContain("genuinely unavailable");
     expect(content).toContain("Do not use `ExitPlanMode` as a substitute");
@@ -237,15 +257,18 @@ describe("Claude marketplace plugin manifests", () => {
     expect(startContent).toContain("exact brief approval");
     expect(startContent).toContain("flow execute-next --provider auto");
     expect(startContent).toContain("flow execution-poll --provider auto");
-    expect(startContent).toContain("next.approvalActions");
+    expect(startContent).toContain("decision.question");
+    expect(startContent).toContain("decision.options");
     expect(startContent).toMatch(/same\s+assistant\s+turn/);
     expect(startContent).toMatch(/summary-only triage\s+report/);
     expect(workflowContent).toContain("leanrigor flow approve-approach <workflow-id> --provider auto");
     expect(workflowContent).toContain("leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto");
     expect(workflowContent).toContain("leanrigor flow execute-next --provider auto");
     expect(workflowContent).toContain("leanrigor flow execution-poll --provider auto");
-    expect(workflowContent).toMatch(/A prose summary is\s+not a decision gate by itself/);
-    expect(workflowContent).toContain("multiSelect");
+    expect(workflowContent).toContain("decision.question");
+    expect(workflowContent).toContain("decision.options");
+    expect(workflowContent).toContain("automaticallyPermitted");
+    expect(workflowContent).toContain("flow phase-result");
   });
 
   it("hook paths resolve through CLAUDE_PLUGIN_ROOT", async () => {
@@ -340,6 +363,124 @@ describe("Claude marketplace plugin runtime", () => {
     ]);
     expect(state.next?.approvalActions.find((action) => action.intent === "approve")?.command).toContain("--provider auto");
     expect(state.next?.approvalActions.find((action) => action.intent === "revise")?.command).toContain("flow revise-approach");
+  });
+
+  it("runs the installed Rigorous conversation through Phase 2 approval without manual inspection", async () => {
+    if (!POSIX) return;
+    const repo = await tempDir("leanrigor-installed-conversation-");
+    await mkdir(path.join(repo, "src", "core"), { recursive: true });
+    await mkdir(path.join(repo, "tests"), { recursive: true });
+    await writeFile(path.join(repo, "src", "core", "flow.ts"), "export const flow = 'base';\n");
+    await writeFile(path.join(repo, "src", "core", "types.ts"), "export interface State { revision: number }\n");
+    await writeFile(path.join(repo, "tests", "claude-marketplace-plugin.test.ts"), "export const flowCovered = true;\n");
+    await writeFile(path.join(repo, "tests", "types.test.ts"), "export const typesCovered = true;\n");
+    await writeFile(path.join(repo, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } }));
+    for (const args of [
+      ["init"],
+      ["checkout", "-b", "main"],
+      ["config", "user.name", "Installed Smoke"],
+      ["config", "user.email", "installed@example.com"],
+      ["add", "."],
+      ["commit", "-m", "fixture"]
+    ]) {
+      const git = await run("git", args, { cwd: repo });
+      expect(git.code).toBe(0);
+    }
+
+    const env = { CLAUDE_PLUGIN_ROOT: repoRoot, PATH: await fakeClaudePath() };
+    const commandLog: string[][] = [];
+    const cli = async (args: string[]) => {
+      commandLog.push(args);
+      const result = await run(path.join(repoRoot, "bin", "leanrigor"), [...args, "--root", repo], { cwd: repo, env });
+      expect(result.code, result.stderr).toBe(0);
+      return JSON.parse(result.stdout) as {
+        workflowId?: string;
+        id?: string;
+        workflowRevision: number;
+        state: string;
+        status: { code: string; summary: string; phaseId?: string };
+        decision?: {
+          id: string;
+          type: string;
+          workflowRevision: number;
+          phaseId?: string;
+          briefRevision?: number;
+          question: string;
+          options: Array<{ intent: string; label: string; command?: string }>;
+        };
+        nextOperation?: { type: string; automaticallyPermitted: boolean };
+        nextAction?: string;
+        dispatched?: Array<{ phaseId: string }>;
+        phaseResult?: {
+          lifecycle: { completionGate: string; integration: string };
+          manualInspection: { required: boolean };
+        };
+      };
+    };
+    const assertDecision = (envelope: Awaited<ReturnType<typeof cli>>, type: string) => {
+      expect(envelope.decision).toMatchObject({
+        type,
+        question: expect.any(String),
+        options: expect.arrayContaining([expect.objectContaining({ intent: expect.any(String), label: expect.any(String) })])
+      });
+      expect(envelope.decision!.question.length).toBeGreaterThan(0);
+      expect(envelope.decision!.options.length).toBeGreaterThan(0);
+    };
+
+    const started = await cli(["flow", "start", "Change authentication migration handling for production credentials"]);
+    expect(started.state).toBe("awaiting_approach_approval");
+    assertDecision(started, "approach-approval");
+    const workflowId = started.workflowId ?? started.id!;
+
+    const planned = await cli([
+      "flow", "approve-approach", workflowId,
+      "--decision-id", started.decision!.id,
+      "--expected-revision", String(started.workflowRevision)
+    ]);
+    assertDecision(planned, "workflow-plan-approval");
+
+    const phaseOne = await cli([
+      "flow", "approve-plan", workflowId,
+      "--approval-policy", "phase-by-phase",
+      "--decision-id", planned.decision!.id,
+      "--expected-revision", String(planned.workflowRevision)
+    ]);
+    assertDecision(phaseOne, "phase-brief-approval");
+    expect(phaseOne.decision?.phaseId).toBe("phase-1");
+
+    const blockedDispatch = await cli(["flow", "execute-next", workflowId, "--provider", "scripted", "--json"]);
+    expect(blockedDispatch.decision).toEqual(phaseOne.decision);
+    expect(blockedDispatch.nextAction).toBe("await_user");
+
+    const approved = await cli([
+      "flow", "approve-phase", workflowId, "phase-1",
+      "--brief-revision", String(phaseOne.decision!.briefRevision),
+      "--workflow-revision", String(phaseOne.decision!.workflowRevision),
+      "--decision-id", phaseOne.decision!.id,
+      "--expected-revision", String(phaseOne.workflowRevision)
+    ]);
+    expect(approved.decision).toBeUndefined();
+    expect(approved.nextOperation).toMatchObject({ type: "execute-next", automaticallyPermitted: true });
+
+    const scriptFile = path.join(repo, "provider-script.json");
+    await writeFile(scriptFile, JSON.stringify({
+      "phase-1": {
+        edits: [{ path: "src/core/flow.ts", content: "export const flow = 'phase-1';\n" }],
+        validation: [{ command: "npm test", exitCode: 0 }]
+      }
+    }));
+    const dispatched = await cli(["flow", "execute-next", workflowId, "--provider", "scripted", "--script-file", scriptFile, "--json"]);
+    expect(dispatched.dispatched?.map((entry) => entry.phaseId)).toEqual(["phase-1"]);
+
+    const phaseTwo = await cli(["flow", "execution-poll", workflowId, "--provider", "scripted", "--script-file", scriptFile, "--json"]);
+    assertDecision(phaseTwo, "phase-brief-approval");
+    expect(phaseTwo.decision?.phaseId).toBe("phase-2");
+    expect(phaseTwo.phaseResult).toMatchObject({
+      lifecycle: { completionGate: "completed", integration: "integrated" },
+      manualInspection: { required: false }
+    });
+    expect(phaseTwo.status.summary).not.toMatch(/complete and approved/i);
+    expect(commandLog.flat().join(" ")).not.toMatch(/\bgit\s+diff\b|phase-worktree|cd\s+/);
   });
 
   it("defaults marketplace approach approval to model-backed auto planning", async () => {
@@ -480,7 +621,7 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.phaseProgress[0]?.objective).toBe("Implement model-backed planning for issue-specific obligations.");
   });
 
-  it("reports execution auto provider unavailability without silent fallback", async () => {
+  it("returns the persisted decision before initializing an unavailable execution provider", async () => {
     const repo = await tempDir("leanrigor-execution-auto-fallback-");
     const started = await run(process.execPath, [path.join(repoRoot, "runtime", "leanrigor-cli.js"), "flow", "start", "Fix a typo in README documentation", "--provider", "deterministic", "--root", repo], {
       cwd: repo
@@ -493,9 +634,21 @@ describe("Claude marketplace plugin runtime", () => {
       env: { PATH: await pathWithoutClaude() }
     });
 
-    expect(result.code).not.toBe(0);
-    expect(result.stderr).toMatch(/Configured execution provider unavailable before dispatch/);
-    expect(result.stderr).toMatch(/Recovery options: retry configured provider/);
+    expect(result.code).toBe(0);
+    const envelope = JSON.parse(result.stdout) as {
+      nextAction: string;
+      decision?: { question: string; options: Array<{ intent: string }> };
+      dispatched: unknown[];
+    };
+    expect(envelope).toMatchObject({
+      nextAction: "await_user",
+      dispatched: [],
+      decision: {
+        question: expect.any(String),
+        options: expect.arrayContaining([expect.objectContaining({ intent: expect.any(String) })])
+      }
+    });
+    expect(result.stderr).not.toMatch(/Configured execution provider unavailable/);
   });
 });
 

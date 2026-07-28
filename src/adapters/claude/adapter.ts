@@ -52,7 +52,7 @@ export interface BootstrapReport {
 }
 
 /** Version stamp embedded in every generated asset. Increment when assets change in a breaking way. */
-export const ASSET_VERSION = 6;
+export const ASSET_VERSION = 7;
 
 /** String embedded in every LeanRigor-generated file for ownership detection. */
 const OWNERSHIP_TOKEN = "generated_by: leanrigor";

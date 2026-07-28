@@ -5,6 +5,12 @@ import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../../config/schema.js";
 import { preparePhaseWorkspace } from "../workspace-preparation.js";
 import {
+  dependencyReadyCandidates,
+  evaluatePhaseDispatchEligibility,
+  PHASE_PREPARATION_CAPABILITY,
+} from "../dispatch-eligibility.js";
+import { briefIsCurrent, briefStalenessReasons } from "../approval.js";
+import {
   completePhase,
   heartbeatPhase,
   integratePhase,
@@ -19,8 +25,9 @@ import {
   workspaceCreatePhase,
   workspaceInit
 } from "../flow.js";
-import { calculateReadyPhases, dependencyIds } from "../scheduler.js";
 import type { PhaseExecutionRecord, PhaseExecutionRecordStatus, SequentialWorkflowState, WorkflowPhase } from "../types.js";
+import { setPendingDecision } from "../workflow-decision.js";
+import { phaseResultView, workflowDecisionEnvelope } from "../workflow-envelope.js";
 import type { ExecutionProvider } from "./provider.js";
 import type { CoordinatorResult, DispatchSummary, ExecutionHandle, ExecutionNextAction, PhaseExecutionInput, PhaseExecutionResult, PhaseWorkspaceCheckpoint, ProviderSessionRef, ProviderSessionStatus } from "./types.js";
 import { toValidationEvidence } from "./types.js";
@@ -81,57 +88,139 @@ export class ExecutionCoordinator {
     if (state.approval?.pendingDecision?.status === "pending" || Object.keys(state.phaseBriefFailures ?? {}).length > 0) {
       return this.result(state, [], "await_user", "A valid Phase Execution Brief and exact approval are required before coordinator execution.");
     }
-    await this.provider.capabilities();
     if (state.state !== "executing") return this.result(state, [], this.nextActionForState(state), "Workflow is not in an executable state.");
-    if (!state.git) state = await workspaceInit({ root: this.root, workflowId: this.workflowId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
-
-    for (const phase of state.plan?.phases ?? []) {
-      if (!["planned", "ready"].includes(phase.status)) continue;
-      if (!dependencyIds(phase).every((dependency) => state.plan?.phases.find((candidate) => candidate.id === dependency)?.status === "completed")) continue;
+    const staleBrief = dependencyReadyCandidates(state).find((phase) => state.phaseBriefs?.[phase.id] && !briefIsCurrent(state, phase.id));
+    if (staleBrief) {
       state = await preparePhaseExecutionBrief({
         root: this.root,
         workflowId: this.workflowId,
-        phaseId: phase.id,
+        phaseId: staleBrief.id,
         config: this.config,
+        refresh: true,
+        requireApproval: true,
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
       });
+      return this.result(state, [], "await_user", `Phase ${staleBrief.id} brief was stale and has been regenerated for exact reapproval.`);
     }
-
-    const selected = this.selectDispatchable(state);
+    const missingBrief = dependencyReadyCandidates(state).find((phase) => !state.phaseBriefs?.[phase.id]);
+    if (missingBrief) {
+      state = await preparePhaseExecutionBrief({
+        root: this.root,
+        workflowId: this.workflowId,
+        phaseId: missingBrief.id,
+        config: this.config,
+        requireApproval: true,
+        mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+      });
+      if (state.approval?.pendingDecision || state.phaseBriefFailures?.[missingBrief.id]) {
+        return this.result(state, [], "await_user", `Phase ${missingBrief.id} requires a current detailed brief decision before workspace preparation.`);
+      }
+    }
+    await this.provider.capabilities();
+    const selected = this.selectPreparationCandidates(state);
     const dispatched: DispatchSummary[] = [];
     for (const phase of selected) {
       const existingLease = state.phaseLeases[phase.id];
       const canUseExistingLease = Boolean(phase.status === "running" && existingLease && !existingLease.releasedAt && Date.parse(existingLease.expiresAt) > this.clock().getTime());
       const ownerId = canUseExistingLease && existingLease ? existingLease.ownerId : this.ownerId(phase.id);
+      let providerDispatchStarted = false;
       try {
+        const preflight = evaluatePhaseDispatchEligibility(state, phase.id, this.config, {
+          stage: "preparation",
+          explicitlySelected: true,
+          ownerId,
+          now: this.clock()
+        });
+        if (!preflight.eligible) continue;
+        if (!state.git) state = await workspaceInit({ root: this.root, workflowId: this.workflowId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
+        const afterWorkspaceInit = evaluatePhaseDispatchEligibility(state, phase.id, this.config, {
+          stage: "preparation",
+          explicitlySelected: true,
+          ownerId,
+          now: this.clock()
+        });
+        if (!afterWorkspaceInit.eligible) {
+          if (afterWorkspaceInit.blockers.some((blocker) => blocker.code.startsWith("brief_"))) {
+            state = await preparePhaseExecutionBrief({
+              root: this.root,
+              workflowId: this.workflowId,
+              phaseId: phase.id,
+              config: this.config,
+              refresh: true,
+              requireApproval: true,
+              mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+            });
+          }
+          continue;
+        }
         if (!canUseExistingLease) {
-          await leasePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId, ownerType: "agent", config: this.config, mutation: { ownerId } });
+          await leasePhase({
+            root: this.root,
+            workflowId: this.workflowId,
+            phaseId: phase.id,
+            ownerId,
+            ownerType: "agent",
+            config: this.config,
+            internalCapability: PHASE_PREPARATION_CAPABILITY,
+            mutation: { ownerId }
+          });
         } else {
           await this.reserveResumeDispatch(phase.id, ownerId);
         }
         const withWorkspace = await workspaceCreatePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId, config: this.config, mutation: { ownerId } });
         const workspace = withWorkspace.git?.phaseWorkspaces[phase.id];
         if (!workspace) throw new Error(`Phase ${phase.id} workspace was not created.`);
-        const preparation = await preparePhaseWorkspace({
-          workspacePath: workspace.path,
-          repositoryRoot: withWorkspace.git!.context.repositoryRoot,
-          repositoryIdentity: withWorkspace.git!.context.repositoryIdentity,
-          basis: { branch: workspace.branch, commit: workspace.baseCommit },
-          validationCommands: phase.validationCommands,
-          config: this.config
-        });
+        const existingPreparation = workspace.preparation;
+        const approvedBootstrap = this.approvedBootstrap(withWorkspace, phase.id);
+        const preparationRevision = approvedBootstrap?.preparationRevision
+          ?? (existingPreparation?.preparationRevision ?? 0) + 1;
+        const preparation = existingPreparation
+          && ["available", "prepared"].includes(existingPreparation.status)
+          && existingPreparation.preparationRevision
+          && existingPreparation.workspaceIdentity
+          && existingPreparation.basis?.commit === workspace.baseCommit
+          ? existingPreparation
+          : await preparePhaseWorkspace({
+              workspacePath: workspace.path,
+              repositoryRoot: withWorkspace.git!.context.repositoryRoot,
+              repositoryIdentity: withWorkspace.git!.context.repositoryIdentity,
+              basis: { branch: workspace.branch, commit: workspace.baseCommit },
+              validationCommands: withWorkspace.phaseBriefs?.[phase.id]?.validationCommands ?? phase.validationCommands,
+              config: this.config,
+              preparationRevision,
+              approvedBootstrap
+            });
         await this.persistWorkspacePreparation(phase.id, preparation);
         if (preparation.status === "blocked" || preparation.status === "failed") {
-          throw new Error(`Workspace preparation ${preparation.status}: ${preparation.reason}${preparation.bootstrapCommand ? ` Required command: ${preparation.bootstrapCommand}` : ""}`);
+          await releasePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId, mutation: { ownerId, ownerType: "system" } });
+          state = await loadFlowState(this.root, this.workflowId);
+          continue;
         }
         const preparedState = await loadFlowState(this.root, this.workflowId);
+        const eligibility = evaluatePhaseDispatchEligibility(preparedState, phase.id, this.config, {
+          explicitlySelected: true,
+          ownerId,
+          now: this.clock()
+        });
+        if (!eligibility.eligible) {
+          await releasePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId, mutation: { ownerId, ownerType: "system" } });
+          state = await loadFlowState(this.root, this.workflowId);
+          continue;
+        }
         const input = await this.inputForPhase(preparedState, phase.id, workspace.path, ownerId);
+        providerDispatchStarted = true;
         const handle = await this.provider.dispatch(input);
+        this.assertHandleIdentity(input, handle);
         await this.persistHandle(handle);
         dispatched.push({ phaseId: phase.id, provider: handle.providerId, status: "running", workspacePath: workspace.path, leaseOwnerId: ownerId });
       } catch (error) {
-        await this.markPhaseStopped(phase.id, ownerId, "failed", `Dispatch failed: ${error instanceof Error ? error.message : String(error)}`, errorDetails(error));
+        if (providerDispatchStarted) {
+          await this.markPhaseStopped(phase.id, ownerId, "failed", `Dispatch failed: ${error instanceof Error ? error.message : String(error)}`, errorDetails(error));
+        } else {
+          await releasePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId, mutation: { ownerId, ownerType: "system" } }).catch(() => undefined);
+        }
       }
+      state = await loadFlowState(this.root, this.workflowId);
     }
 
     const current = await loadFlowState(this.root, this.workflowId);
@@ -227,7 +316,7 @@ export class ExecutionCoordinator {
     return this.result(state, [], this.nextActionForState(state), "Execution status loaded.");
   }
 
-  private selectDispatchable(state: SequentialWorkflowState): WorkflowPhase[] {
+  private selectPreparationCandidates(state: SequentialWorkflowState): WorkflowPhase[] {
     if (!state.plan) return [];
     const active = this.activeRecords(state).length;
     const slots = Math.max(0, this.config.execution.maxParallelPhases - active);
@@ -244,20 +333,64 @@ export class ExecutionCoordinator {
     });
     if (resumable) return [resumable];
     const selected: WorkflowPhase[] = [];
-    const schedule = calculateReadyPhases(state, this.config);
-    for (const ready of schedule.readyPhases) {
+    for (const phase of dependencyReadyCandidates(state)) {
       if (selected.length >= slots) break;
-      if (ready.blockedBy.length > 0) continue;
-      if (ready.conflictsWith.some((conflict) => activePhaseIds.has(conflict.phaseA) || activePhaseIds.has(conflict.phaseB))) continue;
-      if (ready.conflictsWith.some((conflict) => selected.some((phase) => phase.id === conflict.phaseA || phase.id === conflict.phaseB))) continue;
-      const phase = state.plan.phases.find((candidate) => candidate.id === ready.phaseId);
-      if (phase) selected.push(phase);
+      const eligibility = evaluatePhaseDispatchEligibility(state, phase.id, this.config, {
+        stage: "preparation",
+        explicitlySelected: true,
+        now: this.clock()
+      });
+      if (eligibility.eligible) selected.push(phase);
     }
     return selected;
   }
 
   private async recordResult(record: PhaseExecutionRecord, result: PhaseExecutionResult): Promise<PhaseExecutionRecordStatus> {
     const checkpoint = await this.captureCheckpoint(record, result);
+    const state = await loadFlowState(this.root, this.workflowId);
+    const brief = state.phaseBriefs?.[record.phaseId];
+    const workspace = state.git?.phaseWorkspaces[record.phaseId];
+    const identityIssues = executionIdentityIssues(record, result, state);
+    if (identityIssues.length > 0) {
+      await this.quarantineResult(record, checkpoint, "needs_replan", `Provider result identity rejected: ${identityIssues.join("; ")}`, {
+        resultIdentity: result.executionIdentity,
+        identityIssues
+      });
+      return "blocked";
+    }
+    const unexpectedWrites = checkpoint.changedFiles.filter((file) => !brief || !brief.writeAreas.some((area) => pathWithinArea(file, area)));
+    const unexpectedValidation = result.validation
+      .map((entry) => entry.command)
+      .filter((command) => !brief?.validationCommands.includes(command));
+    const reportedScopeExpansion = result.scopeDeviations
+      .filter((deviation) => deviation.path && !brief?.writeAreas.some((area) => pathWithinArea(deviation.path!, area)));
+    const materialDiscovery = result.discoveredMaterialChanges.filter((change) => change.material);
+    if (unexpectedWrites.length > 0 || reportedScopeExpansion.length > 0 || materialDiscovery.length > 0 || result.status === "needs_replan") {
+      const reasons = [
+        unexpectedWrites.length > 0 ? `Unexpected write paths: ${unexpectedWrites.join(", ")}` : undefined,
+        reportedScopeExpansion.length > 0 ? `Reported scope expansion: ${reportedScopeExpansion.map((deviation) => deviation.path).join(", ")}` : undefined,
+        materialDiscovery.length > 0 ? `Provider reported ${materialDiscovery.length} material change(s).` : undefined,
+        result.status === "needs_replan" ? result.summary : undefined
+      ].filter((value): value is string => Boolean(value));
+      await this.quarantineResult(record, checkpoint, "needs_replan", reasons.join(" "), {
+        unexpectedWrites,
+        reportedScopeExpansion,
+        discoveredMaterialChanges: result.discoveredMaterialChanges,
+        workspaceIdentity: workspace?.preparation?.workspaceIdentity
+      });
+      return "blocked";
+    }
+    if (unexpectedValidation.length > 0) {
+      await this.quarantineResult(record, checkpoint, "needs_review", `Provider reported validation outside the approved brief: ${unexpectedValidation.join(", ")}`, {
+        unexpectedValidation,
+        approvedValidation: brief?.validationCommands
+      });
+      return "blocked";
+    }
+    if (result.status === "needs_review") {
+      await this.quarantineResult(record, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
+      return "blocked";
+    }
     const diagnostics = mergeDiagnostics(result.providerDiagnostics, {
       checkpoint,
       changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles)
@@ -297,15 +430,79 @@ export class ExecutionCoordinator {
     return result.status;
   }
 
+  private async quarantineResult(
+    record: PhaseExecutionRecord,
+    checkpoint: PhaseWorkspaceCheckpoint,
+    disposition: "needs_replan" | "needs_review",
+    summary: string,
+    diagnostics: Record<string, unknown>
+  ): Promise<void> {
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const phase = state.plan?.phases.find((candidate) => candidate.id === record.phaseId);
+      const lease = state.phaseLeases[record.phaseId];
+      if (lease && !lease.releasedAt && lease.ownerId === record.leaseOwnerId) lease.releasedAt = this.now();
+      if (phase) phase.status = disposition;
+      const workspace = state.git?.phaseWorkspaces[record.phaseId];
+      if (workspace) workspace.status = "needs_repair";
+      state.execution.records[record.phaseId] = {
+        ...record,
+        status: "blocked",
+        completedAt: this.now(),
+        resultSummary: summary,
+        diagnostics: mergeDiagnostics(record.diagnostics, {
+          ...diagnostics,
+          resultAccepted: false,
+          disposition,
+          partialProgressPreserved: checkpoint.dirty,
+          partialProgressAccepted: false
+        }),
+        checkpoint,
+        providerSession: updateSessionStatus(record.providerSession, "failed", this.now())
+      };
+      setPendingDecision(state, {
+        type: "material-drift-review",
+        phaseId: record.phaseId,
+        briefRevision: state.phaseBriefs?.[record.phaseId]?.briefRevision,
+        question: summary,
+        allowedActions: ["review-material-drift", "revise-plan", "view-details", "cancel-workflow"]
+      });
+      return state;
+    }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_result_quarantined" });
+  }
+
   private async progressDeterministicTransitions(): Promise<SequentialWorkflowState> {
     let state = await loadFlowState(this.root, this.workflowId);
     const completed = state.plan?.phases.filter((phase) => phase.status === "completed") ?? [];
     for (const phase of completed.sort((a, b) => a.id.localeCompare(b.id))) {
       const status = integrationStatus(state);
       if (status.integratedPhaseIds.includes(phase.id) || status.conflictedPhaseIds.includes(phase.id)) continue;
-      const result = await integratePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId: this.coordinatorId, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
+      const result = await integratePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId: this.coordinatorId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
       state = result.state;
-      if (!result.ok) return state;
+      if (!result.ok) {
+        return updateFlowState(this.root, this.workflowId, (current) => {
+          setPendingDecision(current, {
+            type: "integration-conflict",
+            phaseId: phase.id,
+            briefRevision: current.phaseBriefs?.[phase.id]?.briefRevision,
+            integrationRevision: current.revision + 1,
+            question: `Phase ${phase.id} integration is conflicted and requires a persisted repair decision.`,
+            allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"]
+          });
+          return current;
+        }, { ownerId: this.coordinatorId, ownerType: "system", operation: "integration_conflict_decision" });
+      }
+    }
+    const nextPreflight = dependencyReadyCandidates(state).find((phase) => !state.phaseBriefs?.[phase.id] || !briefIsCurrent(state, phase.id));
+    if (nextPreflight) {
+      return preparePhaseExecutionBrief({
+        root: this.root,
+        workflowId: this.workflowId,
+        phaseId: nextPreflight.id,
+        config: this.config,
+        refresh: Boolean(state.phaseBriefs?.[nextPreflight.id]),
+        requireApproval: state.approval?.policy === "phase-by-phase",
+        mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+      });
     }
     const currentStatus = integrationStatus(state);
     const allComplete = Boolean(state.plan?.phases.length && state.plan.phases.every((phase) => phase.status === "completed"));
@@ -317,6 +514,13 @@ export class ExecutionCoordinator {
 
   private async persistHandle(handle: ExecutionHandle): Promise<void> {
     await updateFlowState(this.root, this.workflowId, (state) => {
+      const phase = state.plan?.phases.find((candidate) => candidate.id === handle.phaseId);
+      const eligibility = evaluatePhaseDispatchEligibility(state, handle.phaseId, this.config, {
+        explicitlySelected: true,
+        ownerId: handle.leaseOwnerId,
+        now: this.clock()
+      });
+      if (!eligibility.eligible) throw new Error(`Provider handle rejected: ${eligibility.blockers.map((blocker) => blocker.message).join("; ")}`);
       state.execution.coordinatorId = this.coordinatorId;
       state.execution.records[handle.phaseId] = {
         phaseId: handle.phaseId,
@@ -328,8 +532,13 @@ export class ExecutionCoordinator {
         startedAt: handle.startedAt,
         heartbeatAt: handle.startedAt,
         providerMetadata: handle.providerMetadata,
-        providerSession: handle.providerSession
+        providerSession: handle.providerSession,
+        executionIdentity: handle.executionIdentity
       };
+      if (phase) {
+        phase.status = "running";
+        phase.startedAt ??= handle.startedAt;
+      }
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_handle_persist" });
   }
@@ -349,6 +558,23 @@ export class ExecutionCoordinator {
         state.git!.phaseWorkspaces[phaseId] = { ...workspace, preparation, updatedAt: this.now() };
         const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
         if (phase?.workspace) phase.workspace = state.git!.phaseWorkspaces[phaseId];
+        const brief = state.phaseBriefs?.[phaseId];
+        if (preparation?.status === "blocked" && preparation.approvalRequired && preparation.bootstrapCommand && preparation.preparationRevision && preparation.workspaceIdentity && brief && state.approval) {
+          setPendingDecision(state, {
+            type: "workspace-bootstrap-approval",
+            workflowRevision: state.revision + 1,
+            stateRevision: state.revision + 1,
+            phaseId,
+            briefRevision: brief.briefRevision,
+            preparationRevision: preparation.preparationRevision,
+            workspaceIdentity: preparation.workspaceIdentity,
+            command: preparation.bootstrapCommand,
+            riskSummary: workspaceRiskSummary(preparation),
+            question: `Approve workspace bootstrap command '${preparation.bootstrapCommand}' for Phase ${phaseId}?`,
+            allowedActions: ["approve-bootstrap", "retry-preparation", "view-details", "cancel-workflow"],
+            source: "system"
+          });
+        }
       }
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "workspace_prepare_phase" });
@@ -406,6 +632,15 @@ export class ExecutionCoordinator {
           providerSession: updateSessionStatus(existing.providerSession, sessionStatus, this.now())
         };
       }
+      if (status !== "cancelled") {
+        setPendingDecision(state, {
+          type: "execution-recovery",
+          phaseId,
+          briefRevision: state.phaseBriefs?.[phaseId]?.briefRevision,
+          question: summary,
+          allowedActions: ["retry-execution", "view-details", "revise-plan", "cancel-workflow"]
+        });
+      }
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_phase_stopped" });
     if (status === "cancelled") {
@@ -415,25 +650,54 @@ export class ExecutionCoordinator {
 
   private async inputForPhase(state: SequentialWorkflowState, phaseId: string, workspacePath: string, ownerId: string): Promise<PhaseExecutionInput> {
     const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
-    if (!phase || !state.git || !state.plan) throw new Error(`Cannot build execution input for ${phaseId}.`);
+    const brief = state.phaseBriefs?.[phaseId];
+    const workspace = state.git?.phaseWorkspaces[phaseId];
+    if (!phase || !brief || !state.git || !state.plan || !workspace?.preparation?.workspaceIdentity) throw new Error(`Cannot build execution input for ${phaseId}.`);
     const existing = state.execution.records[phaseId];
-    const previousCheckpoint = existing?.checkpoint ?? await capturePhaseWorkspaceCheckpoint(workspacePath, phase.validationCommands);
+    const previousCheckpoint = existing?.checkpoint ?? await capturePhaseWorkspaceCheckpoint(workspacePath, brief.validationCommands);
     const resume = buildResumeRequest(existing, state.id, phaseId, workspacePath, phase.repairAttempts.length);
+    const dispatchedAt = this.now();
+    const executionIdentity = {
+      workflowId: state.id,
+      workflowRevision: state.revision,
+      phaseId: phase.id,
+      briefRevision: brief.briefRevision,
+      workspaceIdentity: workspace.preparation.workspaceIdentity,
+      workspacePath,
+      baseCommit: workspace.baseCommit,
+      constraintHash: brief.repository.constraintHash,
+      providerId: this.provider.id,
+      dispatchedAt
+    };
     return {
       workflowId: state.id,
       workflowRevision: state.revision,
       phaseId: phase.id,
-      objective: phase.objective,
-      acceptanceCriteria: phase.acceptanceCriteria,
-      dependencies: dependencyIds(phase),
+      briefRevision: brief.briefRevision,
+      executionIdentity,
+      approvedBrief: structuredClone(brief),
+      objective: brief.objective,
+      deliverable: brief.deliverable,
+      currentBehaviour: brief.currentBehaviour,
+      implementationApproach: brief.implementationApproach,
+      acceptanceCriteria: brief.acceptanceCriteria,
+      testObligations: brief.testObligations,
+      dependencies: brief.dependencies,
+      assumptions: brief.assumptions,
+      exclusions: brief.exclusions,
+      risks: brief.risks,
+      materialChanges: brief.materialChangesFromWorkflowPlan,
+      relevantFiles: brief.relevantFiles,
+      relevantSymbols: brief.relevantSymbols,
+      inspectionProvenance: brief.inspectionResult.provenance,
       selectedMode: state.mode,
-      modelTier: phase.modelTier,
+      modelTier: brief.modelTier ?? phase.modelTier,
       workspacePath,
       repositoryRoot: state.git.context.repositoryRoot,
-      allowedReadAreas: phase.expectedReadAreas,
-      allowedWriteAreas: phase.expectedWriteAreas.length > 0 ? phase.expectedWriteAreas : phase.expectedFilesOrAreas,
+      allowedReadAreas: brief.readAreas,
+      allowedWriteAreas: brief.writeAreas,
       methodologyReferences: [`methodology/modes/${state.mode}.md`, "methodology/evidence.md", "methodology/safeguards.md"],
-      validationExpectations: phase.validationCommands,
+      validationExpectations: brief.validationCommands,
       leaseOwnerId: ownerId,
       timeoutSeconds: this.config.execution.workerTimeoutSeconds,
       userRequest: state.request,
@@ -448,7 +712,7 @@ export class ExecutionCoordinator {
           : "Do not install dependencies. If dependencies are unavailable, stop and return blocked status with the missing command."
       ],
       previousCheckpoint: previousCheckpoint.dirty ? previousCheckpoint : undefined,
-      workspacePreparation: phase.workspace?.preparation,
+      workspacePreparation: workspace.preparation,
       resume,
       codeIntelligence: await detectCodeIntelligence(workspacePath, state.git.context.repositoryRoot),
       workerControls: workerControlsForMode(this.config, state.mode)
@@ -456,6 +720,7 @@ export class ExecutionCoordinator {
   }
 
   private handleFromRecord(record: PhaseExecutionRecord, workflowId: string): ExecutionHandle {
+    if (!record.executionIdentity) throw new Error(`Execution record ${record.phaseId} has no compatible Phase 3 execution identity.`);
     return {
       providerId: record.providerId,
       providerExecutionId: record.providerExecutionId,
@@ -467,8 +732,46 @@ export class ExecutionCoordinator {
       lastKnownStatus: record.status,
       providerMetadata: record.providerMetadata,
       providerSession: record.providerSession,
-      nativeSessionId: record.providerSession?.sessionId
+      nativeSessionId: record.providerSession?.sessionId,
+      executionIdentity: record.executionIdentity
     };
+  }
+
+  private approvedBootstrap(state: SequentialWorkflowState, phaseId: string): { preparationRevision: number; workspaceIdentity: string; command: string } | undefined {
+    const workspace = state.git?.phaseWorkspaces[phaseId];
+    const preparation = workspace?.preparation;
+    if (!preparation?.preparationRevision || !preparation.workspaceIdentity || !preparation.bootstrapCommand) return undefined;
+    const approved = state.approval?.decisionHistory.find((decision) =>
+      decision.type === "workspace-bootstrap-approval"
+      && decision.status === "approved"
+      && decision.phaseId === phaseId
+      && decision.preparationRevision === preparation.preparationRevision
+      && decision.workspaceIdentity === preparation.workspaceIdentity
+      && decision.command === preparation.bootstrapCommand);
+    return approved?.type === "workspace-bootstrap-approval" ? {
+      preparationRevision: approved.preparationRevision,
+      workspaceIdentity: approved.workspaceIdentity,
+      command: approved.command
+    } : undefined;
+  }
+
+  private assertHandleIdentity(input: PhaseExecutionInput, handle: ExecutionHandle): void {
+    const expected = input.executionIdentity;
+    const actual = handle.executionIdentity;
+    if (
+      !actual
+      || actual.workflowId !== expected.workflowId
+      || actual.workflowRevision !== expected.workflowRevision
+      || actual.phaseId !== expected.phaseId
+      || actual.briefRevision !== expected.briefRevision
+      || actual.workspaceIdentity !== expected.workspaceIdentity
+      || actual.workspacePath !== expected.workspacePath
+      || actual.baseCommit !== expected.baseCommit
+      || actual.constraintHash !== expected.constraintHash
+      || actual.providerId !== expected.providerId
+    ) {
+      throw new Error("Provider handle did not preserve the exact approved brief and workspace execution identity.");
+    }
   }
 
   private activeRecords(state: SequentialWorkflowState): PhaseExecutionRecord[] {
@@ -485,44 +788,7 @@ export class ExecutionCoordinator {
   }
 
   private result(state: SequentialWorkflowState, dispatched: DispatchSummary[], nextAction: ExecutionNextAction, message: string): CoordinatorResult {
-    const records = Object.values(state.execution.records);
-    const latestRecord = [...records].sort((a, b) => Date.parse(b.completedAt ?? b.heartbeatAt ?? b.startedAt) - Date.parse(a.completedAt ?? a.heartbeatAt ?? a.startedAt))[0];
-    const activePhase = state.plan?.phases.find((phase) => ["leased", "running", "completion_pending"].includes(phase.status));
-    const gatePhase = activePhase ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
-    const integrated = state.git ? integrationStatus(state) : undefined;
-    return {
-      workflowId: state.id,
-      revision: state.revision,
-      state: state.state,
-      executionMode: "coordinator",
-      provider: this.provider.id,
-      runningPhase: activePhase?.id,
-      lastProviderStatus: latestRecord ? `${latestRecord.phaseId}: ${latestRecord.status}` : undefined,
-      phaseGateStatus: gatePhase ? `${gatePhase.id}: ${gatePhase.completion?.decision ?? gatePhase.status}` : undefined,
-      integrationStatus: state.git?.integration.status,
-      combinedValidationStatus: integrated?.validation ? `${integrated.validation.status} @ ${integrated.validation.integrationCommit.slice(0, 12)}` : "not_run",
-      pendingUserGate: nextAction === "await_user" || nextAction === "repair" || nextAction === "review" || nextAction === "resolve_conflict" || nextAction === "final_review" || nextAction === "commit_proposal" ? nextAction : null,
-      nextValidAction: nextAction,
-      running: records.filter((record) => ACTIVE_EXECUTION_STATUSES.has(record.status)).map((record) => ({ phaseId: record.phaseId, provider: record.providerId, status: record.status })),
-      completed: records.filter((record) => ["completed", "result_recorded"].includes(record.status)).map((record) => ({ phaseId: record.phaseId, provider: record.providerId, status: record.status })),
-      providerSessions: records.filter((record) => record.providerSession).map((record) => ({
-        phaseId: record.phaseId,
-        provider: record.providerId,
-        providerExecutionId: record.providerExecutionId,
-        sessionId: record.providerSession!.sessionId,
-        workingDirectory: record.providerSession!.workingDirectory,
-        status: record.providerSession!.status,
-        resumePermitted: record.providerSession!.resumePermitted,
-        resolvedModel: record.providerSession!.resolvedModel
-      })),
-      blocked: [
-        ...records.filter((record) => ["failed", "cancelled", "timed_out", "blocked"].includes(record.status)).map((record) => ({ phaseId: record.phaseId, reason: record.resultSummary ?? record.status })),
-        ...state.blockers.map((reason) => ({ phaseId: "workflow", reason }))
-      ],
-      dispatched,
-      nextAction,
-      message
-    };
+    return coordinatorResultForState(state, this.provider.id, dispatched, nextAction, message);
   }
 
   private nextActionForState(state: SequentialWorkflowState): ExecutionNextAction {
@@ -538,7 +804,7 @@ export class ExecutionCoordinator {
     if (phase?.status === "needs_review") return "review";
     if (phase?.status === "needs_replan") return "replan";
     if (phase?.status === "blocked") return "await_user";
-    if (this.selectDispatchable(state).length > 0) return "dispatch";
+    if (this.selectPreparationCandidates(state).length > 0) return "dispatch";
     return "await_user";
   }
 
@@ -549,6 +815,68 @@ export class ExecutionCoordinator {
   private async captureCheckpoint(record: PhaseExecutionRecord, result?: PhaseExecutionResult): Promise<PhaseWorkspaceCheckpoint> {
     return capturePhaseWorkspaceCheckpoint(record.workspacePath, result?.validation.map((entry) => entry.command) ?? record.checkpoint?.validationCommands ?? [], result);
   }
+}
+
+export function coordinatorResultForState(
+  state: SequentialWorkflowState,
+  providerId: string,
+  dispatched: DispatchSummary[],
+  nextAction: ExecutionNextAction,
+  message: string
+): CoordinatorResult {
+  const records = Object.values(state.execution.records);
+  const latestRecord = [...records].sort((a, b) => Date.parse(b.completedAt ?? b.heartbeatAt ?? b.startedAt) - Date.parse(a.completedAt ?? a.heartbeatAt ?? a.startedAt))[0];
+  const activePhase = state.plan?.phases.find((phase) => ["leased", "running", "completion_pending"].includes(phase.status));
+  const gatePhase = activePhase ?? state.plan?.phases.find((phase) => ["needs_repair", "needs_review", "needs_replan", "blocked"].includes(phase.status));
+  const integrated = state.git ? integrationStatus(state) : undefined;
+  const envelope = workflowDecisionEnvelope(state);
+  const resultPhaseId = latestRecord?.phaseId ?? envelope.status.phaseId;
+  const normalizedNextAction = envelope.decision
+    ? "await_user"
+    : nextAction === "await_user"
+      ? operationNextAction(envelope.nextOperation?.type, state.state)
+      : nextAction;
+  return {
+    ...envelope,
+    revision: state.revision,
+    executionMode: "coordinator",
+    provider: providerId,
+    phaseResult: resultPhaseId ? phaseResultView(state, resultPhaseId) : undefined,
+    runningPhase: activePhase?.id,
+    lastProviderStatus: latestRecord ? `${latestRecord.phaseId}: ${latestRecord.status}` : undefined,
+    phaseGateStatus: gatePhase ? `${gatePhase.id}: ${gatePhase.completion?.decision ?? gatePhase.status}` : undefined,
+    integrationStatus: state.git?.integration.status,
+    combinedValidationStatus: integrated?.validation ? `${integrated.validation.status} @ ${integrated.validation.integrationCommit.slice(0, 12)}` : "not_run",
+    pendingUserGate: envelope.decision?.type ?? null,
+    nextValidAction: normalizedNextAction,
+    running: records.filter((record) => ACTIVE_EXECUTION_STATUSES.has(record.status)).map((record) => ({ phaseId: record.phaseId, provider: record.providerId, status: record.status })),
+    completed: records.filter((record) => ["completed", "result_recorded"].includes(record.status)).map((record) => ({ phaseId: record.phaseId, provider: record.providerId, status: record.status })),
+    providerSessions: records.filter((record) => record.providerSession).map((record) => ({
+      phaseId: record.phaseId,
+      provider: record.providerId,
+      providerExecutionId: record.providerExecutionId,
+      sessionId: record.providerSession!.sessionId,
+      workingDirectory: record.providerSession!.workingDirectory,
+      status: record.providerSession!.status,
+      resumePermitted: record.providerSession!.resumePermitted,
+      resolvedModel: record.providerSession!.resolvedModel
+    })),
+    blocked: [
+      ...records.filter((record) => ["failed", "cancelled", "timed_out", "blocked"].includes(record.status)).map((record) => ({ phaseId: record.phaseId, reason: record.resultSummary ?? record.status })),
+      ...state.blockers.map((reason) => ({ phaseId: "workflow", reason }))
+    ],
+    dispatched,
+    nextAction: normalizedNextAction,
+    message
+  };
+}
+
+function operationNextAction(type: string | undefined, state: SequentialWorkflowState["state"]): ExecutionNextAction {
+  if (type === "execute-next") return "dispatch";
+  if (type === "execution-poll") return "poll";
+  if (type === "validate-integration") return "validate_integration";
+  if (state === "completed") return "complete";
+  return "refresh";
 }
 
 async function capturePhaseWorkspaceCheckpoint(workspacePath: string, validationCommands: string[], result?: PhaseExecutionResult): Promise<PhaseWorkspaceCheckpoint> {
@@ -627,6 +955,49 @@ function reconcileChangedFiles(claimed: string[], actual: string[]): Record<stri
     missingFromProvider,
     notChangedInWorkspace
   };
+}
+
+function executionIdentityIssues(
+  record: PhaseExecutionRecord,
+  result: PhaseExecutionResult,
+  state: SequentialWorkflowState
+): string[] {
+  const expected = record.executionIdentity;
+  const actual = result.executionIdentity;
+  if (!expected) return ["persisted execution record has no compatible identity"];
+  if (!actual) return ["provider result omitted execution identity"];
+  const issues: string[] = [];
+  for (const key of ["workflowId", "workflowRevision", "phaseId", "briefRevision", "workspaceIdentity", "workspacePath", "baseCommit", "constraintHash", "providerId"] as const) {
+    if (actual[key] !== expected[key]) issues.push(`${key} mismatch`);
+  }
+  const brief = state.phaseBriefs?.[record.phaseId];
+  const workspace = state.git?.phaseWorkspaces[record.phaseId];
+  if (!brief || brief.briefRevision !== expected.briefRevision || brief.approvalStatus !== "approved") issues.push("approved brief was superseded");
+  if (!workspace || workspace.preparation?.workspaceIdentity !== expected.workspaceIdentity) issues.push("workspace identity is no longer current");
+  issues.push(...briefStalenessReasons(state, record.phaseId).map((reason) => reason.message));
+  return uniqueStrings(issues);
+}
+
+function pathWithinArea(file: string, area: string): boolean {
+  const normalizedFile = normalizeRelative(file);
+  const normalizedArea = normalizeRelative(area).replace(/\/\*\*.*$/, "").replace(/\/\*.*$/, "");
+  if (!normalizedArea || normalizedArea === ".") return false;
+  return normalizedFile === normalizedArea || normalizedFile.startsWith(`${normalizedArea}/`);
+}
+
+function normalizeRelative(value: string): string {
+  return value.replaceAll("\\", "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+}
+
+function workspaceRiskSummary(preparation: NonNullable<WorkflowPhase["workspace"]>["preparation"]): string[] {
+  if (!preparation) return [];
+  const risks: string[] = [];
+  if (preparation.commandRisk.network) risks.push("may access the network");
+  if (preparation.commandRisk.lifecycleScripts) risks.push("may execute dependency lifecycle scripts");
+  if (preparation.commandRisk.localWrite) risks.push("writes dependency artifacts in the isolated workspace");
+  if (!preparation.commandRisk.lockfilePreserving) risks.push("is not guaranteed to preserve the lockfile");
+  if (preparation.commandRisk.manifestMutationExpected) risks.push("may modify package manifests or lockfiles");
+  return risks.length > 0 ? risks : ["bounded local workspace preparation"];
 }
 
 function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId: string, phaseId: string, workspacePath: string, attempt: number): PhaseExecutionInput["resume"] | undefined {

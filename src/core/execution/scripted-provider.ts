@@ -12,6 +12,7 @@ import type {
   PhaseExecutionResult,
   ScopeDeviation
 } from "./types.js";
+import type { MaterialPlanChange, PhaseExecutionIdentity } from "../types.js";
 
 export type ScriptedPhaseResult = PhaseExecutionResult["status"];
 
@@ -36,6 +37,8 @@ export interface ScriptedPhase {
   stopHeartbeating?: boolean;
   malformedEvidence?: boolean;
   diagnostics?: Record<string, unknown>;
+  resultIdentity?: Partial<PhaseExecutionIdentity>;
+  discoveredMaterialChanges?: MaterialPlanChange[];
 }
 
 interface ScriptedExecution {
@@ -79,6 +82,10 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
       workspacePath: input.workspacePath,
       startedAt: new Date(this.clock()).toISOString(),
       lastKnownStatus: "running",
+      executionIdentity: {
+        ...input.executionIdentity,
+        providerSessionId: undefined
+      },
       providerMetadata: {
         scripted: true,
         readyAt: this.clock() + (script.sleepMs ?? 0),
@@ -109,7 +116,13 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
       };
     }
     return {
-      status: execution.script.result === "blocked" ? "blocked" : execution.script.result === "timed_out" ? "timed_out" : execution.script.result ?? "completed",
+      status: execution.script.result === "blocked"
+        ? "blocked"
+        : execution.script.result === "timed_out"
+          ? "timed_out"
+          : execution.script.result === "needs_replan" || execution.script.result === "needs_review"
+            ? "completed"
+            : execution.script.result ?? "completed",
       heartbeatAt: execution.script.heartbeat === false || execution.script.stopHeartbeating ? undefined : new Date(this.clock()).toISOString(),
       message: execution.script.summary
     };
@@ -129,7 +142,9 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
         criterionEvidence: [],
         assumptions: [],
         scopeDeviations: [],
-        remainingRisks: []
+        remainingRisks: [],
+        executionIdentity: execution.input.executionIdentity,
+        discoveredMaterialChanges: []
       };
     }
     return this.buildResult(execution.input, execution.script);
@@ -183,8 +198,10 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
         timeoutSeconds: 0,
         userRequest: "",
         planContext: "",
-        safetyInstructions: []
-      },
+        safetyInstructions: [],
+        executionIdentity: handle.executionIdentity,
+        briefRevision: handle.executionIdentity.briefRevision
+      } as unknown as PhaseExecutionInput,
       handle,
       script: {
         result: result.status,
@@ -193,6 +210,8 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
         assumptions: result.assumptions,
         scopeDeviations: result.scopeDeviations,
         remainingRisks: result.remainingRisks,
+        resultIdentity: result.executionIdentity,
+        discoveredMaterialChanges: result.discoveredMaterialChanges,
         stopHeartbeating: Boolean(metadata.stopHeartbeating),
         heartbeat: typeof metadata.heartbeat === "boolean" ? metadata.heartbeat : undefined
       },
@@ -206,6 +225,7 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
     const criteriaMode = script.criteria ?? "all-met";
     return {
       status: script.result ?? "completed",
+      executionIdentity: { ...input.executionIdentity, ...(script.resultIdentity ?? {}) },
       summary: script.summary ?? `Scripted result for ${input.phaseId}.`,
       changedFiles: (script.edits ?? []).map((edit) => edit.path).sort(),
       validation: script.validation ?? [],
@@ -218,6 +238,7 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
         })),
       assumptions: script.assumptions ?? [],
       scopeDeviations: (script.scopeDeviations ?? []).map((deviation) => typeof deviation === "string" ? { reason: deviation } : deviation),
+      discoveredMaterialChanges: script.discoveredMaterialChanges ?? [],
       remainingRisks: script.remainingRisks ?? [],
       providerDiagnostics: script.diagnostics
     };

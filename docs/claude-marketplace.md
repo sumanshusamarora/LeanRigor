@@ -72,7 +72,13 @@ On first use, LeanRigor auto-bootstraps its repository-local state and reports i
 
 ## Conversational workflow
 
-`/leanrigor:start` is the primary entry point. It starts or resumes the active workflow, presents mode and risk, asks only blocking clarifications, manages approvals, coordinates execution, reports persisted phase gates, advances through integration and final review, and presents a commit proposal without creating the final commit or pushing.
+`/leanrigor:start` is the primary entry point. It starts or resumes the active
+workflow, presents mode and risk, separately manages Workflow Plan and exact
+Phase Execution Brief approvals, refreshes the normalized persisted decision
+envelope after every transition, coordinates execution, reports provider,
+completion-gate, and integration status from `flow phase-result`, advances to
+the next phase brief or final review, and records final completion without
+creating the final commit or pushing.
 
 The other commands inspect or resume the same persisted workflow rather than creating duplicates.
 

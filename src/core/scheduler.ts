@@ -1,6 +1,6 @@
 import type { LeanRigorConfig } from "../config/schema.js";
 import { detectOwnershipConflicts, ownershipIsExplicit, type OwnershipConflict } from "./ownership.js";
-import { approvalPermitsExecution, briefIsCurrent } from "./approval.js";
+import { evaluatePhaseDispatchEligibility } from "./dispatch-eligibility.js";
 import type { ExecutionPlan, PhaseStatus, SequentialWorkflowState, WorkflowPhase } from "./types.js";
 
 export class PhaseDagError extends Error {}
@@ -8,6 +8,9 @@ export class PhaseDagError extends Error {}
 export interface ReadyPhase {
   phaseId: string;
   objective: string;
+  dependencyReady: boolean;
+  dispatchReady: boolean;
+  dispatchBlockers: Array<{ code: string; message: string; recovery?: string }>;
   blockedBy: string[];
   conflictsWith: OwnershipConflict[];
 }
@@ -76,7 +79,7 @@ export function topologicalPhaseOrder(plan: ExecutionPlan): string[] {
 export function refreshPhaseReadiness(state: SequentialWorkflowState, config?: LeanRigorConfig): void {
   if (!state.plan || state.state !== "executing") return;
   const schedule = calculateReadyPhases(state, config);
-  const ready = new Set(schedule.readyPhases.map((phase) => phase.phaseId));
+  const ready = new Set(schedule.readyPhases.filter((phase) => phase.dispatchReady).map((phase) => phase.phaseId));
   for (const phase of state.plan.phases) {
     if (terminalPhaseStatuses.has(phase.status) || activePhaseStatuses.has(phase.status)) continue;
     phase.status = ready.has(phase.id) ? "ready" : "planned";
@@ -111,12 +114,8 @@ export function calculateReadyPhases(state: SequentialWorkflowState, config?: Le
 
   const readyPhases: ReadyPhase[] = [];
   for (const phase of candidates) {
-    const blockedBy: string[] = [];
-    if (!briefIsCurrent(state, phase.id)) {
-      blockedBy.push("Phase execution brief is missing, stale, or has unresolved material drift.");
-    } else if (!approvalPermitsExecution(state, phase.id)) {
-      blockedBy.push("Current approval policy does not authorize this phase.");
-    }
+    const eligibility = evaluatePhaseDispatchEligibility(state, phase.id, config, { explicitlySelected: true });
+    const blockedBy = eligibility.blockers.map((blocker) => blocker.message);
     if ((state.mode === "standard" || state.mode === "rigorous") && !ownershipIsExplicit(phase, state.mode)) {
       blockedBy.push(`${state.mode} mode requires explicit read/write ownership before parallel eligibility.`);
     }
@@ -124,7 +123,15 @@ export function calculateReadyPhases(state: SequentialWorkflowState, config?: Le
       .filter((conflict) => conflict.phaseA === phase.id || conflict.phaseB === phase.id)
       .filter((conflict) => conflict.severity === "blocking");
     if (activeConflicts.length > 0) blockedBy.push("Active leased phases already have unresolved ownership conflicts.");
-    readyPhases.push({ phaseId: phase.id, objective: phase.objective, blockedBy, conflictsWith: conflicts });
+    readyPhases.push({
+      phaseId: phase.id,
+      objective: phase.objective,
+      dependencyReady: eligibility.dependencyReady,
+      dispatchReady: eligibility.dispatchReady && blockedBy.length === 0,
+      dispatchBlockers: eligibility.blockers,
+      blockedBy,
+      conflictsWith: conflicts
+    });
   }
 
   const dispatchable = selectDispatchable(readyPhases, activeIds, maxParallelPhases);
@@ -143,7 +150,7 @@ function selectDispatchable(readyPhases: ReadyPhase[], activeIds: Set<string>, m
   const selected: ReadyPhase[] = [];
   for (const phase of readyPhases) {
     if (selected.length >= maxParallelPhases) break;
-    if (phase.blockedBy.length > 0) continue;
+    if (!phase.dispatchReady || phase.blockedBy.length > 0) continue;
     if (phase.conflictsWith.some((conflict) => activeIds.has(conflict.phaseA) || activeIds.has(conflict.phaseB))) continue;
     if (phase.conflictsWith.some((conflict) => selected.some((candidate) => candidate.phaseId === conflict.phaseA || candidate.phaseId === conflict.phaseB))) continue;
     selected.push(phase);

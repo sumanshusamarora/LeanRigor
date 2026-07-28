@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
 import { dependencyIds } from "./scheduler.js";
 import {
+  dependencyFingerprint,
+  executionPolicyHash,
+  phasePlanFingerprint,
+  priorPhaseOutcomesHash
+} from "./dispatch-eligibility.js";
+import {
   derivePhaseBriefInspectionRequest,
   inspectPhaseBrief,
   repositoryRevision,
@@ -180,7 +186,11 @@ export async function generateInspectedPhaseExecutionBrief(args: {
       repositoryRevision: repo.baseCommit ?? `tree:${inspectionResultId}`,
       constraintHash,
       inspectionResultId,
-      inspectedPaths: inspected.result.filesRead
+      inspectedPaths: inspected.result.filesRead,
+      planFingerprint: phasePlanFingerprint(args.phase),
+      dependencyFingerprint: dependencyFingerprint(args.phase),
+      priorPhaseOutcomesHash: priorPhaseOutcomesHash(args.state, args.phase),
+      executionPolicyHash: executionPolicyHash(args.phase, args.config)
     },
     repairAttempts: 0
   });

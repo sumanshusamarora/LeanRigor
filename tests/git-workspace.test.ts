@@ -23,6 +23,7 @@ import {
   workspaceRecover
 } from "../src/core/flow.js";
 import type { CriterionCompletionEvidence, ExecutionPlan, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
+import { PHASE_PREPARATION_CAPABILITY } from "../src/core/dispatch-eligibility.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -93,7 +94,7 @@ describe("Git worktree isolation and integration", () => {
 
     const workflow = await workflowWithPlan(root, planWithPhases([testPhase("phase-docs", ["README.md"])]));
     const initialized = await workspaceInit({ root, workflowId: workflow.id, config: defaultConfig() });
-    await leasePhase({ root, workflowId: workflow.id, phaseId: "phase-docs", ownerId: "owner-docs", config: defaultConfig() });
+    await leasePhase({ root, workflowId: workflow.id, phaseId: "phase-docs", ownerId: "owner-docs", config: defaultConfig(), internalCapability: PHASE_PREPARATION_CAPABILITY });
     const withWorkspace = await workspaceCreatePhase({ root, workflowId: workflow.id, phaseId: "phase-docs", ownerId: "owner-docs", config: defaultConfig() });
     const phasePath = withWorkspace.git!.phaseWorkspaces["phase-docs"]!.path;
     await writeFile(path.join(phasePath, "README.md"), "integrated phase change\n");
@@ -120,7 +121,7 @@ describe("Git worktree isolation and integration", () => {
     await workspaceInit({ root, workflowId: workflow.id, config });
 
     for (const [phaseId, file, contents] of [["phase-a", "src/a.txt", "a\n"], ["phase-b", "src/b.txt", "b\n"]] as const) {
-      await leasePhase({ root, workflowId: workflow.id, phaseId, ownerId: phaseId, config });
+      await leasePhase({ root, workflowId: workflow.id, phaseId, ownerId: phaseId, config, internalCapability: PHASE_PREPARATION_CAPABILITY });
       const state = await workspaceCreatePhase({ root, workflowId: workflow.id, phaseId, ownerId: phaseId, config });
       await writeFile(path.join(state.git!.phaseWorkspaces[phaseId]!.path, file), contents);
       await completePhaseWithEvidence(root, workflow.id, phaseId, phaseId);
@@ -145,7 +146,7 @@ describe("Git worktree isolation and integration", () => {
     await workspaceInit({ root, workflowId: workflow.id, config: defaultConfig() });
 
     for (const [phaseId, contents] of [["phase-left", "left\n"], ["phase-right", "right\n"]] as const) {
-      await leasePhase({ root, workflowId: workflow.id, phaseId, ownerId: phaseId, config: defaultConfig() });
+      await leasePhase({ root, workflowId: workflow.id, phaseId, ownerId: phaseId, config: defaultConfig(), internalCapability: PHASE_PREPARATION_CAPABILITY });
       const state = await workspaceCreatePhase({ root, workflowId: workflow.id, phaseId, ownerId: phaseId, config: defaultConfig() });
       await writeFile(path.join(state.git!.phaseWorkspaces[phaseId]!.path, "src/shared.txt"), contents);
       await completePhaseWithEvidence(root, workflow.id, phaseId, phaseId);
@@ -163,7 +164,7 @@ describe("Git worktree isolation and integration", () => {
     const root = await gitRepo();
     const workflow = await workflowWithPlan(root, planWithPhases([testPhase("phase-a", ["src/a.txt"])]));
     await workspaceInit({ root, workflowId: workflow.id, config: defaultConfig() });
-    await leasePhase({ root, workflowId: workflow.id, phaseId: "phase-a", ownerId: "owner-a", config: defaultConfig() });
+    await leasePhase({ root, workflowId: workflow.id, phaseId: "phase-a", ownerId: "owner-a", config: defaultConfig(), internalCapability: PHASE_PREPARATION_CAPABILITY });
     const state = await workspaceCreatePhase({ root, workflowId: workflow.id, phaseId: "phase-a", ownerId: "owner-a", config: defaultConfig() });
     await writeFile(path.join(state.git!.phaseWorkspaces["phase-a"]!.path, "src/a.txt"), "stale change\n");
 

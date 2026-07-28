@@ -23,6 +23,7 @@ import { validatePhaseDag, topologicalPhaseOrder } from "../src/core/scheduler.j
 import type { CriterionCompletionEvidence, ExecutionPlan, SequentialWorkflowState, WorkflowPhase } from "../src/core/types.js";
 import { acquireWorkflowLock, refreshWorkflowLock, releaseWorkflowLock, WorkflowLockBusyError } from "../src/core/workflow-lock.js";
 import { RevisionConflictError } from "../src/core/workflow-store.js";
+import { PHASE_PREPARATION_CAPABILITY } from "../src/core/dispatch-eligibility.js";
 
 async function tempRepo(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-concurrency-"));
@@ -97,15 +98,15 @@ describe("parallel-ready workflow concurrency", () => {
   it("leases, heartbeats, rejects duplicate owners, releases without completing, and requires lease ownership", async () => {
     const root = await tempRepo();
     const executing = await workflowWithPlan(root, planWithPhases([testPhase("phase-a", ["src/a.ts"])]));
-    const leased = await leasePhase({ root, workflowId: executing.id, phaseId: "phase-a", ownerId: "owner-a", config: defaultConfig() });
+    const leased = await leasePhase({ root, workflowId: executing.id, phaseId: "phase-a", ownerId: "owner-a", config: defaultConfig(), internalCapability: PHASE_PREPARATION_CAPABILITY });
 
     expect(leased.plan?.phases[0]?.status).toBe("leased");
-    await expect(leasePhase({ root, workflowId: executing.id, phaseId: "phase-a", ownerId: "owner-b", config: defaultConfig() })).rejects.toThrow(/active lease/);
+    await expect(leasePhase({ root, workflowId: executing.id, phaseId: "phase-a", ownerId: "owner-b", config: defaultConfig(), internalCapability: PHASE_PREPARATION_CAPABILITY })).rejects.toThrow(/active lease/);
     const heartbeated = await heartbeatPhase({ root, workflowId: executing.id, phaseId: "phase-a", ownerId: "owner-a", config: defaultConfig() });
     expect(heartbeated.phaseLeases["phase-a"]?.ownerId).toBe("owner-a");
     await expect(completePhase({ root, workflowId: executing.id, phaseId: "phase-a", mutation: { ownerId: "owner-b" } })).rejects.toThrow(/active lease held by owner-b/);
     const released = await releasePhase({ root, workflowId: executing.id, phaseId: "phase-a", ownerId: "owner-a" });
-    expect(released.plan?.phases[0]?.status).toBe("ready");
+    expect(released.plan?.phases[0]?.status).toBe("planned");
   });
 
   it("runs the concurrency smoke scenario without launching agents or committing", async () => {
@@ -120,15 +121,16 @@ describe("parallel-ready workflow concurrency", () => {
 
     let schedule = readyPhases(executing, config);
     expect(schedule.readyPhases.map((phase) => phase.phaseId)).toEqual(["phase-backend", "phase-docs"]);
-    expect(schedule.dispatchableCount).toBe(1);
+    expect(schedule.dispatchableCount).toBe(0);
+    expect(schedule.readyPhases.every((phase) => phase.dependencyReady && !phase.dispatchReady)).toBe(true);
 
     config.execution.maxParallelPhases = 2;
     schedule = readyPhases(executing, config);
-    expect(schedule.dispatchableCount).toBe(2);
+    expect(schedule.dispatchableCount).toBe(0);
 
-    const backend = await leasePhase({ root, workflowId: executing.id, phaseId: "phase-backend", ownerId: "backend-owner", config });
-    await leasePhase({ root, workflowId: executing.id, phaseId: "phase-docs", ownerId: "docs-owner", config });
-    await expect(leasePhase({ root, workflowId: executing.id, phaseId: "phase-docs", ownerId: "other-owner", config })).rejects.toThrow(/active lease/);
+    const backend = await leasePhase({ root, workflowId: executing.id, phaseId: "phase-backend", ownerId: "backend-owner", config, internalCapability: PHASE_PREPARATION_CAPABILITY });
+    await leasePhase({ root, workflowId: executing.id, phaseId: "phase-docs", ownerId: "docs-owner", config, internalCapability: PHASE_PREPARATION_CAPABILITY });
+    await expect(leasePhase({ root, workflowId: executing.id, phaseId: "phase-docs", ownerId: "other-owner", config, internalCapability: PHASE_PREPARATION_CAPABILITY })).rejects.toThrow(/active lease/);
     await expect(heartbeatPhase({ root, workflowId: executing.id, phaseId: "phase-backend", ownerId: "backend-owner", config, mutation: { expectedRevision: backend.revision } })).rejects.toMatchObject({ code: "revision_conflict" });
 
     await heartbeatPhase({ root, workflowId: executing.id, phaseId: "phase-backend", ownerId: "backend-owner", config });
@@ -136,7 +138,7 @@ describe("parallel-ready workflow concurrency", () => {
     stale.phaseLeases["phase-docs"]!.expiresAt = "2026-01-01T00:00:00.000Z";
     await saveFlowState(root, stale, { expectedRevision: stale.revision });
     const recovered = await recoverLeases({ root, workflowId: executing.id, now: new Date("2026-01-01T00:00:01.000Z") });
-    expect(recovered.plan?.phases.find((phase) => phase.id === "phase-docs")?.status).toBe("ready");
+    expect(recovered.plan?.phases.find((phase) => phase.id === "phase-docs")?.status).toBe("planned");
 
     await recordValidation({
       root,
@@ -177,7 +179,7 @@ describe("parallel-ready workflow concurrency", () => {
 
     expect(schedule.readyPhases).toHaveLength(2);
     expect(schedule.readyPhases.flatMap((phase) => phase.conflictsWith)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "write_write" })]));
-    expect(schedule.dispatchableCount).toBe(1);
+    expect(schedule.dispatchableCount).toBe(0);
   });
 });
 

@@ -93,3 +93,12 @@ repair only deficient fields within the configured attempt budget. If
 inspection is unavailable, scope is unsafe, or repair remains shallow, keep the
 phase blocked at preflight. Revision feedback creates a new brief revision and
 supersedes the prior approval decision.
+
+The exact approved brief is authoritative at dispatch. Dependency completion
+alone is not dispatch readiness. The shared guard must also confirm current
+provenance, exact approval, resolved material drift, prepared workspace
+evidence, ownership safety, and the absence of a conflicting lease. Provider
+input and results repeat the workflow, brief, workspace, base-commit, and
+constraint identities. Any mismatch, unexpected write boundary, or material
+discovery returns to review or replanning instead of being accepted as
+completion.

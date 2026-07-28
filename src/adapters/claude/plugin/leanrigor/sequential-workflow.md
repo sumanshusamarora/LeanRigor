@@ -1,4 +1,4 @@
-<!-- generated_by: leanrigor | asset_version: 6 -->
+<!-- generated_by: leanrigor | asset_version: 7 -->
 # LeanRigor Conversational Workflow
 
 Use `leanrigor flow` as the persisted source of truth. Users should respond in
@@ -10,7 +10,7 @@ text into a shell command.
 
 Normal flow:
 
-`triage summary -> Approach approval? -> Workflow Plan approval -> Phase Execution Brief -> coordinator/manual execution -> per-phase completion gate -> final integrated review -> commit proposal`
+`triage summary -> approach approval -> Workflow Plan approval -> Phase Execution Brief approval -> workspace preparation -> provider dispatch -> provider result -> completion gate -> integration -> next Phase Execution Brief or final integrated review -> final completion`
 
 Use `leanrigor flow active --json` to discover active workflows and
 `leanrigor flow next --json` to inspect the current gate. Do not show shell
@@ -59,14 +59,45 @@ Then load only the relevant methodology files for the current step:
 
 Do not load every methodology file for every task. Fast mode must stay compact.
 
-Labels:
+Lifecycle terms:
 
 - `Approach approval`
 - `Workflow Plan approval`
 - `Phase Execution Brief approval`
-- `Phase completion review`
+- `Workspace prepared`
+- `Provider dispatched`
+- `Provider completed`
+- `Completion gate passed`
+- `Phase accepted`
+- `Phase integrated`
+- `Final integrated validation passed`
 - `Final integrated review`
-- `Commit proposal`
+- `User-approved final completion`
+
+Never collapse these into `Phase complete and approved`.
+
+## Decision envelope contract
+
+`flow next --json`, execution commands, polling, recovery, completion, and
+integration return the same normalized persisted envelope:
+
+- `status` is the authoritative lifecycle summary.
+- `decision`, when present, contains the stable ID, exact revision identity,
+  question, and ordered options.
+- `nextOperation.automaticallyPermitted` distinguishes a safe automatic
+  operation from a user decision.
+
+Controller sequence after every transition:
+
+1. Invoke one transition.
+2. Read its returned envelope.
+3. If state changed, refresh with `flow next --json`.
+4. Render the persisted status or decision.
+5. Invoke no additional operation unless `automaticallyPermitted` is true.
+
+Never infer, cache, or reconstruct a question from conversation. Never show a
+resolved or superseded decision. Never call `AskUserQuestion` without a
+current `decision`.
 
 Rules:
 
@@ -78,7 +109,14 @@ Rules:
   Do not end the turn from raw `flow start` JSON. Use `--provider
   deterministic` only when the user explicitly requests deterministic triage.
 - Multiple active workflows: use `AskUserQuestion` to let the user choose among them (header: "Workflow"). Show ID, request, state, mode, and updated time in each option description. Do not render an ordinary text question first. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable.
-- When `flow start` or `flow next --json` returns `next.approvalActions`, call the `AskUserQuestion` tool in the same assistant turn to present a structured selector. This is mandatory whenever the tool is available. A prose summary is not a decision gate by itself, and the turn must not end after the summary while `approvalActions` are pending. Use input shape `{ "questions": [{ "question": "What should LeanRigor do next?", "header": "<Approach|Plan|Commit|Phase|Workflow>", "options": [{ "label": "<approvalActions[n].label>", "description": "<approvalActions[n].description>" }], "multiSelect": false }] }`. Map each action's `label` to the option label and `description` to the option description, include every persisted option in order, then match the selected label to the persisted action and run that action's deterministic transition internally. Use a short header (max 12 chars) derived from the current gate: "Approach", "Plan", "Commit", "Phase", or "Workflow" for multi-workflow selection. Do not render an ordinary text question such as "Approve or reject this approach?" before calling the selector. Fall back to a numbered list only when `AskUserQuestion` is genuinely unavailable. Each action has a deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response. Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
+- When an envelope returns `decision`, call `AskUserQuestion` in the same
+  assistant turn. Use `decision.question` verbatim, copy every option label and
+  description from `decision.options` in order, then match the selected option
+  by its persisted `intent` and run its persisted command. Do not end the turn
+  after a prose summary while a decision is pending. Use a short header
+  (maximum 12 characters) derived from the decision type. Fall back to a
+  numbered list only when `AskUserQuestion` is unavailable. Do not infer
+  approval from tone and do not use `ExitPlanMode` as LeanRigor approval.
 - At the post-triage approach gate, render a compact `Workflow created and triaged` summary with workflow ID, mode, assessment, key constraints, recommended approach, and `No implementation has started. Your approval is required before planning.` Then call `AskUserQuestion` in the same turn with exactly these options in order: `Approve approach and create plan`, `Revise approach`, `View workflow details`, `Cancel workflow`.
 - At the clarification gate (`state: awaiting_clarification`), render the persisted question explicitly and verbatim: `Question: <next.summary.question or clarification.question>`. Also render `Why this matters: <next.summary.reason or clarification.reason>` when present. If `next.summary.modeStatus` is `provisional`, label the shown mode as `Provisional recommendation` and do not present it as final. Do not invent additional triage questions from repository scope or planning uncertainty; LeanRigor core has already filtered model-requested clarification. Do not replace the question with the reason, and do not end with a blank prompt after "before continuing". If `AskUserQuestion` is available, ask exactly the persisted question there as well; otherwise ask for a free-form answer in plain language. Record the answer with `leanrigor flow answer <workflow-id> --answer-file <answer-file> --provider auto`.
 - Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
@@ -118,38 +156,48 @@ Rules:
   records, and present only persisted gates. Use `--provider scripted` only when
   the user explicitly requests scripted/deterministic execution. Do not
   implement phase edits yourself and do not edit the original working tree.
+- After exact brief approval, refresh first. Dispatch only when the refreshed
+  envelope permits `execute-next`. After provider polling, render provider
+  completion, identity verification, scope checking, completion-gate result,
+  and integration as separate persisted facts.
 - During execution status, render the persisted `recommendedNextPhase` as the
   primary action. Show `otherDependencyReadyPhases` separately and start one
   only after explicit user choice. Do not replace Phase 2 with Phase 4 merely
   because both are dependency-ready.
-- If provider dispatch cannot start, present explicit recovery choices: retry
-  the configured provider, use another available provider, switch to manual
-  execution, or cancel the workflow. Do not silently switch provider or mode.
+- Treat `dependencyReady` and `dispatchReady` as distinct. Render every
+  `dispatchBlocker` and its recovery action. A workspace bootstrap decision
+  must show the exact command and risk summary, then use the persisted
+  `approve-bootstrap` action; do not install dependencies in the main session
+  or ask the implementation provider to install them.
+- Provider execution is bound to the exact approved brief and workspace
+  identity. If status reports stale brief, result identity mismatch,
+  unexpected write scope, or material discovery, render the persisted review
+  or replan gate. Do not reinterpret provider `completed` as acceptance.
+- If provider dispatch or recovery cannot proceed, present only the persisted
+  recovery decision. Never silently switch provider or execution mode, and
+  never fall back to main-session implementation.
 - Coordinator-owned leases are completed by the coordinator only. Do not infer,
   probe, or reuse a provider lease owner string from status output to run
   `phase-complete` directly.
-- Use `execution.mode = manual` only after the user explicitly selects manual
-  execution. In manual mode, initialize the integration workspace, then start one
-  ready phase internally with a stable session owner, phase lease, and phase
-  workspace.
+- Manual execution is outside the normal controller path. Use it only after an
+  explicit persisted choice and user selection.
 - `continue` must not bypass `needs_repair`, `needs_review`, or `needs_replan`.
 - Ask one concise clarification for ambiguous responses.
-- Before editing, verify that the current directory equals the active phase
-  workspace returned by LeanRigor and that Git root is that workspace. If not,
-  stop rather than editing the wrong tree.
-- Use the workspace path returned by LeanRigor for all phase work. Never edit
-  the user's original working tree when a phase workspace exists.
+- Present normal phase completion from
+  `leanrigor flow phase-result <workflow-id> <phase-id> --json`. Do not run
+  `cd <phase-worktree> && git diff`, inspect the worktree, or request generic
+  Bash trust merely to advance the workflow. Manual inspection is allowed only
+  when the user explicitly requests it or persisted evidence is incomplete and
+  a dedicated decision states the reason.
 - Never claim a phase is complete from visible file changes alone. Never
   compensate for an unavailable workflow transition by narrating that the
   workflow is complete. Report the persisted state and the exact blocker.
-- Read the current revision before mutating. Run or skip declared validation
-  with a reason in the phase workspace, then submit phase completion evidence as
-  the same manual lease owner. Retrieve `flow evidence-template`, keep workflow
-  ID, workflow revision, and phase ID in the file, and use the workflow-owned
-  artifact path from `artifactPath` instead of arbitrary `/tmp` paths.
-- After the phase gate passes, integrate the approved phase into the LeanRigor
-  integration worktree. Run combined validation in the integration worktree
-  before final integrated review.
+- After a phase is accepted, integration status must be shown explicitly.
+  Generate or refresh the next brief only after integration permits it. For
+  phase-by-phase workflows, render the fresh next-phase brief decision rather
+  than a generic `Continue` option. For workflow-authorized Standard flows,
+  show the concise preflight status and continue only while the envelope marks
+  the next operation automatically permitted.
 - Refresh long-running leases where practical. On `revision_conflict`, reread state and present the changed gate instead of blindly retrying.
 - Final integrated review remains required after all phase gates pass.
 - On `integration_conflict`, present the conflict-repair gate; do not resolve
