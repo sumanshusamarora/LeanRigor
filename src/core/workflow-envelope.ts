@@ -78,6 +78,7 @@ export function workflowDecisionEnvelope(state: SequentialWorkflowState): Workfl
       briefRevision: decision.briefRevision,
       preparationRevision: decision.preparationRevision,
       integrationRevision: decision.integrationRevision,
+      additionalTurns: decision.additionalTurns,
       question: decision.question,
       options: decision.allowedActions.map((action) => decisionOption(state, decision, action))
     } : undefined,
@@ -209,7 +210,12 @@ function decisionOption(state: SequentialWorkflowState, decision: WorkflowPendin
     "approve-bootstrap": { label: "Approve workspace bootstrap", description: "Approve only the persisted command and preparation identity.", command: bootstrapCommand(state, decision, common) },
     "retry-preparation": { label: "Retry workspace preparation", description: "Retry deterministic preparation without authorizing another command.", command: `leanrigor flow execute-next ${state.id} --provider auto --json --root ${root}` },
     "retry-brief": { label: "Retry bounded brief generation", description: "Retry read-only inspection and brief generation within the persisted boundary.", command: `leanrigor flow phase-brief ${state.id} ${phase} --refresh ${common}` },
-    "retry-execution": { label: "Retry provider execution", description: "Retry the configured provider using persisted recovery state.", command: `leanrigor flow execution-recover ${state.id} --provider auto --json --root ${root}` },
+    "retry-execution": { label: "Retry provider execution", description: "Retry the configured provider using persisted recovery state.", command: `leanrigor flow execution-recover ${state.id} --provider auto --json ${common}` },
+    "continue-execution": {
+      label: `Continue with ${decision.additionalTurns ?? "additional"} additional turns`,
+      description: "Continue from the preserved phase worktree using the exact persisted additional-turn allowance.",
+      command: `leanrigor flow continue-execution ${state.id} --provider auto --json ${common}`
+    },
     "review-material-drift": { label: "Review material drift", description: "Show the persisted scope or identity mismatch before replanning.", command: `leanrigor flow phase-result ${state.id} ${phase} --json --root ${root}` },
     "record-review": { label: "Record final integrated review", description: "Record the final review result against persisted integrated evidence.", command: `leanrigor flow record-review ${state.id} --status <status> --summary <summary> ${common}` },
     "complete-workflow": { label: "Complete workflow", description: "Record explicit user-approved final completion without committing.", command: `leanrigor flow complete ${state.id} ${common}` },

@@ -26,7 +26,7 @@ import {
   workspaceInit
 } from "../flow.js";
 import type { PhaseExecutionRecord, PhaseExecutionRecordStatus, SequentialWorkflowState, WorkflowPhase } from "../types.js";
-import { setPendingDecision } from "../workflow-decision.js";
+import { requirePendingDecision, resolvePendingDecision, setPendingDecision } from "../workflow-decision.js";
 import { phaseResultView, workflowDecisionEnvelope } from "../workflow-envelope.js";
 import type { ExecutionProvider } from "./provider.js";
 import type { CoordinatorResult, DispatchSummary, ExecutionHandle, ExecutionNextAction, PhaseExecutionInput, PhaseExecutionResult, PhaseWorkspaceCheckpoint, ProviderSessionRef, ProviderSessionStatus } from "./types.js";
@@ -312,6 +312,100 @@ export class ExecutionCoordinator {
     return this.result(current, [], this.nextActionForState(current), "Execution recovery completed.");
   }
 
+  async continueExecution(decisionId: string, expectedRevision: number): Promise<CoordinatorResult> {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const decision = requirePendingDecision(state, "execution-recovery", "continue-execution", decisionId);
+      if (!decision?.phaseId || !decision.additionalTurns) throw new Error("The current recovery decision does not authorize additional provider turns.");
+      const phase = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const record = state.execution.records[decision.phaseId];
+      if (!phase || !record?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
+      if (record.diagnostics?.terminalReason !== "error_max_turns") throw new Error(`Phase ${decision.phaseId} did not stop because of the provider turn limit.`);
+      if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before continuing.`);
+      const initialTurnLimit = record.executionBudget?.initialTurnLimit
+        ?? (typeof record.diagnostics?.maxTurns === "number" ? record.diagnostics.maxTurns : this.config.execution.workerControls.maxTurns[state.mode]);
+      const extensionTurnLimit = record.executionBudget?.extensionTurnLimit ?? this.config.execution.workerControls.extensionTurns[state.mode];
+      const extensionApprovals = record.executionBudget?.extensionApprovals ?? 0;
+      if (extensionApprovals >= 1) throw new Error(`Phase ${decision.phaseId} has already used its additional-turn allowance.`);
+      if (decision.additionalTurns !== extensionTurnLimit) throw new Error(`Recovery decision turn allowance is stale; expected ${extensionTurnLimit}, received ${decision.additionalTurns}.`);
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase.status = "ready";
+      record.executionBudget = {
+        initialTurnLimit,
+        effectiveTurnLimit: extensionTurnLimit,
+        extensionTurnLimit,
+        extensionApprovals: extensionApprovals + 1,
+        cumulativeAuthorizedTurns: initialTurnLimit + extensionTurnLimit,
+        attempts: record.executionBudget?.attempts ?? attemptEvidence(record)
+      };
+      resolvePendingDecision(state, "approved", "continue-execution", "user", decisionId);
+      return state;
+    }, {
+      expectedRevision,
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      decisionId,
+      operation: "execution_continuation_authorized"
+    });
+
+    return this.dispatchResumedPhase(phaseId, ownerId, "Continued");
+  }
+
+  async retryExecution(decisionId: string, expectedRevision: number): Promise<CoordinatorResult> {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const decision = requirePendingDecision(state, "execution-recovery", "retry-execution", decisionId);
+      if (!decision?.phaseId) throw new Error("The current recovery decision does not identify a phase to retry.");
+      const phase = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const record = state.execution.records[decision.phaseId];
+      if (!phase || !record?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
+      if (record.diagnostics?.terminalReason === "error_max_turns") throw new Error(`Phase ${decision.phaseId} requires an explicit additional-turn decision.`);
+      if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before retrying.`);
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase.status = "ready";
+      resolvePendingDecision(state, "approved", "retry-execution", "user", decisionId);
+      return state;
+    }, {
+      expectedRevision,
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      decisionId,
+      operation: "execution_retry_authorized"
+    });
+    return this.dispatchResumedPhase(phaseId, ownerId, "Retried");
+  }
+
+  private async dispatchResumedPhase(phaseId: string, ownerId: string, verb: string): Promise<CoordinatorResult> {
+    try {
+      await leasePhase({
+        root: this.root,
+        workflowId: this.workflowId,
+        phaseId,
+        ownerId,
+        ownerType: "agent",
+        config: this.config,
+        mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+      });
+      const state = await loadFlowState(this.root, this.workflowId);
+      const workspace = state.git?.phaseWorkspaces[phaseId];
+      if (!workspace) throw new Error(`Phase ${phaseId} workspace is unavailable for continuation.`);
+      const input = await this.inputForPhase(state, phaseId, workspace.path, ownerId);
+      const handle = await this.provider.dispatch(input);
+      this.assertHandleIdentity(input, handle);
+      await this.persistHandle(handle);
+      const current = await loadFlowState(this.root, this.workflowId);
+      return this.result(current, [{ phaseId, provider: handle.providerId, status: "running", workspacePath: handle.workspacePath, leaseOwnerId: ownerId }], "poll", `${verb} ${phaseId} with up to ${input.turnBudget?.effectiveTurnLimit ?? "the approved"} turns.`);
+    } catch (error) {
+      await this.markPhaseStopped(phaseId, ownerId, "failed", `Continuation dispatch failed: ${error instanceof Error ? error.message : String(error)}`, errorDetails(error));
+      const current = await loadFlowState(this.root, this.workflowId);
+      return this.result(current, [], "await_user", `Continuation dispatch failed for ${phaseId}; partial work remains unaccepted.`);
+    }
+  }
+
   executionStatus(state: SequentialWorkflowState): CoordinatorResult {
     return this.result(state, [], this.nextActionForState(state), "Execution status loaded.");
   }
@@ -405,7 +499,14 @@ export class ExecutionCoordinator {
           blockedReason: result.summary,
           mutation: { ownerId: record.leaseOwnerId, ownerType: "system" }
         });
-        await this.updateRecord(record.phaseId, { status: "blocked", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint });
+        await this.updateRecord(record.phaseId, {
+          status: "blocked",
+          completedAt: this.now(),
+          resultSummary: result.summary,
+          diagnostics,
+          checkpoint,
+          executionBudget: finalizeExecutionBudget(record, diagnostics, this.config, state.mode, this.now())
+        });
         return "blocked";
       }
       const validation = result.validation.map((entry) => toValidationEvidence(record.phaseId, entry));
@@ -423,7 +524,15 @@ export class ExecutionCoordinator {
         remainingRisks: result.remainingRisks,
         mutation: { ownerId: record.leaseOwnerId, ownerType: "system" }
       });
-      await this.updateRecord(record.phaseId, { status: "result_recorded", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint, providerSession: updateSessionStatus(record.providerSession, "completed", this.now()) });
+      await this.updateRecord(record.phaseId, {
+        status: "result_recorded",
+        completedAt: this.now(),
+        resultSummary: result.summary,
+        diagnostics,
+        checkpoint,
+        executionBudget: finalizeExecutionBudget(record, diagnostics, this.config, state.mode, this.now()),
+        providerSession: updateSessionStatus(record.providerSession, "completed", this.now())
+      });
       return "result_recorded";
     }
     await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, result.status, result.summary, diagnostics);
@@ -515,6 +624,7 @@ export class ExecutionCoordinator {
   private async persistHandle(handle: ExecutionHandle): Promise<void> {
     await updateFlowState(this.root, this.workflowId, (state) => {
       const phase = state.plan?.phases.find((candidate) => candidate.id === handle.phaseId);
+      const existing = state.execution.records[handle.phaseId];
       const eligibility = evaluatePhaseDispatchEligibility(state, handle.phaseId, this.config, {
         explicitlySelected: true,
         ownerId: handle.leaseOwnerId,
@@ -533,6 +643,11 @@ export class ExecutionCoordinator {
         heartbeatAt: handle.startedAt,
         providerMetadata: handle.providerMetadata,
         providerSession: handle.providerSession,
+        checkpoint: existing?.checkpoint,
+        executionBudget: handle.turnBudget ? {
+          ...handle.turnBudget,
+          attempts: existing?.executionBudget?.attempts ?? []
+        } : existing?.executionBudget,
         executionIdentity: handle.executionIdentity
       };
       if (phase) {
@@ -622,6 +737,7 @@ export class ExecutionCoordinator {
       if (workspace) state.git!.phaseWorkspaces[phaseId] = { ...workspace, status: status === "cancelled" ? "abandoned" : "needs_repair", updatedAt: this.now() };
       const existing = state.execution.records[phaseId];
       if (existing) {
+        const executionBudget = finalizeExecutionBudget(existing, mergedDiagnostics, this.config, state.mode, this.now());
         state.execution.records[phaseId] = {
           ...existing,
           status,
@@ -629,16 +745,33 @@ export class ExecutionCoordinator {
           resultSummary: summary,
           diagnostics: mergedDiagnostics,
           checkpoint,
+          executionBudget,
           providerSession: updateSessionStatus(existing.providerSession, sessionStatus, this.now())
         };
       }
       if (status !== "cancelled") {
+        const record = state.execution.records[phaseId];
+        const maxTurnFailure = record?.diagnostics?.terminalReason === "error_max_turns";
+        const extensionAvailable = maxTurnFailure && (record.executionBudget?.extensionApprovals ?? 0) < 1;
+        const additionalTurns = extensionAvailable ? record.executionBudget?.extensionTurnLimit : undefined;
+        const configuredTurns = record?.executionBudget?.effectiveTurnLimit ?? record?.diagnostics?.maxTurns;
+        const reportedTurns = record?.diagnostics?.turnCount;
+        const question = extensionAvailable && additionalTurns
+          ? `The provider reached the ${String(configuredTurns)}-turn execution limit${typeof reportedTurns === "number" ? ` after reporting ${reportedTurns} turns` : ""} before returning the required final result. Partial changes were preserved but not accepted. Allow up to ${additionalTurns} additional turns to continue from the existing work?`
+          : maxTurnFailure
+            ? `The provider also exhausted the approved additional-turn allowance before returning the required final result. Partial changes were preserved but not accepted. Review the evidence, revise the Workflow Plan, or cancel the workflow.`
+            : summary;
         setPendingDecision(state, {
           type: "execution-recovery",
           phaseId,
           briefRevision: state.phaseBriefs?.[phaseId]?.briefRevision,
-          question: summary,
-          allowedActions: ["retry-execution", "view-details", "revise-plan", "cancel-workflow"]
+          additionalTurns,
+          question,
+          allowedActions: extensionAvailable
+            ? ["continue-execution", "view-details", "revise-plan", "cancel-workflow"]
+            : maxTurnFailure
+              ? ["view-details", "revise-plan", "cancel-workflow"]
+              : ["retry-execution", "view-details", "revise-plan", "cancel-workflow"]
         });
       }
       return state;
@@ -654,6 +787,11 @@ export class ExecutionCoordinator {
     const workspace = state.git?.phaseWorkspaces[phaseId];
     if (!phase || !brief || !state.git || !state.plan || !workspace?.preparation?.workspaceIdentity) throw new Error(`Cannot build execution input for ${phaseId}.`);
     const existing = state.execution.records[phaseId];
+    const initialTurnLimit = existing?.executionBudget?.initialTurnLimit
+      ?? (typeof existing?.diagnostics?.maxTurns === "number" ? existing.diagnostics.maxTurns : this.config.execution.workerControls.maxTurns[state.mode]);
+    const extensionTurnLimit = existing?.executionBudget?.extensionTurnLimit ?? this.config.execution.workerControls.extensionTurns[state.mode];
+    const extensionApprovals = existing?.executionBudget?.extensionApprovals ?? 0;
+    const effectiveTurnLimit = existing?.executionBudget?.effectiveTurnLimit ?? initialTurnLimit;
     const previousCheckpoint = existing?.checkpoint ?? await capturePhaseWorkspaceCheckpoint(workspacePath, brief.validationCommands);
     const resume = buildResumeRequest(existing, state.id, phaseId, workspacePath, phase.repairAttempts.length);
     const dispatchedAt = this.now();
@@ -711,6 +849,13 @@ export class ExecutionCoordinator {
           ? "Workspace dependencies were prepared by LeanRigor before dispatch."
           : "Do not install dependencies. If dependencies are unavailable, stop and return blocked status with the missing command."
       ],
+      turnBudget: {
+        initialTurnLimit,
+        effectiveTurnLimit,
+        extensionTurnLimit,
+        extensionApprovals,
+        cumulativeAuthorizedTurns: existing?.executionBudget?.cumulativeAuthorizedTurns ?? initialTurnLimit
+      },
       previousCheckpoint: previousCheckpoint.dirty ? previousCheckpoint : undefined,
       workspacePreparation: workspace.preparation,
       resume,
@@ -1056,6 +1201,43 @@ function mergeDiagnostics(...items: Array<Record<string, unknown> | undefined>):
     Object.assign(merged, item);
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function attemptEvidence(record: PhaseExecutionRecord, diagnostics = record.diagnostics, completedAt = record.completedAt): NonNullable<PhaseExecutionRecord["executionBudget"]>["attempts"] {
+  const maxTurns = typeof diagnostics?.maxTurns === "number"
+    ? diagnostics.maxTurns
+    : record.executionBudget?.effectiveTurnLimit;
+  if (!maxTurns) return record.executionBudget?.attempts ?? [];
+  const prior = record.executionBudget?.attempts ?? [];
+  if (prior.some((attempt) => attempt.providerExecutionId === record.providerExecutionId)) return prior;
+  return [...prior, {
+    providerExecutionId: record.providerExecutionId,
+    maxTurns,
+    reportedTurnsUsed: typeof diagnostics?.turnCount === "number" ? diagnostics.turnCount : undefined,
+    terminalReason: typeof diagnostics?.terminalReason === "string" ? diagnostics.terminalReason : undefined,
+    costUsd: typeof diagnostics?.costUsd === "number" ? diagnostics.costUsd : undefined,
+    completedAt
+  }];
+}
+
+function finalizeExecutionBudget(
+  record: PhaseExecutionRecord,
+  diagnostics: Record<string, unknown> | undefined,
+  config: LeanRigorConfig,
+  mode: SequentialWorkflowState["mode"],
+  completedAt: string
+): NonNullable<PhaseExecutionRecord["executionBudget"]> {
+  const initialTurnLimit = record.executionBudget?.initialTurnLimit
+    ?? (typeof diagnostics?.maxTurns === "number" ? diagnostics.maxTurns : config.execution.workerControls.maxTurns[mode]);
+  const extensionTurnLimit = record.executionBudget?.extensionTurnLimit ?? config.execution.workerControls.extensionTurns[mode];
+  return {
+    initialTurnLimit,
+    effectiveTurnLimit: record.executionBudget?.effectiveTurnLimit ?? initialTurnLimit,
+    extensionTurnLimit,
+    extensionApprovals: record.executionBudget?.extensionApprovals ?? 0,
+    cumulativeAuthorizedTurns: record.executionBudget?.cumulativeAuthorizedTurns ?? initialTurnLimit,
+    attempts: attemptEvidence(record, diagnostics, completedAt)
+  };
 }
 
 function uniqueStrings(values: string[]): string[] {

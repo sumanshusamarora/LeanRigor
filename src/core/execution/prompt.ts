@@ -88,6 +88,7 @@ export function phaseWorkerPrompt(input: PhaseExecutionInput): string {
     ].filter(Boolean).join("\n") : undefined,
     "",
     "Execution budget:",
+    input.turnBudget ? `- Maximum provider turns for this invocation: ${input.turnBudget.effectiveTurnLimit}.` : undefined,
     `- Discovery turns before implementation is expected: ${controls.maxDiscoveryTurns}`,
     `- Reserve at least ${controls.reservedValidationTurns} turn(s) for validation and ${controls.reservedFinalResultTurns} turn(s) for final structured output.`,
     `- Warn and summarize instead of repeatedly reading the same file more than ${controls.repeatedReadWarningThreshold} time(s).`,

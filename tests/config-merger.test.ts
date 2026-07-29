@@ -123,11 +123,23 @@ describe("applyUserConfig", () => {
 
   it("applies user execution preferences", () => {
     const base = defaultConfig();
-    const user = userConfigSchema.parse({ execution: { pollIntervalSeconds: 10, workerTimeoutSeconds: 3600, parallelism: 4 } });
+    const user = userConfigSchema.parse({
+      execution: {
+        pollIntervalSeconds: 10,
+        workerTimeoutSeconds: 3600,
+        parallelism: 4,
+        workerControls: {
+          maxTurns: { rigorous: 60 },
+          extensionTurns: { rigorous: 30 }
+        }
+      }
+    });
 
     const config = applyUserConfig(base, user);
     expect(config.execution.pollIntervalSeconds).toBe(10);
     expect(config.execution.workerTimeoutSeconds).toBe(3600);
     expect(config.execution.maxParallelPhases).toBe(4);
+    expect(config.execution.workerControls.maxTurns).toEqual({ fast: 16, standard: 24, rigorous: 60 });
+    expect(config.execution.workerControls.extensionTurns).toEqual({ fast: 8, standard: 12, rigorous: 30 });
   });
 });

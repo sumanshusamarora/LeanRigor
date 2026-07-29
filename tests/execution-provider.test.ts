@@ -44,6 +44,37 @@ describe("scripted execution provider", () => {
 });
 
 describe("Claude CLI execution provider", () => {
+  it("uses 16, 24, and 48 default turns for fast, standard, and rigorous execution", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, phaseResultJson());
+    for (const [selectedMode, expected] of [["fast", "16"], ["standard", "24"], ["rigorous", "48"]] as const) {
+      const provider = new ClaudeCliExecutionProvider({ command });
+      const handle = await provider.dispatch({ ...input(workspace), selectedMode });
+      const safeArgs = (handle.providerMetadata as { safeArgs?: string[] }).safeArgs ?? [];
+      expect(safeArgs[safeArgs.indexOf("--max-turns") + 1]).toBe(expected);
+    }
+  });
+
+  it("uses an explicitly authorized invocation turn budget", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(workspace, phaseResultJson());
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch({
+      ...input(workspace),
+      selectedMode: "rigorous",
+      turnBudget: {
+        initialTurnLimit: 48,
+        effectiveTurnLimit: 24,
+        extensionTurnLimit: 24,
+        extensionApprovals: 1,
+        cumulativeAuthorizedTurns: 72
+      }
+    });
+    const safeArgs = (handle.providerMetadata as { safeArgs?: string[] }).safeArgs ?? [];
+    expect(safeArgs[safeArgs.indexOf("--max-turns") + 1]).toBe("24");
+    expect(handle.turnBudget?.cumulativeAuthorizedTurns).toBe(72);
+  });
+
   it("parses the current Claude CLI JSON envelope fixture", async () => {
     const fixture = await readFile(path.join("tests", "fixtures", "claude-cli", "success-envelope.json"), "utf8");
     const result = parseClaudeResult(fixture, "");

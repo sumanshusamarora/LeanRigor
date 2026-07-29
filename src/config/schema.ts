@@ -128,6 +128,16 @@ export const leanRigorConfigSchema = z.object({
     dependencyBootstrap: z.enum(["block", "auto-lockfile"]).default("block"),
     workerControls: z.object({
       environment: z.enum(["bare", "safe-mode", "default"]).default("bare"),
+      maxTurns: z.object({
+        fast: z.number().int().min(1).max(200).default(16),
+        standard: z.number().int().min(1).max(200).default(24),
+        rigorous: z.number().int().min(1).max(200).default(48)
+      }).prefault({}),
+      extensionTurns: z.object({
+        fast: z.number().int().min(1).max(100).default(8),
+        standard: z.number().int().min(1).max(100).default(12),
+        rigorous: z.number().int().min(1).max(100).default(24)
+      }).prefault({}),
       maxDiscoveryTurns: z.object({
         fast: z.number().int().min(0).max(20).default(1),
         standard: z.number().int().min(0).max(20).default(2),

@@ -82,6 +82,7 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
       workspacePath: input.workspacePath,
       startedAt: new Date(this.clock()).toISOString(),
       lastKnownStatus: "running",
+      turnBudget: input.turnBudget,
       executionIdentity: {
         ...input.executionIdentity,
         providerSessionId: undefined

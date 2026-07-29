@@ -253,6 +253,12 @@ export function applyUserConfig(
     config.execution.maxParallelPhases = user.execution.parallelism;
   if (user.execution?.workerControls?.environment !== undefined)
     config.execution.workerControls.environment = user.execution.workerControls.environment;
+  for (const mode of ["fast", "standard", "rigorous"] as const) {
+    const maxTurns = user.execution?.workerControls?.maxTurns?.[mode];
+    const extensionTurns = user.execution?.workerControls?.extensionTurns?.[mode];
+    if (maxTurns !== undefined) config.execution.workerControls.maxTurns[mode] = maxTurns;
+    if (extensionTurns !== undefined) config.execution.workerControls.extensionTurns[mode] = extensionTurns;
+  }
   if (user.execution?.workerControls?.repeatedReadWarningThreshold !== undefined)
     config.execution.workerControls.repeatedReadWarningThreshold = user.execution.workerControls.repeatedReadWarningThreshold;
   if (user.execution?.workerControls?.largeToolOutputBytes !== undefined)

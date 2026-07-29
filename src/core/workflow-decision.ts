@@ -15,6 +15,7 @@ export interface PendingDecisionInput {
   briefRevision?: number;
   preparationRevision?: number;
   integrationRevision?: number;
+  additionalTurns?: number;
   workspaceIdentity?: string;
   command?: string;
   riskSummary?: string[];
@@ -36,6 +37,7 @@ export function setPendingDecision(state: SequentialWorkflowState, input: Pendin
     briefRevision: input.briefRevision,
     preparationRevision: input.preparationRevision,
     integrationRevision: input.integrationRevision,
+    additionalTurns: input.additionalTurns,
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,

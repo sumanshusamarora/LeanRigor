@@ -18827,6 +18827,16 @@ var init_schema = __esm({
         dependencyBootstrap: external_exports.enum(["block", "auto-lockfile"]).default("block"),
         workerControls: external_exports.object({
           environment: external_exports.enum(["bare", "safe-mode", "default"]).default("bare"),
+          maxTurns: external_exports.object({
+            fast: external_exports.number().int().min(1).max(200).default(16),
+            standard: external_exports.number().int().min(1).max(200).default(24),
+            rigorous: external_exports.number().int().min(1).max(200).default(48)
+          }).prefault({}),
+          extensionTurns: external_exports.object({
+            fast: external_exports.number().int().min(1).max(100).default(8),
+            standard: external_exports.number().int().min(1).max(100).default(12),
+            rigorous: external_exports.number().int().min(1).max(100).default(24)
+          }).prefault({}),
           maxDiscoveryTurns: external_exports.object({
             fast: external_exports.number().int().min(0).max(20).default(1),
             standard: external_exports.number().int().min(0).max(20).default(2),
@@ -18925,6 +18935,16 @@ var init_user = __esm({
         verbosity: external_exports.enum(["quiet", "normal", "verbose"]).optional(),
         workerControls: external_exports.object({
           environment: external_exports.enum(["bare", "safe-mode", "default"]).optional(),
+          maxTurns: external_exports.object({
+            fast: external_exports.number().int().min(1).max(200).optional(),
+            standard: external_exports.number().int().min(1).max(200).optional(),
+            rigorous: external_exports.number().int().min(1).max(200).optional()
+          }).optional(),
+          extensionTurns: external_exports.object({
+            fast: external_exports.number().int().min(1).max(100).optional(),
+            standard: external_exports.number().int().min(1).max(100).optional(),
+            rigorous: external_exports.number().int().min(1).max(100).optional()
+          }).optional(),
           repeatedReadWarningThreshold: external_exports.number().int().min(1).max(20).optional(),
           largeToolOutputBytes: external_exports.number().int().min(1024).max(1048576).optional()
         }).optional()
@@ -19368,6 +19388,12 @@ function applyUserConfig(base, user) {
     config2.execution.maxParallelPhases = user.execution.parallelism;
   if (user.execution?.workerControls?.environment !== void 0)
     config2.execution.workerControls.environment = user.execution.workerControls.environment;
+  for (const mode2 of ["fast", "standard", "rigorous"]) {
+    const maxTurns = user.execution?.workerControls?.maxTurns?.[mode2];
+    const extensionTurns = user.execution?.workerControls?.extensionTurns?.[mode2];
+    if (maxTurns !== void 0) config2.execution.workerControls.maxTurns[mode2] = maxTurns;
+    if (extensionTurns !== void 0) config2.execution.workerControls.extensionTurns[mode2] = extensionTurns;
+  }
   if (user.execution?.workerControls?.repeatedReadWarningThreshold !== void 0)
     config2.execution.workerControls.repeatedReadWarningThreshold = user.execution.workerControls.repeatedReadWarningThreshold;
   if (user.execution?.workerControls?.largeToolOutputBytes !== void 0)
@@ -23685,6 +23711,7 @@ ${input.previousCheckpoint.diffSummary.text}` : void 0
     ].filter(Boolean).join("\n") : void 0,
     "",
     "Execution budget:",
+    input.turnBudget ? `- Maximum provider turns for this invocation: ${input.turnBudget.effectiveTurnLimit}.` : void 0,
     `- Discovery turns before implementation is expected: ${controls.maxDiscoveryTurns}`,
     `- Reserve at least ${controls.reservedValidationTurns} turn(s) for validation and ${controls.reservedFinalResultTurns} turn(s) for final structured output.`,
     `- Warn and summarize instead of repeatedly reading the same file more than ${controls.repeatedReadWarningThreshold} time(s).`,
@@ -23739,7 +23766,7 @@ var ClaudeCliExecutionProvider = class {
       executionIdentity: { ...input.executionIdentity, providerSessionId: sessionId }
     };
     const prompt = resumeMode === "same-session" ? resumePrompt(executionInput) : phaseWorkerPrompt(executionInput);
-    const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
+    const maxTurns = this.options.maxTurns ?? input.turnBudget?.effectiveTurnLimit ?? this.options.config?.execution.workerControls.maxTurns[input.selectedMode] ?? maxTurnsForMode(input.selectedMode);
     const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
     const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const resolved = resolveClaudeModel(input, this.options);
@@ -23790,6 +23817,7 @@ var ClaudeCliExecutionProvider = class {
       workspacePath: input.workspacePath,
       startedAt,
       lastKnownStatus: "running",
+      turnBudget: input.turnBudget,
       executionIdentity: executionInput.executionIdentity,
       providerMetadata,
       providerSession: {
@@ -24060,9 +24088,9 @@ function buildSafeArgs(args) {
   return safe;
 }
 function maxTurnsForMode(mode2) {
-  if (mode2 === "fast") return 8;
-  if (mode2 === "rigorous") return 16;
-  return 12;
+  if (mode2 === "fast") return 16;
+  if (mode2 === "rigorous") return 48;
+  return 24;
 }
 function resolveClaudeModel(input, options) {
   if (options.model) return { model: options.model };
@@ -24085,6 +24113,7 @@ ${input.previousCheckpoint.diffSummary.text}` : void 0,
     ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
+    input.turnBudget ? `Additional turn allowance for this continuation: ${input.turnBudget.effectiveTurnLimit}.` : void 0,
     "Continue from the existing session and worktree. Do not restart broad repository discovery. Return only the JSON object required by the supplied json-schema."
   ].filter((line) => line !== void 0).join("\n");
 }
@@ -28019,6 +28048,7 @@ function setPendingDecision(state, input) {
     briefRevision: input.briefRevision,
     preparationRevision: input.preparationRevision,
     integrationRevision: input.integrationRevision,
+    additionalTurns: input.additionalTurns,
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,
@@ -28421,6 +28451,21 @@ var phaseExecutionRecordSchema = external_exports.object({
   providerMetadata: boundedRecord.optional(),
   providerSession: providerSessionSchema.optional(),
   checkpoint: phaseWorkspaceCheckpointSchema.optional(),
+  executionBudget: external_exports.object({
+    initialTurnLimit: external_exports.number().int().min(1),
+    effectiveTurnLimit: external_exports.number().int().min(1),
+    extensionTurnLimit: external_exports.number().int().min(1),
+    extensionApprovals: external_exports.number().int().min(0),
+    cumulativeAuthorizedTurns: external_exports.number().int().min(1),
+    attempts: external_exports.array(external_exports.object({
+      providerExecutionId: external_exports.string().min(1),
+      maxTurns: external_exports.number().int().min(1),
+      reportedTurnsUsed: external_exports.number().int().min(0).optional(),
+      terminalReason: external_exports.string().optional(),
+      costUsd: external_exports.number().min(0).optional(),
+      completedAt: external_exports.string().optional()
+    })).default([])
+  }).optional(),
   executionIdentity: external_exports.object({
     workflowId: external_exports.string().min(1),
     workflowRevision: external_exports.number().int().min(0),
@@ -28727,6 +28772,7 @@ var workflowDecisionBaseShape = {
   resolvedAt: external_exports.string().optional(),
   selectedAction: external_exports.string().min(1).optional(),
   source: external_exports.enum(["user", "controller", "system", "legacy-migration"]),
+  additionalTurns: external_exports.number().int().min(1).optional(),
   supersedesDecisionId: external_exports.string().min(1).optional()
 };
 var phaseApprovalDecisionSchema = external_exports.object({
@@ -31291,7 +31337,28 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
+  normalizeLegacyMaxTurnRecoveryDecision(migrated);
   return migrated;
+}
+function normalizeLegacyMaxTurnRecoveryDecision(state) {
+  const approval = state.approval;
+  const decision = approval?.pendingDecision;
+  if (!decision || decision.status !== "pending" || decision.type !== "execution-recovery" || typeof decision.phaseId !== "string") return;
+  const execution = state.execution;
+  const record2 = execution?.records?.[decision.phaseId];
+  const diagnostics = record2?.diagnostics;
+  if (diagnostics?.terminalReason !== "error_max_turns") return;
+  const mode2 = state.mode === "fast" ? "fast" : state.mode === "rigorous" ? "rigorous" : "standard";
+  const initialTurnLimit = mode2 === "fast" ? 16 : mode2 === "rigorous" ? 48 : 24;
+  const extensionTurnLimit = mode2 === "fast" ? 8 : mode2 === "rigorous" ? 24 : 12;
+  const budget = record2?.executionBudget;
+  const extensionApprovals = typeof budget?.extensionApprovals === "number" ? budget.extensionApprovals : 0;
+  if (extensionApprovals >= 1) return;
+  decision.additionalTurns = extensionTurnLimit;
+  decision.allowedActions = ["continue-execution", "view-details", "revise-plan", "cancel-workflow"];
+  const configuredTurns = typeof diagnostics.maxTurns === "number" ? diagnostics.maxTurns : initialTurnLimit;
+  const reportedTurns = typeof diagnostics.turnCount === "number" ? ` after reporting ${diagnostics.turnCount} turns` : "";
+  decision.question = `The provider reached the ${configuredTurns}-turn execution limit${reportedTurns} before returning the required final result. Partial changes were preserved but not accepted. Allow up to ${extensionTurnLimit} additional turns to continue from the existing work?`;
 }
 function normalizeLegacyPlanningFallbackDecision(state) {
   if (state.state !== "blocked") return;
@@ -31607,6 +31674,7 @@ function workflowDecisionEnvelope(state) {
       briefRevision: decision.briefRevision,
       preparationRevision: decision.preparationRevision,
       integrationRevision: decision.integrationRevision,
+      additionalTurns: decision.additionalTurns,
       question: decision.question,
       options: decision.allowedActions.map((action) => decisionOption(state, decision, action))
     } : void 0,
@@ -31726,7 +31794,12 @@ function decisionOption(state, decision, action) {
     "approve-bootstrap": { label: "Approve workspace bootstrap", description: "Approve only the persisted command and preparation identity.", command: bootstrapCommand(state, decision, common) },
     "retry-preparation": { label: "Retry workspace preparation", description: "Retry deterministic preparation without authorizing another command.", command: `leanrigor flow execute-next ${state.id} --provider auto --json --root ${root}` },
     "retry-brief": { label: "Retry bounded brief generation", description: "Retry read-only inspection and brief generation within the persisted boundary.", command: `leanrigor flow phase-brief ${state.id} ${phase2} --refresh ${common}` },
-    "retry-execution": { label: "Retry provider execution", description: "Retry the configured provider using persisted recovery state.", command: `leanrigor flow execution-recover ${state.id} --provider auto --json --root ${root}` },
+    "retry-execution": { label: "Retry provider execution", description: "Retry the configured provider using persisted recovery state.", command: `leanrigor flow execution-recover ${state.id} --provider auto --json ${common}` },
+    "continue-execution": {
+      label: `Continue with ${decision.additionalTurns ?? "additional"} additional turns`,
+      description: "Continue from the preserved phase worktree using the exact persisted additional-turn allowance.",
+      command: `leanrigor flow continue-execution ${state.id} --provider auto --json ${common}`
+    },
     "review-material-drift": { label: "Review material drift", description: "Show the persisted scope or identity mismatch before replanning.", command: `leanrigor flow phase-result ${state.id} ${phase2} --json --root ${root}` },
     "record-review": { label: "Record final integrated review", description: "Record the final review result against persisted integrated evidence.", command: `leanrigor flow record-review ${state.id} --status <status> --summary <summary> ${common}` },
     "complete-workflow": { label: "Complete workflow", description: "Record explicit user-approved final completion without committing.", command: `leanrigor flow complete ${state.id} ${common}` },
@@ -32887,6 +32960,95 @@ var ExecutionCoordinator = class {
     const current = await loadFlowState(this.root, this.workflowId);
     return this.result(current, [], this.nextActionForState(current), "Execution recovery completed.");
   }
+  async continueExecution(decisionId, expectedRevision) {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const decision = requirePendingDecision(state, "execution-recovery", "continue-execution", decisionId);
+      if (!decision?.phaseId || !decision.additionalTurns) throw new Error("The current recovery decision does not authorize additional provider turns.");
+      const phase2 = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const record2 = state.execution.records[decision.phaseId];
+      if (!phase2 || !record2?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
+      if (record2.diagnostics?.terminalReason !== "error_max_turns") throw new Error(`Phase ${decision.phaseId} did not stop because of the provider turn limit.`);
+      if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before continuing.`);
+      const initialTurnLimit = record2.executionBudget?.initialTurnLimit ?? (typeof record2.diagnostics?.maxTurns === "number" ? record2.diagnostics.maxTurns : this.config.execution.workerControls.maxTurns[state.mode]);
+      const extensionTurnLimit = record2.executionBudget?.extensionTurnLimit ?? this.config.execution.workerControls.extensionTurns[state.mode];
+      const extensionApprovals = record2.executionBudget?.extensionApprovals ?? 0;
+      if (extensionApprovals >= 1) throw new Error(`Phase ${decision.phaseId} has already used its additional-turn allowance.`);
+      if (decision.additionalTurns !== extensionTurnLimit) throw new Error(`Recovery decision turn allowance is stale; expected ${extensionTurnLimit}, received ${decision.additionalTurns}.`);
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase2.status = "ready";
+      record2.executionBudget = {
+        initialTurnLimit,
+        effectiveTurnLimit: extensionTurnLimit,
+        extensionTurnLimit,
+        extensionApprovals: extensionApprovals + 1,
+        cumulativeAuthorizedTurns: initialTurnLimit + extensionTurnLimit,
+        attempts: record2.executionBudget?.attempts ?? attemptEvidence(record2)
+      };
+      resolvePendingDecision(state, "approved", "continue-execution", "user", decisionId);
+      return state;
+    }, {
+      expectedRevision,
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      decisionId,
+      operation: "execution_continuation_authorized"
+    });
+    return this.dispatchResumedPhase(phaseId, ownerId, "Continued");
+  }
+  async retryExecution(decisionId, expectedRevision) {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const decision = requirePendingDecision(state, "execution-recovery", "retry-execution", decisionId);
+      if (!decision?.phaseId) throw new Error("The current recovery decision does not identify a phase to retry.");
+      const phase2 = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const record2 = state.execution.records[decision.phaseId];
+      if (!phase2 || !record2?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
+      if (record2.diagnostics?.terminalReason === "error_max_turns") throw new Error(`Phase ${decision.phaseId} requires an explicit additional-turn decision.`);
+      if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before retrying.`);
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase2.status = "ready";
+      resolvePendingDecision(state, "approved", "retry-execution", "user", decisionId);
+      return state;
+    }, {
+      expectedRevision,
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      decisionId,
+      operation: "execution_retry_authorized"
+    });
+    return this.dispatchResumedPhase(phaseId, ownerId, "Retried");
+  }
+  async dispatchResumedPhase(phaseId, ownerId, verb) {
+    try {
+      await leasePhase({
+        root: this.root,
+        workflowId: this.workflowId,
+        phaseId,
+        ownerId,
+        ownerType: "agent",
+        config: this.config,
+        mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+      });
+      const state = await loadFlowState(this.root, this.workflowId);
+      const workspace = state.git?.phaseWorkspaces[phaseId];
+      if (!workspace) throw new Error(`Phase ${phaseId} workspace is unavailable for continuation.`);
+      const input = await this.inputForPhase(state, phaseId, workspace.path, ownerId);
+      const handle = await this.provider.dispatch(input);
+      this.assertHandleIdentity(input, handle);
+      await this.persistHandle(handle);
+      const current = await loadFlowState(this.root, this.workflowId);
+      return this.result(current, [{ phaseId, provider: handle.providerId, status: "running", workspacePath: handle.workspacePath, leaseOwnerId: ownerId }], "poll", `${verb} ${phaseId} with up to ${input.turnBudget?.effectiveTurnLimit ?? "the approved"} turns.`);
+    } catch (error51) {
+      await this.markPhaseStopped(phaseId, ownerId, "failed", `Continuation dispatch failed: ${error51 instanceof Error ? error51.message : String(error51)}`, errorDetails(error51));
+      const current = await loadFlowState(this.root, this.workflowId);
+      return this.result(current, [], "await_user", `Continuation dispatch failed for ${phaseId}; partial work remains unaccepted.`);
+    }
+  }
   executionStatus(state) {
     return this.result(state, [], this.nextActionForState(state), "Execution status loaded.");
   }
@@ -32975,7 +33137,14 @@ var ExecutionCoordinator = class {
           blockedReason: result.summary,
           mutation: { ownerId: record2.leaseOwnerId, ownerType: "system" }
         });
-        await this.updateRecord(record2.phaseId, { status: "blocked", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint });
+        await this.updateRecord(record2.phaseId, {
+          status: "blocked",
+          completedAt: this.now(),
+          resultSummary: result.summary,
+          diagnostics,
+          checkpoint,
+          executionBudget: finalizeExecutionBudget(record2, diagnostics, this.config, state.mode, this.now())
+        });
         return "blocked";
       }
       const validation = result.validation.map((entry) => toValidationEvidence(record2.phaseId, entry));
@@ -32993,7 +33162,15 @@ var ExecutionCoordinator = class {
         remainingRisks: result.remainingRisks,
         mutation: { ownerId: record2.leaseOwnerId, ownerType: "system" }
       });
-      await this.updateRecord(record2.phaseId, { status: "result_recorded", completedAt: this.now(), resultSummary: result.summary, diagnostics, checkpoint, providerSession: updateSessionStatus(record2.providerSession, "completed", this.now()) });
+      await this.updateRecord(record2.phaseId, {
+        status: "result_recorded",
+        completedAt: this.now(),
+        resultSummary: result.summary,
+        diagnostics,
+        checkpoint,
+        executionBudget: finalizeExecutionBudget(record2, diagnostics, this.config, state.mode, this.now()),
+        providerSession: updateSessionStatus(record2.providerSession, "completed", this.now())
+      });
       return "result_recorded";
     }
     await this.markPhaseStopped(record2.phaseId, record2.leaseOwnerId, result.status, result.summary, diagnostics);
@@ -33076,6 +33253,7 @@ var ExecutionCoordinator = class {
   async persistHandle(handle) {
     await updateFlowState(this.root, this.workflowId, (state) => {
       const phase2 = state.plan?.phases.find((candidate) => candidate.id === handle.phaseId);
+      const existing = state.execution.records[handle.phaseId];
       const eligibility = evaluatePhaseDispatchEligibility(state, handle.phaseId, this.config, {
         explicitlySelected: true,
         ownerId: handle.leaseOwnerId,
@@ -33094,6 +33272,11 @@ var ExecutionCoordinator = class {
         heartbeatAt: handle.startedAt,
         providerMetadata: handle.providerMetadata,
         providerSession: handle.providerSession,
+        checkpoint: existing?.checkpoint,
+        executionBudget: handle.turnBudget ? {
+          ...handle.turnBudget,
+          attempts: existing?.executionBudget?.attempts ?? []
+        } : existing?.executionBudget,
         executionIdentity: handle.executionIdentity
       };
       if (phase2) {
@@ -33175,6 +33358,7 @@ var ExecutionCoordinator = class {
       if (workspace) state.git.phaseWorkspaces[phaseId] = { ...workspace, status: status === "cancelled" ? "abandoned" : "needs_repair", updatedAt: this.now() };
       const existing = state.execution.records[phaseId];
       if (existing) {
+        const executionBudget = finalizeExecutionBudget(existing, mergedDiagnostics, this.config, state.mode, this.now());
         state.execution.records[phaseId] = {
           ...existing,
           status,
@@ -33182,16 +33366,25 @@ var ExecutionCoordinator = class {
           resultSummary: summary,
           diagnostics: mergedDiagnostics,
           checkpoint,
+          executionBudget,
           providerSession: updateSessionStatus(existing.providerSession, sessionStatus, this.now())
         };
       }
       if (status !== "cancelled") {
+        const record2 = state.execution.records[phaseId];
+        const maxTurnFailure = record2?.diagnostics?.terminalReason === "error_max_turns";
+        const extensionAvailable = maxTurnFailure && (record2.executionBudget?.extensionApprovals ?? 0) < 1;
+        const additionalTurns = extensionAvailable ? record2.executionBudget?.extensionTurnLimit : void 0;
+        const configuredTurns = record2?.executionBudget?.effectiveTurnLimit ?? record2?.diagnostics?.maxTurns;
+        const reportedTurns = record2?.diagnostics?.turnCount;
+        const question = extensionAvailable && additionalTurns ? `The provider reached the ${String(configuredTurns)}-turn execution limit${typeof reportedTurns === "number" ? ` after reporting ${reportedTurns} turns` : ""} before returning the required final result. Partial changes were preserved but not accepted. Allow up to ${additionalTurns} additional turns to continue from the existing work?` : maxTurnFailure ? `The provider also exhausted the approved additional-turn allowance before returning the required final result. Partial changes were preserved but not accepted. Review the evidence, revise the Workflow Plan, or cancel the workflow.` : summary;
         setPendingDecision(state, {
           type: "execution-recovery",
           phaseId,
           briefRevision: state.phaseBriefs?.[phaseId]?.briefRevision,
-          question: summary,
-          allowedActions: ["retry-execution", "view-details", "revise-plan", "cancel-workflow"]
+          additionalTurns,
+          question,
+          allowedActions: extensionAvailable ? ["continue-execution", "view-details", "revise-plan", "cancel-workflow"] : maxTurnFailure ? ["view-details", "revise-plan", "cancel-workflow"] : ["retry-execution", "view-details", "revise-plan", "cancel-workflow"]
         });
       }
       return state;
@@ -33206,6 +33399,10 @@ var ExecutionCoordinator = class {
     const workspace = state.git?.phaseWorkspaces[phaseId];
     if (!phase2 || !brief || !state.git || !state.plan || !workspace?.preparation?.workspaceIdentity) throw new Error(`Cannot build execution input for ${phaseId}.`);
     const existing = state.execution.records[phaseId];
+    const initialTurnLimit = existing?.executionBudget?.initialTurnLimit ?? (typeof existing?.diagnostics?.maxTurns === "number" ? existing.diagnostics.maxTurns : this.config.execution.workerControls.maxTurns[state.mode]);
+    const extensionTurnLimit = existing?.executionBudget?.extensionTurnLimit ?? this.config.execution.workerControls.extensionTurns[state.mode];
+    const extensionApprovals = existing?.executionBudget?.extensionApprovals ?? 0;
+    const effectiveTurnLimit = existing?.executionBudget?.effectiveTurnLimit ?? initialTurnLimit;
     const previousCheckpoint = existing?.checkpoint ?? await capturePhaseWorkspaceCheckpoint(workspacePath, brief.validationCommands);
     const resume = buildResumeRequest(existing, state.id, phaseId, workspacePath, phase2.repairAttempts.length);
     const dispatchedAt = this.now();
@@ -33261,6 +33458,13 @@ var ExecutionCoordinator = class {
         "Do not commit, push, merge, deploy, or edit outside the workspace.",
         phase2.workspace?.preparation?.dependencies === "available" ? "Workspace dependencies were prepared by LeanRigor before dispatch." : "Do not install dependencies. If dependencies are unavailable, stop and return blocked status with the missing command."
       ],
+      turnBudget: {
+        initialTurnLimit,
+        effectiveTurnLimit,
+        extensionTurnLimit,
+        extensionApprovals,
+        cumulativeAuthorizedTurns: existing?.executionBudget?.cumulativeAuthorizedTurns ?? initialTurnLimit
+      },
       previousCheckpoint: previousCheckpoint.dirty ? previousCheckpoint : void 0,
       workspacePreparation: workspace.preparation,
       resume,
@@ -33548,6 +33752,32 @@ function mergeDiagnostics(...items) {
   }
   return Object.keys(merged).length > 0 ? merged : void 0;
 }
+function attemptEvidence(record2, diagnostics = record2.diagnostics, completedAt = record2.completedAt) {
+  const maxTurns = typeof diagnostics?.maxTurns === "number" ? diagnostics.maxTurns : record2.executionBudget?.effectiveTurnLimit;
+  if (!maxTurns) return record2.executionBudget?.attempts ?? [];
+  const prior = record2.executionBudget?.attempts ?? [];
+  if (prior.some((attempt) => attempt.providerExecutionId === record2.providerExecutionId)) return prior;
+  return [...prior, {
+    providerExecutionId: record2.providerExecutionId,
+    maxTurns,
+    reportedTurnsUsed: typeof diagnostics?.turnCount === "number" ? diagnostics.turnCount : void 0,
+    terminalReason: typeof diagnostics?.terminalReason === "string" ? diagnostics.terminalReason : void 0,
+    costUsd: typeof diagnostics?.costUsd === "number" ? diagnostics.costUsd : void 0,
+    completedAt
+  }];
+}
+function finalizeExecutionBudget(record2, diagnostics, config2, mode2, completedAt) {
+  const initialTurnLimit = record2.executionBudget?.initialTurnLimit ?? (typeof diagnostics?.maxTurns === "number" ? diagnostics.maxTurns : config2.execution.workerControls.maxTurns[mode2]);
+  const extensionTurnLimit = record2.executionBudget?.extensionTurnLimit ?? config2.execution.workerControls.extensionTurns[mode2];
+  return {
+    initialTurnLimit,
+    effectiveTurnLimit: record2.executionBudget?.effectiveTurnLimit ?? initialTurnLimit,
+    extensionTurnLimit,
+    extensionApprovals: record2.executionBudget?.extensionApprovals ?? 0,
+    cumulativeAuthorizedTurns: record2.executionBudget?.cumulativeAuthorizedTurns ?? initialTurnLimit,
+    attempts: attemptEvidence(record2, diagnostics, completedAt)
+  };
+}
 function uniqueStrings(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }
@@ -33604,6 +33834,7 @@ var ScriptedExecutionProvider = class {
       workspacePath: input.workspacePath,
       startedAt: new Date(this.clock()).toISOString(),
       lastKnownStatus: "running",
+      turnBudget: input.turnBudget,
       executionIdentity: {
         ...input.executionIdentity,
         providerSessionId: void 0
@@ -33755,7 +33986,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.30");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.31");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -34173,8 +34404,27 @@ flow.command("execution-poll").argument("<workflow-id>").option("--root <path>",
 flow.command("execution-cancel").argument("<workflow-id>").argument("<phase-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--reason <reason>", "cancellation reason").option("--json", "print structured coordinator result").action(async (workflowId2, phaseId, options) => {
   printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.cancelPhase(phaseId, options.reason)), Boolean(options.json));
 });
-flow.command("execution-recover").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+flow.command("execution-recover").argument("<workflow-id>").option("--decision-id <decision-id>", "exact pending recovery decision ID").option("--expected-revision <revision>", "exact workflow revision").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  if (options.decisionId && options.expectedRevision) {
+    const selected = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
+    const result = await selected.coordinator.retryExecution(
+      options.decisionId,
+      Number.parseInt(options.expectedRevision, 10)
+    );
+    if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+    printCoordinatorResult(result, Boolean(options.json));
+    return;
+  }
   printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.recover()), Boolean(options.json));
+});
+flow.command("continue-execution").argument("<workflow-id>").requiredOption("--decision-id <decision-id>", "exact pending recovery decision ID").requiredOption("--expected-revision <revision>", "exact workflow revision").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  const selected = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
+  const result = await selected.coordinator.continueExecution(
+    options.decisionId,
+    Number.parseInt(options.expectedRevision, 10)
+  );
+  if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+  printCoordinatorResult(result, Boolean(options.json));
 });
 flow.command("lease-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
   const state = await leasePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });

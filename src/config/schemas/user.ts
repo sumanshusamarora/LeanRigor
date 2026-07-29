@@ -35,6 +35,16 @@ export const userConfigSchema = z.object({
     verbosity: z.enum(["quiet", "normal", "verbose"]).optional(),
     workerControls: z.object({
       environment: z.enum(["bare", "safe-mode", "default"]).optional(),
+      maxTurns: z.object({
+        fast: z.number().int().min(1).max(200).optional(),
+        standard: z.number().int().min(1).max(200).optional(),
+        rigorous: z.number().int().min(1).max(200).optional()
+      }).optional(),
+      extensionTurns: z.object({
+        fast: z.number().int().min(1).max(100).optional(),
+        standard: z.number().int().min(1).max(100).optional(),
+        rigorous: z.number().int().min(1).max(100).optional()
+      }).optional(),
       repeatedReadWarningThreshold: z.number().int().min(1).max(20).optional(),
       largeToolOutputBytes: z.number().int().min(1024).max(1048576).optional()
     }).optional()

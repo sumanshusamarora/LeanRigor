@@ -421,6 +421,21 @@ const phaseExecutionRecordSchema = z.object({
   providerMetadata: boundedRecord.optional(),
   providerSession: providerSessionSchema.optional(),
   checkpoint: phaseWorkspaceCheckpointSchema.optional(),
+  executionBudget: z.object({
+    initialTurnLimit: z.number().int().min(1),
+    effectiveTurnLimit: z.number().int().min(1),
+    extensionTurnLimit: z.number().int().min(1),
+    extensionApprovals: z.number().int().min(0),
+    cumulativeAuthorizedTurns: z.number().int().min(1),
+    attempts: z.array(z.object({
+      providerExecutionId: z.string().min(1),
+      maxTurns: z.number().int().min(1),
+      reportedTurnsUsed: z.number().int().min(0).optional(),
+      terminalReason: z.string().optional(),
+      costUsd: z.number().min(0).optional(),
+      completedAt: z.string().optional()
+    })).default([])
+  }).optional(),
   executionIdentity: z.object({
     workflowId: z.string().min(1),
     workflowRevision: z.number().int().min(0),
@@ -748,6 +763,7 @@ const workflowDecisionBaseShape = {
   resolvedAt: z.string().optional(),
   selectedAction: z.string().min(1).optional(),
   source: z.enum(["user", "controller", "system", "legacy-migration"]),
+  additionalTurns: z.number().int().min(1).optional(),
   supersedesDecisionId: z.string().min(1).optional()
 };
 
@@ -3860,7 +3876,29 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
+  normalizeLegacyMaxTurnRecoveryDecision(migrated);
   return migrated;
+}
+
+function normalizeLegacyMaxTurnRecoveryDecision(state: Record<string, unknown>): void {
+  const approval = state.approval as Record<string, unknown> | undefined;
+  const decision = approval?.pendingDecision as Record<string, unknown> | undefined;
+  if (!decision || decision.status !== "pending" || decision.type !== "execution-recovery" || typeof decision.phaseId !== "string") return;
+  const execution = state.execution as { records?: Record<string, Record<string, unknown>> } | undefined;
+  const record = execution?.records?.[decision.phaseId];
+  const diagnostics = record?.diagnostics as Record<string, unknown> | undefined;
+  if (diagnostics?.terminalReason !== "error_max_turns") return;
+  const mode = state.mode === "fast" ? "fast" : state.mode === "rigorous" ? "rigorous" : "standard";
+  const initialTurnLimit = mode === "fast" ? 16 : mode === "rigorous" ? 48 : 24;
+  const extensionTurnLimit = mode === "fast" ? 8 : mode === "rigorous" ? 24 : 12;
+  const budget = record?.executionBudget as Record<string, unknown> | undefined;
+  const extensionApprovals = typeof budget?.extensionApprovals === "number" ? budget.extensionApprovals : 0;
+  if (extensionApprovals >= 1) return;
+  decision.additionalTurns = extensionTurnLimit;
+  decision.allowedActions = ["continue-execution", "view-details", "revise-plan", "cancel-workflow"];
+  const configuredTurns = typeof diagnostics.maxTurns === "number" ? diagnostics.maxTurns : initialTurnLimit;
+  const reportedTurns = typeof diagnostics.turnCount === "number" ? ` after reporting ${diagnostics.turnCount} turns` : "";
+  decision.question = `The provider reached the ${configuredTurns}-turn execution limit${reportedTurns} before returning the required final result. Partial changes were preserved but not accepted. Allow up to ${extensionTurnLimit} additional turns to continue from the existing work?`;
 }
 
 function normalizeLegacyPlanningFallbackDecision(state: Record<string, unknown>): void {

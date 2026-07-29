@@ -1,4 +1,4 @@
-import type { PhaseWorkspaceCheckpoint, ProviderSessionRef } from "./execution/types.js";
+import type { ExecutionTurnBudgetState, PhaseWorkspaceCheckpoint, ProviderSessionRef } from "./execution/types.js";
 
 export type WorkflowMode = "fast" | "standard" | "rigorous";
 export type Complexity = "low" | "medium" | "high";
@@ -162,6 +162,7 @@ export interface WorkflowDecisionBase {
   briefRevision?: number;
   preparationRevision?: number;
   integrationRevision?: number;
+  additionalTurns?: number;
   question: string;
   status: WorkflowDecisionStatus;
   allowedActions: string[];
@@ -227,6 +228,7 @@ export interface WorkflowDecisionEnvelope {
     briefRevision?: number;
     preparationRevision?: number;
     integrationRevision?: number;
+    additionalTurns?: number;
     question: string;
     options: WorkflowDecisionOption[];
   };
@@ -1042,6 +1044,7 @@ export interface PhaseExecutionRecord {
   providerMetadata?: Record<string, unknown>;
   providerSession?: ProviderSessionRef;
   checkpoint?: PhaseWorkspaceCheckpoint;
+  executionBudget?: ExecutionTurnBudgetState;
   executionIdentity?: PhaseExecutionIdentity;
 }
 

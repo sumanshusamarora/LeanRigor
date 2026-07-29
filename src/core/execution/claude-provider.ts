@@ -100,7 +100,10 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       executionIdentity: { ...input.executionIdentity, providerSessionId: sessionId }
     };
     const prompt = resumeMode === "same-session" ? resumePrompt(executionInput) : phaseWorkerPrompt(executionInput);
-    const maxTurns = this.options.maxTurns ?? maxTurnsForMode(input.selectedMode);
+    const maxTurns = this.options.maxTurns
+      ?? input.turnBudget?.effectiveTurnLimit
+      ?? this.options.config?.execution.workerControls.maxTurns[input.selectedMode]
+      ?? maxTurnsForMode(input.selectedMode);
     const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
     const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
     const resolved = resolveClaudeModel(input, this.options);
@@ -151,6 +154,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       workspacePath: input.workspacePath,
       startedAt,
       lastKnownStatus: "running",
+      turnBudget: input.turnBudget,
       executionIdentity: executionInput.executionIdentity,
       providerMetadata: providerMetadata as unknown as Record<string, unknown>,
       providerSession: {
@@ -446,9 +450,9 @@ function buildSafeArgs(args: {
 }
 
 function maxTurnsForMode(mode: PhaseExecutionInput["selectedMode"]): number {
-  if (mode === "fast") return 8;
-  if (mode === "rigorous") return 16;
-  return 12;
+  if (mode === "fast") return 16;
+  if (mode === "rigorous") return 48;
+  return 24;
 }
 
 function resolveClaudeModel(input: PhaseExecutionInput, options: ClaudeCliExecutionProviderOptions): { model?: string } {
@@ -472,6 +476,7 @@ function resumePrompt(input: PhaseExecutionInput): string {
     ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
+    input.turnBudget ? `Additional turn allowance for this continuation: ${input.turnBudget.effectiveTurnLimit}.` : undefined,
     "Continue from the existing session and worktree. Do not restart broad repository discovery. Return only the JSON object required by the supplied json-schema."
   ].filter((line): line is string => line !== undefined).join("\n");
 }

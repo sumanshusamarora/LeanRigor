@@ -6,6 +6,7 @@ import { ExecutionCoordinator, detectCodeIntelligence } from "../src/core/execut
 import { approvePhase, approveWorkspaceBootstrap, completePhase, integrationStatus, preparePhaseExecutionBrief } from "../src/core/flow.js";
 import type { ExecutionProvider } from "../src/core/execution/provider.js";
 import type { PhaseExecutionInput, PhaseExecutionResult } from "../src/core/execution/types.js";
+import type { ScriptedPhase } from "../src/core/execution/scripted-provider.js";
 import { phaseWorkerPrompt } from "../src/core/execution/prompt.js";
 import { workflowNextSummary } from "../src/core/ux.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
@@ -391,6 +392,163 @@ describe("execution coordinator", () => {
     expect(state.plan?.phases[0]?.status).toBe("needs_replan");
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
     await expect(readFile(path.join(state.git!.phaseWorkspaces["phase-a"]!.path, "notes.txt"), "utf8")).resolves.toBe("partial note\n");
+  });
+
+  it("offers one explicit additional-turn decision and continues from the preserved worktree", async () => {
+    const scripts: Record<string, ScriptedPhase> = {
+      "phase-a": {
+        edits: [{ path: "src/a.ts", content: "partial\n" }],
+        result: "failed" as const,
+        summary: "provider turn limit reached",
+        diagnostics: { terminalReason: "error_max_turns", maxTurns: 24, turnCount: 25, costUsd: 1.25 }
+      }
+    };
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts
+    });
+
+    await harness.coordinator.runNext();
+    const recovery = await harness.coordinator.poll();
+    const failed = await currentState(harness);
+    const decision = failed.approval?.pendingDecision;
+
+    expect(decision).toMatchObject({
+      type: "execution-recovery",
+      additionalTurns: 12,
+      allowedActions: ["continue-execution", "view-details", "revise-plan", "cancel-workflow"]
+    });
+    expect(decision?.question).toContain("24-turn execution limit");
+    expect(recovery.decision?.options[0]).toMatchObject({
+      intent: "continue-execution",
+      label: "Continue with 12 additional turns"
+    });
+    expect(recovery.decision?.options[0]?.command).toContain("flow continue-execution");
+    expect(recovery.decision?.options[0]?.command).toContain(decision?.id);
+    expect(failed.execution.records["phase-a"]?.executionBudget).toMatchObject({
+      initialTurnLimit: 24,
+      extensionTurnLimit: 12,
+      extensionApprovals: 0,
+      cumulativeAuthorizedTurns: 24
+    });
+    expect(failed.git?.integration.integratedPhaseIds).toEqual([]);
+
+    scripts["phase-a"] = {
+      edits: [{ path: "src/a.ts", content: "completed\n" }],
+      result: "completed",
+      summary: "continued successfully",
+      validation: [{ command: "npm test", exitCode: 0 }],
+      diagnostics: {}
+    };
+    const continued = await harness.coordinator.continueExecution(decision!.id, failed.revision);
+    expect(continued.nextAction).toBe("poll");
+    const running = await currentState(harness);
+    expect(running.execution.records["phase-a"]?.executionBudget).toMatchObject({
+      effectiveTurnLimit: 12,
+      extensionApprovals: 1,
+      cumulativeAuthorizedTurns: 36
+    });
+    expect(running.execution.records["phase-a"]?.executionBudget?.attempts[0]).toMatchObject({
+      maxTurns: 24,
+      reportedTurnsUsed: 25,
+      terminalReason: "error_max_turns"
+    });
+
+    await harness.coordinator.poll();
+    const completed = await currentState(harness);
+    expect(completed.execution.records["phase-a"]?.status).toBe("result_recorded");
+    expect(completed.execution.records["phase-a"]?.executionBudget?.attempts).toHaveLength(2);
+    expect(completed.git?.integration.integratedPhaseIds).toContain("phase-a");
+  });
+
+  it("rejects stale additional-turn approval without changing workflow state", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          result: "failed",
+          summary: "provider turn limit reached",
+          diagnostics: { terminalReason: "error_max_turns", maxTurns: 24, turnCount: 25 }
+        }
+      }
+    });
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const failed = await currentState(harness);
+    const decision = failed.approval!.pendingDecision!;
+
+    await expect(harness.coordinator.continueExecution(decision.id, failed.revision - 1)).rejects.toThrow();
+    const unchanged = await currentState(harness);
+    expect(unchanged.revision).toBe(failed.revision);
+    expect(unchanged.approval?.pendingDecision?.id).toBe(decision.id);
+    expect(unchanged.execution.records["phase-a"]?.status).toBe("failed");
+  });
+
+  it("does not offer an unbounded second extension under phase-by-phase approval", async () => {
+    const scripts: Record<string, ScriptedPhase> = {
+      "phase-a": {
+        result: "failed",
+        summary: "initial turn limit reached",
+        diagnostics: { terminalReason: "error_max_turns", maxTurns: 24, turnCount: 25 }
+      }
+    };
+    const harness = await createExecutionHarness({
+      approvalPolicy: "phase-by-phase",
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts
+    });
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const firstFailure = await currentState(harness);
+    const firstDecision = firstFailure.approval!.pendingDecision!;
+
+    scripts["phase-a"] = {
+      result: "failed",
+      summary: "extension exhausted",
+      diagnostics: { terminalReason: "error_max_turns", maxTurns: 12, turnCount: 13 }
+    };
+    await harness.coordinator.continueExecution(firstDecision.id, firstFailure.revision);
+    await harness.coordinator.poll();
+    const exhausted = await currentState(harness);
+
+    expect(exhausted.approval?.pendingDecision).toMatchObject({
+      type: "execution-recovery",
+      allowedActions: ["view-details", "revise-plan", "cancel-workflow"]
+    });
+    expect(exhausted.approval?.pendingDecision?.additionalTurns).toBeUndefined();
+    expect(exhausted.execution.records["phase-a"]?.executionBudget).toMatchObject({
+      extensionApprovals: 1,
+      cumulativeAuthorizedTurns: 36
+    });
+    expect(exhausted.execution.records["phase-a"]?.executionBudget?.attempts).toHaveLength(2);
+    expect(exhausted.git?.integration.integratedPhaseIds).toEqual([]);
+  });
+
+  it("makes the existing non-max-turn retry action redispatch the failed phase", async () => {
+    const scripts: Record<string, ScriptedPhase> = {
+      "phase-a": { result: "failed", summary: "transient provider failure", diagnostics: { terminalReason: "provider_process_exited" } }
+    };
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts
+    });
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const failed = await currentState(harness);
+    const decision = failed.approval!.pendingDecision!;
+    expect(decision.allowedActions).toContain("retry-execution");
+
+    scripts["phase-a"] = {
+      edits: [{ path: "src/a.ts", content: "retried\n" }],
+      result: "completed",
+      validation: [{ command: "npm test", exitCode: 0 }]
+    };
+    const retried = await harness.coordinator.retryExecution(decision.id, failed.revision);
+    expect(retried.nextAction).toBe("poll");
+    await harness.coordinator.poll();
+    const completed = await currentState(harness);
+    expect(completed.execution.records["phase-a"]?.status).toBe("result_recorded");
+    expect(completed.git?.integration.integratedPhaseIds).toContain("phase-a");
   });
 
   it("recovers after restart by polling a persisted execution handle with the same provider", async () => {

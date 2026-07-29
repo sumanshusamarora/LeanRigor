@@ -128,6 +128,7 @@ export interface PhaseExecutionInput {
   planContext: string;
   approvedConstraints: string[];
   safetyInstructions: string[];
+  turnBudget?: ExecutionTurnBudget;
   previousCheckpoint?: PhaseWorkspaceCheckpoint;
   workspacePreparation?: WorkspacePreparation;
   resume?: {
@@ -149,6 +150,27 @@ export interface PhaseExecutionInput {
   };
 }
 
+export interface ExecutionTurnBudget {
+  initialTurnLimit: number;
+  effectiveTurnLimit: number;
+  extensionTurnLimit: number;
+  extensionApprovals: number;
+  cumulativeAuthorizedTurns: number;
+}
+
+export interface ExecutionAttemptEvidence {
+  providerExecutionId: string;
+  maxTurns: number;
+  reportedTurnsUsed?: number;
+  terminalReason?: string;
+  costUsd?: number;
+  completedAt?: string;
+}
+
+export interface ExecutionTurnBudgetState extends ExecutionTurnBudget {
+  attempts: ExecutionAttemptEvidence[];
+}
+
 export interface ExecutionHandle {
   providerId: string;
   providerExecutionId: string;
@@ -161,6 +183,7 @@ export interface ExecutionHandle {
   providerMetadata?: Record<string, unknown>;
   providerSession?: ProviderSessionRef;
   nativeSessionId?: string;
+  turnBudget?: ExecutionTurnBudget;
   executionIdentity: PhaseExecutionIdentity;
 }
 
