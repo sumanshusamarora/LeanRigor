@@ -172,16 +172,16 @@ describe("central phase dispatch eligibility", () => {
 
     expect(result.nextAction).toBe("await_user");
     expect(result.decision).toMatchObject({
-      type: "material-drift-review",
+      type: "execution-recovery",
       phaseId: "phase-a",
       question: expect.any(String),
-      options: expect.arrayContaining([expect.objectContaining({ intent: "review-material-drift" })])
+      options: expect.arrayContaining([expect.objectContaining({ intent: "retry-execution" })])
     });
     expect(state.execution.records["phase-a"]).toMatchObject({
       status: "blocked",
-      diagnostics: { resultAccepted: false, disposition: "needs_replan" }
+      diagnostics: { terminalReason: "provider_protocol_error", resultAccepted: false, disposition: "needs_review" }
     });
-    expect(state.plan?.phases[0]?.status).toBe("needs_replan");
+    expect(state.plan?.phases[0]?.status).toBe("needs_review");
   });
 
   it("persists provider material discovery and refuses completion authority", async () => {

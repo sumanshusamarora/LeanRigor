@@ -94,6 +94,26 @@ describe("phase execution brief generation", () => {
     }
   });
 
+  it("defers release-version gates when a phase cannot write the complete version surface", async () => {
+    const phase = structuredClone(fixture.phase);
+    phase.validationCommands.push(
+      "npm run check:plugin-version-bump",
+      "npm run version:dev",
+      "npm run version:check"
+    );
+    const state = structuredClone(fixture.state);
+    state.plan!.phases = [phase];
+
+    const outcome = await generateInspectedPhaseExecutionBrief({ state, phase, config: defaultConfig() });
+
+    expect(outcome.status).toBe("generated");
+    if (outcome.status === "generated") {
+      expect(outcome.brief.validationCommands).toContain("npm run version:check");
+      expect(outcome.brief.validationCommands).not.toContain("npm run check:plugin-version-bump");
+      expect(outcome.brief.validationCommands).not.toContain("npm run version:dev");
+    }
+  });
+
   it("fails closed when bounded inspection cannot locate any approved evidence", async () => {
     const emptyRoot = await mkdtemp(path.join(tmpdir(), "leanrigor-brief-unavailable-"));
     const phase = structuredClone(fixture.phase);

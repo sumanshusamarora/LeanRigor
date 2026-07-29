@@ -81,7 +81,7 @@ import type { PlanningProvider } from "../core/planning-runner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.32");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.33");
 
 program.command("setup")
   .alias("init")
@@ -820,6 +820,24 @@ flow.command("continue-execution")
   .action(async (workflowId, options) => {
     const selected = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
     const result = await selected.coordinator.continueExecution(
+      options.decisionId,
+      Number.parseInt(options.expectedRevision, 10)
+    );
+    if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+    printCoordinatorResult(result, Boolean(options.json));
+  });
+
+flow.command("discard-out-of-scope-and-retry")
+  .argument("<workflow-id>")
+  .requiredOption("--decision-id <decision-id>", "exact pending recovery decision ID")
+  .requiredOption("--expected-revision <revision>", "exact workflow revision")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto")
+  .option("--script-file <path>", "scripted provider JSON file")
+  .option("--json", "print structured coordinator result")
+  .action(async (workflowId, options) => {
+    const selected = await executionCoordinator(options.root, workflowId, options.provider, options.scriptFile);
+    const result = await selected.coordinator.discardOutOfScopeAndRetry(
       options.decisionId,
       Number.parseInt(options.expectedRevision, 10)
     );

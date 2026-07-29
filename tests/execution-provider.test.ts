@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ClaudeCliExecutionProvider, parseClaudeResult } from "../src/core/execution/claude-provider.js";
+import { ClaudeCliExecutionProvider, parseClaudeResult, phaseExecutionResultJsonSchema, resumePrompt } from "../src/core/execution/claude-provider.js";
 import { ScriptedExecutionProvider } from "../src/core/execution/scripted-provider.js";
 import type { PhaseExecutionInput } from "../src/core/execution/types.js";
 import type { PhaseExecutionBrief } from "../src/core/types.js";
@@ -44,6 +44,26 @@ describe("scripted execution provider", () => {
 });
 
 describe("Claude CLI execution provider", () => {
+  it("pins every execution identity field in the structured-output schema and compact prompt", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const executionInput = input(workspace);
+    const identity = { ...executionInput.executionIdentity, providerSessionId: "11111111-1111-4111-8111-111111111111" };
+    const schema = phaseExecutionResultJsonSchema(identity) as {
+      properties: { executionIdentity: { properties: Record<string, { const?: unknown }> } };
+    };
+
+    for (const [field, value] of Object.entries(identity)) {
+      expect(schema.properties.executionIdentity.properties[field]?.const).toBe(value);
+    }
+    const prompt = resumePrompt({
+      ...executionInput,
+      executionIdentity: identity,
+      resume: { failureReason: "provider_protocol_error", attempt: 2, mode: "compact-retry" }
+    });
+    expect(prompt).toContain(`Return executionIdentity exactly as supplied: ${JSON.stringify(identity)}`);
+    expect(prompt).toContain("Do not modify files outside the approved write areas");
+  });
+
   it("uses 16, 24, and 48 default turns for fast, standard, and rigorous execution", async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
     const command = await fakeClaude(workspace, phaseResultJson());

@@ -133,9 +133,9 @@ describe("execution coordinator", () => {
     const state = await currentState(harness);
 
     expect(result.nextAction).toBe("await_user");
-    expect(result.decision).toMatchObject({ type: "material-drift-review" });
+    expect(result.decision).toMatchObject({ type: "execution-recovery" });
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
-    expect(state.plan?.phases.every((phase) => phase.status === "needs_replan")).toBe(true);
+    expect(state.plan?.phases.every((phase) => phase.status === "needs_review")).toBe(true);
     expect(state.execution.records["phase-right"]?.status).toBe("blocked");
   });
 
@@ -379,7 +379,12 @@ describe("execution coordinator", () => {
     const record = state.execution.records["phase-a"];
 
     expect(result.nextAction).toBe("await_user");
-    expect(result.decision).toMatchObject({ type: "material-drift-review" });
+    expect(result.decision).toMatchObject({
+      type: "execution-recovery",
+      options: expect.arrayContaining([
+        expect.objectContaining({ intent: "discard-out-of-scope-and-retry" })
+      ])
+    });
     expect(record?.status).toBe("blocked");
     expect(record?.checkpoint).toMatchObject({
       dirty: true,
@@ -389,9 +394,118 @@ describe("execution coordinator", () => {
     });
     expect(record?.checkpoint?.diffSummary.text).toContain("src/shared.txt");
     expect(record?.diagnostics).toMatchObject({ partialProgressPreserved: true, partialProgressAccepted: false });
-    expect(state.plan?.phases[0]?.status).toBe("needs_replan");
+    expect(state.plan?.phases[0]?.status).toBe("needs_review");
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
     await expect(readFile(path.join(state.git!.phaseWorkspaces["phase-a"]!.path, "notes.txt"), "utf8")).resolves.toBe("partial note\n");
+  });
+
+  it("rejects a wrong result identity, discards only out-of-scope writes, and retries with approved-scope work preserved", async () => {
+    const scripts: Record<string, ScriptedPhase> = {
+      "phase-a": {
+        edits: [
+          { path: "src/a.ts", content: "preserved in-scope work\n" },
+          { path: "package.json", content: "{\"version\":\"unapproved\"}\n" }
+        ],
+        resultIdentity: { workflowRevision: 0 },
+        validation: [{ command: "npm test", exitCode: 0 }]
+      }
+    };
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts
+    });
+
+    await harness.coordinator.runNext();
+    const failed = await harness.coordinator.poll();
+    const rejected = await currentState(harness);
+    const workspace = rejected.git!.phaseWorkspaces["phase-a"]!.path;
+
+    expect(failed.decision).toMatchObject({
+      type: "execution-recovery",
+      options: expect.arrayContaining([
+        expect.objectContaining({
+          intent: "discard-out-of-scope-and-retry",
+          command: expect.stringContaining("flow discard-out-of-scope-and-retry")
+        })
+      ])
+    });
+    expect(rejected.execution.records["phase-a"]?.diagnostics).toMatchObject({
+      terminalReason: "provider_protocol_error",
+      resultAccepted: false,
+      unexpectedWrites: ["package.json"]
+    });
+    expect(rejected.plan?.phases[0]?.status).toBe("needs_review");
+
+    const legacy = structuredClone(rejected);
+    legacy.approval!.pendingDecision!.type = "material-drift-review";
+    legacy.approval!.pendingDecision!.allowedActions = ["review-material-drift", "revise-plan", "view-details", "cancel-workflow"];
+    legacy.plan!.phases[0]!.status = "needs_replan";
+    delete legacy.execution.records["phase-a"]!.diagnostics!.terminalReason;
+    delete legacy.execution.records["phase-a"]!.diagnostics!.unexpectedWrites;
+    await writeFile(
+      path.join(harness.root, ".leanrigor", "workflows", `${legacy.id}.json`),
+      `${JSON.stringify(legacy, null, 2)}\n`
+    );
+    const normalized = await currentState(harness);
+    expect(normalized.approval?.pendingDecision).toMatchObject({
+      type: "execution-recovery",
+      allowedActions: expect.arrayContaining(["discard-out-of-scope-and-retry"])
+    });
+    expect(normalized.plan?.phases[0]?.status).toBe("needs_review");
+
+    scripts["phase-a"] = {
+      validation: [{ command: "npm test", exitCode: 0 }]
+    };
+    const retried = await harness.coordinator.discardOutOfScopeAndRetry(
+      normalized.approval!.pendingDecision!.id,
+      normalized.revision
+    );
+
+    expect(retried.nextAction).toBe("poll");
+    await expect(readFile(path.join(workspace, "src", "a.ts"), "utf8")).resolves.toBe("preserved in-scope work\n");
+    await expect(readFile(path.join(workspace, "package.json"), "utf8")).resolves.not.toContain("unapproved");
+    await harness.coordinator.poll();
+    const completed = await currentState(harness);
+    expect(completed.execution.records["phase-a"]?.status).toBe("result_recorded");
+    expect(completed.execution.records["phase-a"]?.diagnostics).toMatchObject({
+      discardedOutOfScopeWrites: ["package.json"]
+    });
+  });
+
+  it("keeps genuine provider-reported material discovery on the plan-revision path", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          result: "needs_replan",
+          summary: "Inspection found a required public contract change.",
+          discoveredMaterialChanges: [{
+            category: "public-contract",
+            affectedPhase: "phase-a",
+            previousValue: ["internal behavior"],
+            proposedValue: ["public contract"],
+            severity: "high",
+            material: true,
+            reason: "A public API must change.",
+            requiredTransition: "revise-plan"
+          }]
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    const result = await harness.coordinator.poll();
+
+    expect(result.decision).toMatchObject({
+      type: "material-drift-review",
+      options: expect.arrayContaining([
+        expect.objectContaining({ intent: "revise-plan" }),
+        expect.objectContaining({ intent: "revise-phase-brief" })
+      ])
+    });
+    expect(result.decision?.options.map((option) => option.intent)).not.toContain("retry-execution");
+    expect(result.decision?.options.map((option) => option.intent)).not.toContain("discard-out-of-scope-and-retry");
+    expect((await currentState(harness)).plan?.phases[0]?.status).toBe("needs_replan");
   });
 
   it("offers one explicit additional-turn decision and continues from the preserved worktree", async () => {

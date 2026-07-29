@@ -702,7 +702,10 @@ function deterministicProposal(input: PhaseBriefPlanningInput): PhaseBriefPropos
   const currentBehaviour = inspection.findings.find((finding) => finding.questionId === "implementation")?.answer
     ?? `No existing implementation was found within the approved paths; ${writeAreas.join(", ")} is the bounded creation target.`;
   const prior = priorPhaseContext(state, phase);
-  const validationCommands = unique([...phase.validationCommands, ...inspection.validationCommands]);
+  const validationCommands = phaseScopedValidationCommands(
+    unique([...phase.validationCommands, ...inspection.validationCommands]),
+    writeAreas
+  );
   const documentationOnly = state.triage?.task.type === "documentation" || writeAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area));
   const testObligations = deriveTestObligations(state, phase, inspection, documentationOnly);
   const constraints = effectiveConstraints(state);
@@ -762,6 +765,7 @@ function assembleBrief(args: {
   const riskDiscoveries = normalizeRiskDiscoveries(args.proposal.riskDiscoveries);
   const proposal = {
     ...structuredClone(args.proposal),
+    validationCommands: phaseScopedValidationCommands(args.proposal.validationCommands, args.proposal.writeAreas),
     risks: unique([...args.proposal.risks, ...riskDiscoveries.map((discovery) => discovery.risk)]),
     riskDiscoveries
   };
@@ -1202,4 +1206,30 @@ function messageOf(error: unknown): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function phaseScopedValidationCommands(commands: string[], writeAreas: string[]): string[] {
+  if (ownsReleaseVersionSurface(writeAreas)) return unique(commands);
+  return unique(commands).filter((command) => !isReleaseVersionGate(command));
+}
+
+function ownsReleaseVersionSurface(writeAreas: string[]): boolean {
+  const requiredPaths = [
+    "package.json",
+    "package-lock.json",
+    ".claude-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
+    "src/cli/index.ts"
+  ];
+  return requiredPaths.every((file) => writeAreas.some((area) => pathAreaContains(area, file)));
+}
+
+function isReleaseVersionGate(command: string): boolean {
+  return /\bnpm\s+run\s+(?:check:plugin-version-bump|version:(?:dev|sync))\b/i.test(command)
+    || /\bnpm\s+version\b/i.test(command);
+}
+
+function pathAreaContains(area: string, file: string): boolean {
+  const normalizedArea = area.replaceAll("\\", "/").replace(/^\.\/+/, "").replace(/\/+$/, "").replace(/\/\*\*.*$/, "").replace(/\/\*.*$/, "");
+  return normalizedArea === file || (normalizedArea.length > 0 && file.startsWith(`${normalizedArea}/`));
 }

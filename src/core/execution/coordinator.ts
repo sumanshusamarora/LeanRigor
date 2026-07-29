@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { stat } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../../config/schema.js";
@@ -255,7 +255,7 @@ export class ExecutionCoordinator {
       if (status.status === "running" || status.status === "queued") {
         if (status.heartbeatAt) {
           await heartbeatPhase({ root: this.root, workflowId: this.workflowId, phaseId: record.phaseId, ownerId: record.leaseOwnerId, config: this.config, mutation: { ownerId: record.leaseOwnerId } });
-          await this.updateRecord(record.phaseId, { status: "running", heartbeatAt: status.heartbeatAt, diagnostics: status.diagnostics });
+          await this.updateRecord(record.phaseId, { status: "running", heartbeatAt: status.heartbeatAt, diagnostics: mergeDiagnostics(record.diagnostics, status.diagnostics) });
         } else if (this.missingHeartbeatExpired(record)) {
           await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", "Provider heartbeat was missing beyond the grace window.");
           blocked.push({ phaseId: record.phaseId, reason: "Provider heartbeat missing." });
@@ -269,7 +269,7 @@ export class ExecutionCoordinator {
         continue;
       }
 
-      await this.updateRecord(record.phaseId, { status: "collecting", diagnostics: status.diagnostics });
+      await this.updateRecord(record.phaseId, { status: "collecting", diagnostics: mergeDiagnostics(record.diagnostics, status.diagnostics) });
       let result: PhaseExecutionResult;
       try {
         result = await this.provider.collectResult(handle);
@@ -379,6 +379,57 @@ export class ExecutionCoordinator {
     return this.dispatchResumedPhase(phaseId, ownerId, "Retried");
   }
 
+  async discardOutOfScopeAndRetry(decisionId: string, expectedRevision: number): Promise<CoordinatorResult> {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, async (state) => {
+      const decision = requirePendingDecision(state, "execution-recovery", "discard-out-of-scope-and-retry", decisionId);
+      if (!decision?.phaseId) throw new Error("The current recovery decision does not identify a phase to clean up.");
+      const phase = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const brief = state.phaseBriefs?.[decision.phaseId];
+      const workspace = state.git?.phaseWorkspaces[decision.phaseId];
+      const record = state.execution.records[decision.phaseId];
+      if (!phase || !brief || !workspace || !record?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
+      if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before retrying.`);
+      const unexpectedWrites = record.checkpoint.changedFiles.filter((file) => !brief.writeAreas.some((area) => pathWithinArea(file, area)));
+      if (unexpectedWrites.length === 0) throw new Error(`Phase ${decision.phaseId} has no out-of-scope changes to discard.`);
+      await discardOutOfScopeChanges(record.workspacePath, workspace.baseCommit, record.checkpoint, unexpectedWrites);
+      const checkpoint = await capturePhaseWorkspaceCheckpoint(record.workspacePath, brief.validationCommands);
+      const remainingUnexpected = checkpoint.changedFiles.filter((file) => !brief.writeAreas.some((area) => pathWithinArea(file, area)));
+      if (remainingUnexpected.length > 0) {
+        throw new Error(`Out-of-scope cleanup was incomplete: ${remainingUnexpected.join(", ")}`);
+      }
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase.status = "ready";
+      workspace.status = "ready";
+      workspace.updatedAt = this.now();
+      state.execution.records[phaseId] = {
+        ...record,
+        status: "blocked",
+        checkpoint,
+        resultSummary: `Discarded out-of-scope changes (${unexpectedWrites.join(", ")}); preserved approved-scope work for a compact retry.`,
+        diagnostics: mergeDiagnostics(record.diagnostics, {
+          terminalReason: "provider_scope_cleanup",
+          discardedOutOfScopeWrites: unexpectedWrites,
+          cleanupCompletedAt: this.now(),
+          partialProgressPreserved: checkpoint.dirty,
+          partialProgressAccepted: false
+        }),
+        providerSession: updateSessionStatus(record.providerSession, "failed", this.now(), "provider_scope_cleanup")
+      };
+      resolvePendingDecision(state, "approved", "discard-out-of-scope-and-retry", "user", decisionId);
+      return state;
+    }, {
+      expectedRevision,
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      decisionId,
+      operation: "execution_scope_cleanup_authorized"
+    });
+    return this.dispatchResumedPhase(phaseId, ownerId, "Cleaned and retried");
+  }
+
   private async dispatchResumedPhase(phaseId: string, ownerId: string, verb: string): Promise<CoordinatorResult> {
     try {
       await leasePhase({
@@ -444,22 +495,33 @@ export class ExecutionCoordinator {
     const state = await loadFlowState(this.root, this.workflowId);
     const brief = state.phaseBriefs?.[record.phaseId];
     const workspace = state.git?.phaseWorkspaces[record.phaseId];
+    const unexpectedWrites = checkpoint.changedFiles.filter((file) => !brief || !brief.writeAreas.some((area) => pathWithinArea(file, area)));
     const identityIssues = executionIdentityIssues(record, result, state);
     if (identityIssues.length > 0) {
-      await this.quarantineResult(record, checkpoint, "needs_replan", `Provider result identity rejected: ${identityIssues.join("; ")}`, {
+      await this.quarantineRecoveryResult(record, checkpoint, `Provider result identity rejected: ${identityIssues.join("; ")}`, "provider_protocol_error", {
         resultIdentity: result.executionIdentity,
-        identityIssues
+        identityIssues,
+        unexpectedWrites
       });
       return "blocked";
     }
-    const unexpectedWrites = checkpoint.changedFiles.filter((file) => !brief || !brief.writeAreas.some((area) => pathWithinArea(file, area)));
     const unexpectedValidation = result.validation
       .map((entry) => entry.command)
       .filter((command) => !brief?.validationCommands.includes(command));
     const reportedScopeExpansion = result.scopeDeviations
       .filter((deviation) => deviation.path && !brief?.writeAreas.some((area) => pathWithinArea(deviation.path!, area)));
     const materialDiscovery = result.discoveredMaterialChanges.filter((change) => change.material);
-    if (unexpectedWrites.length > 0 || reportedScopeExpansion.length > 0 || materialDiscovery.length > 0 || result.status === "needs_replan") {
+    if (unexpectedWrites.length > 0 && reportedScopeExpansion.length === 0 && materialDiscovery.length === 0 && result.status !== "needs_replan") {
+      await this.quarantineRecoveryResult(
+        record,
+        checkpoint,
+        `Provider wrote outside the approved phase scope: ${unexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`,
+        "provider_scope_violation",
+        { unexpectedWrites, workspaceIdentity: workspace?.preparation?.workspaceIdentity }
+      );
+      return "blocked";
+    }
+    if (reportedScopeExpansion.length > 0 || materialDiscovery.length > 0 || result.status === "needs_replan") {
       const reasons = [
         unexpectedWrites.length > 0 ? `Unexpected write paths: ${unexpectedWrites.join(", ")}` : undefined,
         reportedScopeExpansion.length > 0 ? `Reported scope expansion: ${reportedScopeExpansion.map((deviation) => deviation.path).join(", ")}` : undefined,
@@ -485,7 +547,7 @@ export class ExecutionCoordinator {
       await this.quarantineResult(record, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
       return "blocked";
     }
-    const diagnostics = mergeDiagnostics(result.providerDiagnostics, {
+    const diagnostics = mergeDiagnostics(record.diagnostics, result.providerDiagnostics, {
       checkpoint,
       changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles)
     });
@@ -573,10 +635,60 @@ export class ExecutionCoordinator {
         phaseId: record.phaseId,
         briefRevision: state.phaseBriefs?.[record.phaseId]?.briefRevision,
         question: summary,
-        allowedActions: ["review-material-drift", "revise-plan", "view-details", "cancel-workflow"]
+        allowedActions: ["review-material-drift", "revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"]
       });
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_result_quarantined" });
+  }
+
+  private async quarantineRecoveryResult(
+    record: PhaseExecutionRecord,
+    checkpoint: PhaseWorkspaceCheckpoint,
+    summary: string,
+    terminalReason: "provider_protocol_error" | "provider_scope_violation",
+    diagnostics: Record<string, unknown>
+  ): Promise<void> {
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const phase = state.plan?.phases.find((candidate) => candidate.id === record.phaseId);
+      const lease = state.phaseLeases[record.phaseId];
+      if (lease && !lease.releasedAt && lease.ownerId === record.leaseOwnerId) lease.releasedAt = this.now();
+      if (phase) phase.status = "needs_review";
+      const workspace = state.git?.phaseWorkspaces[record.phaseId];
+      if (workspace) workspace.status = "needs_repair";
+      const unexpectedWrites = Array.isArray(diagnostics.unexpectedWrites)
+        ? diagnostics.unexpectedWrites.filter((value): value is string => typeof value === "string")
+        : [];
+      state.execution.records[record.phaseId] = {
+        ...record,
+        status: "blocked",
+        completedAt: this.now(),
+        resultSummary: summary,
+        diagnostics: mergeDiagnostics(record.diagnostics, {
+          ...diagnostics,
+          terminalReason,
+          resultAccepted: false,
+          disposition: "needs_review",
+          partialProgressPreserved: checkpoint.dirty,
+          partialProgressAccepted: false
+        }),
+        checkpoint,
+        providerSession: updateSessionStatus(record.providerSession, "failed", this.now(), terminalReason)
+      };
+      setPendingDecision(state, {
+        type: "execution-recovery",
+        phaseId: record.phaseId,
+        briefRevision: state.phaseBriefs?.[record.phaseId]?.briefRevision,
+        question: summary,
+        allowedActions: [
+          ...(unexpectedWrites.length > 0 ? ["discard-out-of-scope-and-retry"] : []),
+          ...(unexpectedWrites.length === 0 ? ["retry-execution"] : ["revise-phase-brief"]),
+          "view-details",
+          "revise-plan",
+          "cancel-workflow"
+        ]
+      });
+      return state;
+    }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_result_recovery_quarantined" });
   }
 
   private async progressDeterministicTransitions(): Promise<SequentialWorkflowState> {
@@ -643,6 +755,7 @@ export class ExecutionCoordinator {
         heartbeatAt: handle.startedAt,
         providerMetadata: handle.providerMetadata,
         providerSession: handle.providerSession,
+        diagnostics: existing?.diagnostics,
         checkpoint: existing?.checkpoint,
         executionBudget: handle.turnBudget ? {
           ...handle.turnBudget,
@@ -919,6 +1032,7 @@ export class ExecutionCoordinator {
       || actual.baseCommit !== expected.baseCommit
       || actual.constraintHash !== expected.constraintHash
       || actual.providerId !== expected.providerId
+      || actual.dispatchedAt !== expected.dispatchedAt
     ) {
       throw new Error("Provider handle did not preserve the exact approved brief and workspace execution identity.");
     }
@@ -1086,6 +1200,39 @@ async function gitNul(cwd: string, args: string[]): Promise<string[]> {
   return (await gitText(cwd, args)).split("\0").map((line) => line.trim()).filter(Boolean);
 }
 
+async function discardOutOfScopeChanges(
+  workspacePath: string,
+  baseCommit: string,
+  checkpoint: PhaseWorkspaceCheckpoint,
+  files: string[]
+): Promise<void> {
+  const workspace = path.resolve(workspacePath);
+  const untracked = new Set(checkpoint.untrackedFiles.map(normalizeRelative));
+  const tracked: string[] = [];
+  for (const file of uniqueStrings(files)) {
+    const normalized = normalizeRelative(file);
+    if (!safeWorkspaceRelativePath(normalized)) throw new Error(`Refusing to clean unsafe workspace path: ${file}`);
+    const target = path.resolve(workspace, normalized);
+    if (target !== workspace && !target.startsWith(`${workspace}${path.sep}`)) throw new Error(`Refusing to clean path outside the phase workspace: ${file}`);
+    if (untracked.has(normalized)) await rm(target, { force: true, recursive: true });
+    else tracked.push(normalized);
+  }
+  if (tracked.length > 0) {
+    await execFileAsync("git", ["restore", `--source=${baseCommit}`, "--staged", "--worktree", "--", ...tracked], {
+      cwd: workspace,
+      encoding: "utf8",
+      maxBuffer: CHECKPOINT_DIFF_BYTES * 4
+    });
+  }
+}
+
+function safeWorkspaceRelativePath(value: string): boolean {
+  return Boolean(value)
+    && !path.isAbsolute(value)
+    && !value.split("/").includes("..")
+    && value !== ".";
+}
+
 function boundText(text: string, maxBytes: number): PhaseWorkspaceCheckpoint["diffSummary"] {
   const bytes = Buffer.byteLength(text);
   if (bytes <= maxBytes) return { text, bytes, truncated: false };
@@ -1117,7 +1264,7 @@ function executionIdentityIssues(
   if (!expected) return ["persisted execution record has no compatible identity"];
   if (!actual) return ["provider result omitted execution identity"];
   const issues: string[] = [];
-  for (const key of ["workflowId", "workflowRevision", "phaseId", "briefRevision", "workspaceIdentity", "workspacePath", "baseCommit", "constraintHash", "providerId"] as const) {
+  for (const key of ["workflowId", "workflowRevision", "phaseId", "briefRevision", "workspaceIdentity", "workspacePath", "baseCommit", "constraintHash", "providerId", "providerSessionId", "dispatchedAt"] as const) {
     if (actual[key] !== expected[key]) issues.push(`${key} mismatch`);
   }
   const brief = state.phaseBriefs?.[record.phaseId];
@@ -1153,7 +1300,7 @@ function workspaceRiskSummary(preparation: NonNullable<WorkflowPhase["workspace"
 function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId: string, phaseId: string, workspacePath: string, attempt: number): PhaseExecutionInput["resume"] | undefined {
   if (!record?.checkpoint) return undefined;
   const session = record.providerSession;
-  const sessionUnavailable = record.diagnostics?.terminalReason === "provider_session_unavailable"
+  const sessionUnavailable = ["provider_session_unavailable", "provider_protocol_error", "provider_scope_violation", "provider_scope_cleanup"].includes(String(record.diagnostics?.terminalReason))
     || (typeof record.diagnostics?.stderrExcerpt === "string" && /no conversation found with session id/i.test(record.diagnostics.stderrExcerpt));
   const sameLineage = session
     && session.workflowId === workflowId
@@ -1173,13 +1320,14 @@ function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId
 function updateSessionStatus(session: ProviderSessionRef | undefined, status: ProviderSessionStatus, updatedAt: string, terminalReason?: string): ProviderSessionRef | undefined {
   if (!session) return undefined;
   const sessionUnavailable = terminalReason === "provider_session_unavailable";
+  const freshSessionRequired = sessionUnavailable || terminalReason === "provider_protocol_error" || terminalReason === "provider_scope_violation" || terminalReason === "provider_scope_cleanup";
   const resolvedStatus = sessionUnavailable ? "unavailable" : status;
   return {
     ...session,
     status: resolvedStatus,
     updatedAt,
-    resumePermitted: !sessionUnavailable && (resolvedStatus === "failed" || resolvedStatus === "unavailable"),
-    replacementReason: sessionUnavailable ? "Persisted Claude conversation is unavailable; use a fresh compact session." : session.replacementReason
+    resumePermitted: !freshSessionRequired && (resolvedStatus === "failed" || resolvedStatus === "unavailable"),
+    replacementReason: freshSessionRequired ? "The prior provider session cannot be trusted for this retry; use a fresh compact session." : session.replacementReason
   };
 }
 

@@ -3875,10 +3875,62 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
+  normalizeLegacyExecutionQuarantineDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
   return migrated;
+}
+
+function normalizeLegacyExecutionQuarantineDecision(state: Record<string, unknown>): void {
+  const approval = state.approval as Record<string, unknown> | undefined;
+  const decision = approval?.pendingDecision as Record<string, unknown> | undefined;
+  if (!decision || decision.status !== "pending" || decision.type !== "material-drift-review" || typeof decision.phaseId !== "string") return;
+  const execution = state.execution as { records?: Record<string, Record<string, unknown>> } | undefined;
+  const record = execution?.records?.[decision.phaseId];
+  if (!record) return;
+  const diagnostics = (record.diagnostics && typeof record.diagnostics === "object"
+    ? record.diagnostics
+    : {}) as Record<string, unknown>;
+  record.diagnostics = diagnostics;
+  const identityRejected = Array.isArray(diagnostics?.identityIssues)
+    || (typeof record.resultSummary === "string" && record.resultSummary.startsWith("Provider result identity rejected:"));
+  const briefs = state.phaseBriefs as Record<string, Record<string, unknown>> | undefined;
+  const brief = briefs?.[decision.phaseId];
+  const writeAreas = Array.isArray(brief?.writeAreas) ? brief.writeAreas.filter((value): value is string => typeof value === "string") : [];
+  const checkpoint = record.checkpoint as { changedFiles?: unknown[] } | undefined;
+  const unexpectedWrites = (checkpoint?.changedFiles ?? [])
+    .filter((value): value is string => typeof value === "string")
+    .filter((file) => !writeAreas.some((area) => areaMatchesFile(area, file)));
+  const scopeOnly = !identityRejected
+    && unexpectedWrites.length > 0
+    && (!Array.isArray(diagnostics.reportedScopeExpansion) || diagnostics.reportedScopeExpansion.length === 0)
+    && (!Array.isArray(diagnostics.discoveredMaterialChanges) || diagnostics.discoveredMaterialChanges.length === 0);
+  if (!identityRejected && !scopeOnly) return;
+  const terminalReason = identityRejected ? "provider_protocol_error" : "provider_scope_violation";
+  diagnostics.terminalReason = terminalReason;
+  diagnostics.unexpectedWrites = unexpectedWrites;
+  diagnostics.disposition = "needs_review";
+  const providerSession = record.providerSession as Record<string, unknown> | undefined;
+  if (providerSession) {
+    providerSession.status = "failed";
+    providerSession.resumePermitted = false;
+    providerSession.replacementReason = "The prior provider session cannot be trusted for this retry; use a fresh compact session.";
+  }
+  const plan = state.plan as { phases?: Array<Record<string, unknown>> } | undefined;
+  const phase = plan?.phases?.find((candidate) => candidate.id === decision.phaseId);
+  if (phase?.status === "needs_replan") phase.status = "needs_review";
+  decision.type = "execution-recovery";
+  decision.question = identityRejected
+    ? `The provider returned a result with the wrong execution identity. Its result was rejected and no work was accepted.${unexpectedWrites.length > 0 ? " Discard the out-of-scope changes and retry, or revise the plan if those files are genuinely required." : " Retry in a fresh compact provider session."}`
+    : `The provider wrote outside the approved phase scope: ${unexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`;
+  decision.allowedActions = [
+    ...(unexpectedWrites.length > 0 ? ["discard-out-of-scope-and-retry"] : []),
+    ...(unexpectedWrites.length === 0 ? ["retry-execution"] : ["revise-phase-brief"]),
+    "view-details",
+    "revise-plan",
+    "cancel-workflow"
+  ];
 }
 
 function normalizeLegacyUnavailableProviderSession(state: Record<string, unknown>): void {

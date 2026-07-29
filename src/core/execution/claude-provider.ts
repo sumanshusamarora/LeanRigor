@@ -113,7 +113,8 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       environmentMode,
       model: resolved.model,
       sessionId,
-      resume: canResume
+      resume: canResume,
+      executionIdentity: executionInput.executionIdentity
     });
     const safeArgs = buildSafeArgs({
       maxTurns,
@@ -379,6 +380,7 @@ function buildClaudeArgs(args: {
   model?: string;
   sessionId: string;
   resume: boolean;
+  executionIdentity: PhaseExecutionInput["executionIdentity"];
 }): string[] {
   const cliArgs: string[] = [];
   if (args.environmentMode === "bare") cliArgs.push("--bare");
@@ -389,7 +391,7 @@ function buildClaudeArgs(args: {
     "--output-format",
     "json",
     "--json-schema",
-    JSON.stringify(phaseExecutionResultJsonSchema()),
+    JSON.stringify(phaseExecutionResultJsonSchema(args.executionIdentity)),
     "--max-turns",
     String(args.maxTurns),
     "--permission-mode",
@@ -465,7 +467,7 @@ function resolveClaudeModel(input: PhaseExecutionInput, options: ClaudeCliExecut
   return { model: resolved.resolvedModel };
 }
 
-function resumePrompt(input: PhaseExecutionInput): string {
+export function resumePrompt(input: PhaseExecutionInput): string {
   return [
     "LeanRigor compact resume request",
     `Workflow: ${input.workflowId}`,
@@ -480,7 +482,10 @@ function resumePrompt(input: PhaseExecutionInput): string {
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
     input.turnBudget ? `Additional turn allowance for this continuation: ${input.turnBudget.effectiveTurnLimit}.` : undefined,
-    "Continue from the existing session and worktree. Do not restart broad repository discovery. Return only the JSON object required by the supplied json-schema."
+    "Continue from the existing session and worktree. Do not restart broad repository discovery.",
+    "Do not modify files outside the approved write areas to make a validation, release, version, or packaging check pass. Report an unmet or deferred check instead.",
+    "Return only the JSON object required by the supplied json-schema.",
+    `Return executionIdentity exactly as supplied: ${JSON.stringify(input.executionIdentity)}`
   ].filter((line): line is string => line !== undefined).join("\n");
 }
 
@@ -574,23 +579,37 @@ function isPhaseExecutionResult(value: unknown): value is PhaseExecutionResult {
     && Array.isArray(result.remainingRisks);
 }
 
-function phaseExecutionResultJsonSchema(): Record<string, unknown> {
+export function phaseExecutionResultJsonSchema(identity?: PhaseExecutionInput["executionIdentity"]): Record<string, unknown> {
+  const exact = <T extends string | number>(value: T | undefined, type: "string" | "number"): Record<string, unknown> =>
+    value === undefined ? { type } : { type, const: value };
   const executionIdentity = {
     type: "object",
     properties: {
-      workflowId: { type: "string" },
-      workflowRevision: { type: "number" },
-      phaseId: { type: "string" },
-      briefRevision: { type: "number" },
-      workspaceIdentity: { type: "string" },
-      workspacePath: { type: "string" },
-      baseCommit: { type: "string" },
-      constraintHash: { type: "string" },
-      providerId: { type: "string" },
-      providerSessionId: { type: "string" },
-      dispatchedAt: { type: "string" }
+      workflowId: exact(identity?.workflowId, "string"),
+      workflowRevision: exact(identity?.workflowRevision, "number"),
+      phaseId: exact(identity?.phaseId, "string"),
+      briefRevision: exact(identity?.briefRevision, "number"),
+      workspaceIdentity: exact(identity?.workspaceIdentity, "string"),
+      workspacePath: exact(identity?.workspacePath, "string"),
+      baseCommit: exact(identity?.baseCommit, "string"),
+      constraintHash: exact(identity?.constraintHash, "string"),
+      providerId: exact(identity?.providerId, "string"),
+      providerSessionId: exact(identity?.providerSessionId, "string"),
+      dispatchedAt: exact(identity?.dispatchedAt, "string")
     },
-    required: ["workflowId", "workflowRevision", "phaseId", "briefRevision", "workspaceIdentity", "workspacePath", "baseCommit", "constraintHash", "providerId", "dispatchedAt"],
+    required: [
+      "workflowId",
+      "workflowRevision",
+      "phaseId",
+      "briefRevision",
+      "workspaceIdentity",
+      "workspacePath",
+      "baseCommit",
+      "constraintHash",
+      "providerId",
+      ...(identity?.providerSessionId ? ["providerSessionId"] : []),
+      "dispatchedAt"
+    ],
     additionalProperties: false
   };
   const validation = {
