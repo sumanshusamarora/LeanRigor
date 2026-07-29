@@ -81,7 +81,7 @@ import type { PlanningProvider } from "../core/planning-runner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.38");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.39");
 
 program.command("setup")
   .alias("init")
@@ -1464,10 +1464,17 @@ async function executionCoordinator(root: string, workflowId: string, providerNa
       root,
       workflowId,
       config,
-      provider: selected.provider
+      provider: selected.provider,
+      validationAdvisor: executionValidationAdvisor(providerName)
     }),
     providerFallbackReason: selected.fallbackReason
   };
+}
+
+function executionValidationAdvisor(providerName: string) {
+  if (providerName === "scripted") return undefined;
+  const adapterId = providerName === "auto" ? "claude" : providerName.endsWith("-cli") ? providerName.slice(0, -4) : providerName;
+  return getAdapterRuntime(adapterId).createStructuredDecisionProvider?.();
 }
 
 async function effectiveRepositoryConfig(root: string) {

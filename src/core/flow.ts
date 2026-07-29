@@ -77,6 +77,7 @@ import {
   type PhaseBriefPlanningProvider
 } from "./phase-brief-planner.js";
 import { repairPhaseGraphDependencies, validatePhaseGraphQuality } from "./phase-graph-quality.js";
+import { missingRequiredValidationCommands } from "./validation-policy.js";
 import {
   migrateWorkflowDecision,
   requirePendingDecision,
@@ -3479,7 +3480,7 @@ function summarisePhaseValidation(phase: WorkflowPhase, mode: WorkflowMode, conf
     return { status: "failed", commands, skipped };
   }
   const expected = phase.validationCommands;
-  const missing = expected.filter((command) => !commands.some((evidence) => sameCommand(evidence.command, command)));
+  const missing = missingRequiredValidationCommands(expected, commands.map((evidence) => evidence.command));
   if (commands.length === 0 || missing.length > 0) {
     if (!gateRequiresValidation(config)) return { status: "passed", commands, skipped };
     return { status: "missing", commands, skipped };
@@ -3616,10 +3617,6 @@ function gateRequiresValidation(config?: LeanRigorConfig): boolean {
 
 function allowSkippedValidation(mode: WorkflowMode, config?: LeanRigorConfig): boolean {
   return config?.completionGate.allowSkippedValidation[mode] ?? mode === "fast";
-}
-
-function sameCommand(recorded: string, expected: string): boolean {
-  return recorded.trim() === expected.trim();
 }
 
 function isPathLikeArea(area: string): boolean {

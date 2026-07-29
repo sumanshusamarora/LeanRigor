@@ -9,6 +9,7 @@ import { approvePhase, approvePlan, loadFlowState, preparePhaseExecutionBrief, s
 import { ExecutionCoordinator } from "../../src/core/execution/coordinator.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../../src/core/execution/scripted-provider.js";
 import type { ExecutionPlan, SequentialWorkflowState, WorkflowPhase } from "../../src/core/types.js";
+import type { StructuredDecisionProvider } from "../../src/core/structured-decision.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +31,7 @@ export async function createExecutionHarness(options: {
   clock?: () => Date;
   approveFirstPhase?: boolean;
   approvalPolicy?: "workflow-authorized" | "phase-by-phase";
+  validationAdvisor?: StructuredDecisionProvider;
 }): Promise<DisposableExecutionHarness> {
   const root = await gitRepo();
   const config = defaultConfig();
@@ -43,7 +45,7 @@ export async function createExecutionHarness(options: {
     options.approvalPolicy ?? "workflow-authorized"
   );
   const provider = new ScriptedExecutionProvider(options.scripts, options.clock ? () => options.clock!().getTime() : undefined);
-  const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, clock: options.clock });
+  const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, validationAdvisor: options.validationAdvisor, clock: options.clock });
   return {
     root,
     config,

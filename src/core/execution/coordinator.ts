@@ -10,6 +10,8 @@ import {
   PHASE_PREPARATION_CAPABILITY,
 } from "../dispatch-eligibility.js";
 import { briefIsCurrent, briefStalenessReasons } from "../approval.js";
+import { supplementalValidationCommands } from "../validation-policy.js";
+import { adviseSupplementalValidation } from "../validation-advisory.js";
 import {
   completePhase,
   heartbeatPhase,
@@ -29,6 +31,7 @@ import type { PhaseExecutionRecord, PhaseExecutionRecordStatus, SequentialWorkfl
 import { requirePendingDecision, resolvePendingDecision, setPendingDecision } from "../workflow-decision.js";
 import { phaseResultView, workflowDecisionEnvelope } from "../workflow-envelope.js";
 import type { ExecutionProvider } from "./provider.js";
+import type { StructuredDecisionProvider } from "../structured-decision.js";
 import type { CoordinatorResult, DispatchSummary, ExecutionHandle, ExecutionNextAction, PhaseExecutionInput, PhaseExecutionResult, PhaseWorkspaceCheckpoint, ProviderSessionRef, ProviderSessionStatus } from "./types.js";
 import { toValidationEvidence } from "./types.js";
 
@@ -41,6 +44,7 @@ export interface ExecutionCoordinatorOptions {
   workflowId: string;
   config: LeanRigorConfig;
   provider: ExecutionProvider;
+  validationAdvisor?: StructuredDecisionProvider;
   coordinatorId?: string;
   clock?: () => Date;
 }
@@ -50,6 +54,7 @@ export class ExecutionCoordinator {
   private readonly workflowId: string;
   private readonly config: LeanRigorConfig;
   private readonly provider: ExecutionProvider;
+  private readonly validationAdvisor?: StructuredDecisionProvider;
   private readonly coordinatorId: string;
   private readonly clock: () => Date;
 
@@ -58,6 +63,7 @@ export class ExecutionCoordinator {
     this.workflowId = options.workflowId;
     this.config = options.config;
     this.provider = options.provider;
+    this.validationAdvisor = options.validationAdvisor;
     this.coordinatorId = options.coordinatorId ?? `lr-coordinator-${process.pid}`;
     this.clock = options.clock ?? (() => new Date());
   }
@@ -505,9 +511,19 @@ export class ExecutionCoordinator {
       });
       return "blocked";
     }
-    const unexpectedValidation = result.validation
-      .map((entry) => entry.command)
-      .filter((command) => !brief?.validationCommands.includes(command));
+    const supplementalValidation = supplementalValidationCommands(
+      result.validation.map((entry) => entry.command),
+      brief?.validationCommands ?? []
+    );
+    const supplementalValidationAdvisory = this.validationAdvisor && supplementalValidation.length > 0
+      ? await adviseSupplementalValidation({
+          provider: this.validationAdvisor,
+          root: this.root,
+          config: this.config,
+          approvedCommands: brief?.validationCommands ?? [],
+          supplemental: supplementalValidation
+        })
+      : undefined;
     const reportedScopeExpansion = result.scopeDeviations
       .filter((deviation) => deviation.path && !brief?.writeAreas.some((area) => pathWithinArea(deviation.path!, area)));
     const materialDiscovery = result.discoveredMaterialChanges.filter((change) => change.material);
@@ -536,20 +552,17 @@ export class ExecutionCoordinator {
       });
       return "blocked";
     }
-    if (unexpectedValidation.length > 0) {
-      await this.quarantineResult(record, checkpoint, "needs_review", `Provider reported validation outside the approved brief: ${unexpectedValidation.join(", ")}`, {
-        unexpectedValidation,
-        approvedValidation: brief?.validationCommands
-      });
-      return "blocked";
-    }
     if (result.status === "needs_review") {
       await this.quarantineResult(record, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
       return "blocked";
     }
     const diagnostics = mergeDiagnostics(record.diagnostics, result.providerDiagnostics, {
       checkpoint,
-      changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles)
+      changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles),
+      supplementalValidation: supplementalValidation.length > 0 ? {
+        commands: supplementalValidation,
+        advisory: supplementalValidationAdvisory
+      } : undefined
     });
     if (result.status === "completed" || result.status === "blocked") {
       if (result.status === "blocked") {

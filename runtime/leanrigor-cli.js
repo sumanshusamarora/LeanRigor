@@ -28161,6 +28161,24 @@ function uniqueDiagnostics2(diagnostics) {
   return [...new Map(diagnostics.map((item) => [`${item.code}:${item.affectedPhase}:${item.message}`, item])).values()];
 }
 
+// src/core/validation-policy.ts
+function assessValidationCommand(command, approvedCommands) {
+  const normalised = normaliseValidationCommand(command);
+  if (approvedCommands.some((approved) => normaliseValidationCommand(approved) === normalised)) {
+    return { command, classification: "approved", reason: "Matches an approved validation command." };
+  }
+  return { command, classification: "supplemental", reason: "Additional validation evidence; it does not satisfy an approved requirement." };
+}
+function supplementalValidationCommands(commands, approvedCommands) {
+  return commands.map((command) => assessValidationCommand(command, approvedCommands)).filter((assessment) => assessment.classification === "supplemental");
+}
+function missingRequiredValidationCommands(requiredCommands, recordedCommands) {
+  return requiredCommands.filter((required2) => !recordedCommands.some((recorded) => assessValidationCommand(recorded, [required2]).classification === "approved"));
+}
+function normaliseValidationCommand(command) {
+  return command.trim().replace(/\s+/g, " ");
+}
+
 // src/core/workflow-decision.ts
 import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
 function setPendingDecision(state, input) {
@@ -31147,7 +31165,7 @@ function summarisePhaseValidation(phase2, mode2, config2) {
     return { status: "failed", commands, skipped };
   }
   const expected = phase2.validationCommands;
-  const missing = expected.filter((command) => !commands.some((evidence2) => sameCommand(evidence2.command, command)));
+  const missing = missingRequiredValidationCommands(expected, commands.map((evidence2) => evidence2.command));
   if (commands.length === 0 || missing.length > 0) {
     if (!gateRequiresValidation(config2)) return { status: "passed", commands, skipped };
     return { status: "missing", commands, skipped };
@@ -31252,9 +31270,6 @@ function gateRequiresValidation(config2) {
 }
 function allowSkippedValidation(mode2, config2) {
   return config2?.completionGate.allowSkippedValidation[mode2] ?? mode2 === "fast";
-}
-function sameCommand(recorded, expected) {
-  return recorded.trim() === expected.trim();
 }
 function isPathLikeArea2(area) {
   return isRepositoryPathPattern(area);
@@ -32909,6 +32924,123 @@ function evidence(lockfile, declared) {
   return [lockfile, declared ? `packageManager=${declared}` : "packageManager not declared"];
 }
 
+// src/core/validation-advisory.ts
+var ADVISORY_TIER = "small";
+var MAX_COMMANDS = 12;
+async function adviseSupplementalValidation(args) {
+  const supplemental = args.supplemental.slice(0, MAX_COMMANDS);
+  if (supplemental.length === 0) {
+    return { status: "available", tier: ADVISORY_TIER, warnings: [], advice: [] };
+  }
+  try {
+    const result = await args.provider.decide({
+      root: args.root,
+      prompt: advisoryPrompt(args.approvedCommands, supplemental),
+      schema: advisorySchema(),
+      tier: ADVISORY_TIER,
+      config: args.config,
+      stage: "execution-validation-advisory",
+      maxTurns: 1,
+      effort: "low",
+      tools: "none"
+    });
+    const advice = parseAdvice(result.value, supplemental.map((entry) => entry.command));
+    if (!advice) {
+      return {
+        status: "invalid",
+        provider: result.provider,
+        model: result.model,
+        tier: result.tier,
+        warnings: result.warnings,
+        advice: [],
+        failureReason: "The advisory provider returned an invalid or incomplete structured response."
+      };
+    }
+    return {
+      status: "available",
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      warnings: result.warnings,
+      advice
+    };
+  } catch (error51) {
+    return {
+      status: "unavailable",
+      tier: ADVISORY_TIER,
+      warnings: [],
+      advice: [],
+      failureReason: safeFailure2(error51)
+    };
+  }
+}
+function advisoryPrompt(approvedCommands, supplemental) {
+  return [
+    "You are a post-execution validation-evidence advisor for a software workflow.",
+    "This is advisory only. You MUST NOT authorize command execution, waive a required command, or decide whether the workflow may complete.",
+    "Definitions:",
+    "- Required validation is a command explicitly approved in the phase brief. It remains mandatory even if another command appears equivalent.",
+    "- Supplemental validation is an extra command reported after execution. It is recorded as additional evidence only and never satisfies a required command.",
+    "- Commands may belong to any programming language, package manager, test runner, compiler, linter, or build system. Do not assume JavaScript, TypeScript, or a particular toolchain.",
+    "- Judge only the relationship between the reported command and the approved validation evidence. Do not infer that a command was actually executed, safe, read-only, or authorized.",
+    "For each supplemental command, choose exactly one recommendation:",
+    "- likely-equivalent: it appears to check the same concern as an approved command, but still does not replace it.",
+    "- supplemental: it is useful additional validation with a distinct or narrower/broader purpose.",
+    "- review-recommended: its purpose or relationship to the approved evidence is ambiguous.",
+    "Keep each rationale concise, factual, and language-neutral. Return advice only for the supplied supplemental commands.",
+    "",
+    `Approved required commands: ${JSON.stringify(approvedCommands)}`,
+    `Supplemental commands: ${JSON.stringify(supplemental.map((entry) => entry.command))}`
+  ].join("\n");
+}
+function advisorySchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["advice"],
+    properties: {
+      advice: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["command", "recommendation", "rationale"],
+          properties: {
+            command: { type: "string" },
+            recommendation: { type: "string", enum: ["likely-equivalent", "supplemental", "review-recommended"] },
+            rationale: { type: "string", maxLength: 360 }
+          }
+        }
+      }
+    }
+  };
+}
+function parseAdvice(value, commands) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return void 0;
+  const raw = value.advice;
+  if (!Array.isArray(raw)) return void 0;
+  const expected = new Set(commands);
+  const byCommand = /* @__PURE__ */ new Map();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return void 0;
+    const candidate = entry;
+    if (typeof candidate.command !== "string" || !expected.has(candidate.command)) return void 0;
+    if (candidate.recommendation !== "likely-equivalent" && candidate.recommendation !== "supplemental" && candidate.recommendation !== "review-recommended") return void 0;
+    if (typeof candidate.rationale !== "string" || !candidate.rationale.trim()) return void 0;
+    byCommand.set(candidate.command, {
+      command: candidate.command,
+      recommendation: candidate.recommendation,
+      rationale: candidate.rationale.trim().slice(0, 360)
+    });
+  }
+  return commands.every((command) => byCommand.has(command)) ? commands.map((command) => byCommand.get(command)) : void 0;
+}
+function safeFailure2(error51) {
+  const message = error51 instanceof Error ? error51.message : String(error51);
+  return message.replace(/https?:\/\/\S+/g, "[url]").replace(/\s+/g, " ").slice(0, 240);
+}
+
 // src/core/execution/types.ts
 function toValidationEvidence(phaseId, entry) {
   const skipped = Boolean(entry.skipped || entry.status === "skipped");
@@ -32934,6 +33066,7 @@ var ExecutionCoordinator = class {
   workflowId;
   config;
   provider;
+  validationAdvisor;
   coordinatorId;
   clock;
   constructor(options) {
@@ -32941,6 +33074,7 @@ var ExecutionCoordinator = class {
     this.workflowId = options.workflowId;
     this.config = options.config;
     this.provider = options.provider;
+    this.validationAdvisor = options.validationAdvisor;
     this.coordinatorId = options.coordinatorId ?? `lr-coordinator-${process.pid}`;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
   }
@@ -33360,7 +33494,17 @@ var ExecutionCoordinator = class {
       });
       return "blocked";
     }
-    const unexpectedValidation = result.validation.map((entry) => entry.command).filter((command) => !brief?.validationCommands.includes(command));
+    const supplementalValidation = supplementalValidationCommands(
+      result.validation.map((entry) => entry.command),
+      brief?.validationCommands ?? []
+    );
+    const supplementalValidationAdvisory = this.validationAdvisor && supplementalValidation.length > 0 ? await adviseSupplementalValidation({
+      provider: this.validationAdvisor,
+      root: this.root,
+      config: this.config,
+      approvedCommands: brief?.validationCommands ?? [],
+      supplemental: supplementalValidation
+    }) : void 0;
     const reportedScopeExpansion = result.scopeDeviations.filter((deviation) => deviation.path && !brief?.writeAreas.some((area) => pathWithinArea(deviation.path, area)));
     const materialDiscovery = result.discoveredMaterialChanges.filter((change2) => change2.material);
     if (unexpectedWrites.length > 0 && reportedScopeExpansion.length === 0 && materialDiscovery.length === 0 && result.status !== "needs_replan") {
@@ -33388,20 +33532,17 @@ var ExecutionCoordinator = class {
       });
       return "blocked";
     }
-    if (unexpectedValidation.length > 0) {
-      await this.quarantineResult(record2, checkpoint, "needs_review", `Provider reported validation outside the approved brief: ${unexpectedValidation.join(", ")}`, {
-        unexpectedValidation,
-        approvedValidation: brief?.validationCommands
-      });
-      return "blocked";
-    }
     if (result.status === "needs_review") {
       await this.quarantineResult(record2, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
       return "blocked";
     }
     const diagnostics = mergeDiagnostics(record2.diagnostics, result.providerDiagnostics, {
       checkpoint,
-      changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles)
+      changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles),
+      supplementalValidation: supplementalValidation.length > 0 ? {
+        commands: supplementalValidation,
+        advisory: supplementalValidationAdvisory
+      } : void 0
     });
     if (result.status === "completed" || result.status === "blocked") {
       if (result.status === "blocked") {
@@ -34388,7 +34529,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.38");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.39");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -35262,10 +35403,16 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
       root,
       workflowId: workflowId2,
       config: config2,
-      provider: selected.provider
+      provider: selected.provider,
+      validationAdvisor: executionValidationAdvisor(providerName)
     }),
     providerFallbackReason: selected.fallbackReason
   };
+}
+function executionValidationAdvisor(providerName) {
+  if (providerName === "scripted") return void 0;
+  const adapterId = providerName === "auto" ? "claude" : providerName.endsWith("-cli") ? providerName.slice(0, -4) : providerName;
+  return getAdapterRuntime(adapterId).createStructuredDecisionProvider?.();
 }
 async function effectiveRepositoryConfig(root) {
   await ensureRepositoryConfig(root);

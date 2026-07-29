@@ -9,6 +9,7 @@ import type { PhaseExecutionInput, PhaseExecutionResult } from "../src/core/exec
 import type { ScriptedPhase } from "../src/core/execution/scripted-provider.js";
 import { phaseWorkerPrompt } from "../src/core/execution/prompt.js";
 import { workflowNextSummary } from "../src/core/ux.js";
+import type { StructuredDecisionProvider, StructuredDecisionRequest } from "../src/core/structured-decision.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("execution coordinator", () => {
@@ -155,6 +156,84 @@ describe("execution coordinator", () => {
     expect(result.decision).toMatchObject({ type: "execution-recovery" });
     expect(state.plan?.phases[0]?.status).toBe("needs_repair");
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
+  });
+
+  it("accepts supplemental validation without weakening the required check", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          edits: [{ path: "src/a.ts", content: "a\n" }],
+          validation: [
+            { command: "npm test", exitCode: 0 },
+            { command: "npx vitest run tests/flow.test.ts", exitCode: 0 },
+            { command: "npx tsc --noEmit", exitCode: 0 }
+          ]
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    const result = await harness.coordinator.poll();
+    const state = await currentState(harness);
+
+    expect(result.decision?.type).toBe("final-review");
+    expect(state.plan?.phases[0]?.validationResults.map((entry) => entry.command)).toEqual([
+      "npm test",
+      "npx vitest run tests/flow.test.ts",
+      "npx tsc --noEmit"
+    ]);
+  });
+
+  it("records language-agnostic supplemental validation without a review gate", async () => {
+    let prompt = "";
+    let schema: Record<string, unknown> | undefined;
+    const validationAdvisor: StructuredDecisionProvider = {
+      name: "advisory-test",
+      capabilities: () => ({ structuredOutput: true, schemaEnforcement: true, minimalContext: true, toolIsolation: true }),
+      async decide<T = unknown>(request: StructuredDecisionRequest) {
+        prompt = request.prompt;
+        schema = request.schema;
+        expect(request).toMatchObject({ tier: "small", stage: "execution-validation-advisory", maxTurns: 1, tools: "none" });
+        return {
+          value: { advice: [{ command: "go test ./...", recommendation: "supplemental", rationale: "Runs Go package tests in addition to the required check." }] } as T,
+          provider: "advisory-test",
+          model: "small-test-model",
+          tier: "small",
+          launchMode: "test",
+          warnings: []
+        };
+      }
+    };
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      validationAdvisor,
+      scripts: {
+        "phase-a": {
+          edits: [{ path: "src/a.ts", content: "a\n" }],
+          validation: [{ command: "npm test", exitCode: 0 }, { command: "go test ./...", exitCode: 0 }]
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    const result = await harness.coordinator.poll();
+
+    expect(result.decision?.type).toBe("final-review");
+    expect((await currentState(harness)).execution.records["phase-a"]?.diagnostics).toMatchObject({
+      supplementalValidation: {
+        commands: [expect.objectContaining({ command: "go test ./...", classification: "supplemental" })],
+        advisory: {
+          status: "available",
+          provider: "advisory-test",
+          model: "small-test-model",
+          advice: [expect.objectContaining({ command: "go test ./...", recommendation: "supplemental" })]
+        }
+      }
+    });
+    expect(prompt).toContain("Commands may belong to any programming language");
+    expect(prompt).toContain("MUST NOT authorize command execution");
+    expect(schema).toMatchObject({ properties: { advice: { items: { properties: { recommendation: { enum: ["likely-equivalent", "supplemental", "review-recommended"] } } } } } });
   });
 
   it("blocks provider dispatch when dependency preparation requires approval", async () => {
