@@ -23765,7 +23765,7 @@ var ClaudeCliExecutionProvider = class {
       ...input,
       executionIdentity: { ...input.executionIdentity, providerSessionId: sessionId }
     };
-    const prompt = resumeMode === "same-session" ? resumePrompt(executionInput) : phaseWorkerPrompt(executionInput);
+    const prompt = resumeMode === "fresh" ? phaseWorkerPrompt(executionInput) : resumePrompt(executionInput);
     const maxTurns = this.options.maxTurns ?? input.turnBudget?.effectiveTurnLimit ?? this.options.config?.execution.workerControls.maxTurns[input.selectedMode] ?? maxTurnsForMode(input.selectedMode);
     const environmentMode = this.options.environmentMode ?? this.options.config?.execution.workerControls.environment ?? "bare";
     const permissionMode = this.options.permissionMode ?? DEFAULT_CLAUDE_PERMISSION_MODE;
@@ -23784,7 +23784,8 @@ var ClaudeCliExecutionProvider = class {
       environmentMode,
       model: resolved.model,
       sessionId,
-      resume: canResume
+      resume: canResume,
+      compactRetry: resumeMode === "compact-retry"
     });
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const artifactDir = path12.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
@@ -24061,6 +24062,7 @@ function buildSafeArgs(args) {
   if (args.environmentMode === "bare") safe.push("--bare");
   if (args.environmentMode === "safe-mode") safe.push("--safe-mode");
   if (args.resume) safe.push("--resume", args.sessionId, "-p", "[compact-resume-prompt]");
+  else if (args.compactRetry) safe.push("-p", "[compact-resume-prompt]", "--session-id", args.sessionId);
   else safe.push("-p", "[bounded-phase-prompt]", "--session-id", args.sessionId);
   safe.push(
     "--output-format",
@@ -24275,10 +24277,11 @@ ${stderr}`;
   }
   const diagnostics = { ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details };
   const terminalReason = typeof diagnostics.providerErrorCode === "string" ? diagnostics.providerErrorCode : typeof diagnostics.terminalReason === "string" ? diagnostics.terminalReason : "provider_process_exited";
+  const failureSummary = terminalReason === "provider_session_unavailable" ? "Claude provider session was unavailable. Partial work was preserved in the phase worktree but not accepted; retrying will use a fresh compact session." : `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`;
   return {
     status: "failed",
     executionIdentity: handle.executionIdentity,
-    summary: `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`,
+    summary: failureSummary,
     changedFiles: [],
     validation: [],
     criterionEvidence: [],
@@ -24291,6 +24294,7 @@ ${stderr}`;
 }
 function artifactDiagnostics(handle, metadata, stdout, stderr, status) {
   const envelope = parseClaudeDiagnostics(stdout);
+  const processTerminalReason = terminalReasonFromProcessOutput(stdout, stderr);
   return redactDiagnostics({
     providerExecutionId: handle.providerExecutionId,
     artifactDir: metadata.artifactDir,
@@ -24308,7 +24312,7 @@ function artifactDiagnostics(handle, metadata, stdout, stderr, status) {
     workerControls: metadata.workerControls,
     exitCode: status?.exitCode,
     signal: status?.signal,
-    terminalReason: envelope.terminalReason,
+    terminalReason: envelope.terminalReason ?? processTerminalReason,
     stopReason: envelope.stopReason,
     turnCount: envelope.turnCount,
     usage: envelope.usage,
@@ -24318,6 +24322,12 @@ function artifactDiagnostics(handle, metadata, stdout, stderr, status) {
     stderrExcerpt: redact(stderr).slice(0, 1e3),
     partialProgressAccepted: false
   });
+}
+function terminalReasonFromProcessOutput(stdout, stderr) {
+  const message = `${stdout}
+${stderr}`;
+  if (/no conversation found with session id/i.test(message)) return "provider_session_unavailable";
+  return void 0;
 }
 function parseClaudeDiagnostics(stdout) {
   const out = {};
@@ -31338,7 +31348,33 @@ function migrateWorkflowState(raw, root, workflowId2) {
   normalizeLegacyMaterialBriefDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
+  normalizeLegacyUnavailableProviderSession(migrated);
   return migrated;
+}
+function normalizeLegacyUnavailableProviderSession(state) {
+  const execution = state.execution;
+  for (const [phaseId, record2] of Object.entries(execution?.records ?? {})) {
+    const diagnostics = record2.diagnostics;
+    const stderrExcerpt = typeof diagnostics?.stderrExcerpt === "string" ? diagnostics.stderrExcerpt : "";
+    if (!/no conversation found with session id/i.test(stderrExcerpt)) continue;
+    diagnostics.terminalReason = "provider_session_unavailable";
+    record2.resultSummary = "Claude provider session was unavailable. Partial work was preserved in the phase worktree but not accepted; retrying will use a fresh compact session.";
+    const providerSession = record2.providerSession;
+    if (providerSession) {
+      providerSession.status = "unavailable";
+      providerSession.resumePermitted = false;
+      providerSession.replacementReason = "Persisted Claude conversation is unavailable; use a fresh compact session.";
+    }
+    const budget = record2.executionBudget;
+    const latestAttempt = budget?.attempts?.find((attempt) => attempt.providerExecutionId === record2.providerExecutionId);
+    if (latestAttempt && typeof latestAttempt.terminalReason !== "string") latestAttempt.terminalReason = "provider_session_unavailable";
+    const approval = state.approval;
+    const decision = approval?.pendingDecision;
+    if (decision?.type === "execution-recovery" && decision.phaseId === phaseId && decision.status === "pending") {
+      decision.question = "The persisted Claude conversation is no longer available. Partial work remains preserved and unaccepted. Retry with a fresh compact provider session?";
+      decision.allowedActions = ["retry-execution", "view-details", "revise-plan", "cancel-workflow"];
+    }
+  }
 }
 function normalizeLegacyMaxTurnRecoveryDecision(state) {
   const approval = state.approval;
@@ -33367,7 +33403,12 @@ var ExecutionCoordinator = class {
           diagnostics: mergedDiagnostics,
           checkpoint,
           executionBudget,
-          providerSession: updateSessionStatus(existing.providerSession, sessionStatus, this.now())
+          providerSession: updateSessionStatus(
+            existing.providerSession,
+            sessionStatus,
+            this.now(),
+            typeof mergedDiagnostics?.terminalReason === "string" ? mergedDiagnostics.terminalReason : void 0
+          )
         };
       }
       if (status !== "cancelled") {
@@ -33707,7 +33748,8 @@ function workspaceRiskSummary(preparation2) {
 function buildResumeRequest(record2, workflowId2, phaseId, workspacePath, attempt) {
   if (!record2?.checkpoint) return void 0;
   const session = record2.providerSession;
-  const sameLineage = session && session.workflowId === workflowId2 && session.phaseId === phaseId && session.workingDirectory === workspacePath && session.resumePermitted && session.status !== "cancelled";
+  const sessionUnavailable = record2.diagnostics?.terminalReason === "provider_session_unavailable" || typeof record2.diagnostics?.stderrExcerpt === "string" && /no conversation found with session id/i.test(record2.diagnostics.stderrExcerpt);
+  const sameLineage = session && session.workflowId === workflowId2 && session.phaseId === phaseId && session.workingDirectory === workspacePath && session.resumePermitted && session.status !== "cancelled" && !sessionUnavailable;
   return {
     providerSession: sameLineage ? session : void 0,
     failureReason: record2.resultSummary ?? record2.status,
@@ -33715,8 +33757,17 @@ function buildResumeRequest(record2, workflowId2, phaseId, workspacePath, attemp
     mode: sameLineage ? "same-session" : "compact-retry"
   };
 }
-function updateSessionStatus(session, status, updatedAt) {
-  return session ? { ...session, status, updatedAt, resumePermitted: status === "failed" || status === "unavailable" } : void 0;
+function updateSessionStatus(session, status, updatedAt, terminalReason) {
+  if (!session) return void 0;
+  const sessionUnavailable = terminalReason === "provider_session_unavailable";
+  const resolvedStatus = sessionUnavailable ? "unavailable" : status;
+  return {
+    ...session,
+    status: resolvedStatus,
+    updatedAt,
+    resumePermitted: !sessionUnavailable && (resolvedStatus === "failed" || resolvedStatus === "unavailable"),
+    replacementReason: sessionUnavailable ? "Persisted Claude conversation is unavailable; use a fresh compact session." : session.replacementReason
+  };
 }
 async function detectCodeIntelligence(workspacePath, repositoryRoot) {
   if (await codeGraphUsable(workspacePath)) {
@@ -33986,7 +34037,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.31");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.32");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

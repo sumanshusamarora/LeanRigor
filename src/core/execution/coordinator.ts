@@ -746,7 +746,12 @@ export class ExecutionCoordinator {
           diagnostics: mergedDiagnostics,
           checkpoint,
           executionBudget,
-          providerSession: updateSessionStatus(existing.providerSession, sessionStatus, this.now())
+          providerSession: updateSessionStatus(
+            existing.providerSession,
+            sessionStatus,
+            this.now(),
+            typeof mergedDiagnostics?.terminalReason === "string" ? mergedDiagnostics.terminalReason : undefined
+          )
         };
       }
       if (status !== "cancelled") {
@@ -1148,12 +1153,15 @@ function workspaceRiskSummary(preparation: NonNullable<WorkflowPhase["workspace"
 function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId: string, phaseId: string, workspacePath: string, attempt: number): PhaseExecutionInput["resume"] | undefined {
   if (!record?.checkpoint) return undefined;
   const session = record.providerSession;
+  const sessionUnavailable = record.diagnostics?.terminalReason === "provider_session_unavailable"
+    || (typeof record.diagnostics?.stderrExcerpt === "string" && /no conversation found with session id/i.test(record.diagnostics.stderrExcerpt));
   const sameLineage = session
     && session.workflowId === workflowId
     && session.phaseId === phaseId
     && session.workingDirectory === workspacePath
     && session.resumePermitted
-    && session.status !== "cancelled";
+    && session.status !== "cancelled"
+    && !sessionUnavailable;
   return {
     providerSession: sameLineage ? session : undefined,
     failureReason: record.resultSummary ?? record.status,
@@ -1162,8 +1170,17 @@ function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId
   };
 }
 
-function updateSessionStatus(session: ProviderSessionRef | undefined, status: ProviderSessionStatus, updatedAt: string): ProviderSessionRef | undefined {
-  return session ? { ...session, status, updatedAt, resumePermitted: status === "failed" || status === "unavailable" } : undefined;
+function updateSessionStatus(session: ProviderSessionRef | undefined, status: ProviderSessionStatus, updatedAt: string, terminalReason?: string): ProviderSessionRef | undefined {
+  if (!session) return undefined;
+  const sessionUnavailable = terminalReason === "provider_session_unavailable";
+  const resolvedStatus = sessionUnavailable ? "unavailable" : status;
+  return {
+    ...session,
+    status: resolvedStatus,
+    updatedAt,
+    resumePermitted: !sessionUnavailable && (resolvedStatus === "failed" || resolvedStatus === "unavailable"),
+    replacementReason: sessionUnavailable ? "Persisted Claude conversation is unavailable; use a fresh compact session." : session.replacementReason
+  };
 }
 
 export async function detectCodeIntelligence(workspacePath: string, repositoryRoot: string): Promise<PhaseExecutionInput["codeIntelligence"]> {

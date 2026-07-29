@@ -276,6 +276,35 @@ describe("Claude CLI execution provider", () => {
     expect(metadata.resumeMode).toBe("compact-retry");
     expect(metadata.safeArgs).toContain("--session-id");
     expect(metadata.safeArgs).not.toContain("--resume");
+    expect(metadata.safeArgs).toContain("[compact-resume-prompt]");
+    expect(metadata.safeArgs).not.toContain("[bounded-phase-prompt]");
+  });
+
+  it("classifies a missing persisted Claude conversation as a session-unavailable failure", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
+    const command = await fakeClaude(
+      workspace,
+      "",
+      1,
+      "No conversation found with session ID: 11111111-1111-4111-8111-111111111111"
+    );
+    const provider = new ClaudeCliExecutionProvider({ command });
+    const handle = await provider.dispatch(input(workspace));
+    const restarted = new ClaudeCliExecutionProvider({ command });
+
+    await waitForTerminalStatus(restarted, handle);
+    const result = await restarted.collectResult(handle);
+
+    expect(result).toMatchObject({
+      status: "failed",
+      summary: expect.stringContaining("session was unavailable"),
+      providerDiagnostics: {
+        terminalReason: "provider_session_unavailable",
+        exitCode: 1,
+        stderrExcerpt: expect.stringContaining("No conversation found with session ID")
+      }
+    });
+    expect(result.providerDiagnostics?.turnCount).toBeUndefined();
   });
 
   it("reports exact max-turn diagnostics from Claude error envelopes", async () => {
@@ -389,16 +418,16 @@ function input(workspacePath: string): PhaseExecutionInput {
   };
 }
 
-async function fakeClaude(root: string, result: string, exitCode = 0): Promise<string> {
+async function fakeClaude(root: string, result: string, exitCode = 0, stderr = ""): Promise<string> {
   if (process.platform === "win32") {
     const script = path.join(root, "fake-claude.js");
     const command = path.join(root, "fake-claude.cmd");
-    await writeFile(script, `setTimeout(() => { process.stdout.write(${JSON.stringify(`${result}\n`)}); process.exit(${exitCode}); }, 50);\n`, "utf8");
+    await writeFile(script, `setTimeout(() => { process.stdout.write(${JSON.stringify(`${result}\n`)}); process.stderr.write(${JSON.stringify(stderr ? `${stderr}\n` : "")}); process.exit(${exitCode}); }, 50);\n`, "utf8");
     await writeFile(command, `@echo off\r\n"${process.execPath}" "%~dp0fake-claude.js"\r\n`, "utf8");
     return command;
   }
   const command = path.join(root, "fake-claude.sh");
-  await writeFile(command, `#!/bin/sh\nprintf '%s\\n' '${result.replaceAll("'", "'\\''")}'\nsleep 0.05\nexit ${exitCode}\n`, "utf8");
+  await writeFile(command, `#!/bin/sh\nprintf '%s\\n' '${result.replaceAll("'", "'\\''")}'\nprintf '%s' '${stderr ? `${stderr}\n` : ""}' >&2\nsleep 0.05\nexit ${exitCode}\n`, "utf8");
   await chmod(command, 0o755);
   return command;
 }

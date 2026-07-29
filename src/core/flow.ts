@@ -3877,7 +3877,34 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   normalizeLegacyMaterialBriefDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
+  normalizeLegacyUnavailableProviderSession(migrated);
   return migrated;
+}
+
+function normalizeLegacyUnavailableProviderSession(state: Record<string, unknown>): void {
+  const execution = state.execution as { records?: Record<string, Record<string, unknown>> } | undefined;
+  for (const [phaseId, record] of Object.entries(execution?.records ?? {})) {
+    const diagnostics = record.diagnostics as Record<string, unknown> | undefined;
+    const stderrExcerpt = typeof diagnostics?.stderrExcerpt === "string" ? diagnostics.stderrExcerpt : "";
+    if (!/no conversation found with session id/i.test(stderrExcerpt)) continue;
+    diagnostics!.terminalReason = "provider_session_unavailable";
+    record.resultSummary = "Claude provider session was unavailable. Partial work was preserved in the phase worktree but not accepted; retrying will use a fresh compact session.";
+    const providerSession = record.providerSession as Record<string, unknown> | undefined;
+    if (providerSession) {
+      providerSession.status = "unavailable";
+      providerSession.resumePermitted = false;
+      providerSession.replacementReason = "Persisted Claude conversation is unavailable; use a fresh compact session.";
+    }
+    const budget = record.executionBudget as { attempts?: Array<Record<string, unknown>> } | undefined;
+    const latestAttempt = budget?.attempts?.find((attempt) => attempt.providerExecutionId === record.providerExecutionId);
+    if (latestAttempt && typeof latestAttempt.terminalReason !== "string") latestAttempt.terminalReason = "provider_session_unavailable";
+    const approval = state.approval as Record<string, unknown> | undefined;
+    const decision = approval?.pendingDecision as Record<string, unknown> | undefined;
+    if (decision?.type === "execution-recovery" && decision.phaseId === phaseId && decision.status === "pending") {
+      decision.question = "The persisted Claude conversation is no longer available. Partial work remains preserved and unaccepted. Retry with a fresh compact provider session?";
+      decision.allowedActions = ["retry-execution", "view-details", "revise-plan", "cancel-workflow"];
+    }
+  }
 }
 
 function normalizeLegacyMaxTurnRecoveryDecision(state: Record<string, unknown>): void {

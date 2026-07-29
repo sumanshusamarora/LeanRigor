@@ -99,7 +99,7 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       ...input,
       executionIdentity: { ...input.executionIdentity, providerSessionId: sessionId }
     };
-    const prompt = resumeMode === "same-session" ? resumePrompt(executionInput) : phaseWorkerPrompt(executionInput);
+    const prompt = resumeMode === "fresh" ? phaseWorkerPrompt(executionInput) : resumePrompt(executionInput);
     const maxTurns = this.options.maxTurns
       ?? input.turnBudget?.effectiveTurnLimit
       ?? this.options.config?.execution.workerControls.maxTurns[input.selectedMode]
@@ -121,7 +121,8 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       environmentMode,
       model: resolved.model,
       sessionId,
-      resume: canResume
+      resume: canResume,
+      compactRetry: resumeMode === "compact-retry"
     });
     const startedAt = new Date().toISOString();
     const artifactDir = path.join(input.repositoryRoot, ".leanrigor", "executions", input.workflowId, input.phaseId, executionId);
@@ -417,11 +418,13 @@ function buildSafeArgs(args: {
   model?: string;
   sessionId: string;
   resume: boolean;
+  compactRetry: boolean;
 }): string[] {
   const safe: string[] = [];
   if (args.environmentMode === "bare") safe.push("--bare");
   if (args.environmentMode === "safe-mode") safe.push("--safe-mode");
   if (args.resume) safe.push("--resume", args.sessionId, "-p", "[compact-resume-prompt]");
+  else if (args.compactRetry) safe.push("-p", "[compact-resume-prompt]", "--session-id", args.sessionId);
   else safe.push("-p", "[bounded-phase-prompt]", "--session-id", args.sessionId);
   safe.push(
     "--output-format",
@@ -655,10 +658,13 @@ function failureResult(handle: ExecutionHandle, metadata: PersistedClaudeMetadat
   }
   const diagnostics = { ...artifactDiagnostics(handle, metadata, stdout, stderr, status), ...details };
   const terminalReason = typeof diagnostics.providerErrorCode === "string" ? diagnostics.providerErrorCode : typeof diagnostics.terminalReason === "string" ? diagnostics.terminalReason : "provider_process_exited";
+  const failureSummary = terminalReason === "provider_session_unavailable"
+    ? "Claude provider session was unavailable. Partial work was preserved in the phase worktree but not accepted; retrying will use a fresh compact session."
+    : `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`;
   return {
     status: "failed",
     executionIdentity: handle.executionIdentity,
-    summary: `Claude provider failed (${terminalReason}). Partial work, if any, was preserved in the phase worktree but not accepted.`,
+    summary: failureSummary,
     changedFiles: [],
     validation: [],
     criterionEvidence: [],
@@ -672,6 +678,7 @@ function failureResult(handle: ExecutionHandle, metadata: PersistedClaudeMetadat
 
 function artifactDiagnostics(handle: ExecutionHandle, metadata: PersistedClaudeMetadata, stdout: string, stderr: string, status: PersistedClaudeStatus | undefined): Record<string, unknown> {
   const envelope = parseClaudeDiagnostics(stdout);
+  const processTerminalReason = terminalReasonFromProcessOutput(stdout, stderr);
   return redactDiagnostics({
     providerExecutionId: handle.providerExecutionId,
     artifactDir: metadata.artifactDir,
@@ -689,7 +696,7 @@ function artifactDiagnostics(handle: ExecutionHandle, metadata: PersistedClaudeM
     workerControls: metadata.workerControls,
     exitCode: status?.exitCode,
     signal: status?.signal,
-    terminalReason: envelope.terminalReason,
+    terminalReason: envelope.terminalReason ?? processTerminalReason,
     stopReason: envelope.stopReason,
     turnCount: envelope.turnCount,
     usage: envelope.usage,
@@ -699,6 +706,12 @@ function artifactDiagnostics(handle: ExecutionHandle, metadata: PersistedClaudeM
     stderrExcerpt: redact(stderr).slice(0, 1000),
     partialProgressAccepted: false
   });
+}
+
+function terminalReasonFromProcessOutput(stdout: string, stderr: string): string | undefined {
+  const message = `${stdout}\n${stderr}`;
+  if (/no conversation found with session id/i.test(message)) return "provider_session_unavailable";
+  return undefined;
 }
 
 function parseClaudeDiagnostics(stdout: string): Record<string, unknown> {

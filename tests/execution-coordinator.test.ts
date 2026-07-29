@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ExecutionCoordinator, detectCodeIntelligence } from "../src/core/execution/coordinator.js";
-import { approvePhase, approveWorkspaceBootstrap, completePhase, integrationStatus, preparePhaseExecutionBrief } from "../src/core/flow.js";
+import { approvePhase, approveWorkspaceBootstrap, completePhase, integrationStatus, preparePhaseExecutionBrief, saveFlowState } from "../src/core/flow.js";
 import type { ExecutionProvider } from "../src/core/execution/provider.js";
 import type { PhaseExecutionInput, PhaseExecutionResult } from "../src/core/execution/types.js";
 import type { ScriptedPhase } from "../src/core/execution/scripted-provider.js";
@@ -549,6 +549,64 @@ describe("execution coordinator", () => {
     const completed = await currentState(harness);
     expect(completed.execution.records["phase-a"]?.status).toBe("result_recorded");
     expect(completed.git?.integration.integratedPhaseIds).toContain("phase-a");
+  });
+
+  it("normalizes a missing legacy provider session and retries with the preserved turn allowance", async () => {
+    const scripts: Record<string, ScriptedPhase> = {
+      "phase-a": {
+        result: "failed",
+        summary: "generic process exit",
+        diagnostics: {
+          terminalReason: "provider_process_exited",
+          stderrExcerpt: "No conversation found with session ID: old-session"
+        }
+      }
+    };
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts
+    });
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const failed = await currentState(harness);
+    const record = failed.execution.records["phase-a"]!;
+    record.diagnostics = {
+      ...record.diagnostics,
+      terminalReason: "provider_process_exited",
+      stderrExcerpt: "No conversation found with session ID: old-session"
+    };
+    record.providerSession = {
+      providerId: "claude-cli",
+      sessionId: "old-session",
+      workflowId: failed.id,
+      phaseId: "phase-a",
+      executionAttemptId: record.providerExecutionId,
+      workingDirectory: record.workspacePath,
+      createdAt: record.startedAt,
+      updatedAt: record.completedAt ?? record.startedAt,
+      status: "failed",
+      resumePermitted: true
+    };
+    await saveFlowState(harness.root, failed, { expectedRevision: failed.revision });
+
+    const normalized = await currentState(harness);
+    const normalizedRecord = normalized.execution.records["phase-a"]!;
+    expect(normalizedRecord.diagnostics?.terminalReason).toBe("provider_session_unavailable");
+    expect(normalizedRecord.providerSession).toMatchObject({
+      status: "unavailable",
+      resumePermitted: false
+    });
+    expect(normalized.approval?.pendingDecision?.question).toContain("fresh compact provider session");
+
+    scripts["phase-a"] = {
+      edits: [{ path: "src/a.ts", content: "fresh-session\n" }],
+      result: "completed",
+      validation: [{ command: "npm test", exitCode: 0 }]
+    };
+    const retried = await harness.coordinator.retryExecution(normalized.approval!.pendingDecision!.id, normalized.revision);
+    expect(retried.nextAction).toBe("poll");
+    await harness.coordinator.poll();
+    expect((await currentState(harness)).execution.records["phase-a"]?.status).toBe("result_recorded");
   });
 
   it("recovers after restart by polling a persisted execution handle with the same provider", async () => {
