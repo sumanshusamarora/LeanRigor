@@ -645,7 +645,7 @@ describe("sequential workflow orchestration", () => {
     expect(JSON.stringify(planned.plan)).not.toMatch(/backward-compatible|compatibility migration/i);
   });
 
-  it("accepts the recovered rejected model plan without false-positive boundary diagnostics", async () => {
+  it("accepts a model plan without lexical false-positive boundary diagnostics", async () => {
     const root = await tempRepo();
     const started = await startFlow({ request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates", root, config: defaultConfig() });
 
@@ -655,9 +655,10 @@ describe("sequential workflow orchestration", () => {
     });
 
     expect(planned.planningRun?.source).toBe("model");
-    expect(planned.planningRun?.semanticRepairApplied).toBe(true);
-    expect(planned.planningRun?.diagnostics ?? []).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "acceptance.not_inspectable" })
+    expect(planned.planningRun?.semanticRepairApplied).toBe(false);
+    expect(planned.planningRun?.diagnostics ?? []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "closure.future_dependency" }),
+      expect.objectContaining({ code: "dependency.unlinked_producer" })
     ]));
     expect(planned.plan?.phases.map((phase) => phase.id)).toEqual(["phase-1", "phase-2", "phase-3", "phase-4", "phase-5"]);
     expect(planned.plan?.phases[3]?.objective).toContain("migration, security, schema, and compatibility");

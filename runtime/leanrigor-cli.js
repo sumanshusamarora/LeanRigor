@@ -29037,7 +29037,7 @@ var planningDiagnosticSchema = external_exports.object({
   resolution: external_exports.enum(["repaired", "blocked", "fallback"]).optional()
 });
 var planningAttemptRecordSchema = external_exports.object({
-  stage: external_exports.enum(["draft", "normalisation", "repair", "escalation"]),
+  stage: external_exports.enum(["draft", "normalisation", "semantic-review", "repair", "escalation"]),
   tier: external_exports.enum(["small", "medium", "large", "inherit"]).optional(),
   model: external_exports.string().optional(),
   launchMode: external_exports.string().optional(),
@@ -34388,7 +34388,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.37");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.38");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

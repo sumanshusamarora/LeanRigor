@@ -910,7 +910,7 @@ const planningDiagnosticSchema = z.object({
 });
 
 const planningAttemptRecordSchema = z.object({
-  stage: z.enum(["draft", "normalisation", "repair", "escalation"]),
+  stage: z.enum(["draft", "normalisation", "semantic-review", "repair", "escalation"]),
   tier: z.enum(["small", "medium", "large", "inherit"]).optional(),
   model: z.string().optional(),
   launchMode: z.string().optional(),
