@@ -72,7 +72,6 @@ import {
 import {
   classifyAcceptanceOutcome,
   generateInspectedPhaseExecutionBrief,
-  isObservableAcceptanceCriterion,
   synthesizeObservableAcceptanceCriteria,
   type PhaseBriefGenerationOutcome,
   type PhaseBriefPlanningProvider
@@ -2690,24 +2689,11 @@ function normaliseModelPlan(
         next.expectedReadAreas = replaceNonPathAreas(next.expectedReadAreas, deterministicPhase.expectedReadAreas);
         changed = true;
       }
-      if (
-        diagnostics.some((diagnostic) => diagnostic.code === "acceptance.not_inspectable")
-        && Array.isArray(next.acceptanceCriteria)
-        && next.acceptanceCriteria.every((criterion) => typeof criterion === "string")
-      ) {
-        next.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(next.acceptanceCriteria as string[], {
-          validationCommands: Array.isArray(next.validationCommands)
-            ? next.validationCommands.filter((command): command is string => typeof command === "string")
-            : []
-        });
-        changed = true;
-      }
       return next;
     });
   }
   const parsed = modelPlanSchema.safeParse(mutable);
-  const graphRepairRequested = diagnostics.some((diagnostic) =>
-    diagnostic.code === "dependency.unlinked_producer" || diagnostic.code === "dependency.write_boundary_overlap");
+  const graphRepairRequested = diagnostics.some((diagnostic) => diagnostic.code === "dependency.write_boundary_overlap");
   if (parsed.success && graphRepairRequested) {
     const graphRepair = repairPhaseGraphDependencies({
       version: 1,
@@ -3205,9 +3191,6 @@ function validatePlanQualityDetailed(plan: ExecutionPlan, mode?: WorkflowMode, c
     if (!phase.objective.trim()) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.missing", `Phase ${phase.id} is missing an objective.`));
     if (isBroadContainer(phase.objective)) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.generic_container", `Phase ${phase.id} is a vague or overly broad container.`));
     if (phase.acceptanceCriteria.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.missing", `Phase ${phase.id} has no acceptance criteria.`));
-    if (phase.acceptanceCriteria.some((criterion) => !isInspectableCriterion(criterion))) {
-      issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.not_inspectable", `Phase ${phase.id} has non-testable or non-inspectable acceptance criteria.`));
-    }
     if (phase.validationCommands.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("validationCommands"), "validation.missing", `Phase ${phase.id} has no validation command or check expectation.`));
     if (phase.expectedFilesOrAreas.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.missing_write_area", `Phase ${phase.id} has no bounded expected write area.`));
     if (phase.expectedFilesOrAreas.some((area) => !isPathLikeArea(area))) {
@@ -3247,12 +3230,6 @@ function validatePlanQualityDetailed(plan: ExecutionPlan, mode?: WorkflowMode, c
 
 function isBroadContainer(objective: string): boolean {
   return /\b(whole feature|backend, frontend|frontend, tests|tests and docs|some related|various|everything|all changes|whole task)\b/i.test(objective);
-}
-
-function isInspectableCriterion(criterion: string): boolean {
-  const lower = criterion.toLowerCase();
-  if (/^(done|works|complete|as needed|tbd)\.?$/.test(lower.trim())) return false;
-  return lower.length >= 12 && isObservableAcceptanceCriterion(criterion);
 }
 
 function mixedArchitecturalBoundary(phase: WorkflowPhase, mode?: WorkflowMode): string | undefined {

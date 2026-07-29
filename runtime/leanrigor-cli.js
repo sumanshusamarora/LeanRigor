@@ -22837,7 +22837,7 @@ async function runPlanning(args) {
       warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf3(error51)}`);
       continue;
     }
-    const validated = validateCandidate(args, parsed.value);
+    const validated = await validateCandidate(args, provider, input, parsed.value, warnings, attemptRecords);
     if (validated.ok) {
       draftRecord.validation = "passed";
       attemptRecords.push(draftRecord);
@@ -22855,7 +22855,7 @@ async function runPlanning(args) {
     let latestPlan = normalised.raw;
     let latestDiagnostics = validated.diagnostics;
     if (normalised.changed) {
-      const normalisedValidation = validateCandidate(args, normalised.raw);
+      const normalisedValidation = await validateCandidate(args, provider, input, normalised.raw, warnings, attemptRecords);
       attemptRecords.push(attemptRecord("normalisation", void 0, {
         invocation: "not-attempted",
         validation: normalisedValidation.ok ? "passed" : "failed",
@@ -22899,7 +22899,7 @@ async function runPlanning(args) {
           const repairedParsed = parsePlanningPayload(repairResult.raw);
           syntaxRepairApplied ||= repairedParsed.syntaxRepairApplied;
           if (repairedParsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once to semantic repair output.");
-          const repairedValidation = validateCandidate(args, repairedParsed.value);
+          const repairedValidation = await validateCandidate(args, provider, input, repairedParsed.value, warnings, attemptRecords);
           if (repairedValidation.ok) {
             repairRecord.validation = "passed";
             attemptRecords.push(repairRecord);
@@ -22953,7 +22953,7 @@ async function runPlanning(args) {
         });
         try {
           const escalatedParsed = parsePlanningPayload(escalationResult.raw);
-          const escalatedValidation = validateCandidate(args, escalatedParsed.value);
+          const escalatedValidation = await validateCandidate(args, provider, input, escalatedParsed.value, warnings, attemptRecords);
           if (escalatedValidation.ok) {
             escalationRecord.validation = "passed";
             attemptRecords.push(escalationRecord);
@@ -23042,12 +23042,52 @@ function extractJsonCandidate(text) {
   if (arrayStart >= 0 && arrayEnd > arrayStart) return trimmed.slice(arrayStart, arrayEnd + 1);
   return trimmed;
 }
-function validateCandidate(args, raw) {
+async function validateCandidate(args, provider, input, raw, warnings, attemptRecords) {
   try {
-    return { ok: true, plan: args.validate(raw) };
+    const plan = args.validate(raw);
+    if (!provider.review) return { ok: true, plan };
+    let review;
+    try {
+      review = await provider.review(input, { plan });
+      warnings.push(...review.warnings ?? []);
+    } catch (error51) {
+      const failureReason = messageOf3(error51);
+      attemptRecords.push(attemptRecord("semantic-review", failedAttemptResult(error51), {
+        invocation: "failed",
+        validation: "not-attempted",
+        failureReason
+      }));
+      warnings.push(`Planning semantic review was unavailable; accepting the structurally valid plan without semantic rejection: ${failureReason}`);
+      return { ok: true, plan };
+    }
+    const diagnostics = semanticReviewDiagnostics(plan, review.review);
+    attemptRecords.push(attemptRecord("semantic-review", review, {
+      invocation: "succeeded",
+      validation: diagnostics.length === 0 ? "passed" : "failed",
+      diagnosticCodes: diagnosticCodes(diagnostics)
+    }));
+    if (review.review.verdict === "uncertain") {
+      warnings.push("Planning semantic review was inconclusive; accepting the structurally valid plan without semantic rejection.");
+    }
+    return diagnostics.length === 0 ? { ok: true, plan } : { ok: false, diagnostics };
   } catch (error51) {
     return { ok: false, diagnostics: diagnosticsOf(error51, "schema") };
   }
+}
+function semanticReviewDiagnostics(plan, review) {
+  if (review.verdict !== "needs-revision") return [];
+  const phaseIndexes = new Map(plan.phases.map((phase2, index) => [phase2.id, index]));
+  return review.issues.flatMap((issue2) => {
+    const index = phaseIndexes.get(issue2.phaseId);
+    if (index === void 0 || !issue2.message.trim() || !issue2.evidence.trim()) return [];
+    return [{
+      stage: "quality",
+      path: ["phases", index, "acceptanceCriteria"],
+      code: issue2.code,
+      message: `${issue2.message.trim()} Evidence: ${issue2.evidence.trim()}`,
+      affectedPhase: issue2.phaseId
+    }];
+  });
 }
 function isConstraintDiagnostic(diagnostic3) {
   return diagnostic3.code.startsWith("constraint.");
@@ -23526,6 +23566,28 @@ var ClaudeCliPlanningProvider = class {
       warnings: result.warnings
     };
   }
+  async review(input, request) {
+    const result = await this.decide({
+      root: input.root,
+      prompt: buildPlanningSemanticReviewPrompt(request.plan),
+      schema: planningSemanticReviewSchema(request.plan),
+      tier: "small",
+      config: input.config,
+      stage: "planning semantic review",
+      maxTurns: input.config.budgets.planningRepairMaxTurns,
+      effort: "low",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings,
+      review: result.value
+    };
+  }
   async decide(request) {
     try {
       return await this.decisions.decide(request);
@@ -23587,6 +23649,34 @@ function planningJsonSchema(input) {
     additionalProperties: false
   };
 }
+function planningSemanticReviewSchema(plan) {
+  const phaseIds = plan.phases.map((phase2) => phase2.id);
+  return {
+    type: "object",
+    properties: {
+      verdict: { type: "string", enum: ["pass", "needs-revision", "uncertain"] },
+      issues: {
+        type: "array",
+        maxItems: 12,
+        items: {
+          type: "object",
+          properties: {
+            phaseId: { type: "string", enum: phaseIds },
+            code: { type: "string", enum: ["acceptance.not_inspectable", "closure.future_dependency", "dependency.unlinked_producer"] },
+            message: { type: "string", minLength: 12, maxLength: 600 },
+            evidence: { type: "string", minLength: 8, maxLength: 600 },
+            producerPhaseId: { type: "string", enum: phaseIds }
+          },
+          required: ["phaseId", "code", "message", "evidence"],
+          additionalProperties: false
+        }
+      },
+      summary: { type: "string", minLength: 8, maxLength: 600 }
+    },
+    required: ["verdict", "issues", "summary"],
+    additionalProperties: false
+  };
+}
 function buildPlanningPrompt(input) {
   return [
     "You are the bounded sequential planning candidate generator for LeanRigor.",
@@ -23639,6 +23729,19 @@ function buildPlanningEscalationPrompt(input, request) {
     JSON.stringify(request.diagnostics, null, 2),
     "Plan requiring architectural repair:",
     JSON.stringify(request.plan, null, 2)
+  ].join("\n\n");
+}
+function buildPlanningSemanticReviewPrompt(plan) {
+  return [
+    "You are a bounded semantic reviewer for a LeanRigor Workflow Plan.",
+    "Return only the JSON value required by the supplied schema. You have no repository tools.",
+    "Assess only these semantic questions: whether acceptance criteria have concrete observable evidence, and whether a phase truly requires an artifact that is produced only by another phase without declaring that dependency.",
+    "Do not infer a dependency from shared vocabulary. Mentioning the same type, API, JSON format, file, or concept in two phases is not evidence that one phase produces it for the other.",
+    "Report a future dependency only when the plan itself establishes both a concrete produced artifact and that the earlier phase requires that artifact before it exists.",
+    "If the available plan text cannot establish that conclusion, return verdict 'uncertain' with no issues. Do not manufacture an issue from a word match.",
+    "Use verdict 'needs-revision' only for concrete, evidenced issues. Otherwise return 'pass'.",
+    "Workflow Plan:",
+    JSON.stringify(plan, null, 2)
   ].join("\n\n");
 }
 
@@ -27756,9 +27859,6 @@ function needsEvidenceSynthesis(criterion) {
   if (genericCriterion(criterion)) return true;
   return !/\b(test|check|command|invocation|output|exit code|result|evidence|inspect|load(?:s|ed)?|save(?:s|d)?|round[- ]?trip|serialize[sd]?|deserialize[sd]?|pass(?:es|ed)?|fail(?:s|ed)?|reject(?:s|ed)?|return(?:s|ed)?|render(?:s|ed)?|emit(?:s|ted)?)\b/i.test(criterion);
 }
-function isObservableAcceptanceCriterion(criterion) {
-  return !needsEvidenceSynthesis(criterion);
-}
 function observableEvidenceFor(category, validation) {
   const check2 = validation ? ` and '${validation}' passes` : "";
   switch (category) {
@@ -27982,33 +28082,10 @@ function pathAreaContains(area, file2) {
 // src/core/phase-graph-quality.ts
 function validatePhaseGraphQuality(plan) {
   const diagnostics = [];
-  const positions = new Map(plan.phases.map((phase2, index) => [phase2.id, index]));
   const byId = new Map(plan.phases.map((phase2) => [phase2.id, phase2]));
   for (const [index, phase2] of plan.phases.entries()) {
     if (phase2.validationCommands.length === 0) {
       diagnostics.push(diagnostic2(index, phase2.id, "closure.validation_missing", `Phase ${phase2.id} cannot establish an independently valid repository state without a validation command or check.`));
-    }
-    for (const token of declaredReferences(phase2.acceptanceCriteria)) {
-      const producers = plan.phases.filter((candidate) => candidate.id !== phase2.id && declaredTokens(candidate).has(token));
-      const futureProducer = producers.find((candidate) => (positions.get(candidate.id) ?? -1) > index);
-      if (futureProducer) {
-        diagnostics.push(diagnostic2(
-          index,
-          phase2.id,
-          "closure.future_dependency",
-          `Phase ${phase2.id} acceptance references ${token}, which is introduced by later phase ${futureProducer.id}. Move the producer earlier or remove that outcome from the current phase boundary.`
-        ));
-        continue;
-      }
-      const earlierProducer = producers.find((candidate) => !transitivelyDependsOn(phase2, candidate.id, byId));
-      if (earlierProducer) {
-        diagnostics.push(diagnostic2(
-          index,
-          phase2.id,
-          "dependency.unlinked_producer",
-          `Phase ${phase2.id} acceptance references ${token} from earlier phase ${earlierProducer.id}, but the dependency is not declared.`
-        ));
-      }
     }
   }
   for (let right = 1; right < plan.phases.length; right += 1) {
@@ -28035,13 +28112,6 @@ function repairPhaseGraphDependencies(plan) {
   for (let index = 0; index < repaired.phases.length; index += 1) {
     const phase2 = repaired.phases[index];
     const required2 = new Set(phase2.dependencies);
-    for (const token of declaredReferences(phase2.acceptanceCriteria)) {
-      const producer = [...repaired.phases.slice(0, index)].reverse().find((candidate) => declaredTokens(candidate).has(token));
-      if (producer && !transitivelyDependsOn(phase2, producer.id, byId)) {
-        required2.add(producer.id);
-        repairs.push(`Declared ${producer.id} as a dependency of ${phase2.id} because its acceptance criteria reference ${token}.`);
-      }
-    }
     for (const earlier of repaired.phases.slice(0, index)) {
       const overlap = writeBoundaryOverlap(earlier, phase2);
       if (overlap && !transitivelyDependsOn(phase2, earlier.id, byId)) {
@@ -28054,37 +28124,6 @@ function repairPhaseGraphDependencies(plan) {
   }
   return { plan: repaired, changed: repairs.length > 0, repairs };
 }
-function declaredReferences(criteria) {
-  return codeTokens(criteria.join(" "));
-}
-function declaredTokens(phase2) {
-  return codeTokens([
-    phase2.objective,
-    phase2.rationale,
-    ...phase2.expectedFilesOrAreas,
-    ...phase2.expectedWriteAreas
-  ].join(" "));
-}
-function codeTokens(value) {
-  const tokens = /* @__PURE__ */ new Set();
-  for (const match of value.matchAll(/`([A-Za-z_$][\w$.-]{3,})`|\b([A-Z][A-Za-z0-9_$]{3,}|[a-z][a-z0-9]+_[a-z0-9_]{2,})\b/g)) {
-    const candidate = match[1] ?? match[2];
-    if (!match[1] && !candidate.includes("_") && !/[A-Z0-9]/.test(candidate.slice(1))) continue;
-    const token = candidate.toLowerCase();
-    if (!GENERIC_CODE_TOKENS.has(token)) tokens.add(token);
-  }
-  return tokens;
-}
-var GENERIC_CODE_TOKENS = /* @__PURE__ */ new Set([
-  "readme",
-  "typescript",
-  "javascript",
-  "workflow",
-  "validation",
-  "repository",
-  "standard",
-  "rigorous"
-]);
 function transitivelyDependsOn(phase2, target, byId, seen = /* @__PURE__ */ new Set()) {
   if (phase2.dependencies.includes(target)) return true;
   if (seen.has(phase2.id)) return false;
@@ -30421,17 +30460,11 @@ function normaliseModelPlan(raw, diagnostics, deterministicPlan) {
         next.expectedReadAreas = replaceNonPathAreas(next.expectedReadAreas, deterministicPhase.expectedReadAreas);
         changed = true;
       }
-      if (diagnostics.some((diagnostic3) => diagnostic3.code === "acceptance.not_inspectable") && Array.isArray(next.acceptanceCriteria) && next.acceptanceCriteria.every((criterion) => typeof criterion === "string")) {
-        next.acceptanceCriteria = synthesizeObservableAcceptanceCriteria(next.acceptanceCriteria, {
-          validationCommands: Array.isArray(next.validationCommands) ? next.validationCommands.filter((command) => typeof command === "string") : []
-        });
-        changed = true;
-      }
       return next;
     });
   }
   const parsed = modelPlanSchema.safeParse(mutable);
-  const graphRepairRequested = diagnostics.some((diagnostic3) => diagnostic3.code === "dependency.unlinked_producer" || diagnostic3.code === "dependency.write_boundary_overlap");
+  const graphRepairRequested = diagnostics.some((diagnostic3) => diagnostic3.code === "dependency.write_boundary_overlap");
   if (parsed.success && graphRepairRequested) {
     const graphRepair = repairPhaseGraphDependencies({
       version: 1,
@@ -30871,9 +30904,6 @@ function validatePlanQualityDetailed(plan, mode2, config2) {
     if (!phase2.objective.trim()) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.missing", `Phase ${phase2.id} is missing an objective.`));
     if (isBroadContainer(phase2.objective)) issues.push(planDiagnostic("quality", phasePath.concat("objective"), "objective.generic_container", `Phase ${phase2.id} is a vague or overly broad container.`));
     if (phase2.acceptanceCriteria.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.missing", `Phase ${phase2.id} has no acceptance criteria.`));
-    if (phase2.acceptanceCriteria.some((criterion) => !isInspectableCriterion(criterion))) {
-      issues.push(planDiagnostic("quality", phasePath.concat("acceptanceCriteria"), "acceptance.not_inspectable", `Phase ${phase2.id} has non-testable or non-inspectable acceptance criteria.`));
-    }
     if (phase2.validationCommands.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("validationCommands"), "validation.missing", `Phase ${phase2.id} has no validation command or check expectation.`));
     if (phase2.expectedFilesOrAreas.length === 0) issues.push(planDiagnostic("quality", phasePath.concat("expectedFilesOrAreas"), "scope.missing_write_area", `Phase ${phase2.id} has no bounded expected write area.`));
     if (phase2.expectedFilesOrAreas.some((area) => !isPathLikeArea2(area))) {
@@ -30912,11 +30942,6 @@ function validatePlanQualityDetailed(plan, mode2, config2) {
 }
 function isBroadContainer(objective) {
   return /\b(whole feature|backend, frontend|frontend, tests|tests and docs|some related|various|everything|all changes|whole task)\b/i.test(objective);
-}
-function isInspectableCriterion(criterion) {
-  const lower = criterion.toLowerCase();
-  if (/^(done|works|complete|as needed|tbd)\.?$/.test(lower.trim())) return false;
-  return lower.length >= 12 && isObservableAcceptanceCriterion(criterion);
 }
 function mixedArchitecturalBoundary(phase2, mode2) {
   if (mode2 === "fast") return void 0;
@@ -34363,7 +34388,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.36");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.37");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

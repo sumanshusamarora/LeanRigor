@@ -3,8 +3,8 @@ import { validatePlanQuality } from "../src/core/flow.js";
 import { repairPhaseGraphDependencies, validatePhaseGraphQuality } from "../src/core/phase-graph-quality.js";
 import type { ExecutionPlan, WorkflowPhase } from "../src/core/types.js";
 
-describe("phase graph closure", () => {
-  it("rejects acceptance that depends on a symbol introduced by a later phase", () => {
+describe("phase graph structural safety", () => {
+  it("does not infer a dependency from shared code-like vocabulary", () => {
     const plan = planOf([
       phase("consumer", "Exercise the consumer", ["src/consumer.ts"], [], [
         "A focused test exercises `ParserV2` and records a passing result."
@@ -12,35 +12,7 @@ describe("phase graph closure", () => {
       phase("producer", "Introduce ParserV2", ["src/parser.ts"])
     ]);
 
-    expect(validatePhaseGraphQuality(plan)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "closure.future_dependency", affectedPhase: "consumer" })
-    ]));
-  });
-
-  it("detects invalid ordering before phase approval", () => {
-    const plan = planOf([
-      phase("validate", "Validate the migrated consumer", ["src/consumer.ts"], [], [
-        "A focused compatibility check loads state through `StateSchemaV3` and records the result."
-      ]),
-      phase("schema", "Introduce StateSchemaV3", ["src/schema.ts"])
-    ]);
-
-    expect(validatePlanQuality(plan, "rigorous").join("\n")).toContain("introduced by later phase schema");
-  });
-
-  it("repairs a missing dependency when the producer is already earlier", () => {
-    const plan = planOf([
-      phase("schema", "Introduce StateSchemaV3", ["src/schema.ts"]),
-      phase("consumer", "Load the new state", ["src/consumer.ts"], [], [
-        "A focused compatibility check loads state through `StateSchemaV3` and records the result."
-      ])
-    ]);
-
-    const repaired = repairPhaseGraphDependencies(plan);
-
-    expect(repaired.changed).toBe(true);
-    expect(repaired.plan.phases[1].dependencies).toEqual(["schema"]);
-    expect(validatePhaseGraphQuality(repaired.plan).map((item) => item.code)).not.toContain("dependency.unlinked_producer");
+    expect(validatePhaseGraphQuality(plan).map((item) => item.code)).not.toContain("closure.future_dependency");
   });
 
   it("fails closed on circular dependencies", () => {

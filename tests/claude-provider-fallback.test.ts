@@ -197,9 +197,84 @@ describe("Claude provider model tier fallback", () => {
 
     await provider.plan(planningInput(config));
     await provider.repair(planningInput(config), { plan: compactPlan(), diagnostics: [], tier: "medium" });
+    await provider.review(planningInput(config), { plan: planningInput(config).deterministicPlan });
 
     expect(calls[0]?.[calls[0].indexOf("--max-turns") + 1]).toBe("11");
     expect(calls[1]?.[calls[1].indexOf("--max-turns") + 1]).toBe("6");
+    expect(calls[2]?.[calls[2].indexOf("--max-turns") + 1]).toBe("6");
+    expect(calls[2]).toContain("--bare");
+  });
+
+  it("uses a bounded semantic review rather than lexical dependency inference", async () => {
+    const input = planningInput();
+    const stages: string[] = [];
+    let reviewed = 0;
+    const result = await runPlanning({
+      input,
+      provider: {
+        name: "bounded-planner",
+        async plan() {
+          stages.push("draft");
+          return { raw: { valid: true }, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare" };
+        },
+        async review() {
+          stages.push("review");
+          reviewed += 1;
+          return {
+            raw: {}, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare",
+            review: reviewed === 1
+              ? {
+                  verdict: "needs-revision",
+                  issues: [{
+                    phaseId: "phase-1",
+                    code: "closure.future_dependency",
+                    message: "The phase requires a persisted contract that the later phase creates.",
+                    evidence: "Phase 1 requires ContractV2; phase 2 explicitly creates ContractV2."
+                  }]
+                }
+              : { verdict: "pass", issues: [] }
+          };
+        },
+        async repair() {
+          stages.push("repair");
+          return { raw: { valid: true }, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare" };
+        }
+      },
+      validate(raw) {
+        if ((raw as { valid?: boolean }).valid) return input.deterministicPlan;
+        throw new PlanningValidationError([{ stage: "schema", path: [], code: "invalid", message: "Invalid candidate." }]);
+      }
+    });
+
+    expect(stages).toEqual(["draft", "review", "repair", "review"]);
+    expect(result.source).toBe("model");
+    expect(result.attemptRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: "semantic-review", validation: "failed", diagnosticCodes: ["closure.future_dependency"] }),
+      expect.objectContaining({ stage: "semantic-review", validation: "passed" })
+    ]));
+  });
+
+  it("accepts an inconclusive semantic review instead of manufacturing a rejection", async () => {
+    const input = planningInput();
+    const result = await runPlanning({
+      input,
+      provider: {
+        name: "bounded-planner",
+        async plan() {
+          return { raw: { valid: true }, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare" };
+        },
+        async review() {
+          return {
+            raw: {}, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare",
+            review: { verdict: "uncertain", issues: [] }
+          };
+        }
+      },
+      validate() { return input.deterministicPlan; }
+    });
+
+    expect(result.source).toBe("model");
+    expect(result.warnings.join("\n")).toContain("semantic review was inconclusive");
   });
 
   it("escalates only unresolved architectural diagnostics after a small repair", async () => {

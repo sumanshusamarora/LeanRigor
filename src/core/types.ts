@@ -691,7 +691,7 @@ export interface PlanningDiagnostic {
 }
 
 export interface PlanningAttemptRecord {
-  stage: "draft" | "normalisation" | "repair" | "escalation";
+  stage: "draft" | "normalisation" | "semantic-review" | "repair" | "escalation";
   tier?: ModelProfile;
   model?: string;
   launchMode?: string;

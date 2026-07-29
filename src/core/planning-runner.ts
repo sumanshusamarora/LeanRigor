@@ -31,6 +31,21 @@ export interface PlanningRepairRequest {
   tier?: ModelTier;
 }
 
+export interface PlanningSemanticReview {
+  verdict: "pass" | "needs-revision" | "uncertain";
+  issues: Array<{
+    phaseId: string;
+    code: "acceptance.not_inspectable" | "closure.future_dependency" | "dependency.unlinked_producer";
+    message: string;
+    evidence: string;
+    producerPhaseId?: string;
+  }>;
+}
+
+export interface PlanningSemanticReviewResult extends PlanningProviderResult {
+  review: PlanningSemanticReview;
+}
+
 export interface PlanningProviderInput {
   request: string;
   root: string;
@@ -55,6 +70,7 @@ export interface PlanningProvider {
   plan(input: PlanningProviderInput): Promise<PlanningProviderResult>;
   repair?(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult>;
   escalate?(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult>;
+  review?(input: PlanningProviderInput, request: { plan: ExecutionPlan }): Promise<PlanningSemanticReviewResult>;
 }
 
 export interface PlanningRunResult {
@@ -161,7 +177,7 @@ export async function runPlanning(args: {
       continue;
     }
 
-    const validated = validateCandidate(args, parsed.value);
+    const validated = await validateCandidate(args, provider, input, parsed.value, warnings, attemptRecords);
     if (validated.ok) {
       draftRecord.validation = "passed";
       attemptRecords.push(draftRecord);
@@ -181,7 +197,7 @@ export async function runPlanning(args: {
     let latestPlan = normalised.raw;
     let latestDiagnostics = validated.diagnostics;
     if (normalised.changed) {
-      const normalisedValidation = validateCandidate(args, normalised.raw);
+      const normalisedValidation = await validateCandidate(args, provider, input, normalised.raw, warnings, attemptRecords);
       attemptRecords.push(attemptRecord("normalisation", undefined, {
         invocation: "not-attempted",
         validation: normalisedValidation.ok ? "passed" : "failed",
@@ -226,7 +242,7 @@ export async function runPlanning(args: {
         const repairedParsed = parsePlanningPayload(repairResult.raw);
         syntaxRepairApplied ||= repairedParsed.syntaxRepairApplied;
         if (repairedParsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once to semantic repair output.");
-        const repairedValidation = validateCandidate(args, repairedParsed.value);
+        const repairedValidation = await validateCandidate(args, provider, input, repairedParsed.value, warnings, attemptRecords);
         if (repairedValidation.ok) {
           repairRecord.validation = "passed";
           attemptRecords.push(repairRecord);
@@ -281,7 +297,7 @@ export async function runPlanning(args: {
         });
         try {
           const escalatedParsed = parsePlanningPayload(escalationResult.raw);
-          const escalatedValidation = validateCandidate(args, escalatedParsed.value);
+          const escalatedValidation = await validateCandidate(args, provider, input, escalatedParsed.value, warnings, attemptRecords);
           if (escalatedValidation.ok) {
             escalationRecord.validation = "passed";
             attemptRecords.push(escalationRecord);
@@ -386,14 +402,57 @@ function extractJsonCandidate(text: string): string {
   return trimmed;
 }
 
-function validateCandidate(args: {
+async function validateCandidate(args: {
   validate: (raw: unknown) => ExecutionPlan;
-}, raw: unknown): { ok: true; plan: ExecutionPlan } | { ok: false; diagnostics: PlanDiagnostic[] } {
+}, provider: PlanningProvider, input: PlanningProviderInput, raw: unknown, warnings: string[], attemptRecords: PlanningAttemptRecord[]): Promise<{ ok: true; plan: ExecutionPlan } | { ok: false; diagnostics: PlanDiagnostic[] }> {
   try {
-    return { ok: true, plan: args.validate(raw) };
+    const plan = args.validate(raw);
+    if (!provider.review) return { ok: true, plan };
+
+    let review: PlanningSemanticReviewResult;
+    try {
+      review = await provider.review(input, { plan });
+      warnings.push(...(review.warnings ?? []));
+    } catch (error) {
+      const failureReason = messageOf(error);
+      attemptRecords.push(attemptRecord("semantic-review", failedAttemptResult(error), {
+        invocation: "failed",
+        validation: "not-attempted",
+        failureReason
+      }));
+      warnings.push(`Planning semantic review was unavailable; accepting the structurally valid plan without semantic rejection: ${failureReason}`);
+      return { ok: true, plan };
+    }
+
+    const diagnostics = semanticReviewDiagnostics(plan, review.review);
+    attemptRecords.push(attemptRecord("semantic-review", review, {
+      invocation: "succeeded",
+      validation: diagnostics.length === 0 ? "passed" : "failed",
+      diagnosticCodes: diagnosticCodes(diagnostics)
+    }));
+    if (review.review.verdict === "uncertain") {
+      warnings.push("Planning semantic review was inconclusive; accepting the structurally valid plan without semantic rejection.");
+    }
+    return diagnostics.length === 0 ? { ok: true, plan } : { ok: false, diagnostics };
   } catch (error) {
     return { ok: false, diagnostics: diagnosticsOf(error, "schema") };
   }
+}
+
+function semanticReviewDiagnostics(plan: ExecutionPlan, review: PlanningSemanticReview): PlanDiagnostic[] {
+  if (review.verdict !== "needs-revision") return [];
+  const phaseIndexes = new Map(plan.phases.map((phase, index) => [phase.id, index]));
+  return review.issues.flatMap((issue) => {
+    const index = phaseIndexes.get(issue.phaseId);
+    if (index === undefined || !issue.message.trim() || !issue.evidence.trim()) return [];
+    return [{
+      stage: "quality" as const,
+      path: ["phases", index, "acceptanceCriteria"],
+      code: issue.code,
+      message: `${issue.message.trim()} Evidence: ${issue.evidence.trim()}`,
+      affectedPhase: issue.phaseId
+    }];
+  });
 }
 
 function isConstraintDiagnostic(diagnostic: PlanDiagnostic): boolean {

@@ -1,5 +1,14 @@
 import type { ModelTier } from "../../config/schema.js";
-import { PlanningProviderInvocationError, type PlanningProvider, type PlanningProviderInput, type PlanningProviderResult, type PlanningRepairRequest } from "../../core/planning-runner.js";
+import {
+  PlanningProviderInvocationError,
+  type PlanningProvider,
+  type PlanningProviderInput,
+  type PlanningProviderResult,
+  type PlanningRepairRequest,
+  type PlanningSemanticReview,
+  type PlanningSemanticReviewResult
+} from "../../core/planning-runner.js";
+import type { ExecutionPlan } from "../../core/types.js";
 import type { JsonSchema, StructuredDecisionProvider, StructuredDecisionRequest, StructuredDecisionResult } from "../../core/structured-decision.js";
 import { TriageProviderError } from "../../core/triage-runner.js";
 import { ClaudeCliStructuredDecisionProvider } from "./structured-decision-provider.js";
@@ -80,9 +89,32 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
     };
   }
 
-  private async decide(request: StructuredDecisionRequest): Promise<StructuredDecisionResult> {
+  async review(input: PlanningProviderInput, request: { plan: ExecutionPlan }): Promise<PlanningSemanticReviewResult> {
+    const result = await this.decide<PlanningSemanticReview>({
+      root: input.root,
+      prompt: buildPlanningSemanticReviewPrompt(request.plan),
+      schema: planningSemanticReviewSchema(request.plan),
+      tier: "small",
+      config: input.config,
+      stage: "planning semantic review",
+      maxTurns: input.config.budgets.planningRepairMaxTurns,
+      effort: "low",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings,
+      review: result.value
+    };
+  }
+
+  private async decide<T = unknown>(request: StructuredDecisionRequest): Promise<StructuredDecisionResult<T>> {
     try {
-      return await this.decisions.decide(request);
+      return await this.decisions.decide<T>(request);
     } catch (error) {
       const kind = error instanceof TriageProviderError ? error.kind : "provider_process_failure";
       throw new PlanningProviderInvocationError(
@@ -149,6 +181,35 @@ function planningJsonSchema(input: PlanningProviderInput): JsonSchema {
   };
 }
 
+function planningSemanticReviewSchema(plan: ExecutionPlan): JsonSchema {
+  const phaseIds = plan.phases.map((phase) => phase.id);
+  return {
+    type: "object",
+    properties: {
+      verdict: { type: "string", enum: ["pass", "needs-revision", "uncertain"] },
+      issues: {
+        type: "array",
+        maxItems: 12,
+        items: {
+          type: "object",
+          properties: {
+            phaseId: { type: "string", enum: phaseIds },
+            code: { type: "string", enum: ["acceptance.not_inspectable", "closure.future_dependency", "dependency.unlinked_producer"] },
+            message: { type: "string", minLength: 12, maxLength: 600 },
+            evidence: { type: "string", minLength: 8, maxLength: 600 },
+            producerPhaseId: { type: "string", enum: phaseIds }
+          },
+          required: ["phaseId", "code", "message", "evidence"],
+          additionalProperties: false
+        }
+      },
+      summary: { type: "string", minLength: 8, maxLength: 600 }
+    },
+    required: ["verdict", "issues", "summary"],
+    additionalProperties: false
+  };
+}
+
 function buildPlanningPrompt(input: PlanningProviderInput): string {
   return [
     "You are the bounded sequential planning candidate generator for LeanRigor.",
@@ -189,5 +250,18 @@ function buildPlanningEscalationPrompt(input: PlanningProviderInput, request: Pl
     "Authoritative approved constraints:", JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? [] }, null, 2),
     "Remaining diagnostics:", JSON.stringify(request.diagnostics, null, 2),
     "Plan requiring architectural repair:", JSON.stringify(request.plan, null, 2)
+  ].join("\n\n");
+}
+
+function buildPlanningSemanticReviewPrompt(plan: ExecutionPlan): string {
+  return [
+    "You are a bounded semantic reviewer for a LeanRigor Workflow Plan.",
+    "Return only the JSON value required by the supplied schema. You have no repository tools.",
+    "Assess only these semantic questions: whether acceptance criteria have concrete observable evidence, and whether a phase truly requires an artifact that is produced only by another phase without declaring that dependency.",
+    "Do not infer a dependency from shared vocabulary. Mentioning the same type, API, JSON format, file, or concept in two phases is not evidence that one phase produces it for the other.",
+    "Report a future dependency only when the plan itself establishes both a concrete produced artifact and that the earlier phase requires that artifact before it exists.",
+    "If the available plan text cannot establish that conclusion, return verdict 'uncertain' with no issues. Do not manufacture an issue from a word match.",
+    "Use verdict 'needs-revision' only for concrete, evidenced issues. Otherwise return 'pass'.",
+    "Workflow Plan:", JSON.stringify(plan, null, 2)
   ].join("\n\n");
 }
