@@ -45,6 +45,48 @@ describe("normalized workflow decision envelopes", () => {
     expect(coordinatorResultForState(await currentState(harness), "scripted", [], "await_user", "refresh").nextAction).toBe("dispatch");
   });
 
+  it("limits AskUserQuestion decisions to four context-prioritized options", async () => {
+    const harness = await createExecutionHarness({
+      approveFirstPhase: false,
+      approvalPolicy: "phase-by-phase",
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {}
+    });
+    const state = await currentState(harness);
+    const decision = state.approval?.pendingDecision;
+    if (!decision) throw new Error("expected pending decision");
+    decision.type = "execution-recovery";
+    decision.allowedActions = [
+      "discard-out-of-scope-and-retry",
+      "revise-phase-brief",
+      "view-details",
+      "revise-plan",
+      "cancel-workflow"
+    ];
+
+    expect(workflowDecisionEnvelope(state).decision?.options.map((option) => option.intent)).toEqual([
+      "discard-out-of-scope-and-retry",
+      "revise-phase-brief",
+      "revise-plan",
+      "cancel-workflow"
+    ]);
+
+    decision.type = "material-drift-review";
+    decision.allowedActions = [
+      "review-material-drift",
+      "revise-plan",
+      "revise-phase-brief",
+      "view-details",
+      "cancel-workflow"
+    ];
+    expect(workflowDecisionEnvelope(state).decision?.options.map((option) => option.intent)).toEqual([
+      "revise-plan",
+      "revise-phase-brief",
+      "view-details",
+      "cancel-workflow"
+    ]);
+  });
+
   it("rejects duplicate and stale decision answers by stable identity", async () => {
     const harness = await createExecutionHarness({
       approveFirstPhase: false,

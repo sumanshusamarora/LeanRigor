@@ -106,8 +106,9 @@ operation unless `automaticallyPermitted` is true.
 
 When an envelope returns `decision`, call `AskUserQuestion` in the same
 assistant turn. This is mandatory whenever the tool is available. Use
-`decision.question` verbatim and copy every `decision.options` label and
-description in order. Match the selected option by persisted `intent` and run
+`decision.question` verbatim and copy every presented `decision.options` label
+and description in order. The controller limits and prioritizes this list to
+at most four options for `AskUserQuestion`. Match the selected option by persisted `intent` and run
 only its persisted command. Never infer, cache, or reconstruct a question.
 Never call `AskUserQuestion` without a current `decision`.
 
@@ -128,7 +129,7 @@ Use this `AskUserQuestion` input shape for approval selectors:
 }
 ```
 
-Replace `header` with the current gate header and include every persisted
+Replace `header` with the current gate header and include every presented
 option in order.
 
 Fall back to a numbered list of explicit choices only when `AskUserQuestion` is

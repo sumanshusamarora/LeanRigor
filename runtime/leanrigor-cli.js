@@ -31796,10 +31796,39 @@ function workflowDecisionEnvelope(state) {
       integrationRevision: decision.integrationRevision,
       additionalTurns: decision.additionalTurns,
       question: decision.question,
-      options: decision.allowedActions.map((action) => decisionOption(state, decision, action))
+      options: decisionActionsForQuestion(decision).map((action) => decisionOption(state, decision, action))
     } : void 0,
     nextOperation: nextOperation(state, phase2, decision)
   };
+}
+var MAX_ASK_USER_QUESTION_OPTIONS = 4;
+function decisionActionsForQuestion(decision) {
+  const actions = [...new Set(decision.allowedActions)];
+  if (actions.length <= MAX_ASK_USER_QUESTION_OPTIONS) return actions;
+  const preferred = decision.type === "execution-recovery" ? [
+    "discard-out-of-scope-and-retry",
+    "continue-execution",
+    "retry-execution",
+    "revise-phase-brief",
+    "revise-plan",
+    "view-details",
+    "cancel-workflow"
+  ] : decision.type === "material-drift-review" ? [
+    "revise-plan",
+    "revise-phase-brief",
+    "view-details",
+    "review-material-drift",
+    "cancel-workflow"
+  ] : actions;
+  const ranked = [
+    ...preferred.filter((action) => actions.includes(action)),
+    ...actions.filter((action) => !preferred.includes(action))
+  ];
+  if (!ranked.includes("cancel-workflow")) return ranked.slice(0, MAX_ASK_USER_QUESTION_OPTIONS);
+  return [
+    ...ranked.filter((action) => action !== "cancel-workflow").slice(0, MAX_ASK_USER_QUESTION_OPTIONS - 1),
+    "cancel-workflow"
+  ];
 }
 function phaseResultView(state, phaseId) {
   const phase2 = state.plan?.phases.find((candidate) => candidate.id === phaseId);
@@ -34253,7 +34282,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.33");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.34");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

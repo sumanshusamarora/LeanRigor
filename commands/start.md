@@ -76,7 +76,8 @@ approval from conversational tone. Do not use
 `ExitPlanMode` as a substitute for LeanRigor approval.
 Use the selector input shape `questions[0].question`, `questions[0].header`,
 `questions[0].options`, and `questions[0].multiSelect = false`, with option
-labels and descriptions copied from persisted `decision.options` in order.
+labels and descriptions copied from the at-most-four presented
+`decision.options` in order.
 Use `decision.question` verbatim. Never call `AskUserQuestion` without a
 current decision or reconstruct one from conversational context.
 
