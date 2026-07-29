@@ -944,6 +944,41 @@ describe("sequential workflow orchestration", () => {
     expect(targets).toEqual(["src/assignment.ts", "src/new-assignment.ts"]);
   });
 
+  it("rejects model and provenance tokens as planning areas before they can reach a phase brief", async () => {
+    const root = await tempRepo();
+    const targets = discoverPlanningTargets(root, "Persist model provenance", [
+      "gpt-5.5",
+      "model/source",
+      "provider/model/tier/source/attempt",
+      "status/JSON",
+      "src/config/provenance.ts",
+      "tests/config-provenance.test.ts"
+    ]);
+
+    expect(targets).toEqual(["src/config/provenance.ts", "tests/config-provenance.test.ts"]);
+  });
+
+  it("normalizes a model plan with a model identifier write area to repository targets", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Persist provider provenance using gpt-5.5", root, config: defaultConfig() });
+    const invalid = structuredClone(compactPlan()) as { phases: Array<Record<string, unknown>> };
+    for (const phase of invalid.phases) {
+      phase.expectedReadAreas = ["gpt-5.5"];
+      phase.expectedWriteAreas = ["gpt-5.5"];
+      phase.expectedFilesOrAreas = ["gpt-5.5"];
+    }
+
+    const planned = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderFrom([invalid]),
+      providerSelection: "auto"
+    });
+    const phase = planned.plan?.phases[0];
+
+    expect(planned.planningRun?.semanticRepairApplied).toBe(true);
+    expect(phase?.expectedFilesOrAreas).not.toContain("gpt-5.5");
+    expect(phase?.expectedWriteAreas.some((area) => area.startsWith("src/") || area.startsWith("tests/"))).toBe(true);
+  });
+
   it("validates one-objective phase sizing and rejects broad containers", async () => {
     const root = await tempRepo();
     const state = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });

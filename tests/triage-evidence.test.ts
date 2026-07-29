@@ -41,6 +41,17 @@ describe("triage evidence collection", () => {
     expect(evidence.deterministicFindings.length).toBeLessThan(40);
   });
 
+  it("does not classify model identifiers, versions, or provenance labels as repository paths", async () => {
+    const root = await fixture();
+    const evidence = await collectTriageEvidence({
+      request: "Use gpt-5.5 for model/source and expose status/JSON in src/config/provenance.ts.",
+      root,
+      config: defaultConfig()
+    });
+
+    expect(evidence.request.explicitlyNamedPaths).toEqual(["src/config/provenance.ts"]);
+  });
+
   it("keeps documentation-only material risks as deterministic low-risk inferences", async () => {
     const root = await fixture();
     const evidence = await collectTriageEvidence({ request: "Fix typo in README.md documentation", root, config: defaultConfig() });

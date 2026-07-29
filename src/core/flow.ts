@@ -7,6 +7,7 @@ import { z } from "zod";
 import { defaultConfig } from "../config/defaults.js";
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
 import { resolveModelTier } from "../config/models.js";
+import { isPotentialRepositoryFile, isRepositoryPathPattern, normaliseRepositoryPath } from "./repository-path.js";
 import { commitCommands, proposeCommits } from "./commit-planner.js";
 import {
   applyApprovedPhaseToIntegration,
@@ -3127,8 +3128,8 @@ export function discoverPlanningTargets(root: string, requestEvidence: string, p
 }
 
 function isRepositoryPlanningTarget(root: string, area: string): boolean {
-  const normalized = area.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!normalized || path.posix.isAbsolute(normalized) || normalized.split("/").includes("..")) return false;
+  const normalized = normaliseRepositoryPath(area);
+  if (!isRepositoryPathPattern(normalized)) return false;
   const repositoryRoot = path.resolve(root);
   const absolute = path.resolve(repositoryRoot, normalized);
   const relative = path.relative(repositoryRoot, absolute);
@@ -3143,7 +3144,7 @@ function isRepositoryPlanningTarget(root: string, area: string): boolean {
       ignore: ["**/node_modules/**", ".git/**", ".leanrigor/**"]
     }).length > 0;
   }
-  return path.posix.extname(normalized) !== "";
+  return isPotentialRepositoryFile(normalized);
 }
 
 function replaceNonPathAreas(value: unknown, fallback: string[]): string[] {
@@ -3645,7 +3646,7 @@ function sameCommand(recorded: string, expected: string): boolean {
 }
 
 function isPathLikeArea(area: string): boolean {
-  return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
+  return isRepositoryPathPattern(area);
 }
 
 function areaMatchesFile(area: string, file: string): boolean {

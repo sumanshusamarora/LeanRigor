@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { access, constants, lstat, readFile } from "node:fs/promises";
 import path from "node:path";
+import { isRepositoryPathPattern, normaliseRepositoryPath } from "./repository-path.js";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../config/schema.js";
 import type { TriageEvidencePacket, TriageFinding, TriageOutput, TriageQuestion, TriageSignalValue } from "./types.js";
@@ -189,9 +190,8 @@ function addPathCandidate(values: Set<string>, raw: string): void {
     values.add("README.md");
     return;
   }
-  if (!/[/.]/.test(cleaned)) return;
   if (/^(https?:|app:|file:)/i.test(cleaned)) return;
-  if (/^[A-Za-z0-9_.@/-]+$/.test(cleaned)) values.add(cleaned.replace(/^\.\//, ""));
+  if (/^[A-Za-z0-9_.@/-]+$/.test(cleaned) && isRepositoryPathPattern(cleaned)) values.add(normaliseRepositoryPath(cleaned));
 }
 
 function detectTaskType(request: string): TriageOutput["task"]["type"] | undefined {

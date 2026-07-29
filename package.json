@@ -1,6 +1,6 @@
 {
   "name": "leanrigor",
-  "version": "0.3.1-dev.34",
+  "version": "0.3.1-dev.35",
   "private": true,
   "description": "Adaptive rigor and portable model routing for AI coding agents.",
   "type": "module",

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
 import { dependencyIds } from "./scheduler.js";
+import { isRepositoryPathPattern } from "./repository-path.js";
 import {
   dependencyFingerprint,
   executionPolicyHash,
@@ -1113,7 +1114,7 @@ function genericCriterion(value: string): boolean {
 }
 
 function pathLike(value: string): boolean {
-  return value.includes("/") || /(^|\/)(readme|makefile)$/i.test(value) || /\.[a-z0-9]+$/i.test(value);
+  return isRepositoryPathPattern(value);
 }
 
 function withinArea(candidate: string, area: string): boolean {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { LeanRigorConfig } from "../config/schema.js";
 import type { WorkflowMode, WorkflowPhase } from "./types.js";
+import { isRepositoryPathPattern } from "./repository-path.js";
 
 export interface FileLease {
   path: string;
@@ -182,7 +183,7 @@ function normalizeMaybe(value: string): string {
 }
 
 function isPathLikeArea(area: string): boolean {
-  return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
+  return isRepositoryPathPattern(area);
 }
 
 function hasGlob(value: string): boolean {

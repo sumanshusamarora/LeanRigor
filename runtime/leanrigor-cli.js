@@ -21592,6 +21592,43 @@ function decisionReason(ownership, finalMode) {
 import { execFile as execFile2 } from "node:child_process";
 import { access as access2, constants, lstat, readFile as readFile7 } from "node:fs/promises";
 import path8 from "node:path";
+
+// src/core/repository-path.ts
+var SEMANTIC_PATH_SEGMENTS = /* @__PURE__ */ new Set([
+  "attempt",
+  "fallback",
+  "json",
+  "model",
+  "provider",
+  "resolved",
+  "source",
+  "stage",
+  "status",
+  "tier"
+]);
+var ROOT_FILE_NAMES = /* @__PURE__ */ new Set(["makefile", "readme"]);
+function normaliseRepositoryPath(value) {
+  return value.trim().replaceAll("\\", "/").replace(/^\.\/+/, "").replace(/\/{2,}/g, "/");
+}
+function isRepositoryPathPattern(value) {
+  const normalized2 = normaliseRepositoryPath(value);
+  if (!normalized2 || normalized2.startsWith("-") || normalized2.startsWith("/") || normalized2.split("/").includes("..")) return false;
+  const segments = normalized2.split("/");
+  if (segments.length > 1 && segments.every((segment) => SEMANTIC_PATH_SEGMENTS.has(segment.toLowerCase()))) return false;
+  if (segments.some((segment) => /^[a-z][a-z0-9_-]*-\d+(?:\.\d+)+(?:[-_][a-z0-9_-]+)?$/i.test(segment))) return false;
+  if (/[?*[{]/.test(normalized2)) return true;
+  if (segments.length > 1) return true;
+  const lower = normalized2.toLowerCase();
+  return ROOT_FILE_NAMES.has(lower) || /\.[a-z][a-z0-9]*$/i.test(normalized2);
+}
+function isPotentialRepositoryFile(value) {
+  const normalized2 = normaliseRepositoryPath(value);
+  if (!isRepositoryPathPattern(normalized2) || /[?*[{]/.test(normalized2)) return false;
+  const base = normalized2.split("/").at(-1) ?? "";
+  return ROOT_FILE_NAMES.has(base.toLowerCase()) || /\.[a-z][a-z0-9]*$/i.test(base);
+}
+
+// src/core/triage-evidence.ts
 import { promisify as promisify2 } from "node:util";
 
 // src/core/work-item-resolver.ts
@@ -21929,9 +21966,8 @@ function addPathCandidate(values, raw) {
     values.add("README.md");
     return;
   }
-  if (!/[/.]/.test(cleaned)) return;
   if (/^(https?:|app:|file:)/i.test(cleaned)) return;
-  if (/^[A-Za-z0-9_.@/-]+$/.test(cleaned)) values.add(cleaned.replace(/^\.\//, ""));
+  if (/^[A-Za-z0-9_.@/-]+$/.test(cleaned) && isRepositoryPathPattern(cleaned)) values.add(normaliseRepositoryPath(cleaned));
 }
 function detectTaskType(request) {
   return TASK_TERMS.find(([, pattern]) => pattern.test(request))?.[0];
@@ -25156,7 +25192,7 @@ function normalizeMaybe(value) {
   }
 }
 function isPathLikeArea(area) {
-  return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
+  return isRepositoryPathPattern(area);
 }
 function hasGlob(value) {
   return value.includes("*");
@@ -27857,7 +27893,7 @@ function genericCriterion(value) {
   return value.trim().length < 16 || genericText(value) || !/\b(pass(?:es|ed)?|fail(?:s|ed)?|return(?:s|ed)?|render(?:s|ed)?|persist(?:s|ed)?|reject(?:s|ed)?|accept(?:s|ed)?|contain(?:s|ed)?|match(?:es|ed)?|remain(?:s|ed)?|load(?:s|ed|able)?|compatible|unchanged|creat(?:e|es|ed)|updat(?:e|es|ed)|remov(?:e|es|ed)|prevent(?:s|ed)?|allow(?:s|ed)?|record(?:s|ed)?|show(?:s|ed)?|produc(?:e|es|ed)|complet(?:e|es|ed)|explicit|reviewable|verifiable|observable)\b/i.test(value);
 }
 function pathLike(value) {
-  return value.includes("/") || /(^|\/)(readme|makefile)$/i.test(value) || /\.[a-z0-9]+$/i.test(value);
+  return isRepositoryPathPattern(value);
 }
 function withinArea(candidate, area) {
   const normalizedCandidate = slash2(candidate).replace(/^\.\//, "");
@@ -30768,8 +30804,8 @@ function discoverPlanningTargets(root, requestEvidence, proposed) {
   ]);
 }
 function isRepositoryPlanningTarget(root, area) {
-  const normalized2 = area.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-  if (!normalized2 || path20.posix.isAbsolute(normalized2) || normalized2.split("/").includes("..")) return false;
+  const normalized2 = normaliseRepositoryPath(area);
+  if (!isRepositoryPathPattern(normalized2)) return false;
   const repositoryRoot = path20.resolve(root);
   const absolute = path20.resolve(repositoryRoot, normalized2);
   const relative = path20.relative(repositoryRoot, absolute);
@@ -30784,7 +30820,7 @@ function isRepositoryPlanningTarget(root, area) {
       ignore: ["**/node_modules/**", ".git/**", ".leanrigor/**"]
     }).length > 0;
   }
-  return path20.posix.extname(normalized2) !== "";
+  return isPotentialRepositoryFile(normalized2);
 }
 function replaceNonPathAreas(value, fallback) {
   const current = Array.isArray(value) ? value.filter((area) => typeof area === "string") : [];
@@ -31196,7 +31232,7 @@ function sameCommand(recorded, expected) {
   return recorded.trim() === expected.trim();
 }
 function isPathLikeArea2(area) {
-  return area.includes("/") || area.includes("*") || /\.[a-z0-9]+$/i.test(area);
+  return isRepositoryPathPattern(area);
 }
 function areaMatchesFile(area, file2) {
   const normalArea = area.replace(/\\/g, "/").replace(/^\.\//, "");
@@ -34282,7 +34318,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.34");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.35");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
