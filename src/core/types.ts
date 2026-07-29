@@ -258,6 +258,25 @@ export interface MaterialPlanChange {
   requiredTransition: "none" | "reapprove-plan" | "revise-plan" | "revise-phase-brief";
 }
 
+export type PhaseBriefRiskCategory =
+  | "security"
+  | "public-contract"
+  | "migration"
+  | "architecture"
+  | "data-integrity"
+  | "concurrency"
+  | "recovery"
+  | "production-infrastructure"
+  | "destructive-operation"
+  | "network-operation";
+
+export interface PhaseBriefRiskDiscovery {
+  risk: string;
+  categories: PhaseBriefRiskCategory[];
+  evidence: string[];
+  source: "inspection";
+}
+
 export interface PhaseBriefInspectionQuestion {
   id: string;
   question: string;
@@ -442,6 +461,7 @@ export interface PhaseExecutionBrief {
   testObligations: string[];
   validationCommands: string[];
   risks: string[];
+  riskDiscoveries?: PhaseBriefRiskDiscovery[];
   provider?: string;
   modelTier?: ModelProfile;
   inspectionRequest: PhaseBriefInspectionRequest;

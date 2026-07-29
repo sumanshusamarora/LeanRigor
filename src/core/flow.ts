@@ -491,6 +491,26 @@ const materialPlanChangeSchema = z.object({
   requiredTransition: z.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
 });
 
+const phaseBriefRiskCategorySchema = z.enum([
+  "security",
+  "public-contract",
+  "migration",
+  "architecture",
+  "data-integrity",
+  "concurrency",
+  "recovery",
+  "production-infrastructure",
+  "destructive-operation",
+  "network-operation"
+]);
+
+const phaseBriefRiskDiscoverySchema = z.object({
+  risk: z.string().min(1),
+  categories: z.array(phaseBriefRiskCategorySchema).min(1),
+  evidence: z.array(z.string().min(1)).min(1),
+  source: z.literal("inspection")
+});
+
 const phaseBriefInspectionQuestionSchema = z.object({
   id: z.string().min(1),
   question: z.string().min(1),
@@ -631,6 +651,7 @@ const phaseExecutionBriefSchema = z.object({
   testObligations: z.array(z.string()),
   validationCommands: z.array(z.string()),
   risks: z.array(z.string()),
+  riskDiscoveries: z.array(phaseBriefRiskDiscoverySchema).default([]),
   provider: z.string().optional(),
   modelTier: modelProfileSchema.optional(),
   inspectionRequest: phaseBriefInspectionRequestSchema.default(legacyInspectionRequest),
@@ -685,7 +706,7 @@ const phaseExecutionBriefSchema = z.object({
   deterministicallySynthesized: z.boolean().optional(),
   revisionRequests: z.array(z.object({ feedback: z.string().min(1), timestamp: z.string() })).default([]),
   manualValidationPlan: z.string().optional(),
-  materialChangesFromWorkflowPlan: z.array(materialPlanChangeSchema),
+  materialChangesFromWorkflowPlan: z.array(materialPlanChangeSchema).default([]),
   approvalStatus: z.enum(["not-required", "pending", "approved", "rejected", "stale"])
 });
 
@@ -1245,8 +1266,17 @@ export async function preparePhaseExecutionBrief(args: {
     if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
     if (!["planned", "ready"].includes(phase.status)) throw new InvalidTransitionError(`Phase ${phase.id} is ${phase.status}; only an unstarted phase can receive an execution brief.`);
     const next = structuredClone(state);
-    if (args.feedback && next.approval?.pendingDecision?.type === "phase-brief-approval") {
-      resolveDecisionAction(next, "revise-phase-brief", args.mutation, "superseded", "phase-brief-approval");
+    if (
+      args.feedback
+      && ["phase-brief-approval", "material-drift-review"].includes(next.approval?.pendingDecision?.type ?? "")
+    ) {
+      resolveDecisionAction(
+        next,
+        "revise-phase-brief",
+        args.mutation,
+        "superseded",
+        next.approval?.pendingDecision?.type
+      );
     }
     const current = next.phaseBriefs?.[phase.id];
     if (current) current.approvalStatus = "stale";
@@ -1281,6 +1311,11 @@ export async function approvePhase(args: {
     const phase = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
     const brief = state.phaseBriefs?.[args.phaseId];
     const decision = state.approval?.pendingDecision;
+    if (brief?.materialChangesFromWorkflowPlan.some((change) => change.material)) {
+      throw new InvalidTransitionError(
+        `Phase ${args.phaseId} brief revision ${brief.briefRevision} contains unresolved material changes from the approved Workflow Plan. Revise the Workflow Plan or revise the Phase Execution Brief to remain within the approved plan before phase approval.`
+      );
+    }
     requirePendingDecision(state, "phase-brief-approval", "approve-phase", args.mutation?.decisionId);
     if (!phase || !["planned", "ready"].includes(phase.status) || !dependencyIds(phase).every((id) => state.plan?.phases.find((candidate) => candidate.id === id)?.status === "completed")) {
       throw new InvalidTransitionError(`Phase ${args.phaseId} is not dependency-ready for approval.`);
@@ -3742,7 +3777,23 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   }
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
+  normalizeLegacyMaterialBriefDecision(migrated);
   return migrated;
+}
+
+function normalizeLegacyMaterialBriefDecision(state: Record<string, unknown>): void {
+  const approval = state.approval as Record<string, unknown> | undefined;
+  const decision = approval?.pendingDecision as Record<string, unknown> | undefined;
+  if (!decision || decision.type !== "phase-brief-approval" || typeof decision.phaseId !== "string") return;
+  const briefs = state.phaseBriefs as Record<string, Record<string, unknown>> | undefined;
+  const brief = briefs?.[decision.phaseId];
+  const changes = Array.isArray(brief?.materialChangesFromWorkflowPlan)
+    ? brief.materialChangesFromWorkflowPlan as Array<Record<string, unknown>>
+    : [];
+  if (!changes.some((change) => change.material === true)) return;
+  decision.type = "material-drift-review";
+  decision.question = `Phase ${decision.phaseId} Execution Brief revision ${String(decision.briefRevision)} contains material changes from the approved Workflow Plan. Revise the plan or revise the brief to remain within it.`;
+  decision.allowedActions = ["revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"];
 }
 
 function legacyPendingDecision(state: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -3956,14 +4007,17 @@ function persistPhaseBriefOutcome(
   }
 
   const brief = outcome.brief;
+  const material = brief.materialChangesFromWorkflowPlan.filter((change) => change.material);
   delete state.phaseBriefFailures[phase.id];
-  brief.approvalStatus = requiresApproval ? "pending" : "approved";
+  brief.approvalStatus = requiresApproval || material.length > 0 ? "pending" : "approved";
   state.phaseBriefs[phase.id] = brief;
   appendEvent(state, "phase_brief_generated", `Phase ${phase.id} detailed execution brief revision ${brief.briefRevision} generated from ${brief.inspectionResult.filesRead.length} bounded reads.`, phase.id);
   appendEvent(state, "phase_brief_validated", `Phase ${phase.id} brief revision ${brief.briefRevision} passed deterministic quality validation.`, phase.id);
-  const material = brief.materialChangesFromWorkflowPlan.filter((change) => change.material);
   if (material.length > 0) {
     appendEvent(state, "phase_brief_material_drift", `Phase ${phase.id} brief records ${material.length} material change candidate(s).`, phase.id);
+    setPendingMaterialDriftReview(state, brief);
+    appendEvent(state, "phase_material_drift_review_required", `Phase ${phase.id} brief revision ${brief.briefRevision} requires Workflow Plan revision or a scope-preserving brief revision.`, phase.id);
+    return;
   }
   if (requiresApproval) {
     setPendingPhaseApproval(state, brief);
@@ -3981,6 +4035,20 @@ function setPendingPhaseApproval(state: SequentialWorkflowState, brief: NonNulla
     briefRevision: brief.briefRevision,
     question: `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`,
     allowedActions: [...PHASE_APPROVAL_ACTIONS],
+    source: "system"
+  });
+}
+
+function setPendingMaterialDriftReview(state: SequentialWorkflowState, brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string]): void {
+  if (!state.approval) throw new WorkflowStateError("Cannot request material drift review before the Workflow Plan is approved.");
+  setPendingDecision(state, {
+    type: "material-drift-review",
+    workflowRevision: brief.workflowRevision,
+    stateRevision: state.revision + 1,
+    phaseId: brief.phaseId,
+    briefRevision: brief.briefRevision,
+    question: `Phase ${brief.phaseId} Execution Brief revision ${brief.briefRevision} contains material changes from the approved Workflow Plan. Revise the plan or revise the brief to remain within it.`,
+    allowedActions: ["revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"],
     source: "system"
   });
 }

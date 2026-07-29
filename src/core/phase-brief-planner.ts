@@ -24,6 +24,8 @@ import type {
   PhaseBriefDiagnostic,
   PhaseBriefGenerationFailure,
   PhaseBriefInspectionResult,
+  PhaseBriefRiskCategory,
+  PhaseBriefRiskDiscovery,
   PhaseExecutionBrief,
   SequentialWorkflowState,
   WorkflowPhase
@@ -46,6 +48,26 @@ export interface PhaseBriefProposal {
   validationCommands: string[];
   manualValidationPlan?: string;
   risks: string[];
+  riskDiscoveries?: PhaseBriefRiskDiscovery[];
+}
+
+const canonicalRiskCategoryPatterns: Array<[PhaseBriefRiskCategory, RegExp]> = [
+  ["security", /\b(?:security|secure|auth(?:entication|orization)?|credentials?|secrets?|permissions?|access[- ]control|tokens?)\b/i],
+  ["public-contract", /\b(?:public(?:[- ](?:api|contract))?|apis?|contracts?|compatib(?:ility|le)|downstream consumers?)\b/i],
+  ["migration", /\b(?:migrat(?:e|ion|ing)|schemas?|databases?|persisted state|serializ(?:e|ation))\b/i],
+  ["architecture", /\b(?:architecture|architectural|component ownership|ownership boundary|cross[- ]boundary)\b/i],
+  ["data-integrity", /\b(?:data[ -]integrity|data loss|corrupt(?:ion|ed)?)\b/i],
+  ["concurrency", /\b(?:concurren(?:cy|t)|race conditions?|locking|deadlocks?)\b/i],
+  ["recovery", /\b(?:recovery|recover|idempoten(?:t|cy)|rollback|retry)\b/i],
+  ["production-infrastructure", /\b(?:production|deploy(?:ment|ing)?|infrastructure)\b/i],
+  ["destructive-operation", /\b(?:destructive|delete|destroy|drop)\b/i],
+  ["network-operation", /\b(?:network|outbound|external service|remote service)\b/i]
+];
+
+export function canonicalRiskCategories(value: string): PhaseBriefRiskCategory[] {
+  return canonicalRiskCategoryPatterns
+    .filter(([, pattern]) => pattern.test(value))
+    .map(([category]) => category);
 }
 
 export type AcceptanceOutcomeCategory =
@@ -641,20 +663,31 @@ export function classifyPhaseBriefChanges(
     changes.push(change("validation", phase.id, phase.validationCommands, addedValidation, false, "Repository inspection adds configured validation without weakening the approved requirement."));
   }
   if (!sameItems(dependencyIds(phase), proposal.dependencies)) changes.push(change("dependency", phase.id, dependencyIds(phase), proposal.dependencies, true, "The brief changes phase dependencies."));
-  const approvedRiskText = [
+  const approvedRiskCategories = new Set(canonicalRiskCategories([
     phase.objective,
     phase.rationale,
     phase.riskLevel,
     ...phase.expectedReadAreas,
     ...phase.expectedWriteAreas,
     ...phase.expectedFilesOrAreas,
+    ...phase.acceptanceCriteria,
+    ...phase.validationCommands,
     ...approvedContext
-  ].join(" ").toLowerCase();
-  const newlyMaterialRisks = proposal.risks.filter((risk) =>
-    !risk.startsWith("Bounded inspection left unresolved questions:")
-    && /security|migration|architecture|public contract/i.test(risk)
-    && !riskTerms(risk).some((term) => approvedRiskText.includes(term)));
-  if (newlyMaterialRisks.length > 0) changes.push(change("risk", phase.id, [phase.riskLevel], newlyMaterialRisks, true, "Inspection identified a new material security, migration, architecture, or contract risk."));
+  ].join(" ")));
+  for (const discovery of proposal.riskDiscoveries ?? []) {
+    if (discovery.source !== "inspection" || discovery.evidence.length === 0) continue;
+    for (const category of canonicalRiskCategories(discovery.risk)) {
+      if (approvedRiskCategories.has(category)) continue;
+      changes.push(change(
+        "risk",
+        phase.id,
+        [phase.riskLevel],
+        [discovery.risk],
+        true,
+        `Inspection evidence identified a new ${category} risk outside the approved Workflow Plan context.`
+      ));
+    }
+  }
   return changes;
 }
 
@@ -700,7 +733,8 @@ function deterministicProposal(input: PhaseBriefPlanningInput): PhaseBriefPropos
     testObligations,
     validationCommands,
     manualValidationPlan: validationCommands.length === 0 ? manualValidationPlan(documentationOnly, relevantFiles) : undefined,
-    risks: deriveRisks(state, phase, inspection)
+    risks: deriveRisks(state, phase, inspection),
+    riskDiscoveries: []
   };
 }
 
@@ -725,17 +759,23 @@ function assembleBrief(args: {
     ...(args.previous?.revisionRequests ?? []),
     ...(args.feedback ? [{ feedback: args.feedback.trim(), timestamp: now }] : [])
   ];
-  const materialChangesFromWorkflowPlan = classifyPhaseBriefChanges(args.phase, args.proposal, [
-    args.state.request,
-    args.state.plan?.summary ?? "",
-    ...(args.state.plan?.principles ?? [])
-  ]);
+  const riskDiscoveries = normalizeRiskDiscoveries(args.proposal.riskDiscoveries);
+  const proposal = {
+    ...structuredClone(args.proposal),
+    risks: unique([...args.proposal.risks, ...riskDiscoveries.map((discovery) => discovery.risk)]),
+    riskDiscoveries
+  };
+  const materialChangesFromWorkflowPlan = classifyPhaseBriefChanges(
+    args.phase,
+    proposal,
+    approvedPhaseRiskContext(args.state, args.phase)
+  );
   return {
     phaseId: args.phase.id,
     workflowRevision: args.workflowRevision,
     briefRevision: args.briefRevision,
     generatedAt: now,
-    ...structuredClone(args.proposal),
+    ...proposal,
     provider: args.provider,
     modelTier: args.modelTier,
     inspectionRequest: args.request,
@@ -826,7 +866,8 @@ function proposalFromBrief(brief: PhaseExecutionBrief): PhaseBriefProposal {
     testObligations: [...brief.testObligations],
     validationCommands: [...brief.validationCommands],
     manualValidationPlan: brief.manualValidationPlan,
-    risks: [...brief.risks]
+    risks: [...brief.risks],
+    riskDiscoveries: structuredClone(brief.riskDiscoveries ?? [])
   };
 }
 
@@ -947,13 +988,51 @@ function isScopePreservingAcceptanceRefinement(approved: string[], proposed: str
 function deriveRisks(state: SequentialWorkflowState, phase: WorkflowPhase, inspection: PhaseBriefInspectionResult): string[] {
   const risks: string[] = [];
   const text = `${state.request} ${phase.objective} ${phase.rationale}`.toLowerCase();
-  if (/security|auth|credential|permission/.test(text)) risks.push("Security-sensitive behaviour must preserve authentication, authorization, and credential boundaries.");
-  if (/migration|schema/.test(text)) risks.push("Migration or schema compatibility must be preserved for existing state.");
-  if (/public|api|contract/.test(text)) risks.push("Public-contract behaviour may affect downstream consumers.");
+  const categories = new Set(canonicalRiskCategories(text));
+  if (categories.has("security")) risks.push("Security-sensitive behaviour must preserve authentication, authorization, and credential boundaries.");
+  if (categories.has("migration")) risks.push("Migration or schema compatibility must be preserved for existing state.");
+  if (categories.has("public-contract")) risks.push("Public-contract behaviour may affect downstream consumers.");
   if (inspection.unresolvedQuestions.length > 0) risks.push(`Bounded inspection left unresolved questions: ${inspection.unresolvedQuestions.join("; ")}.`);
   if (phase.riskLevel !== "none") risks.push(`${phase.riskLevel} phase risk remains subject to the approved Workflow Plan controls.`);
   if (risks.length === 0) risks.push("No additional material risk was found by bounded inspection.");
   return unique(risks);
+}
+
+function approvedPhaseRiskContext(state: SequentialWorkflowState, phase: WorkflowPhase): string[] {
+  return unique([
+    state.request,
+    state.plan?.summary ?? "",
+    ...(state.plan?.principles ?? []),
+    phase.objective,
+    phase.rationale,
+    ...phase.acceptanceCriteria,
+    ...phase.validationCommands,
+    ...phase.expectedReadAreas,
+    ...phase.expectedWriteAreas,
+    ...phase.expectedFilesOrAreas,
+    ...effectiveConstraints(state),
+    ...(state.triage?.assumptions ?? []),
+    ...priorPhaseAssumptions(state, phase)
+  ]);
+}
+
+function normalizeRiskDiscoveries(discoveries: PhaseBriefRiskDiscovery[] | undefined): PhaseBriefRiskDiscovery[] {
+  const normalizedDiscoveries = (discoveries ?? [])
+    .filter((discovery) => discovery.source === "inspection")
+    .map((discovery) => ({
+      risk: discovery.risk.trim(),
+      categories: canonicalRiskCategories(discovery.risk),
+      evidence: unique(discovery.evidence),
+      source: discovery.source
+    }))
+    .filter((discovery) => discovery.risk.length > 0 && discovery.categories.length > 0 && discovery.evidence.length > 0);
+  const seen = new Set<string>();
+  return normalizedDiscoveries.filter((discovery) => {
+    const key = stableHash(discovery);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function priorPhaseContext(state: SequentialWorkflowState, phase: WorkflowPhase): string | undefined {
@@ -1058,7 +1137,7 @@ function change(
     severity: material ? "high" : "informational",
     material,
     reason,
-    requiredTransition: material ? "reapprove-plan" : "none"
+    requiredTransition: material ? "revise-plan" : "none"
   };
 }
 
@@ -1080,10 +1159,6 @@ function uniqueDiagnostics(values: PhaseBriefDiagnostic[]): PhaseBriefDiagnostic
     seen.add(key);
     return true;
   });
-}
-
-function riskTerms(value: string): string[] {
-  return value.toLowerCase().match(/security|migration|architecture|contract|schema|auth/g) ?? [];
 }
 
 function isMetadata(file: string): boolean {

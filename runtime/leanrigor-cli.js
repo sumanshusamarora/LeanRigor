@@ -26659,6 +26659,21 @@ function overallStatus(values) {
 }
 
 // src/core/phase-brief-planner.ts
+var canonicalRiskCategoryPatterns = [
+  ["security", /\b(?:security|secure|auth(?:entication|orization)?|credentials?|secrets?|permissions?|access[- ]control|tokens?)\b/i],
+  ["public-contract", /\b(?:public(?:[- ](?:api|contract))?|apis?|contracts?|compatib(?:ility|le)|downstream consumers?)\b/i],
+  ["migration", /\b(?:migrat(?:e|ion|ing)|schemas?|databases?|persisted state|serializ(?:e|ation))\b/i],
+  ["architecture", /\b(?:architecture|architectural|component ownership|ownership boundary|cross[- ]boundary)\b/i],
+  ["data-integrity", /\b(?:data[ -]integrity|data loss|corrupt(?:ion|ed)?)\b/i],
+  ["concurrency", /\b(?:concurren(?:cy|t)|race conditions?|locking|deadlocks?)\b/i],
+  ["recovery", /\b(?:recovery|recover|idempoten(?:t|cy)|rollback|retry)\b/i],
+  ["production-infrastructure", /\b(?:production|deploy(?:ment|ing)?|infrastructure)\b/i],
+  ["destructive-operation", /\b(?:destructive|delete|destroy|drop)\b/i],
+  ["network-operation", /\b(?:network|outbound|external service|remote service)\b/i]
+];
+function canonicalRiskCategories(value) {
+  return canonicalRiskCategoryPatterns.filter(([, pattern]) => pattern.test(value)).map(([category]) => category);
+}
 var DeterministicPhaseBriefPlanningProvider = class {
   name = "deterministic-phase-brief";
   async generate(input) {
@@ -27160,17 +27175,31 @@ function classifyPhaseBriefChanges(phase2, proposal, approvedContext = []) {
     changes.push(change("validation", phase2.id, phase2.validationCommands, addedValidation, false, "Repository inspection adds configured validation without weakening the approved requirement."));
   }
   if (!sameItems(dependencyIds3(phase2), proposal.dependencies)) changes.push(change("dependency", phase2.id, dependencyIds3(phase2), proposal.dependencies, true, "The brief changes phase dependencies."));
-  const approvedRiskText = [
+  const approvedRiskCategories = new Set(canonicalRiskCategories([
     phase2.objective,
     phase2.rationale,
     phase2.riskLevel,
     ...phase2.expectedReadAreas,
     ...phase2.expectedWriteAreas,
     ...phase2.expectedFilesOrAreas,
+    ...phase2.acceptanceCriteria,
+    ...phase2.validationCommands,
     ...approvedContext
-  ].join(" ").toLowerCase();
-  const newlyMaterialRisks = proposal.risks.filter((risk2) => !risk2.startsWith("Bounded inspection left unresolved questions:") && /security|migration|architecture|public contract/i.test(risk2) && !riskTerms(risk2).some((term) => approvedRiskText.includes(term)));
-  if (newlyMaterialRisks.length > 0) changes.push(change("risk", phase2.id, [phase2.riskLevel], newlyMaterialRisks, true, "Inspection identified a new material security, migration, architecture, or contract risk."));
+  ].join(" ")));
+  for (const discovery of proposal.riskDiscoveries ?? []) {
+    if (discovery.source !== "inspection" || discovery.evidence.length === 0) continue;
+    for (const category of canonicalRiskCategories(discovery.risk)) {
+      if (approvedRiskCategories.has(category)) continue;
+      changes.push(change(
+        "risk",
+        phase2.id,
+        [phase2.riskLevel],
+        [discovery.risk],
+        true,
+        `Inspection evidence identified a new ${category} risk outside the approved Workflow Plan context.`
+      ));
+    }
+  }
   return changes;
 }
 function deterministicProposal(input) {
@@ -27213,7 +27242,8 @@ function deterministicProposal(input) {
     testObligations,
     validationCommands,
     manualValidationPlan: validationCommands.length === 0 ? manualValidationPlan(documentationOnly, relevantFiles) : void 0,
-    risks: deriveRisks(state, phase2, inspection)
+    risks: deriveRisks(state, phase2, inspection),
+    riskDiscoveries: []
   };
 }
 function assembleBrief(args) {
@@ -27222,17 +27252,23 @@ function assembleBrief(args) {
     ...args.previous?.revisionRequests ?? [],
     ...args.feedback ? [{ feedback: args.feedback.trim(), timestamp: now }] : []
   ];
-  const materialChangesFromWorkflowPlan = classifyPhaseBriefChanges(args.phase, args.proposal, [
-    args.state.request,
-    args.state.plan?.summary ?? "",
-    ...args.state.plan?.principles ?? []
-  ]);
+  const riskDiscoveries = normalizeRiskDiscoveries(args.proposal.riskDiscoveries);
+  const proposal = {
+    ...structuredClone(args.proposal),
+    risks: unique8([...args.proposal.risks, ...riskDiscoveries.map((discovery) => discovery.risk)]),
+    riskDiscoveries
+  };
+  const materialChangesFromWorkflowPlan = classifyPhaseBriefChanges(
+    args.phase,
+    proposal,
+    approvedPhaseRiskContext(args.state, args.phase)
+  );
   return {
     phaseId: args.phase.id,
     workflowRevision: args.workflowRevision,
     briefRevision: args.briefRevision,
     generatedAt: now,
-    ...structuredClone(args.proposal),
+    ...proposal,
     provider: args.provider,
     modelTier: args.modelTier,
     inspectionRequest: args.request,
@@ -27305,7 +27341,8 @@ function proposalFromBrief(brief) {
     testObligations: [...brief.testObligations],
     validationCommands: [...brief.validationCommands],
     manualValidationPlan: brief.manualValidationPlan,
-    risks: [...brief.risks]
+    risks: [...brief.risks],
+    riskDiscoveries: structuredClone(brief.riskDiscoveries ?? [])
   };
 }
 function refineWriteAreas(phase2, relevantFiles) {
@@ -27405,13 +27442,46 @@ function isScopePreservingAcceptanceRefinement(approved, proposed) {
 function deriveRisks(state, phase2, inspection) {
   const risks = [];
   const text = `${state.request} ${phase2.objective} ${phase2.rationale}`.toLowerCase();
-  if (/security|auth|credential|permission/.test(text)) risks.push("Security-sensitive behaviour must preserve authentication, authorization, and credential boundaries.");
-  if (/migration|schema/.test(text)) risks.push("Migration or schema compatibility must be preserved for existing state.");
-  if (/public|api|contract/.test(text)) risks.push("Public-contract behaviour may affect downstream consumers.");
+  const categories = new Set(canonicalRiskCategories(text));
+  if (categories.has("security")) risks.push("Security-sensitive behaviour must preserve authentication, authorization, and credential boundaries.");
+  if (categories.has("migration")) risks.push("Migration or schema compatibility must be preserved for existing state.");
+  if (categories.has("public-contract")) risks.push("Public-contract behaviour may affect downstream consumers.");
   if (inspection.unresolvedQuestions.length > 0) risks.push(`Bounded inspection left unresolved questions: ${inspection.unresolvedQuestions.join("; ")}.`);
   if (phase2.riskLevel !== "none") risks.push(`${phase2.riskLevel} phase risk remains subject to the approved Workflow Plan controls.`);
   if (risks.length === 0) risks.push("No additional material risk was found by bounded inspection.");
   return unique8(risks);
+}
+function approvedPhaseRiskContext(state, phase2) {
+  return unique8([
+    state.request,
+    state.plan?.summary ?? "",
+    ...state.plan?.principles ?? [],
+    phase2.objective,
+    phase2.rationale,
+    ...phase2.acceptanceCriteria,
+    ...phase2.validationCommands,
+    ...phase2.expectedReadAreas,
+    ...phase2.expectedWriteAreas,
+    ...phase2.expectedFilesOrAreas,
+    ...effectiveConstraints(state),
+    ...state.triage?.assumptions ?? [],
+    ...priorPhaseAssumptions(state, phase2)
+  ]);
+}
+function normalizeRiskDiscoveries(discoveries) {
+  const normalizedDiscoveries = (discoveries ?? []).filter((discovery) => discovery.source === "inspection").map((discovery) => ({
+    risk: discovery.risk.trim(),
+    categories: canonicalRiskCategories(discovery.risk),
+    evidence: unique8(discovery.evidence),
+    source: discovery.source
+  })).filter((discovery) => discovery.risk.length > 0 && discovery.categories.length > 0 && discovery.evidence.length > 0);
+  const seen = /* @__PURE__ */ new Set();
+  return normalizedDiscoveries.filter((discovery) => {
+    const key = stableHash3(discovery);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 function priorPhaseContext(state, phase2) {
   const prior = relevantPriorPhases(state, phase2);
@@ -27483,7 +27553,7 @@ function change(category, phaseId, previousValue, proposedValue, material, reaso
     severity: material ? "high" : "informational",
     material,
     reason,
-    requiredTransition: material ? "reapprove-plan" : "none"
+    requiredTransition: material ? "revise-plan" : "none"
   };
 }
 function diagnostic(stage, field, code, message, repairAttempt = "none") {
@@ -27497,9 +27567,6 @@ function uniqueDiagnostics(values) {
     seen.add(key);
     return true;
   });
-}
-function riskTerms(value) {
-  return value.toLowerCase().match(/security|migration|architecture|contract|schema|auth/g) ?? [];
 }
 function isMetadata(file2) {
   return ["package.json", "tsconfig.json", "pyproject.toml", "Cargo.toml", "go.mod"].includes(file2);
@@ -28155,6 +28222,24 @@ var materialPlanChangeSchema = external_exports.object({
   reason: external_exports.string().min(1),
   requiredTransition: external_exports.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
 });
+var phaseBriefRiskCategorySchema = external_exports.enum([
+  "security",
+  "public-contract",
+  "migration",
+  "architecture",
+  "data-integrity",
+  "concurrency",
+  "recovery",
+  "production-infrastructure",
+  "destructive-operation",
+  "network-operation"
+]);
+var phaseBriefRiskDiscoverySchema = external_exports.object({
+  risk: external_exports.string().min(1),
+  categories: external_exports.array(phaseBriefRiskCategorySchema).min(1),
+  evidence: external_exports.array(external_exports.string().min(1)).min(1),
+  source: external_exports.literal("inspection")
+});
 var phaseBriefInspectionQuestionSchema = external_exports.object({
   id: external_exports.string().min(1),
   question: external_exports.string().min(1),
@@ -28285,6 +28370,7 @@ var phaseExecutionBriefSchema = external_exports.object({
   testObligations: external_exports.array(external_exports.string()),
   validationCommands: external_exports.array(external_exports.string()),
   risks: external_exports.array(external_exports.string()),
+  riskDiscoveries: external_exports.array(phaseBriefRiskDiscoverySchema).default([]),
   provider: external_exports.string().optional(),
   modelTier: modelProfileSchema.optional(),
   inspectionRequest: phaseBriefInspectionRequestSchema.default(legacyInspectionRequest),
@@ -28339,7 +28425,7 @@ var phaseExecutionBriefSchema = external_exports.object({
   deterministicallySynthesized: external_exports.boolean().optional(),
   revisionRequests: external_exports.array(external_exports.object({ feedback: external_exports.string().min(1), timestamp: external_exports.string() })).default([]),
   manualValidationPlan: external_exports.string().optional(),
-  materialChangesFromWorkflowPlan: external_exports.array(materialPlanChangeSchema),
+  materialChangesFromWorkflowPlan: external_exports.array(materialPlanChangeSchema).default([]),
   approvalStatus: external_exports.enum(["not-required", "pending", "approved", "rejected", "stale"])
 });
 var phaseBriefGenerationFailureSchema = external_exports.object({
@@ -28821,8 +28907,14 @@ async function preparePhaseExecutionBrief(args) {
     if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
     if (!["planned", "ready"].includes(phase2.status)) throw new InvalidTransitionError(`Phase ${phase2.id} is ${phase2.status}; only an unstarted phase can receive an execution brief.`);
     const next = structuredClone(state);
-    if (args.feedback && next.approval?.pendingDecision?.type === "phase-brief-approval") {
-      resolveDecisionAction(next, "revise-phase-brief", args.mutation, "superseded", "phase-brief-approval");
+    if (args.feedback && ["phase-brief-approval", "material-drift-review"].includes(next.approval?.pendingDecision?.type ?? "")) {
+      resolveDecisionAction(
+        next,
+        "revise-phase-brief",
+        args.mutation,
+        "superseded",
+        next.approval?.pendingDecision?.type
+      );
     }
     const current = next.phaseBriefs?.[phase2.id];
     if (current) current.approvalStatus = "stale";
@@ -28847,6 +28939,11 @@ async function approvePhase(args) {
     const phase2 = state.plan?.phases.find((candidate) => candidate.id === args.phaseId);
     const brief = state.phaseBriefs?.[args.phaseId];
     const decision = state.approval?.pendingDecision;
+    if (brief?.materialChangesFromWorkflowPlan.some((change2) => change2.material)) {
+      throw new InvalidTransitionError(
+        `Phase ${args.phaseId} brief revision ${brief.briefRevision} contains unresolved material changes from the approved Workflow Plan. Revise the Workflow Plan or revise the Phase Execution Brief to remain within the approved plan before phase approval.`
+      );
+    }
     requirePendingDecision(state, "phase-brief-approval", "approve-phase", args.mutation?.decisionId);
     if (!phase2 || !["planned", "ready"].includes(phase2.status) || !dependencyIds3(phase2).every((id) => state.plan?.phases.find((candidate) => candidate.id === id)?.status === "completed")) {
       throw new InvalidTransitionError(`Phase ${args.phaseId} is not dependency-ready for approval.`);
@@ -30854,7 +30951,20 @@ function migrateWorkflowState(raw, root, workflowId2) {
   }
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
+  normalizeLegacyMaterialBriefDecision(migrated);
   return migrated;
+}
+function normalizeLegacyMaterialBriefDecision(state) {
+  const approval = state.approval;
+  const decision = approval?.pendingDecision;
+  if (!decision || decision.type !== "phase-brief-approval" || typeof decision.phaseId !== "string") return;
+  const briefs = state.phaseBriefs;
+  const brief = briefs?.[decision.phaseId];
+  const changes = Array.isArray(brief?.materialChangesFromWorkflowPlan) ? brief.materialChangesFromWorkflowPlan : [];
+  if (!changes.some((change2) => change2.material === true)) return;
+  decision.type = "material-drift-review";
+  decision.question = `Phase ${decision.phaseId} Execution Brief revision ${String(decision.briefRevision)} contains material changes from the approved Workflow Plan. Revise the plan or revise the brief to remain within it.`;
+  decision.allowedActions = ["revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"];
 }
 function legacyPendingDecision(state) {
   const revision = typeof state.revision === "number" ? state.revision : 0;
@@ -31046,14 +31156,17 @@ function persistPhaseBriefOutcome(state, phase2, outcome, requiresApproval) {
     return;
   }
   const brief = outcome.brief;
+  const material = brief.materialChangesFromWorkflowPlan.filter((change2) => change2.material);
   delete state.phaseBriefFailures[phase2.id];
-  brief.approvalStatus = requiresApproval ? "pending" : "approved";
+  brief.approvalStatus = requiresApproval || material.length > 0 ? "pending" : "approved";
   state.phaseBriefs[phase2.id] = brief;
   appendEvent(state, "phase_brief_generated", `Phase ${phase2.id} detailed execution brief revision ${brief.briefRevision} generated from ${brief.inspectionResult.filesRead.length} bounded reads.`, phase2.id);
   appendEvent(state, "phase_brief_validated", `Phase ${phase2.id} brief revision ${brief.briefRevision} passed deterministic quality validation.`, phase2.id);
-  const material = brief.materialChangesFromWorkflowPlan.filter((change2) => change2.material);
   if (material.length > 0) {
     appendEvent(state, "phase_brief_material_drift", `Phase ${phase2.id} brief records ${material.length} material change candidate(s).`, phase2.id);
+    setPendingMaterialDriftReview(state, brief);
+    appendEvent(state, "phase_material_drift_review_required", `Phase ${phase2.id} brief revision ${brief.briefRevision} requires Workflow Plan revision or a scope-preserving brief revision.`, phase2.id);
+    return;
   }
   if (requiresApproval) {
     setPendingPhaseApproval(state, brief);
@@ -31070,6 +31183,19 @@ function setPendingPhaseApproval(state, brief) {
     briefRevision: brief.briefRevision,
     question: `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`,
     allowedActions: [...PHASE_APPROVAL_ACTIONS],
+    source: "system"
+  });
+}
+function setPendingMaterialDriftReview(state, brief) {
+  if (!state.approval) throw new WorkflowStateError("Cannot request material drift review before the Workflow Plan is approved.");
+  setPendingDecision(state, {
+    type: "material-drift-review",
+    workflowRevision: brief.workflowRevision,
+    stateRevision: state.revision + 1,
+    phaseId: brief.phaseId,
+    briefRevision: brief.briefRevision,
+    question: `Phase ${brief.phaseId} Execution Brief revision ${brief.briefRevision} contains material changes from the approved Workflow Plan. Revise the plan or revise the brief to remain within it.`,
+    allowedActions: ["revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"],
     source: "system"
   });
 }
@@ -31241,7 +31367,11 @@ function decisionOption(state, decision, action) {
     "review-material-drift": { label: "Review material drift", description: "Show the persisted scope or identity mismatch before replanning.", command: `leanrigor flow phase-result ${state.id} ${phase2} --json --root ${root}` },
     "record-review": { label: "Record final integrated review", description: "Record the final review result against persisted integrated evidence.", command: `leanrigor flow record-review ${state.id} --status <status> --summary <summary> ${common}` },
     "complete-workflow": { label: "Complete workflow", description: "Record explicit user-approved final completion without committing.", command: `leanrigor flow complete ${state.id} ${common}` },
-    "view-details": { label: "View details", description: "Show persisted workflow evidence without inspecting a phase worktree.", command: phase2 ? `leanrigor flow phase-result ${state.id} ${phase2} --json --root ${root}` : `leanrigor flow status ${state.id} --json --root ${root}` },
+    "view-details": {
+      label: "View details",
+      description: "Show persisted workflow evidence without inspecting a phase worktree.",
+      command: decision.type === "material-drift-review" && phase2 && state.phaseBriefs?.[phase2] ? `leanrigor flow phase-brief-show ${state.id} ${phase2} --root ${root}` : phase2 ? `leanrigor flow phase-result ${state.id} ${phase2} --json --root ${root}` : `leanrigor flow status ${state.id} --json --root ${root}`
+    },
     "cancel-workflow": { label: "Cancel workflow", description: "Cancel without manual execution, commit, or push.", command: `leanrigor flow cancel ${state.id} ${common}` }
   };
   const option = options[action] ?? { label: action, description: "Apply the exact persisted workflow action." };
@@ -31474,6 +31604,36 @@ function workflowNextSummary(state) {
           objective: phase2.objective,
           failure: briefFailure,
           executionAuthorized: false
+        }
+      };
+    }
+    const needsMaterialDriftReview = Boolean(brief) && pendingDecision?.type === "material-drift-review" && pendingDecision.status === "pending" && pendingDecision.phaseId === phase2.id && pendingDecision.briefRevision === brief?.briefRevision;
+    if (needsMaterialDriftReview) {
+      const root = quoteArg(state.root);
+      return {
+        ...base,
+        label: "Phase material drift review",
+        userDecisionRequired: true,
+        pendingDecision: pendingDecision.question,
+        pendingAction: "Revise the Workflow Plan or revise the brief to remain within the approved plan.",
+        allowedIntents: ["revise plan", "revise brief", "view details", "cancel"],
+        approvalActions: [
+          { label: "Revise Workflow Plan", intent: "revise plan", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto --root ${root}`, description: "Record the material change in a fresh Workflow Plan and return it for approval." },
+          { label: `Revise ${phaseLabel2(phase2.id)} brief`, intent: "revise brief", command: `leanrigor flow phase-brief ${state.id} ${phase2.id} --feedback-file <feedback-file> --root ${root}`, description: "Create a new brief revision that remains within the currently approved plan." },
+          { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief-show ${state.id} ${phase2.id} --root ${root}`, description: "Show the persisted material changes, inspection evidence, risks, and exact brief revision." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel without approving or executing the material brief." }
+        ],
+        summary: {
+          phase: phase2.id,
+          objective: brief?.objective,
+          briefRevision: brief?.briefRevision,
+          workflowRevision: brief?.workflowRevision,
+          risks: brief?.risks ?? [],
+          riskDiscoveries: brief?.riskDiscoveries ?? [],
+          changesFromApprovedWorkflowPlan: brief?.materialChangesFromWorkflowPlan ?? [],
+          withinApprovedPlan: false,
+          executionAuthorized: false,
+          pendingDecision
         }
       };
     }
@@ -33183,7 +33343,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.28");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.29");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

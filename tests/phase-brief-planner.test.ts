@@ -6,8 +6,10 @@ import { promisify } from "node:util";
 import { beforeAll, describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/defaults.js";
 import {
+  canonicalRiskCategories,
   classifyPhaseBriefChanges,
   classifyAcceptanceOutcome,
+  DeterministicPhaseBriefPlanningProvider,
   generateInspectedPhaseExecutionBrief,
   synthesizeObservableAcceptanceCriteria,
   validatePhaseExecutionBrief,
@@ -360,8 +362,7 @@ describe("phase brief material changes", () => {
   it.each([
     ["new write boundary", (candidate: PhaseBriefProposal) => { candidate.writeAreas = ["outside/new.ts"]; }, "write-boundary"],
     ["changed acceptance criterion", (candidate: PhaseBriefProposal) => { candidate.acceptanceCriteria = ["A different observable outcome is accepted."]; }, "acceptance-criteria"],
-    ["new dependency", (candidate: PhaseBriefProposal) => { candidate.dependencies = ["phase-x"]; }, "dependency"],
-    ["new security risk", (candidate: PhaseBriefProposal) => { candidate.risks = ["A newly discovered security boundary requires credential migration."]; }, "risk"]
+    ["new dependency", (candidate: PhaseBriefProposal) => { candidate.dependencies = ["phase-x"]; }, "dependency"]
   ])("flags %s as material", (_name, mutate, category) => {
     const candidate = proposal(validBrief);
     mutate(candidate);
@@ -369,7 +370,145 @@ describe("phase brief material changes", () => {
       expect.objectContaining({ category, material: true })
     ]));
   });
+
+  it("does not treat issue 13 credential requirements as inspection discoveries", async () => {
+    const state = structuredClone(fixture.state);
+    state.request = "Show model and provider provenance for each workflow stage without exposing prompts, secrets, credentials, or unrestricted provider diagnostics.";
+    state.plan!.summary = "Persist and render provider provenance.";
+    state.plan!.principles = ["Keep the architecture provider-neutral."];
+
+    const outcome = await generateInspectedPhaseExecutionBrief({
+      state,
+      phase: state.plan!.phases[0]!,
+      config: defaultConfig()
+    });
+
+    expect(outcome.status).toBe("generated");
+    if (outcome.status === "generated") {
+      expect(outcome.brief.risks).toContain("Security-sensitive behaviour must preserve authentication, authorization, and credential boundaries.");
+      expect(outcome.brief.riskDiscoveries).toEqual([]);
+      expect(outcome.brief.materialChangesFromWorkflowPlan.filter((change) => change.category === "risk")).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["request", (state: SequentialWorkflowState) => { state.request += " Preserve credential boundaries."; }],
+    ["plan summary", (state: SequentialWorkflowState) => { state.plan!.summary += " Preserve credential boundaries."; }],
+    ["plan principles", (state: SequentialWorkflowState) => { state.plan!.principles.push("Preserve credential boundaries."); }],
+    ["phase objective", (_state: SequentialWorkflowState, phase: WorkflowPhase) => { phase.objective += " Preserve credential boundaries."; }],
+    ["phase rationale", (_state: SequentialWorkflowState, phase: WorkflowPhase) => { phase.rationale += " Preserve credential boundaries."; }],
+    ["acceptance criteria", (_state: SequentialWorkflowState, phase: WorkflowPhase) => { phase.acceptanceCriteria.push("Credential boundaries remain unchanged."); }],
+    ["validation requirements", (_state: SequentialWorkflowState, phase: WorkflowPhase) => { phase.validationCommands.push("npm run credential-check"); }],
+    ["effective constraints", (state: SequentialWorkflowState) => {
+      state.constraints = {
+        original: [],
+        policy: [],
+        userAdditions: [],
+        userRemovals: [],
+        userOverrides: [],
+        effective: [{
+          id: "constraint-security",
+          text: "Preserve credential boundaries.",
+          source: "user",
+          createdAt: new Date(0).toISOString(),
+          workflowRevision: state.revision,
+          transition: "approved"
+        }],
+        audit: []
+      };
+    }],
+    ["approved assumptions", (state: SequentialWorkflowState) => { state.triage!.assumptions.push("Credential boundaries are unchanged."); }]
+  ])("does not classify a risk already present in approved %s as new", async (_source, addApprovedContext) => {
+    const state = structuredClone(fixture.state);
+    const phase = structuredClone(fixture.phase);
+    addApprovedContext(state, phase);
+    state.plan!.phases = [phase];
+    const provider = inspectionDiscoveryProvider("Inspection found a security-sensitive credential boundary.");
+
+    const outcome = await generateInspectedPhaseExecutionBrief({ state, phase, config: defaultConfig(), provider });
+
+    expect(outcome.status).toBe("generated");
+    if (outcome.status === "generated") {
+      expect(outcome.brief.riskDiscoveries).toEqual([
+        expect.objectContaining({ source: "inspection", categories: ["security"] })
+      ]);
+      expect(outcome.brief.materialChangesFromWorkflowPlan.filter((change) => change.category === "risk")).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["credentials and permissions", "security"],
+    ["authentication and authorization", "security"],
+    ["public API compatibility", "public-contract"],
+    ["persisted schema migration", "migration"],
+    ["architectural component ownership", "architecture"],
+    ["data corruption and data loss", "data-integrity"],
+    ["race condition and locking", "concurrency"],
+    ["idempotent rollback recovery", "recovery"],
+    ["production deployment infrastructure", "production-infrastructure"],
+    ["destructive delete operation", "destructive-operation"],
+    ["outbound network service", "network-operation"]
+  ])("canonicalizes %s as %s", (risk, category) => {
+    expect(canonicalRiskCategories(risk)).toContain(category);
+  });
+
+  it("makes a genuine inspection-origin discovery material and requires plan revision", () => {
+    const candidate = proposal(validBrief);
+    candidate.riskDiscoveries = [{
+      risk: "Inspection found an architectural ownership boundary outside the approved component.",
+      categories: ["architecture"],
+      evidence: ["src/feature.ts imports an owner outside the approved boundary."],
+      source: "inspection"
+    }];
+
+    expect(classifyPhaseBriefChanges(fixture.phase, candidate)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: "risk",
+        material: true,
+        requiredTransition: "revise-plan",
+        reason: expect.stringContaining("architecture")
+      })
+    ]));
+  });
+
+  it("handles known and new risk categories independently", () => {
+    const candidate = proposal(validBrief);
+    candidate.riskDiscoveries = [{
+      risk: "Inspection found a security-sensitive architectural ownership boundary.",
+      categories: ["security", "architecture"],
+      evidence: ["src/feature.ts crosses the component ownership boundary."],
+      source: "inspection"
+    }];
+
+    const riskChanges = classifyPhaseBriefChanges(fixture.phase, candidate, ["Authentication and credential handling are approved."])
+      .filter((change) => change.category === "risk");
+
+    expect(riskChanges).toHaveLength(1);
+    expect(riskChanges[0]).toMatchObject({
+      material: true,
+      requiredTransition: "revise-plan",
+      reason: expect.stringContaining("architecture")
+    });
+  });
 });
+
+function inspectionDiscoveryProvider(risk: string): PhaseBriefPlanningProvider {
+  const baseline = new DeterministicPhaseBriefPlanningProvider();
+  return {
+    name: "inspection-discovery-test",
+    async generate(input) {
+      const result = await baseline.generate(input);
+      result.proposal.risks = [...result.proposal.risks, risk];
+      result.proposal.riskDiscoveries = [{
+        risk,
+        categories: canonicalRiskCategories(risk),
+        evidence: ["Bounded repository inspection evidence."],
+        source: "inspection"
+      }];
+      return { ...result, provider: "inspection-discovery-test" };
+    }
+  };
+}
 
 async function planningFixture() {
   const root = await mkdtemp(path.join(tmpdir(), "leanrigor-brief-planner-"));
@@ -456,6 +595,7 @@ function proposal(brief: PhaseExecutionBrief): PhaseBriefProposal {
     testObligations: [...brief.testObligations],
     validationCommands: [...brief.validationCommands],
     manualValidationPlan: brief.manualValidationPlan,
-    risks: [...brief.risks]
+    risks: [...brief.risks],
+    riskDiscoveries: structuredClone(brief.riskDiscoveries ?? [])
   };
 }

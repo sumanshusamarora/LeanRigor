@@ -212,7 +212,15 @@ function decisionOption(state: SequentialWorkflowState, decision: WorkflowPendin
     "review-material-drift": { label: "Review material drift", description: "Show the persisted scope or identity mismatch before replanning.", command: `leanrigor flow phase-result ${state.id} ${phase} --json --root ${root}` },
     "record-review": { label: "Record final integrated review", description: "Record the final review result against persisted integrated evidence.", command: `leanrigor flow record-review ${state.id} --status <status> --summary <summary> ${common}` },
     "complete-workflow": { label: "Complete workflow", description: "Record explicit user-approved final completion without committing.", command: `leanrigor flow complete ${state.id} ${common}` },
-    "view-details": { label: "View details", description: "Show persisted workflow evidence without inspecting a phase worktree.", command: phase ? `leanrigor flow phase-result ${state.id} ${phase} --json --root ${root}` : `leanrigor flow status ${state.id} --json --root ${root}` },
+    "view-details": {
+      label: "View details",
+      description: "Show persisted workflow evidence without inspecting a phase worktree.",
+      command: decision.type === "material-drift-review" && phase && state.phaseBriefs?.[phase]
+        ? `leanrigor flow phase-brief-show ${state.id} ${phase} --root ${root}`
+        : phase
+          ? `leanrigor flow phase-result ${state.id} ${phase} --json --root ${root}`
+          : `leanrigor flow status ${state.id} --json --root ${root}`
+    },
     "cancel-workflow": { label: "Cancel workflow", description: "Cancel without manual execution, commit, or push.", command: `leanrigor flow cancel ${state.id} ${common}` }
   };
   const option = options[action] ?? { label: action, description: "Apply the exact persisted workflow action." };

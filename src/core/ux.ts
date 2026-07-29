@@ -236,6 +236,40 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         }
       };
     }
+    const needsMaterialDriftReview = Boolean(brief)
+      && pendingDecision?.type === "material-drift-review"
+      && pendingDecision.status === "pending"
+      && pendingDecision.phaseId === phase.id
+      && pendingDecision.briefRevision === brief?.briefRevision;
+    if (needsMaterialDriftReview) {
+      const root = quoteArg(state.root);
+      return {
+        ...base,
+        label: "Phase material drift review",
+        userDecisionRequired: true,
+        pendingDecision: pendingDecision.question,
+        pendingAction: "Revise the Workflow Plan or revise the brief to remain within the approved plan.",
+        allowedIntents: ["revise plan", "revise brief", "view details", "cancel"],
+        approvalActions: [
+          { label: "Revise Workflow Plan", intent: "revise plan", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto --root ${root}`, description: "Record the material change in a fresh Workflow Plan and return it for approval." },
+          { label: `Revise ${phaseLabel(phase.id)} brief`, intent: "revise brief", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --feedback-file <feedback-file> --root ${root}`, description: "Create a new brief revision that remains within the currently approved plan." },
+          { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief-show ${state.id} ${phase.id} --root ${root}`, description: "Show the persisted material changes, inspection evidence, risks, and exact brief revision." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Cancel without approving or executing the material brief." }
+        ],
+        summary: {
+          phase: phase.id,
+          objective: brief?.objective,
+          briefRevision: brief?.briefRevision,
+          workflowRevision: brief?.workflowRevision,
+          risks: brief?.risks ?? [],
+          riskDiscoveries: brief?.riskDiscoveries ?? [],
+          changesFromApprovedWorkflowPlan: brief?.materialChangesFromWorkflowPlan ?? [],
+          withinApprovedPlan: false,
+          executionAuthorized: false,
+          pendingDecision
+        }
+      };
+    }
     const needsPhaseApproval = Boolean(brief)
       && pendingDecision?.type === "phase-brief-approval"
       && pendingDecision.status === "pending"
