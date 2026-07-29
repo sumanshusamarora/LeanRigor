@@ -33424,8 +33424,49 @@ var ExecutionCoordinator = class {
       });
       return "result_recorded";
     }
+    if (shouldAutomaticallyRetryUnavailableSession(record2, diagnostics)) {
+      await this.markPhaseStopped(record2.phaseId, record2.leaseOwnerId, "failed", result.summary, diagnostics);
+      await this.retryUnavailableSessionInFreshContext(record2.phaseId);
+      return "running";
+    }
     await this.markPhaseStopped(record2.phaseId, record2.leaseOwnerId, result.status, result.summary, diagnostics);
     return result.status;
+  }
+  /**
+   * A continuation authorised by the user may first attempt to resume the
+   * provider's native session. That session is optional provider state: if it
+   * has disappeared, preserve the checkpoint and spend the already-authorised
+   * continuation allowance in one fresh compact session instead of asking the
+   * user to repeat the same recovery decision.
+   */
+  async retryUnavailableSessionInFreshContext(phaseId) {
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const record2 = state.execution.records[phaseId];
+      const phase2 = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+      const decision = state.approval?.pendingDecision;
+      if (!record2?.checkpoint || !phase2 || !briefIsCurrent(state, phaseId)) {
+        throw new Error(`Phase ${phaseId} cannot automatically retry because its approved checkpoint is no longer current.`);
+      }
+      if (!shouldAutomaticallyRetryUnavailableSession(record2, record2.diagnostics)) {
+        throw new Error(`Phase ${phaseId} is not eligible for an automatic fresh-session retry.`);
+      }
+      if (!decision || decision.type !== "execution-recovery" || decision.phaseId !== phaseId || !decision.allowedActions.includes("retry-execution")) {
+        throw new Error(`Phase ${phaseId} has no compatible recovery decision for an automatic fresh-session retry.`);
+      }
+      ownerId = this.ownerId(phaseId);
+      phase2.status = "ready";
+      state.execution.records[phaseId] = {
+        ...record2,
+        diagnostics: mergeDiagnostics(record2.diagnostics, {
+          automaticCompactRetry: true,
+          automaticCompactRetryReason: "provider_session_unavailable"
+        })
+      };
+      resolvePendingDecision(state, "approved", "retry-execution", "system", decision.id);
+      return state;
+    }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_session_unavailable_compact_retry" });
+    await this.dispatchResumedPhase(phaseId, ownerId, "Automatically retried after the provider session became unavailable");
   }
   async quarantineResult(record2, checkpoint, disposition, summary, diagnostics) {
     await updateFlowState(this.root, this.workflowId, (state) => {
@@ -34028,14 +34069,18 @@ function workspaceRiskSummary(preparation2) {
 function buildResumeRequest(record2, workflowId2, phaseId, workspacePath, attempt) {
   if (!record2?.checkpoint) return void 0;
   const session = record2.providerSession;
+  const maxTurnRecovery = record2.diagnostics?.terminalReason === "error_max_turns";
   const sessionUnavailable = ["provider_session_unavailable", "provider_protocol_error", "provider_scope_violation", "provider_scope_cleanup"].includes(String(record2.diagnostics?.terminalReason)) || typeof record2.diagnostics?.stderrExcerpt === "string" && /no conversation found with session id/i.test(record2.diagnostics.stderrExcerpt);
-  const sameLineage = session && session.workflowId === workflowId2 && session.phaseId === phaseId && session.workingDirectory === workspacePath && session.resumePermitted && session.status !== "cancelled" && !sessionUnavailable;
+  const sameLineage = session && session.workflowId === workflowId2 && session.phaseId === phaseId && session.workingDirectory === workspacePath && session.resumePermitted && session.status !== "cancelled" && !maxTurnRecovery && !sessionUnavailable;
   return {
     providerSession: sameLineage ? session : void 0,
     failureReason: record2.resultSummary ?? record2.status,
     attempt,
     mode: sameLineage ? "same-session" : "compact-retry"
   };
+}
+function shouldAutomaticallyRetryUnavailableSession(record2, diagnostics) {
+  return diagnostics?.terminalReason === "provider_session_unavailable" && Boolean(record2.providerSession?.resumedFromSessionId) && !diagnostics.automaticCompactRetry;
 }
 function updateSessionStatus(session, status, updatedAt, terminalReason) {
   if (!session) return void 0;
@@ -34318,7 +34363,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.35");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.36");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

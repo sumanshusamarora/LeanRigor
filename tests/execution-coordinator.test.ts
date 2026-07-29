@@ -575,6 +575,147 @@ describe("execution coordinator", () => {
     expect(completed.git?.integration.integratedPhaseIds).toContain("phase-a");
   });
 
+  it("uses a fresh compact context for an approved max-turn continuation", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          result: "failed",
+          summary: "provider turn limit reached",
+          diagnostics: { terminalReason: "error_max_turns", maxTurns: 24, turnCount: 25 }
+        }
+      }
+    });
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const failed = await currentState(harness);
+    const record = failed.execution.records["phase-a"]!;
+    record.providerSession = {
+      providerId: "scripted",
+      sessionId: "prior-session",
+      workflowId: failed.id,
+      phaseId: "phase-a",
+      executionAttemptId: record.providerExecutionId,
+      workingDirectory: record.workspacePath,
+      createdAt: record.startedAt,
+      updatedAt: record.completedAt ?? record.startedAt,
+      status: "failed",
+      resumePermitted: true
+    };
+    await saveFlowState(harness.root, failed, { expectedRevision: failed.revision });
+
+    let captured: PhaseExecutionInput | undefined;
+    const provider: ExecutionProvider = {
+      id: "scripted",
+      async capabilities() {
+        return { parallel: false, cancellation: true, heartbeats: true, structuredResults: true, diagnostics: [] };
+      },
+      async dispatch(input) {
+        captured = input;
+        return {
+          providerId: "scripted",
+          providerExecutionId: "fresh-compact-retry",
+          workflowId: input.workflowId,
+          phaseId: input.phaseId,
+          leaseOwnerId: input.leaseOwnerId,
+          workspacePath: input.workspacePath,
+          startedAt: new Date().toISOString(),
+          lastKnownStatus: "running",
+          executionIdentity: input.executionIdentity
+        };
+      },
+      async getStatus() { return { status: "running" as const }; },
+      async collectResult() { throw new Error("not reached"); },
+      async cancel() {}
+    };
+    const coordinator = new ExecutionCoordinator({ root: harness.root, workflowId: failed.id, config: harness.config, provider });
+    const decision = failed.approval!.pendingDecision!;
+
+    await coordinator.continueExecution(decision.id, failed.revision);
+
+    expect(captured?.resume).toMatchObject({ mode: "compact-retry" });
+    expect(captured?.resume?.providerSession).toBeUndefined();
+  });
+
+  it("automatically falls back to one fresh compact retry when a resumed provider session is unavailable", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {}
+    });
+    const inputs: PhaseExecutionInput[] = [];
+    const provider: ExecutionProvider = {
+      id: "session-recovery-provider",
+      async capabilities() {
+        return { parallel: false, cancellation: true, heartbeats: true, structuredResults: true, diagnostics: [] };
+      },
+      async dispatch(input) {
+        inputs.push(input);
+        const resumed = inputs.length === 1;
+        return {
+          providerId: "session-recovery-provider",
+          providerExecutionId: `session-recovery-${inputs.length}`,
+          workflowId: input.workflowId,
+          phaseId: input.phaseId,
+          leaseOwnerId: input.leaseOwnerId,
+          workspacePath: input.workspacePath,
+          startedAt: new Date().toISOString(),
+          lastKnownStatus: "running",
+          turnBudget: input.turnBudget,
+          executionIdentity: input.executionIdentity,
+          providerSession: {
+            providerId: "session-recovery-provider",
+            sessionId: resumed ? "missing-session" : "fresh-session",
+            workflowId: input.workflowId,
+            phaseId: input.phaseId,
+            executionAttemptId: `session-recovery-${inputs.length}`,
+            workingDirectory: input.workspacePath,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            status: "running",
+            resumePermitted: true,
+            resumedFromSessionId: resumed ? "older-session" : undefined
+          }
+        };
+      },
+      async getStatus() { return { status: "completed" as const }; },
+      async collectResult(handle) {
+        if (handle.providerExecutionId !== "session-recovery-1") throw new Error("fresh retry is intentionally left running for this assertion");
+        return {
+          status: "failed",
+          executionIdentity: handle.executionIdentity,
+          summary: "The provider session is unavailable.",
+          changedFiles: [],
+          validation: [],
+          criterionEvidence: [],
+          assumptions: [],
+          scopeDeviations: [],
+          discoveredMaterialChanges: [],
+          remainingRisks: [],
+          providerDiagnostics: { terminalReason: "provider_session_unavailable" }
+        };
+      },
+      async cancel() {}
+    };
+    const coordinator = new ExecutionCoordinator({ root: harness.root, workflowId: harness.workflow.id, config: harness.config, provider });
+
+    await coordinator.runNext();
+    await coordinator.poll();
+
+    const state = await currentState(harness);
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1]?.resume).toMatchObject({ mode: "compact-retry" });
+    expect(state.approval?.pendingDecision).toBeUndefined();
+    expect(state.execution.records["phase-a"]?.status).toBe("running");
+    expect(state.execution.records["phase-a"]?.providerSession).toMatchObject({ sessionId: "fresh-session" });
+    expect(state.execution.records["phase-a"]?.executionBudget?.attempts).toEqual([
+      expect.objectContaining({ terminalReason: "provider_session_unavailable" })
+    ]);
+    expect(state.approval?.decisionHistory.at(-1)).toMatchObject({
+      selectedAction: "retry-execution",
+      source: "system"
+    });
+  });
+
   it("rejects stale additional-turn approval without changing workflow state", async () => {
     const harness = await createExecutionHarness({
       phases: [testPhase("phase-a", ["src/a.ts"])],

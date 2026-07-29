@@ -597,8 +597,50 @@ export class ExecutionCoordinator {
       });
       return "result_recorded";
     }
+    if (shouldAutomaticallyRetryUnavailableSession(record, diagnostics)) {
+      await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, "failed", result.summary, diagnostics);
+      await this.retryUnavailableSessionInFreshContext(record.phaseId);
+      return "running";
+    }
     await this.markPhaseStopped(record.phaseId, record.leaseOwnerId, result.status, result.summary, diagnostics);
     return result.status;
+  }
+
+  /**
+   * A continuation authorised by the user may first attempt to resume the
+   * provider's native session. That session is optional provider state: if it
+   * has disappeared, preserve the checkpoint and spend the already-authorised
+   * continuation allowance in one fresh compact session instead of asking the
+   * user to repeat the same recovery decision.
+   */
+  private async retryUnavailableSessionInFreshContext(phaseId: string): Promise<void> {
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const record = state.execution.records[phaseId];
+      const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+      const decision = state.approval?.pendingDecision;
+      if (!record?.checkpoint || !phase || !briefIsCurrent(state, phaseId)) {
+        throw new Error(`Phase ${phaseId} cannot automatically retry because its approved checkpoint is no longer current.`);
+      }
+      if (!shouldAutomaticallyRetryUnavailableSession(record, record.diagnostics)) {
+        throw new Error(`Phase ${phaseId} is not eligible for an automatic fresh-session retry.`);
+      }
+      if (!decision || decision.type !== "execution-recovery" || decision.phaseId !== phaseId || !decision.allowedActions.includes("retry-execution")) {
+        throw new Error(`Phase ${phaseId} has no compatible recovery decision for an automatic fresh-session retry.`);
+      }
+      ownerId = this.ownerId(phaseId);
+      phase.status = "ready";
+      state.execution.records[phaseId] = {
+        ...record,
+        diagnostics: mergeDiagnostics(record.diagnostics, {
+          automaticCompactRetry: true,
+          automaticCompactRetryReason: "provider_session_unavailable"
+        })
+      };
+      resolvePendingDecision(state, "approved", "retry-execution", "system", decision.id);
+      return state;
+    }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_session_unavailable_compact_retry" });
+    await this.dispatchResumedPhase(phaseId, ownerId, "Automatically retried after the provider session became unavailable");
   }
 
   private async quarantineResult(
@@ -1300,6 +1342,7 @@ function workspaceRiskSummary(preparation: NonNullable<WorkflowPhase["workspace"
 function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId: string, phaseId: string, workspacePath: string, attempt: number): PhaseExecutionInput["resume"] | undefined {
   if (!record?.checkpoint) return undefined;
   const session = record.providerSession;
+  const maxTurnRecovery = record.diagnostics?.terminalReason === "error_max_turns";
   const sessionUnavailable = ["provider_session_unavailable", "provider_protocol_error", "provider_scope_violation", "provider_scope_cleanup"].includes(String(record.diagnostics?.terminalReason))
     || (typeof record.diagnostics?.stderrExcerpt === "string" && /no conversation found with session id/i.test(record.diagnostics.stderrExcerpt));
   const sameLineage = session
@@ -1308,6 +1351,10 @@ function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId
     && session.workingDirectory === workspacePath
     && session.resumePermitted
     && session.status !== "cancelled"
+    // A max-turn recovery already has a complete checkpoint. Native-session
+    // retention is provider-owned and may be unavailable, especially in bare
+    // mode, so start the authorised continuation in a compact fresh context.
+    && !maxTurnRecovery
     && !sessionUnavailable;
   return {
     providerSession: sameLineage ? session : undefined,
@@ -1315,6 +1362,12 @@ function buildResumeRequest(record: PhaseExecutionRecord | undefined, workflowId
     attempt,
     mode: sameLineage ? "same-session" : "compact-retry"
   };
+}
+
+function shouldAutomaticallyRetryUnavailableSession(record: PhaseExecutionRecord, diagnostics: Record<string, unknown> | undefined): boolean {
+  return diagnostics?.terminalReason === "provider_session_unavailable"
+    && Boolean(record.providerSession?.resumedFromSessionId)
+    && !diagnostics.automaticCompactRetry;
 }
 
 function updateSessionStatus(session: ProviderSessionRef | undefined, status: ProviderSessionStatus, updatedAt: string, terminalReason?: string): ProviderSessionRef | undefined {
