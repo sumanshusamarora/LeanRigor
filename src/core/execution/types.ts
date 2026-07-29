@@ -78,6 +78,8 @@ export interface PhaseWorkspaceCheckpoint {
   untrackedFiles: string[];
   deletedFiles: string[];
   changedFiles: string[];
+  /** Hash of every changed file's current bytes (or a deletion marker). */
+  contentFingerprint?: string;
   diffSummary: {
     text: string;
     bytes: number;

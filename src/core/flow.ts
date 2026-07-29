@@ -278,6 +278,17 @@ const phaseWorkspaceSchema = z.object({
   }).optional()
 });
 
+const materialPlanChangeSchema = z.object({
+  category: z.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"]),
+  previousValue: z.union([z.string(), z.array(z.string())]).optional(),
+  proposedValue: z.union([z.string(), z.array(z.string())]).optional(),
+  affectedPhase: z.string().min(1),
+  severity: z.enum(["informational", "medium", "high"]),
+  material: z.boolean().default(true),
+  reason: z.string().min(1),
+  requiredTransition: z.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
+});
+
 const phaseSchema = z.object({
   id: z.string().min(1),
   objective: z.string().min(1),
@@ -300,6 +311,16 @@ const phaseSchema = z.object({
   validationResults: z.array(validationEvidenceSchema),
   scopeDeviations: z.array(z.string()),
   completion: phaseCompletionRecordSchema.optional(),
+  acceptedDrifts: z.array(z.object({
+    decisionId: z.string().min(1),
+    acceptedAt: z.string(),
+    acceptedBy: z.literal("user"),
+    workflowRevision: z.number().int().min(0),
+    briefRevision: z.number().int().min(1),
+    reason: z.string().min(1).max(4000),
+    summary: z.string().max(4000),
+    materialChanges: z.array(materialPlanChangeSchema)
+  })).default([]),
   repairAttempts: z.array(phaseRepairAttemptSchema).default([]),
   workspace: phaseWorkspaceSchema.optional()
 });
@@ -392,6 +413,7 @@ const phaseWorkspaceCheckpointSchema = z.object({
   untrackedFiles: z.array(z.string()),
   deletedFiles: z.array(z.string()),
   changedFiles: z.array(z.string()),
+  contentFingerprint: z.string().optional(),
   diffSummary: z.object({
     text: z.string().max(32768),
     bytes: z.number().int().min(0),
@@ -449,6 +471,33 @@ const phaseExecutionRecordSchema = z.object({
     providerId: z.string().min(1),
     providerSessionId: z.string().optional(),
     dispatchedAt: z.string()
+  }).optional(),
+  quarantinedResult: z.object({
+    status: z.enum(["completed", "needs_replan", "needs_review", "failed", "cancelled", "timed_out", "blocked"]),
+    executionIdentity: z.object({
+      workflowId: z.string().min(1),
+      workflowRevision: z.number().int().min(0),
+      phaseId: z.string().min(1),
+      briefRevision: z.number().int().min(1),
+      workspaceIdentity: z.string().min(1),
+      workspacePath: z.string().min(1),
+      baseCommit: z.string().min(1),
+      constraintHash: z.string().min(1),
+      providerId: z.string().min(1),
+      providerSessionId: z.string().optional(),
+      dispatchedAt: z.string()
+    }),
+    summary: z.string().max(4000),
+    changedFiles: z.array(z.string()),
+    validation: z.array(z.object({
+      command: z.string(), exitCode: z.number().int().nullable().optional(), status: z.enum(["passed", "failed", "skipped"]).optional(), result: z.string().optional(), skipped: z.boolean().optional(), skippedReason: z.string().optional(), timestamp: z.string().optional()
+    })),
+    criterionEvidence: z.array(z.object({ criterion: z.string(), status: z.enum(["met", "not_met", "uncertain", "not_applicable"]), evidence: z.array(z.string()) })),
+    assumptions: z.array(z.string()),
+    scopeDeviations: z.array(z.object({ path: z.string().optional(), reason: z.string() })),
+    discoveredMaterialChanges: z.array(materialPlanChangeSchema),
+    remainingRisks: z.array(z.string()),
+    providerDiagnostics: boundedRecord.optional()
   }).optional()
 });
 
@@ -494,17 +543,6 @@ const approvalRecommendationSchema = z.object({
   phaseId: z.string().optional(),
   createdAt: z.string(),
   overridable: z.boolean()
-});
-
-const materialPlanChangeSchema = z.object({
-  category: z.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"]),
-  previousValue: z.union([z.string(), z.array(z.string())]).optional(),
-  proposedValue: z.union([z.string(), z.array(z.string())]).optional(),
-  affectedPhase: z.string().min(1),
-  severity: z.enum(["informational", "medium", "high"]),
-  material: z.boolean().default(true),
-  reason: z.string().min(1),
-  requiredTransition: z.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
 });
 
 const phaseBriefRiskCategorySchema = z.enum([

@@ -1043,7 +1043,11 @@ function normalizeRiskDiscoveries(discoveries: PhaseBriefRiskDiscovery[] | undef
 function priorPhaseContext(state: SequentialWorkflowState, phase: WorkflowPhase): string | undefined {
   const prior = relevantPriorPhases(state, phase);
   if (prior.length === 0) return undefined;
-  return `Prior completed phase evidence: ${prior.map((candidate) => `${candidate.id} changed ${candidate.filesChanged.join(", ") || "no recorded files"} and concluded ${candidate.completion?.reason ?? "completed"}`).join("; ")}.`;
+  return `Prior completed phase evidence: ${prior.map((candidate) => {
+    const drift = candidate.acceptedDrifts?.at(-1);
+    const exception = drift ? `; user accepted material drift at brief revision ${drift.briefRevision}: ${drift.reason}` : "";
+    return `${candidate.id} changed ${candidate.filesChanged.join(", ") || "no recorded files"} and concluded ${candidate.completion?.reason ?? "completed"}${exception}`;
+  }).join("; ")}.`;
 }
 
 function priorPhaseAssumptions(state: SequentialWorkflowState, phase: WorkflowPhase): string[] {

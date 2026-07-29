@@ -51,6 +51,7 @@ export interface PersistedPhaseResultView {
     criteria: Array<{ criterion: string; status: string; evidence: string[] }>;
     assumptions: string[];
     remainingRisks: string[];
+    acceptedDrifts: Array<{ acceptedAt: string; reason: string; summary: string }>;
   };
   blockers: string[];
   nextSafeActions: string[];
@@ -86,7 +87,7 @@ export function workflowDecisionEnvelope(state: SequentialWorkflowState): Workfl
   };
 }
 
-const MAX_ASK_USER_QUESTION_OPTIONS = 4;
+const MAX_ASK_USER_QUESTION_OPTIONS = 5;
 
 function decisionActionsForQuestion(decision: WorkflowPendingDecision): string[] {
   const actions = [...new Set(decision.allowedActions)];
@@ -103,6 +104,8 @@ function decisionActionsForQuestion(decision: WorkflowPendingDecision): string[]
       ]
     : decision.type === "material-drift-review"
       ? [
+          "accept-drift",
+          "rerun-drift",
           "revise-plan",
           "revise-phase-brief",
           "view-details",
@@ -174,7 +177,8 @@ export function phaseResultView(state: SequentialWorkflowState, phaseId: string)
       })),
       criteria: completion?.criteria ?? [],
       assumptions: completion?.assumptions ?? [],
-      remainingRisks: completion?.remainingRisks ?? []
+      remainingRisks: completion?.remainingRisks ?? [],
+      acceptedDrifts: (phase.acceptedDrifts ?? []).map((drift) => ({ acceptedAt: drift.acceptedAt, reason: drift.reason, summary: drift.summary }))
     },
     blockers: phaseBlockers(state, phase, record?.resultSummary),
     nextSafeActions: phaseNextActions(state, phase, integrated, conflicted),
@@ -257,6 +261,8 @@ function decisionOption(state: SequentialWorkflowState, decision: WorkflowPendin
       command: `leanrigor flow continue-execution ${state.id} --provider auto --json ${common}`
     },
     "review-material-drift": { label: "Review material drift", description: "Show the persisted scope or identity mismatch before replanning.", command: `leanrigor flow phase-result ${state.id} ${phase} --json --root ${root}` },
+    "accept-drift": { label: "Accept trusted material drift", description: "Record a reason and replay the preserved result through the normal completion and integration gates.", command: `leanrigor flow accept-drift ${state.id} --reason <reason> --provider auto --json ${common}` },
+    "rerun-drift": { label: "Rerun phase with preserved worktree", description: "Resolve this drift decision and retry the phase in a fresh provider session without discarding in-scope work.", command: `leanrigor flow rerun-drift ${state.id} --provider auto --json ${common}` },
     "record-review": { label: "Record final integrated review", description: "Record the final review result against persisted integrated evidence.", command: `leanrigor flow record-review ${state.id} --status <status> --summary <summary> ${common}` },
     "complete-workflow": { label: "Complete workflow", description: "Record explicit user-approved final completion without committing.", command: `leanrigor flow complete ${state.id} ${common}` },
     "view-details": {

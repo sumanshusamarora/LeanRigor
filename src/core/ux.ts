@@ -250,9 +250,11 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         label: "Phase material drift review",
         userDecisionRequired: true,
         pendingDecision: pendingDecision.question,
-        pendingAction: "Revise the Workflow Plan or revise the brief to remain within the approved plan.",
-        allowedIntents: ["revise plan", "revise brief", "view details", "cancel"],
+        pendingAction: "Accept the still-trusted result with an auditable reason, rerun while preserving in-scope work, or revise the plan boundary.",
+        allowedIntents: ["accept drift", "rerun", "revise plan", "revise brief", "view details", "cancel"],
         approvalActions: [
+          ...(pendingDecision.allowedActions.includes("accept-drift") ? [{ label: "Accept trusted drift", intent: "accept drift", command: `leanrigor flow accept-drift ${state.id} --decision-id ${pendingDecision.id} --expected-revision ${state.revision} --reason <reason> --provider auto --json --root ${root}`, description: "Record why this exact trusted result is acceptable, then replay it through normal completion and integration gates." }] : []),
+          ...(pendingDecision.allowedActions.includes("rerun-drift") ? [{ label: "Rerun with preserved worktree", intent: "rerun", command: `leanrigor flow rerun-drift ${state.id} --decision-id ${pendingDecision.id} --expected-revision ${state.revision} --provider auto --json --root ${root}`, description: "Start a fresh provider attempt without discarding approved-scope work." }] : []),
           { label: "Revise Workflow Plan", intent: "revise plan", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto --root ${root}`, description: "Record the material change in a fresh Workflow Plan and return it for approval." },
           { label: `Revise ${phaseLabel(phase.id)} brief`, intent: "revise brief", command: `leanrigor flow phase-brief ${state.id} ${phase.id} --feedback-file <feedback-file> --root ${root}`, description: "Create a new brief revision that remains within the currently approved plan." },
           { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief-show ${state.id} ${phase.id} --root ${root}`, description: "Show the persisted material changes, inspection evidence, risks, and exact brief revision." },
@@ -405,7 +407,8 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
       allowedIntents: ["continue", "show status", "cancel"],
       summary: {
         validation: state.validation.map((evidence) => ({ command: evidence.command, status: evidence.status, result: evidence.result })),
-        review: state.review
+        review: state.review,
+        acceptedMaterialDrifts: (state.plan?.phases ?? []).flatMap((phase) => (phase.acceptedDrifts ?? []).map((drift) => ({ phaseId: phase.id, ...drift })))
       }
     };
   }

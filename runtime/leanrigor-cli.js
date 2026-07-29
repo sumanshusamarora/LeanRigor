@@ -19639,7 +19639,7 @@ var {
 } = import_index.default;
 
 // src/cli/index.ts
-import { readFile as readFile17 } from "node:fs/promises";
+import { readFile as readFile18 } from "node:fs/promises";
 import path25 from "node:path";
 
 // src/core/workflow.ts
@@ -27945,7 +27945,11 @@ function normalizeRiskDiscoveries(discoveries) {
 function priorPhaseContext(state, phase2) {
   const prior = relevantPriorPhases(state, phase2);
   if (prior.length === 0) return void 0;
-  return `Prior completed phase evidence: ${prior.map((candidate) => `${candidate.id} changed ${candidate.filesChanged.join(", ") || "no recorded files"} and concluded ${candidate.completion?.reason ?? "completed"}`).join("; ")}.`;
+  return `Prior completed phase evidence: ${prior.map((candidate) => {
+    const drift = candidate.acceptedDrifts?.at(-1);
+    const exception = drift ? `; user accepted material drift at brief revision ${drift.briefRevision}: ${drift.reason}` : "";
+    return `${candidate.id} changed ${candidate.filesChanged.join(", ") || "no recorded files"} and concluded ${candidate.completion?.reason ?? "completed"}${exception}`;
+  }).join("; ")}.`;
 }
 function priorPhaseAssumptions(state, phase2) {
   return relevantPriorPhases(state, phase2).flatMap((candidate) => candidate.completion?.assumptions.map((assumption) => `From ${candidate.id}: ${assumption}`) ?? []);
@@ -28461,6 +28465,16 @@ var phaseWorkspaceSchema = external_exports.object({
     evidence: external_exports.array(external_exports.string())
   }).optional()
 });
+var materialPlanChangeSchema = external_exports.object({
+  category: external_exports.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"]),
+  previousValue: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
+  proposedValue: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
+  affectedPhase: external_exports.string().min(1),
+  severity: external_exports.enum(["informational", "medium", "high"]),
+  material: external_exports.boolean().default(true),
+  reason: external_exports.string().min(1),
+  requiredTransition: external_exports.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
+});
 var phaseSchema = external_exports.object({
   id: external_exports.string().min(1),
   objective: external_exports.string().min(1),
@@ -28483,6 +28497,16 @@ var phaseSchema = external_exports.object({
   validationResults: external_exports.array(validationEvidenceSchema),
   scopeDeviations: external_exports.array(external_exports.string()),
   completion: phaseCompletionRecordSchema.optional(),
+  acceptedDrifts: external_exports.array(external_exports.object({
+    decisionId: external_exports.string().min(1),
+    acceptedAt: external_exports.string(),
+    acceptedBy: external_exports.literal("user"),
+    workflowRevision: external_exports.number().int().min(0),
+    briefRevision: external_exports.number().int().min(1),
+    reason: external_exports.string().min(1).max(4e3),
+    summary: external_exports.string().max(4e3),
+    materialChanges: external_exports.array(materialPlanChangeSchema)
+  })).default([]),
   repairAttempts: external_exports.array(phaseRepairAttemptSchema).default([]),
   workspace: phaseWorkspaceSchema.optional()
 });
@@ -28568,6 +28592,7 @@ var phaseWorkspaceCheckpointSchema = external_exports.object({
   untrackedFiles: external_exports.array(external_exports.string()),
   deletedFiles: external_exports.array(external_exports.string()),
   changedFiles: external_exports.array(external_exports.string()),
+  contentFingerprint: external_exports.string().optional(),
   diffSummary: external_exports.object({
     text: external_exports.string().max(32768),
     bytes: external_exports.number().int().min(0),
@@ -28624,6 +28649,39 @@ var phaseExecutionRecordSchema = external_exports.object({
     providerId: external_exports.string().min(1),
     providerSessionId: external_exports.string().optional(),
     dispatchedAt: external_exports.string()
+  }).optional(),
+  quarantinedResult: external_exports.object({
+    status: external_exports.enum(["completed", "needs_replan", "needs_review", "failed", "cancelled", "timed_out", "blocked"]),
+    executionIdentity: external_exports.object({
+      workflowId: external_exports.string().min(1),
+      workflowRevision: external_exports.number().int().min(0),
+      phaseId: external_exports.string().min(1),
+      briefRevision: external_exports.number().int().min(1),
+      workspaceIdentity: external_exports.string().min(1),
+      workspacePath: external_exports.string().min(1),
+      baseCommit: external_exports.string().min(1),
+      constraintHash: external_exports.string().min(1),
+      providerId: external_exports.string().min(1),
+      providerSessionId: external_exports.string().optional(),
+      dispatchedAt: external_exports.string()
+    }),
+    summary: external_exports.string().max(4e3),
+    changedFiles: external_exports.array(external_exports.string()),
+    validation: external_exports.array(external_exports.object({
+      command: external_exports.string(),
+      exitCode: external_exports.number().int().nullable().optional(),
+      status: external_exports.enum(["passed", "failed", "skipped"]).optional(),
+      result: external_exports.string().optional(),
+      skipped: external_exports.boolean().optional(),
+      skippedReason: external_exports.string().optional(),
+      timestamp: external_exports.string().optional()
+    })),
+    criterionEvidence: external_exports.array(external_exports.object({ criterion: external_exports.string(), status: external_exports.enum(["met", "not_met", "uncertain", "not_applicable"]), evidence: external_exports.array(external_exports.string()) })),
+    assumptions: external_exports.array(external_exports.string()),
+    scopeDeviations: external_exports.array(external_exports.object({ path: external_exports.string().optional(), reason: external_exports.string() })),
+    discoveredMaterialChanges: external_exports.array(materialPlanChangeSchema),
+    remainingRisks: external_exports.array(external_exports.string()),
+    providerDiagnostics: boundedRecord.optional()
   }).optional()
 });
 var workflowExecutionStateSchema = external_exports.object({
@@ -28664,16 +28722,6 @@ var approvalRecommendationSchema = external_exports.object({
   phaseId: external_exports.string().optional(),
   createdAt: external_exports.string(),
   overridable: external_exports.boolean()
-});
-var materialPlanChangeSchema = external_exports.object({
-  category: external_exports.enum(["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"]),
-  previousValue: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
-  proposedValue: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
-  affectedPhase: external_exports.string().min(1),
-  severity: external_exports.enum(["informational", "medium", "high"]),
-  material: external_exports.boolean().default(true),
-  reason: external_exports.string().min(1),
-  requiredTransition: external_exports.enum(["none", "reapprove-plan", "revise-plan", "revise-phase-brief"])
 });
 var phaseBriefRiskCategorySchema = external_exports.enum([
   "security",
@@ -31877,7 +31925,7 @@ function workflowDecisionEnvelope(state) {
     nextOperation: nextOperation(state, phase2, decision)
   };
 }
-var MAX_ASK_USER_QUESTION_OPTIONS = 4;
+var MAX_ASK_USER_QUESTION_OPTIONS = 5;
 function decisionActionsForQuestion(decision) {
   const actions = [...new Set(decision.allowedActions)];
   if (actions.length <= MAX_ASK_USER_QUESTION_OPTIONS) return actions;
@@ -31890,6 +31938,8 @@ function decisionActionsForQuestion(decision) {
     "view-details",
     "cancel-workflow"
   ] : decision.type === "material-drift-review" ? [
+    "accept-drift",
+    "rerun-drift",
     "revise-plan",
     "revise-phase-brief",
     "view-details",
@@ -31959,7 +32009,8 @@ function phaseResultView(state, phaseId) {
       })),
       criteria: completion?.criteria ?? [],
       assumptions: completion?.assumptions ?? [],
-      remainingRisks: completion?.remainingRisks ?? []
+      remainingRisks: completion?.remainingRisks ?? [],
+      acceptedDrifts: (phase2.acceptedDrifts ?? []).map((drift) => ({ acceptedAt: drift.acceptedAt, reason: drift.reason, summary: drift.summary }))
     },
     blockers: phaseBlockers(state, phase2, record2?.resultSummary),
     nextSafeActions: phaseNextActions(state, phase2, integrated, conflicted),
@@ -32031,6 +32082,8 @@ function decisionOption(state, decision, action) {
       command: `leanrigor flow continue-execution ${state.id} --provider auto --json ${common}`
     },
     "review-material-drift": { label: "Review material drift", description: "Show the persisted scope or identity mismatch before replanning.", command: `leanrigor flow phase-result ${state.id} ${phase2} --json --root ${root}` },
+    "accept-drift": { label: "Accept trusted material drift", description: "Record a reason and replay the preserved result through the normal completion and integration gates.", command: `leanrigor flow accept-drift ${state.id} --reason <reason> --provider auto --json ${common}` },
+    "rerun-drift": { label: "Rerun phase with preserved worktree", description: "Resolve this drift decision and retry the phase in a fresh provider session without discarding in-scope work.", command: `leanrigor flow rerun-drift ${state.id} --provider auto --json ${common}` },
     "record-review": { label: "Record final integrated review", description: "Record the final review result against persisted integrated evidence.", command: `leanrigor flow record-review ${state.id} --status <status> --summary <summary> ${common}` },
     "complete-workflow": { label: "Complete workflow", description: "Record explicit user-approved final completion without committing.", command: `leanrigor flow complete ${state.id} ${common}` },
     "view-details": {
@@ -32283,9 +32336,11 @@ function workflowNextSummary(state) {
         label: "Phase material drift review",
         userDecisionRequired: true,
         pendingDecision: pendingDecision.question,
-        pendingAction: "Revise the Workflow Plan or revise the brief to remain within the approved plan.",
-        allowedIntents: ["revise plan", "revise brief", "view details", "cancel"],
+        pendingAction: "Accept the still-trusted result with an auditable reason, rerun while preserving in-scope work, or revise the plan boundary.",
+        allowedIntents: ["accept drift", "rerun", "revise plan", "revise brief", "view details", "cancel"],
         approvalActions: [
+          ...pendingDecision.allowedActions.includes("accept-drift") ? [{ label: "Accept trusted drift", intent: "accept drift", command: `leanrigor flow accept-drift ${state.id} --decision-id ${pendingDecision.id} --expected-revision ${state.revision} --reason <reason> --provider auto --json --root ${root}`, description: "Record why this exact trusted result is acceptable, then replay it through normal completion and integration gates." }] : [],
+          ...pendingDecision.allowedActions.includes("rerun-drift") ? [{ label: "Rerun with preserved worktree", intent: "rerun", command: `leanrigor flow rerun-drift ${state.id} --decision-id ${pendingDecision.id} --expected-revision ${state.revision} --provider auto --json --root ${root}`, description: "Start a fresh provider attempt without discarding approved-scope work." }] : [],
           { label: "Revise Workflow Plan", intent: "revise plan", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto --root ${root}`, description: "Record the material change in a fresh Workflow Plan and return it for approval." },
           { label: `Revise ${phaseLabel2(phase2.id)} brief`, intent: "revise brief", command: `leanrigor flow phase-brief ${state.id} ${phase2.id} --feedback-file <feedback-file> --root ${root}`, description: "Create a new brief revision that remains within the currently approved plan." },
           { label: "View full details", intent: "view details", command: `leanrigor flow phase-brief-show ${state.id} ${phase2.id} --root ${root}`, description: "Show the persisted material changes, inspection evidence, risks, and exact brief revision." },
@@ -32431,7 +32486,8 @@ function workflowNextSummary(state) {
       allowedIntents: ["continue", "show status", "cancel"],
       summary: {
         validation: state.validation.map((evidence2) => ({ command: evidence2.command, status: evidence2.status, result: evidence2.result })),
-        review: state.review
+        review: state.review,
+        acceptedMaterialDrifts: (state.plan?.phases ?? []).flatMap((phase3) => (phase3.acceptedDrifts ?? []).map((drift) => ({ phaseId: phase3.id, ...drift })))
       }
     };
   }
@@ -32737,7 +32793,8 @@ function completionEvidenceArtifactPath(root, workflowId2, phaseId) {
 
 // src/core/execution/coordinator.ts
 import { execFile as execFile7 } from "node:child_process";
-import { rm as rm5, stat as stat5 } from "node:fs/promises";
+import { createHash as createHash8 } from "node:crypto";
+import { readFile as readFile17, rm as rm5, stat as stat5 } from "node:fs/promises";
 import path23 from "node:path";
 import { promisify as promisify7 } from "node:util";
 
@@ -33372,6 +33429,141 @@ var ExecutionCoordinator = class {
     });
     return this.dispatchResumedPhase(phaseId, ownerId, "Retried");
   }
+  /**
+   * Accept a material-drift result only when it is still the exact trusted
+   * result that was quarantined. This is an exception to the planning boundary,
+   * never an exception to identity, write-scope, completion, or integration
+   * gates.
+   */
+  async acceptDrift(decisionId, expectedRevision, reason) {
+    const rationale = reason.trim();
+    if (!rationale) throw new Error("Accepting material drift requires a non-empty reason.");
+    const before = await loadFlowState(this.root, this.workflowId);
+    const pendingRecord = this.trustedDriftRecord(before, decisionId);
+    const currentCheckpoint = await this.captureCheckpoint(pendingRecord, pendingRecord.quarantinedResult);
+    let phaseId = "";
+    let ownerId = "";
+    let result;
+    await updateFlowState(this.root, this.workflowId, (state2) => {
+      const decision = requirePendingDecision(state2, "material-drift-review", "accept-drift", decisionId);
+      if (!decision?.phaseId) throw new Error("The material-drift decision does not identify a phase.");
+      const record2 = this.trustedDriftRecord(state2, decisionId);
+      const phase2 = state2.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const brief = state2.phaseBriefs?.[decision.phaseId];
+      const workspace = state2.git?.phaseWorkspaces[decision.phaseId];
+      const quarantined = record2.quarantinedResult;
+      if (!phase2 || !brief || !workspace) throw new Error(`Phase ${decision.phaseId} no longer has a current brief and workspace.`);
+      if (decision.briefRevision !== brief.briefRevision || !briefIsCurrent(state2, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; regenerate and approve a new brief before deciding on drift.`);
+      if (executionIdentityIssues(record2, quarantined, state2).length > 0) throw new Error(`Phase ${decision.phaseId} result identity is no longer trusted.`);
+      const unexpectedWrites = currentCheckpoint.changedFiles.filter((file2) => !brief.writeAreas.some((area) => pathWithinArea(file2, area)));
+      if (unexpectedWrites.length > 0) throw new Error(`Phase ${decision.phaseId} has actual writes outside its approved scope: ${unexpectedWrites.join(", ")}. Use recovery instead.`);
+      if (!record2.checkpoint || !sameCheckpoint(record2.checkpoint, currentCheckpoint)) throw new Error(`Phase ${decision.phaseId} worktree changed after material drift was quarantined; rerun or replan instead.`);
+      if (!["completed", "needs_replan", "needs_review"].includes(quarantined.status)) throw new Error(`Phase ${decision.phaseId} quarantined result cannot be accepted from status ${quarantined.status}.`);
+      phaseId = decision.phaseId;
+      ownerId = record2.leaseOwnerId;
+      result = quarantined;
+      phase2.status = "ready";
+      if (workspace) workspace.status = "ready";
+      phase2.acceptedDrifts = [...phase2.acceptedDrifts ?? [], {
+        decisionId,
+        acceptedAt: this.now(),
+        acceptedBy: "user",
+        workflowRevision: expectedRevision,
+        briefRevision: brief.briefRevision,
+        reason: rationale,
+        summary: quarantined.summary,
+        materialChanges: quarantined.discoveredMaterialChanges
+      }];
+      state2.execution.records[phaseId] = {
+        ...record2,
+        status: "collecting",
+        completedAt: void 0,
+        diagnostics: mergeDiagnostics(record2.diagnostics, {
+          resultAccepted: true,
+          materialDriftAccepted: true,
+          materialDriftDecisionId: decisionId,
+          materialDriftReason: rationale,
+          materialDriftAcceptedAt: this.now(),
+          materialDriftWorkflowRevision: expectedRevision
+        })
+      };
+      resolvePendingDecision(state2, "approved", "accept-drift", "user", decisionId);
+      return state2;
+    }, { expectedRevision, ownerId: this.coordinatorId, ownerType: "system", decisionId, operation: "material_drift_accepted" });
+    await leasePhase({
+      root: this.root,
+      workflowId: this.workflowId,
+      phaseId,
+      ownerId,
+      ownerType: "agent",
+      config: this.config,
+      mutation: { ownerId: this.coordinatorId, ownerType: "system" }
+    });
+    const state = await loadFlowState(this.root, this.workflowId);
+    const accepted = result;
+    const diagnostics = mergeDiagnostics(state.execution.records[phaseId]?.diagnostics, accepted.providerDiagnostics, {
+      checkpoint: currentCheckpoint,
+      changedFileReconciliation: reconcileChangedFiles(accepted.changedFiles, currentCheckpoint.changedFiles),
+      resultAccepted: true,
+      materialDriftAccepted: true
+    });
+    await completePhase({
+      root: this.root,
+      workflowId: this.workflowId,
+      phaseId,
+      config: this.config,
+      criteria: accepted.criterionEvidence,
+      filesChanged: accepted.changedFiles,
+      commandsRun: accepted.validation.map((entry) => entry.command),
+      validation: accepted.validation.map((entry) => toValidationEvidence(phaseId, entry)),
+      // The explicit acceptance is recorded as an audited phase exception. Do
+      // not replay a provider-reported planning deviation as an unapproved
+      // completion-gate deviation; actual writes remain scope-checked above.
+      assumptions: accepted.assumptions,
+      remainingRisks: accepted.remainingRisks,
+      mutation: { ownerId, ownerType: "system" }
+    });
+    await this.updateRecord(phaseId, {
+      status: "result_recorded",
+      completedAt: this.now(),
+      resultSummary: accepted.summary,
+      diagnostics,
+      checkpoint: currentCheckpoint,
+      quarantinedResult: void 0,
+      providerSession: updateSessionStatus(state.execution.records[phaseId]?.providerSession, "completed", this.now())
+    });
+    const current = await this.progressDeterministicTransitions();
+    return this.result(current, [{ phaseId, provider: this.provider.id, status: "result_recorded", workspacePath: currentCheckpoint.workspacePath, leaseOwnerId: ownerId }], this.nextActionForState(current), `Accepted trusted material drift for ${phaseId} and replayed the preserved result through completion gates.`);
+  }
+  async rerunDrift(decisionId, expectedRevision) {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const decision = requirePendingDecision(state, "material-drift-review", "rerun-drift", decisionId);
+      if (!decision?.phaseId) throw new Error("The material-drift decision does not identify a phase.");
+      const record2 = state.execution.records[decision.phaseId];
+      const phase2 = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      if (!record2?.checkpoint || !phase2 || !briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} cannot rerun because its approved brief or checkpoint is no longer current.`);
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase2.status = "ready";
+      state.execution.records[phaseId] = {
+        ...record2,
+        status: "failed",
+        completedAt: void 0,
+        quarantinedResult: void 0,
+        diagnostics: mergeDiagnostics(record2.diagnostics, {
+          materialDriftRerun: true,
+          materialDriftRerunDecisionId: decisionId,
+          materialDriftRerunAt: this.now(),
+          partialProgressPreserved: true
+        })
+      };
+      resolvePendingDecision(state, "approved", "rerun-drift", "user", decisionId);
+      return state;
+    }, { expectedRevision, ownerId: this.coordinatorId, ownerType: "system", decisionId, operation: "material_drift_rerun_authorized" });
+    return this.dispatchResumedPhase(phaseId, ownerId, "Reran after material drift review while preserving the phase worktree");
+  }
   async discardOutOfScopeAndRetry(decisionId, expectedRevision) {
     let phaseId = "";
     let ownerId = "";
@@ -33524,7 +33716,7 @@ var ExecutionCoordinator = class {
         materialDiscovery.length > 0 ? `Provider reported ${materialDiscovery.length} material change(s).` : void 0,
         result.status === "needs_replan" ? result.summary : void 0
       ].filter((value) => Boolean(value));
-      await this.quarantineResult(record2, checkpoint, "needs_replan", reasons.join(" "), {
+      await this.quarantineResult(record2, result, checkpoint, "needs_replan", reasons.join(" "), {
         unexpectedWrites,
         reportedScopeExpansion,
         discoveredMaterialChanges: result.discoveredMaterialChanges,
@@ -33533,7 +33725,7 @@ var ExecutionCoordinator = class {
       return "blocked";
     }
     if (result.status === "needs_review") {
-      await this.quarantineResult(record2, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
+      await this.quarantineResult(record2, result, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
       return "blocked";
     }
     const diagnostics = mergeDiagnostics(record2.diagnostics, result.providerDiagnostics, {
@@ -33634,7 +33826,7 @@ var ExecutionCoordinator = class {
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_session_unavailable_compact_retry" });
     await this.dispatchResumedPhase(phaseId, ownerId, "Automatically retried after the provider session became unavailable");
   }
-  async quarantineResult(record2, checkpoint, disposition, summary, diagnostics) {
+  async quarantineResult(record2, result, checkpoint, disposition, summary, diagnostics) {
     await updateFlowState(this.root, this.workflowId, (state) => {
       const phase2 = state.plan?.phases.find((candidate) => candidate.id === record2.phaseId);
       const lease = state.phaseLeases[record2.phaseId];
@@ -33655,6 +33847,7 @@ var ExecutionCoordinator = class {
           partialProgressAccepted: false
         }),
         checkpoint,
+        quarantinedResult: result,
         providerSession: updateSessionStatus(record2.providerSession, "failed", this.now())
       };
       setPendingDecision(state, {
@@ -33662,7 +33855,15 @@ var ExecutionCoordinator = class {
         phaseId: record2.phaseId,
         briefRevision: state.phaseBriefs?.[record2.phaseId]?.briefRevision,
         question: summary,
-        allowedActions: ["review-material-drift", "revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"]
+        allowedActions: [
+          ...checkpoint.changedFiles.every((file2) => state.phaseBriefs?.[record2.phaseId]?.writeAreas.some((area) => pathWithinArea(file2, area))) ? ["accept-drift"] : [],
+          "rerun-drift",
+          "review-material-drift",
+          "revise-plan",
+          "revise-phase-brief",
+          "view-details",
+          "cancel-workflow"
+        ]
       });
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_result_quarantined" });
@@ -33707,6 +33908,13 @@ var ExecutionCoordinator = class {
       });
       return state;
     }, { ownerId: this.coordinatorId, ownerType: "system", operation: "execution_result_recovery_quarantined" });
+  }
+  trustedDriftRecord(state, decisionId) {
+    const decision = requirePendingDecision(state, "material-drift-review", "accept-drift", decisionId);
+    if (!decision?.phaseId) throw new Error("The material-drift decision does not identify a phase.");
+    const record2 = state.execution.records[decision.phaseId];
+    if (!record2?.checkpoint || !record2.quarantinedResult) throw new Error(`Phase ${decision.phaseId} has no retained material-drift result to accept.`);
+    return record2;
   }
   async progressDeterministicTransitions() {
     let state = await loadFlowState(this.root, this.workflowId);
@@ -34121,6 +34329,7 @@ ${statText}`, untrackedSummary, diffExcerpt && `Diff excerpt:
 ${diffExcerpt}`].filter(Boolean).join("\n\n");
   const bounded = boundText(rawSummary, CHECKPOINT_DIFF_BYTES);
   const changedFiles = uniqueStrings([...trackedModified, ...deletedFiles, ...untrackedFiles]);
+  const contentFingerprint = await checkpointContentFingerprint(workspacePath, changedFiles);
   return {
     capturedAt: (/* @__PURE__ */ new Date()).toISOString(),
     workspacePath,
@@ -34129,6 +34338,7 @@ ${diffExcerpt}`].filter(Boolean).join("\n\n");
     untrackedFiles,
     deletedFiles,
     changedFiles,
+    contentFingerprint,
     diffSummary: bounded,
     validationCommands: uniqueStrings(validationCommands),
     validationResults: (result?.validation ?? []).map((entry) => ({
@@ -34196,6 +34406,26 @@ function reconcileChangedFiles(claimed, actual) {
     missingFromProvider,
     notChangedInWorkspace
   };
+}
+function sameCheckpoint(expected, current) {
+  return expected.workspacePath === current.workspacePath && expected.dirty === current.dirty && sameStrings(expected.trackedModified, current.trackedModified) && sameStrings(expected.untrackedFiles, current.untrackedFiles) && sameStrings(expected.deletedFiles, current.deletedFiles) && sameStrings(expected.changedFiles, current.changedFiles) && expected.contentFingerprint === current.contentFingerprint && expected.diffSummary.text === current.diffSummary.text && expected.diffSummary.truncated === current.diffSummary.truncated;
+}
+async function checkpointContentFingerprint(workspacePath, changedFiles) {
+  const entries = await Promise.all(changedFiles.map(async (file2) => {
+    const target = path23.resolve(workspacePath, file2);
+    if (path23.relative(workspacePath, target).startsWith("..")) return `${file2}\0outside-workspace`;
+    try {
+      const bytes = await readFile17(target);
+      return `${file2}\0${createHash8("sha256").update(bytes).digest("hex")}`;
+    } catch (error51) {
+      if (error51.code === "ENOENT") return `${file2}\0deleted`;
+      throw error51;
+    }
+  }));
+  return createHash8("sha256").update(entries.sort().join("\0")).digest("hex");
+}
+function sameStrings(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 function executionIdentityIssues(record2, result, state) {
   const expected = record2.executionIdentity;
@@ -34529,7 +34759,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.39");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.42");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -34978,6 +35208,25 @@ flow.command("discard-out-of-scope-and-retry").argument("<workflow-id>").require
   if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
   printCoordinatorResult(result, Boolean(options.json));
 });
+flow.command("accept-drift").argument("<workflow-id>").requiredOption("--decision-id <decision-id>", "exact pending material-drift decision ID").requiredOption("--expected-revision <revision>", "exact workflow revision").requiredOption("--reason <reason>", "why this trusted material drift is acceptable").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  const selected = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
+  const result = await selected.coordinator.acceptDrift(
+    options.decisionId,
+    Number.parseInt(options.expectedRevision, 10),
+    options.reason
+  );
+  if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+  printCoordinatorResult(result, Boolean(options.json));
+});
+flow.command("rerun-drift").argument("<workflow-id>").requiredOption("--decision-id <decision-id>", "exact pending material-drift decision ID").requiredOption("--expected-revision <revision>", "exact workflow revision").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  const selected = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
+  const result = await selected.coordinator.rerunDrift(
+    options.decisionId,
+    Number.parseInt(options.expectedRevision, 10)
+  );
+  if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+  printCoordinatorResult(result, Boolean(options.json));
+});
 flow.command("lease-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "phase lease owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print workflow JSON summary").action(async (workflowId2, phaseId, options) => {
   const state = await leasePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
   if (options.json) printFlowState(state);
@@ -35227,7 +35476,7 @@ function parseConstraintOverrides(values) {
 }
 async function textArgument(value, file2, label2) {
   if (value !== void 0 && file2 !== void 0) throw new Error(`Provide ${label2} either as an argument or with --${label2}-file, not both.`);
-  if (file2 !== void 0) return readFile17(path25.resolve(String(file2)), "utf8");
+  if (file2 !== void 0) return readFile18(path25.resolve(String(file2)), "utf8");
   if (typeof value === "string" && value.length > 0) return value;
   throw new Error(`Missing ${label2}. Provide it as an argument or with --${label2}-file.`);
 }
@@ -35439,7 +35688,7 @@ async function executionProvider(providerName, scriptFile, config2) {
   throw new Error(`Unsupported execution provider: ${providerName}`);
 }
 async function scriptedExecutionProvider(scriptFile) {
-  const scripts = scriptFile ? JSON.parse(await readFile17(path25.resolve(scriptFile), "utf8")) : {};
+  const scripts = scriptFile ? JSON.parse(await readFile18(path25.resolve(scriptFile), "utf8")) : {};
   return new ScriptedExecutionProvider(scripts);
 }
 async function runCoordinatorCommand(root, workflowId2, providerName, scriptFile, run) {

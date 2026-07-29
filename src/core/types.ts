@@ -1,4 +1,4 @@
-import type { ExecutionTurnBudgetState, PhaseWorkspaceCheckpoint, ProviderSessionRef } from "./execution/types.js";
+import type { ExecutionTurnBudgetState, PhaseExecutionResult, PhaseWorkspaceCheckpoint, ProviderSessionRef } from "./execution/types.js";
 
 export type WorkflowMode = "fast" | "standard" | "rigorous";
 export type Complexity = "low" | "medium" | "high";
@@ -821,8 +821,24 @@ export interface WorkflowPhase {
   validationResults: ValidationEvidence[];
   scopeDeviations: string[];
   completion?: PhaseCompletionRecord;
+  acceptedDrifts?: PhaseDriftAcceptance[];
   repairAttempts: PhaseRepairAttempt[];
   workspace?: PhaseWorkspace;
+}
+
+/**
+ * A user-authorized exception for a quarantined provider result.  It records
+ * the decision without widening the phase's approved write boundary.
+ */
+export interface PhaseDriftAcceptance {
+  decisionId: string;
+  acceptedAt: string;
+  acceptedBy: "user";
+  workflowRevision: number;
+  briefRevision: number;
+  reason: string;
+  summary: string;
+  materialChanges: MaterialPlanChange[];
 }
 
 export interface ExecutionPlan {
@@ -1046,6 +1062,8 @@ export interface PhaseExecutionRecord {
   checkpoint?: PhaseWorkspaceCheckpoint;
   executionBudget?: ExecutionTurnBudgetState;
   executionIdentity?: PhaseExecutionIdentity;
+  /** Full provider result retained while material drift is awaiting a decision. */
+  quarantinedResult?: PhaseExecutionResult;
 }
 
 export interface PhaseExecutionIdentity {

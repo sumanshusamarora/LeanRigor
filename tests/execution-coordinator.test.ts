@@ -587,6 +587,86 @@ describe("execution coordinator", () => {
     expect((await currentState(harness)).plan?.phases[0]?.status).toBe("needs_replan");
   });
 
+  it("accepts a trusted material-drift result with a reason and replays normal completion gates", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          edits: [{ path: "src/a.ts", content: "export const a = 1;\n" }],
+          result: "needs_replan",
+          summary: "A documented public-contract decision changed implementation detail.",
+          validation: [{ command: "npm test", exitCode: 0 }],
+          discoveredMaterialChanges: [{
+            category: "public-contract",
+            affectedPhase: "phase-a",
+            severity: "medium",
+            material: true,
+            reason: "The provider found a documented public-contract implication.",
+            requiredTransition: "revise-plan"
+          }]
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    const quarantined = await harness.coordinator.poll();
+    const before = await currentState(harness);
+    const decision = before.approval?.pendingDecision;
+    expect(quarantined.decision?.options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ intent: "accept-drift", command: expect.stringContaining("--reason <reason>") }),
+      expect.objectContaining({ intent: "rerun-drift" })
+    ]));
+    expect(before.execution.records["phase-a"]?.quarantinedResult).toMatchObject({ status: "needs_replan" });
+    if (!decision) throw new Error("expected material-drift decision");
+
+    const accepted = await harness.coordinator.acceptDrift(decision.id, before.revision, "The implementation remains within the approved source write boundary; preserve the discovery for downstream review.");
+    const after = await currentState(harness);
+
+    expect(accepted.nextAction).toBe("await_user");
+    expect(after.plan?.phases[0]).toMatchObject({
+      status: "completed",
+      acceptedDrifts: [expect.objectContaining({ decisionId: decision.id, acceptedBy: "user", reason: expect.stringContaining("approved source") })]
+    });
+    expect(after.execution.records["phase-a"]).toMatchObject({ status: "result_recorded" });
+    expect(after.execution.records["phase-a"]).not.toHaveProperty("quarantinedResult");
+    expect(after.execution.records["phase-a"]?.diagnostics).toMatchObject({ materialDriftAccepted: true, resultAccepted: true });
+    expect(after.git?.integration.integratedPhaseIds).toEqual(["phase-a"]);
+  });
+
+  it("refuses material-drift acceptance after the quarantined worktree changed, but permits a preserved-worktree rerun", async () => {
+    const scripts: Record<string, ScriptedPhase> = {
+      "phase-a": {
+        edits: [{ path: "src/a.ts", content: "first attempt\n" }],
+        result: "needs_replan",
+        discoveredMaterialChanges: [{
+          category: "validation",
+          affectedPhase: "phase-a",
+          severity: "medium",
+          material: true,
+          reason: "Additional validation was discovered.",
+          requiredTransition: "revise-phase-brief"
+        }]
+      }
+    };
+    const harness = await createExecutionHarness({ phases: [testPhase("phase-a", ["src/a.ts"])], scripts });
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const blocked = await currentState(harness);
+    const decision = blocked.approval?.pendingDecision;
+    if (!decision) throw new Error("expected material-drift decision");
+    const workspace = blocked.git!.phaseWorkspaces["phase-a"]!.path;
+    await writeFile(path.join(workspace, "src", "a.ts"), "changed after quarantine\n");
+
+    await expect(harness.coordinator.acceptDrift(decision.id, blocked.revision, "This should be rejected because the checkpoint changed.")).rejects.toThrow("worktree changed");
+
+    scripts["phase-a"] = { validation: [{ command: "npm test", exitCode: 0 }] };
+    const rerun = await harness.coordinator.rerunDrift(decision.id, blocked.revision);
+    expect(rerun.nextAction).toBe("poll");
+    await harness.coordinator.poll();
+    const completed = await currentState(harness);
+    expect(completed.execution.records["phase-a"]?.diagnostics).toMatchObject({ materialDriftRerun: true, partialProgressPreserved: true });
+  });
+
   it("offers one explicit additional-turn decision and continues from the preserved worktree", async () => {
     const scripts: Record<string, ScriptedPhase> = {
       "phase-a": {
