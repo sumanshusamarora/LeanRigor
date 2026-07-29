@@ -96,7 +96,7 @@ async function fakeClaudePath(): Promise<string> {
   const script = path.join(binDir, "claude.js");
   await writeFile(
     script,
-    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst stdin = fs.readFileSync(0, "utf8");\nconst prompt = args.join("\\n") + "\\n" + stdin;\nconst stage = prompt.includes("bounded sequential planner") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
+    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst stdin = fs.readFileSync(0, "utf8");\nconst prompt = args.join("\\n") + "\\n" + stdin;\nconst stage = prompt.includes("bounded sequential planning candidate generator") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
     { mode: 0o755 }
   );
   if (process.platform === "win32") {
@@ -269,6 +269,12 @@ describe("Claude marketplace plugin manifests", () => {
     expect(workflowContent).toContain("decision.options");
     expect(workflowContent).toContain("automaticallyPermitted");
     expect(workflowContent).toContain("flow phase-result");
+    expect(startContent).toContain("planning-fallback-review");
+    expect(startContent).toContain("validation not attempted");
+    expect(startContent).toContain("flow retry-plan <workflow-id> --provider auto");
+    expect(workflowContent).toContain("planning-fallback-review");
+    expect(workflowContent).toContain("planning.attemptRecords");
+    expect(workflowContent).toMatch(/never add plan\s+approval/);
   });
 
   it("hook paths resolve through CLAUDE_PLUGIN_ROOT", async () => {
@@ -551,8 +557,8 @@ describe("Claude marketplace plugin runtime", () => {
     });
     expect(planned.code).toBe(0);
     const plannedState = JSON.parse(planned.stdout) as { planning: { source: string; model?: string } };
-    expect(plannedState.planning).toMatchObject({ source: "model", model: "deepseek-user-medium" });
-    await expect(readFile(logFile, "utf8")).resolves.toContain("triage:deepseek-user-small\nplanning:deepseek-user-medium");
+    expect(plannedState.planning).toMatchObject({ source: "model", model: "deepseek-user-small" });
+    await expect(readFile(logFile, "utf8")).resolves.toContain("triage:deepseek-user-small\nplanning:deepseek-user-small");
   });
 
   it("prints a clear error when Node is unavailable", async () => {

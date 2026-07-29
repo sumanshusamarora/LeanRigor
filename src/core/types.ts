@@ -144,6 +144,7 @@ export type WorkflowDecisionType =
   | "clarification"
   | "approach-approval"
   | "workflow-plan-approval"
+  | "planning-fallback-review"
   | "phase-brief-approval"
   | "workspace-bootstrap-approval"
   | "material-drift-review"
@@ -687,6 +688,17 @@ export interface PlanningDiagnostic {
   resolution?: "repaired" | "blocked" | "fallback";
 }
 
+export interface PlanningAttemptRecord {
+  stage: "draft" | "normalisation" | "repair" | "escalation";
+  tier?: ModelProfile;
+  model?: string;
+  launchMode?: string;
+  invocation: "not-attempted" | "succeeded" | "failed";
+  validation: "not-attempted" | "passed" | "failed";
+  diagnosticCodes: string[];
+  failureReason?: string;
+}
+
 export interface WorkflowState {
   version: 1;
   request: string;
@@ -724,6 +736,7 @@ export interface WorkflowState {
     syntaxRepairApplied?: boolean;
     semanticRepairApplied?: boolean;
     approvalBlockedReason?: string;
+    attemptRecords?: PlanningAttemptRecord[];
   };
   graph?: ExecutionGraph;
   reflections?: ReflectionRecord[];
@@ -1123,6 +1136,7 @@ export interface SequentialWorkflowState {
     syntaxRepairApplied?: boolean;
     semanticRepairApplied?: boolean;
     approvalBlockedReason?: string;
+    attemptRecords?: PlanningAttemptRecord[];
   };
   clarification?: {
     question: string;

@@ -32,6 +32,14 @@ into a Bash command.
 5. If the user gives revision feedback, revise the persisted plan internally
    with `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
    and render the revised phases.
+6. If `decision.type` is `planning-fallback-review`, render persisted
+   `planning.attemptRecords`, warnings, diagnostics, and fallback reason. Keep
+   invocation failure distinct from validation failure; when validation is
+   `not-attempted`, do not claim a candidate plan had structural or semantic
+   defects. Never reconstruct rejected plan contents. Offer only the persisted
+   retry-planning, revise-plan, view-details, and cancel choices, and invoke
+   `leanrigor flow retry-plan <workflow-id> --provider auto` only when its
+   persisted option is selected. Never offer plan approval at this gate.
 
 Do not modify implementation files from this command. Do not show raw CLI
 commands except for troubleshooting or explicit user request.

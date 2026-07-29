@@ -780,6 +780,7 @@ const workflowActionDecisionSchema = z.object({
     "clarification",
     "approach-approval",
     "workflow-plan-approval",
+    "planning-fallback-review",
     "material-drift-review",
     "execution-recovery",
     "integration-conflict",
@@ -892,6 +893,17 @@ const planningDiagnosticSchema = z.object({
   resolution: z.enum(["repaired", "blocked", "fallback"]).optional()
 });
 
+const planningAttemptRecordSchema = z.object({
+  stage: z.enum(["draft", "normalisation", "repair", "escalation"]),
+  tier: z.enum(["small", "medium", "large", "inherit"]).optional(),
+  model: z.string().optional(),
+  launchMode: z.string().optional(),
+  invocation: z.enum(["not-attempted", "succeeded", "failed"]),
+  validation: z.enum(["not-attempted", "passed", "failed"]),
+  diagnosticCodes: z.array(z.string()).default([]),
+  failureReason: z.string().optional()
+});
+
 const workflowStateSchema = z.object({
   version: z.literal(STATE_VERSION),
   id: z.string().min(1),
@@ -933,6 +945,7 @@ const workflowStateSchema = z.object({
     fallbackReason: z.string().optional(),
     warnings: z.array(z.string()),
     diagnostics: z.array(planningDiagnosticSchema).optional(),
+    attemptRecords: z.array(planningAttemptRecordSchema).optional(),
     syntaxRepairApplied: z.boolean().optional(),
     semanticRepairApplied: z.boolean().optional(),
     approvalBlockedReason: z.string().optional()
@@ -1180,8 +1193,52 @@ export async function revisePlan(root: string, workflowId: string, feedback: str
     next.review = undefined;
     next.commitPlan = undefined;
     next.blockers = [];
+    if (planningRun.approvalBlockedReason) {
+      next.blockers = [planningRun.approvalBlockedReason];
+      return transition(next, "blocked", "Revised planning still requires an explicit planning fallback review before approval.");
+    }
     return transition(next, "awaiting_plan_approval", "Plan revised and awaiting approval.");
   }, { ...mutation, operation: "revise_plan" });
+}
+
+export async function retryPlanning(root: string, workflowId: string, config?: LeanRigorConfig, mutation?: MutationOptions, planning?: { provider?: PlanningProvider; providerSelection?: TriageProviderSelection }): Promise<SequentialWorkflowState> {
+  return updateFlowState(root, workflowId, async (state) => {
+    assertState(state, ["blocked"]);
+    if (!state.planningRun?.approvalBlockedReason) throw new WorkflowStateError("Planning can only be retried through this path after a blocked planning fallback.");
+    if (!state.triage) throw new WorkflowStateError("Cannot retry planning before triage completes.");
+    const next = structuredClone(state);
+    resolveDecisionAction(next, "retry-planning", mutation, "answered", "planning-fallback-review");
+    const planningRun = await generatePlan({
+      request: next.request,
+      root: next.root,
+      triage: state.triage,
+      config,
+      constraints: effectiveConstraintTexts(next, state.triage, config ?? defaultConfig()),
+      constraintSet: effectiveConstraintSet(next, state.triage, config ?? defaultConfig()),
+      constraintAudit: next.constraints?.audit ?? [],
+      revisionRequests: [...(next.approach?.revisionRequests ?? []), ...(next.plan?.revisionRequests ?? [])],
+      provider: planning?.provider,
+      providerSelection: planning?.providerSelection
+    });
+    next.plan = planningRun.plan;
+    next.planningRun = planningRunMetadata(planningRun);
+    next.phaseBriefs = {};
+    next.phaseBriefFailures = {};
+    supersedePendingPhaseApproval(next);
+    next.approval = {
+      ...(next.approval ?? { history: [], decisionHistory: [] }),
+      currentAuthorizedPhase: undefined,
+      pendingDecision: undefined,
+      recommendation: approvalRecommendation(next)
+    };
+    next.review = undefined;
+    next.commitPlan = undefined;
+    next.blockers = planningRun.approvalBlockedReason ? [planningRun.approvalBlockedReason] : [];
+    appendEvent(next, "planning_completed", planningEventSummary(planningRun));
+    return planningRun.approvalBlockedReason
+      ? transition(next, "blocked", "Planning retry still requires an explicit planning fallback review before approval.")
+      : transition(next, "awaiting_plan_approval", "Planning retry completed and is awaiting approval.");
+  }, { ...mutation, operation: "retry_planning" });
 }
 
 export async function approvePlan(
@@ -1193,6 +1250,9 @@ export async function approvePlan(
   briefProvider?: PhaseBriefPlanningProvider
 ): Promise<SequentialWorkflowState> {
   return updateFlowState(root, workflowId, async (state) => {
+    if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) {
+      throw new WorkflowStateError("This plan cannot be approved because its generic planning fallback requires review. Retry structured planning or revise the Workflow Plan first.");
+    }
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
@@ -2822,6 +2882,7 @@ function planningRunMetadata(run: PlanningRunResult): SequentialWorkflowState["p
     fallbackReason: run.fallbackReason,
     warnings: run.warnings,
     diagnostics: run.diagnostics,
+    attemptRecords: run.attemptRecords,
     syntaxRepairApplied: run.syntaxRepairApplied,
     semanticRepairApplied: run.semanticRepairApplied,
     approvalBlockedReason: run.approvalBlockedReason
@@ -3005,7 +3066,7 @@ function filterAreas(targets: string[], keywords: string[]): string[] {
 }
 
 export function discoverPlanningTargets(root: string, requestEvidence: string, proposed: string[]): string[] {
-  const explicit = unique(proposed.filter(isPathLikeArea));
+  const explicit = unique(proposed.filter((area) => isRepositoryPlanningTarget(root, area)));
   if (explicit.length > 0) return explicit;
   const glob = require("fast-glob") as typeof import("fast-glob");
   const files = glob.sync([
@@ -3047,6 +3108,26 @@ export function discoverPlanningTargets(root: string, requestEvidence: string, p
     "tests/**",
     ...(/\b(doc|docs|documentation|readme)\b/i.test(requestEvidence) ? ["docs/**", "README.md"] : [])
   ]);
+}
+
+function isRepositoryPlanningTarget(root: string, area: string): boolean {
+  const normalized = area.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized || path.posix.isAbsolute(normalized) || normalized.split("/").includes("..")) return false;
+  const repositoryRoot = path.resolve(root);
+  const absolute = path.resolve(repositoryRoot, normalized);
+  const relative = path.relative(repositoryRoot, absolute);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return false;
+  if (existsSync(absolute)) return true;
+  if (["*", "?", "[", "]", "{", "}", "(", ")"].some((character) => normalized.includes(character))) {
+    const glob = require("fast-glob") as typeof import("fast-glob");
+    return glob.sync(normalized, {
+      cwd: repositoryRoot,
+      onlyFiles: false,
+      unique: true,
+      ignore: ["**/node_modules/**", ".git/**", ".leanrigor/**"]
+    }).length > 0;
+  }
+  return path.posix.extname(normalized) !== "";
 }
 
 function replaceNonPathAreas(value: unknown, fallback: string[]): string[] {
@@ -3778,7 +3859,20 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
+  normalizeLegacyPlanningFallbackDecision(migrated);
   return migrated;
+}
+
+function normalizeLegacyPlanningFallbackDecision(state: Record<string, unknown>): void {
+  if (state.state !== "blocked") return;
+  const planningRun = state.planningRun as Record<string, unknown> | undefined;
+  if (typeof planningRun?.approvalBlockedReason !== "string" || !planningRun.approvalBlockedReason) return;
+  const approval = state.approval as Record<string, unknown> | undefined;
+  const decision = approval?.pendingDecision as Record<string, unknown> | undefined;
+  if (!decision || decision.status !== "pending") return;
+  decision.type = "planning-fallback-review";
+  decision.question = planningRun.approvalBlockedReason;
+  decision.allowedActions = ["retry-planning", "revise-plan", "view-details", "cancel-workflow"];
 }
 
 function normalizeLegacyMaterialBriefDecision(state: Record<string, unknown>): void {
@@ -3818,6 +3912,10 @@ function legacyPendingDecision(state: Record<string, unknown>): Record<string, u
   }
   if (state.state === "blocked") {
     const blockers = Array.isArray(state.blockers) ? state.blockers : [];
+    const planningRun = state.planningRun as Record<string, unknown> | undefined;
+    if (typeof planningRun?.approvalBlockedReason === "string" && planningRun.approvalBlockedReason) {
+      return { ...base, type: "planning-fallback-review", question: planningRun.approvalBlockedReason, allowedActions: ["retry-planning", "revise-plan", "view-details", "cancel-workflow"] };
+    }
     return { ...base, type: "execution-recovery", question: blockers[0] ?? "Choose a safe recovery action.", allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"] };
   }
   const briefs = state.phaseBriefs && typeof state.phaseBriefs === "object" ? Object.values(state.phaseBriefs as Record<string, unknown>) : [];
@@ -3925,6 +4023,14 @@ function syncLifecycleDecision(state: SequentialWorkflowState, lifecycle: Workfl
     return;
   }
   if (lifecycle === "blocked") {
+    if (state.planningRun?.approvalBlockedReason) {
+      setPendingDecision(state, {
+        type: "planning-fallback-review",
+        question: state.planningRun.approvalBlockedReason,
+        allowedActions: ["retry-planning", "revise-plan", "view-details", "cancel-workflow"]
+      });
+      return;
+    }
     setPendingDecision(state, {
       type: "execution-recovery",
       question: state.blockers[0] ?? "Choose a safe recovery action for the blocked workflow.",

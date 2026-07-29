@@ -58,6 +58,13 @@ AskUserQuestion selector contract at every decision gate.
 7. For plan revision feedback, use
    `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
    unless deterministic planning was explicitly requested.
+   At a `planning-fallback-review` decision, render the persisted planning
+   attempt records exactly: keep provider invocation and deterministic
+   validation as separate outcomes, and say `validation not attempted` when
+   no candidate plan was returned. Never invent rejected plan contents or
+   repair history. Present only the persisted retry-planning, revise-plan,
+   view-details, and cancel actions; never offer plan approval. A retry uses
+   `leanrigor flow retry-plan <workflow-id> --provider auto`.
 8. After Workflow Plan approval, refresh, render the persisted
    Phase Execution Brief decision, and wait for exact brief approval. When
    execution providers/workspaces are configured, only then use the coordinator

@@ -134,6 +134,16 @@ Rules:
 - Plan revisions use
   `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
   unless deterministic planning was explicitly requested.
+- A `planning-fallback-review` is not a Workflow Plan approval gate. Render
+  the persisted `planning.attemptRecords`, warnings, diagnostics, and fallback
+  reason before the selector. Invocation and deterministic validation are
+  separate facts: if invocation failed and validation is `not-attempted`, say
+  that no candidate plan was returned and do not describe structural defects,
+  semantic repair, or rejected phase contents. Never invent planning history
+  from the fallback plan. Copy only the persisted retry-planning, revise-plan,
+  view-details, and cancel options into `AskUserQuestion`; never add plan
+  approval. Run `leanrigor flow retry-plan <workflow-id> --provider auto` only
+  when the persisted retry option is selected.
 - At the Workflow Plan gate, render the persisted Workflow Plan contract: strategy,
   phase DAG, effective constraints, validation strategy, provider/workspace
   policy, and deterministic approval recommendation with concise reasons. For

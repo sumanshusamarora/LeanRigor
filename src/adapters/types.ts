@@ -1,6 +1,7 @@
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
 import type { ExecutionProvider } from "../core/execution/provider.js";
 import type { PlanningProvider } from "../core/planning-runner.js";
+import type { StructuredDecisionProvider } from "../core/structured-decision.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 export interface ModelResolver {
@@ -52,6 +53,7 @@ export interface AdapterRuntime {
   readonly id: string;
   readonly adapter: HarnessAdapter;
   createTriageProvider(): TriageProvider;
+  createStructuredDecisionProvider?(): StructuredDecisionProvider;
   createPlanningProvider(): PlanningProvider;
   createExecutionProvider(config: LeanRigorConfig): ExecutionProvider;
 }

@@ -6,7 +6,7 @@ import { ClaudeCliPlanningProvider } from "../src/adapters/claude/planning-provi
 import { buildTriagePrompt, ClaudeCliTriageProvider, defaultCommandRunner, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
 import { defaultConfig } from "../src/config/defaults.js";
 import { assessTask } from "../src/core/assessment.js";
-import type { PlanningProviderInput } from "../src/core/planning-runner.js";
+import { PlanningValidationError, runPlanning, type PlanningProviderInput } from "../src/core/planning-runner.js";
 import { collectTriageEvidence } from "../src/core/triage-evidence.js";
 import type { ExecutionPlan, ModelTriageRecommendation } from "../src/core/types.js";
 
@@ -113,27 +113,27 @@ describe("Claude provider model tier fallback", () => {
     expect(prompt).not.toContain("TARGET_REPO_SKILL");
   });
 
-  it("tries planning fallback tiers down to inherited Claude default", async () => {
+  it("starts bounded planning on the small tier and falls back through configured tiers", async () => {
     clearModelEnv();
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliPlanningProvider(commandRunner({
-      failModels: ["sonnet", "opus"],
+      failModels: ["haiku", "sonnet", "opus"],
       output: compactPlan(),
       calls
     }));
 
     const result = await provider.plan(planningInput(config));
 
-    expect(modelArgs(calls)).toEqual(["sonnet", "opus", "inherit"]);
+    expect(modelArgs(calls)).toEqual(["haiku", "sonnet", "inherit"]);
     expect(result.model).toBeUndefined();
-    expect(result.warnings?.join("\n")).toContain("planning tier 'medium'");
-    expect(result.warnings?.join("\n")).toContain("planning tier 'large'");
+    expect(result.warnings?.join("\n")).toContain("planning draft tier 'small'");
+    expect(result.warnings?.join("\n")).toContain("planning draft tier 'medium'");
   });
 
-  it("uses ANTHROPIC_DEFAULT_SONNET_MODEL for standard planning when no LeanRigor model is configured", async () => {
+  it("uses ANTHROPIC_DEFAULT_HAIKU_MODEL for the small structured planning draft", async () => {
     clearModelEnv();
-    vi.stubEnv("ANTHROPIC_DEFAULT_SONNET_MODEL", "deepseek-env-sonnet");
+    vi.stubEnv("ANTHROPIC_DEFAULT_HAIKU_MODEL", "deepseek-env-small");
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliPlanningProvider(commandRunner({
@@ -144,8 +144,8 @@ describe("Claude provider model tier fallback", () => {
 
     const result = await provider.plan(planningInput(config));
 
-    expect(modelArgs(calls)).toEqual(["deepseek-env-sonnet"]);
-    expect(result.model).toBe("deepseek-env-sonnet");
+    expect(modelArgs(calls)).toEqual(["deepseek-env-small"]);
+    expect(result.model).toBe("deepseek-env-small");
   });
 
   it("surfaces max-turn provider fallback diagnostics explicitly", async () => {
@@ -153,7 +153,7 @@ describe("Claude provider model tier fallback", () => {
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliPlanningProvider(commandRunner({
-      failModels: ["sonnet"],
+      failModels: ["haiku"],
       failureReason: "Claude stopped because maximum turns were reached",
       output: compactPlan(),
       calls
@@ -161,8 +161,26 @@ describe("Claude provider model tier fallback", () => {
 
     const result = await provider.plan(planningInput(config));
 
-    expect(modelArgs(calls)).toEqual(["sonnet", "opus"]);
+    expect(modelArgs(calls)).toEqual(["haiku", "sonnet"]);
     expect(result.warnings?.join("\n")).toContain("max_turns_reached");
+  });
+
+  it("uses bare schema-constrained minimal mode with no tools for planning", async () => {
+    clearModelEnv();
+    const calls: string[][] = [];
+    const provider = new ClaudeCliPlanningProvider(commandRunner({ failModels: [], output: compactPlan(), calls }));
+
+    const result = await provider.plan(planningInput());
+
+    const args = calls[0] ?? [];
+    expect(args).toContain("--bare");
+    expect(args).toContain("--json-schema");
+    expect(JSON.parse(args[args.indexOf("--json-schema") + 1] ?? "{}")).toMatchObject({ type: "object", additionalProperties: false });
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+    expect(args).toContain("--no-session-persistence");
+    expect(args[args.indexOf("--effort") + 1]).toBe("low");
+    expect(result.launchMode).toBe("bare");
+    expect(result.tier).toBe("small");
   });
 
   it("uses configured planning and repair turn budgets", async () => {
@@ -182,6 +200,48 @@ describe("Claude provider model tier fallback", () => {
 
     expect(calls[0]?.[calls[0].indexOf("--max-turns") + 1]).toBe("11");
     expect(calls[1]?.[calls[1].indexOf("--max-turns") + 1]).toBe("6");
+  });
+
+  it("escalates only unresolved architectural diagnostics after a small repair", async () => {
+    const input = planningInput();
+    const stages: string[] = [];
+    const result = await runPlanning({
+      input,
+      provider: {
+        name: "bounded-planner",
+        async plan() {
+          stages.push("draft");
+          return { raw: { valid: false }, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare" };
+        },
+        async repair() {
+          stages.push("repair");
+          return { raw: { valid: false }, provider: "bounded-planner", tier: "small", model: "small-model", launchMode: "bare" };
+        },
+        async escalate() {
+          stages.push("escalation");
+          return { raw: { valid: true }, provider: "bounded-planner", tier: "medium", model: "medium-model", launchMode: "bare" };
+        }
+      },
+      providerSelection: "auto",
+      validate(raw) {
+        if ((raw as { valid?: boolean }).valid) return input.deterministicPlan;
+        throw new PlanningValidationError([{
+          stage: "quality",
+          path: ["phases", 0, "expectedWriteAreas"],
+          code: "scope.mixed_architectural_boundaries",
+          message: "The phase mixes architectural boundaries."
+        }]);
+      }
+    });
+
+    expect(stages).toEqual(["draft", "repair", "escalation"]);
+    expect(result.source).toBe("model");
+    expect(result.model).toBe("medium-model");
+    expect(result.attemptRecords).toMatchObject([
+      { stage: "draft", tier: "small", invocation: "succeeded", validation: "failed" },
+      { stage: "repair", tier: "small", invocation: "succeeded", validation: "failed" },
+      { stage: "escalation", tier: "medium", invocation: "succeeded", validation: "passed" }
+    ]);
   });
 });
 

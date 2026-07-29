@@ -161,6 +161,8 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
           planningSource: state.planningRun?.source ?? "unknown",
           provider: state.planningRun?.provider ?? "unknown",
           model: state.planningRun?.model,
+          attemptRecords: state.planningRun?.attemptRecords ?? [],
+          planningOutcome: planningOutcomeExplanation(state),
           phases: plan?.phases.length ?? 0
         },
         overallStrategy: {
@@ -426,13 +428,46 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
   }
   if (state.state === "blocked") {
     const planBlocked = Boolean(state.planningRun?.approvalBlockedReason);
+    if (planBlocked) {
+      const root = quoteArg(state.root);
+      const decision = state.approval?.pendingDecision;
+      const common = decision?.status === "pending"
+        ? ` --decision-id ${quoteArg(decision.id)} --expected-revision ${state.revision}`
+        : "";
+      return {
+        ...base,
+        label: "Planning fallback review",
+        userDecisionRequired: true,
+        pendingDecision: state.planningRun?.approvalBlockedReason ?? "The generated fallback plan is not safe to approve as-is.",
+        pendingAction: "Retry structured planning, revise the plan with feedback, inspect the persisted diagnostics, or cancel.",
+        allowedIntents: ["retry", "revise", "view details", "show status", "cancel"],
+        approvalActions: [
+          { label: "Retry structured planning", intent: "retry", command: `leanrigor flow retry-plan ${state.id} --provider auto${common} --root ${root}`, description: "Retry bounded structured planning using the configured provider." },
+          { label: "Revise Workflow Plan", intent: "revise", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto${common} --root ${root}`, description: "Provide concrete feedback and generate a fresh plan for approval." },
+          { label: "View planning details", intent: "view details", command: `leanrigor flow status ${state.id} --json --root ${root}`, description: "Show the exact invocation, validation, repair, and fallback evidence." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id}${common} --root ${root}`, description: "Cancel without implementation, commit, or push." }
+        ],
+        summary: {
+          approvalSafe: false,
+          explanation: planningOutcomeExplanation(state),
+          source: state.planningRun?.source,
+          provider: state.planningRun?.provider,
+          model: state.planningRun?.model,
+          attempts: state.planningRun?.attemptRecords ?? [],
+          warnings: state.planningRun?.warnings ?? [],
+          diagnostics: state.planningRun?.diagnostics ?? [],
+          fallbackReason: state.planningRun?.fallbackReason,
+          blockers: state.blockers
+        }
+      };
+    }
     return {
       ...base,
       label: "Blocked",
       userDecisionRequired: true,
       pendingDecision: state.blockers[0] ?? "Workflow is blocked.",
-      pendingAction: planBlocked ? "Revise the plan before continuing." : "Resolve the blocker, revise the workflow, or cancel.",
-      allowedIntents: planBlocked ? ["revise", "show status", "cancel"] : ["show status", "cancel"],
+      pendingAction: "Resolve the blocker, revise the workflow, or cancel.",
+      allowedIntents: ["show status", "cancel"],
       summary: { blockers: state.blockers }
     };
   }
@@ -598,9 +633,28 @@ function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
   if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
-  if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["revise-plan", "cancel"];
+  if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["retry-plan", "revise-plan", "status", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
   return ["status"];
+}
+
+function planningOutcomeExplanation(state: SequentialWorkflowState): string {
+  const planning = state.planningRun;
+  if (!planning) return "Planning provenance is unavailable.";
+  const records = planning.attemptRecords ?? [];
+  const draft = records.find((record) => record.stage === "draft");
+  if (draft?.invocation === "failed" && draft.validation === "not-attempted") {
+    return "The planning provider failed before returning a candidate plan. Candidate validation and semantic repair were not attempted.";
+  }
+  if (draft?.invocation === "succeeded" && draft.validation === "failed") {
+    const repaired = records.some((record) => (record.stage === "repair" || record.stage === "escalation") && record.validation === "passed");
+    return repaired
+      ? "The provider returned a candidate that failed deterministic validation; a later bounded repair produced the persisted approval-quality plan."
+      : "The provider returned a candidate that failed deterministic validation, and no later repair produced an approval-quality plan.";
+  }
+  if (draft?.validation === "passed") return "The provider returned a candidate plan that passed deterministic validation.";
+  if (planning.source === "deterministic-fallback") return `Deterministic fallback was applied${planning.fallbackReason ? `: ${planning.fallbackReason}` : "."}`;
+  return "The persisted planning attempt evidence does not include a complete draft outcome.";
 }
 
 function commitPlanSummary(plan: CommitPlan | undefined): unknown {

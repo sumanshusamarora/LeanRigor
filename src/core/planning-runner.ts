@@ -1,7 +1,7 @@
 import { jsonrepair } from "jsonrepair";
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
-import type { ExecutionPlan, TriageOutput } from "./types.js";
-import { type TriageProviderSelection } from "./triage-runner.js";
+import type { ExecutionPlan, PlanningAttemptRecord, TriageOutput } from "./types.js";
+import { TriageProviderError, type TriageProviderSelection } from "./triage-runner.js";
 
 export interface PlanDiagnostic {
   stage: "syntax" | "schema" | "quality";
@@ -20,6 +20,7 @@ export interface PlanningProviderResult {
   provider: string;
   model?: string;
   tier?: ModelTier;
+  launchMode?: string;
   warnings?: string[];
 }
 
@@ -53,6 +54,7 @@ export interface PlanningProvider {
   name: string;
   plan(input: PlanningProviderInput): Promise<PlanningProviderResult>;
   repair?(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult>;
+  escalate?(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult>;
 }
 
 export interface PlanningRunResult {
@@ -67,11 +69,22 @@ export interface PlanningRunResult {
   syntaxRepairApplied?: boolean;
   semanticRepairApplied?: boolean;
   approvalBlockedReason?: string;
+  attemptRecords: PlanningAttemptRecord[];
 }
 
 export class PlanningValidationError extends Error {
   constructor(readonly diagnostics: PlanDiagnostic[]) {
     super(diagnostics.map((diagnostic) => `${diagnostic.stage}:${diagnostic.path.join(".") || "<root>"}:${diagnostic.message}`).join("\n"));
+  }
+}
+
+export class PlanningProviderInvocationError extends Error {
+  constructor(
+    message: string,
+    readonly kind: TriageProviderError["kind"],
+    readonly attempt: Pick<PlanningProviderResult, "provider" | "model" | "tier" | "launchMode">
+  ) {
+    super(message);
   }
 }
 
@@ -85,6 +98,7 @@ export async function runPlanning(args: {
   const { input, provider } = args;
   const warnings: string[] = [];
   const allDiagnostics: PlanDiagnostic[] = [];
+  const attemptRecords: PlanningAttemptRecord[] = [];
   let syntaxRepairApplied = false;
   let semanticRepairApplied = false;
   let sawQualityRepairablePlan = false;
@@ -103,7 +117,8 @@ export async function runPlanning(args: {
       provider: provider?.name ?? "deterministic",
       attempts: 0,
       fallbackReason,
-      warnings
+      warnings,
+      attemptRecords
     };
   }
 
@@ -114,11 +129,22 @@ export async function runPlanning(args: {
     try {
       result = await provider.plan(input);
     } catch (error) {
-      warnings.push(`Planning provider invocation ${attempt} failed: ${messageOf(error)}`);
+      const failureReason = messageOf(error);
+      warnings.push(`Planning provider invocation ${attempt} failed: ${failureReason}`);
+      attemptRecords.push(attemptRecord("draft", failedAttemptResult(error), {
+        invocation: "failed",
+        validation: "not-attempted",
+        failureReason
+      }));
+      if (isStructuralProviderFailure(error)) break;
       continue;
     }
 
     warnings.push(...(result.warnings ?? []));
+    const draftRecord = attemptRecord("draft", result, {
+      invocation: "succeeded",
+      validation: "not-attempted"
+    });
     let parsed: ParsedPlanningPayload;
     try {
       parsed = parsePlanningPayload(result.raw);
@@ -127,68 +153,169 @@ export async function runPlanning(args: {
     } catch (error) {
       const diagnostics = diagnosticsOf(error, "syntax");
       allDiagnostics.push(...diagnostics);
+      draftRecord.validation = "failed";
+      draftRecord.diagnosticCodes = diagnosticCodes(diagnostics);
+      draftRecord.failureReason = messageOf(error);
+      attemptRecords.push(draftRecord);
       warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf(error)}`);
       continue;
     }
 
     const validated = validateCandidate(args, parsed.value);
     if (validated.ok) {
-      return modelResult(validated.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
+      draftRecord.validation = "passed";
+      attemptRecords.push(draftRecord);
+      return modelResult(validated.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
     }
 
     allDiagnostics.push(...validated.diagnostics);
+    draftRecord.validation = "failed";
+    draftRecord.diagnosticCodes = diagnosticCodes(validated.diagnostics);
+    attemptRecords.push(draftRecord);
     if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) sawQualityRepairablePlan = true;
     if (validated.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
     warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
 
     const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
     warnings.push(...(normalised.warnings ?? []));
+    let latestPlan = normalised.raw;
+    let latestDiagnostics = validated.diagnostics;
     if (normalised.changed) {
       const normalisedValidation = validateCandidate(args, normalised.raw);
+      attemptRecords.push(attemptRecord("normalisation", undefined, {
+        invocation: "not-attempted",
+        validation: normalisedValidation.ok ? "passed" : "failed",
+        diagnosticCodes: normalisedValidation.ok ? [] : diagnosticCodes(normalisedValidation.diagnostics)
+      }));
       if (normalisedValidation.ok) {
         semanticRepairApplied = true;
         warnings.push("Planning semantic repair applied with deterministic field normalisation.");
-        return modelResult(normalisedValidation.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
+        return modelResult(normalisedValidation.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
       }
       allDiagnostics.push(...normalisedValidation.diagnostics);
+      latestDiagnostics = normalisedValidation.diagnostics;
     }
 
     if (provider.repair) {
+      let repairResult: PlanningProviderResult | undefined;
       try {
         warnings.push("Attempting same-provider/model planning repair for exact validation diagnostics.");
-        const repairResult = await provider.repair(input, {
+        repairResult = await provider.repair(input, {
           plan: normalised.raw,
           diagnostics: validated.diagnostics.map((diagnostic) => ({ ...diagnostic, repairAttempt: "same-model" })),
           model: result.model,
           tier: result.tier
         });
+      } catch (error) {
+        const failureReason = messageOf(error);
+        allDiagnostics.push(...diagnosticsOf(error, "schema"));
+        attemptRecords.push(attemptRecord("repair", result, {
+          invocation: "failed",
+          validation: "not-attempted",
+          failureReason
+        }));
+        warnings.push(`Planning semantic repair failed: ${failureReason}`);
+      }
+      if (repairResult) {
+        const repairRecord = attemptRecord("repair", repairResult, {
+          invocation: "succeeded",
+          validation: "not-attempted"
+        });
+        try {
         warnings.push(...(repairResult.warnings ?? []));
         const repairedParsed = parsePlanningPayload(repairResult.raw);
         syntaxRepairApplied ||= repairedParsed.syntaxRepairApplied;
         if (repairedParsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once to semantic repair output.");
         const repairedValidation = validateCandidate(args, repairedParsed.value);
         if (repairedValidation.ok) {
+          repairRecord.validation = "passed";
+          attemptRecords.push(repairRecord);
           semanticRepairApplied = true;
           warnings.push("Planning semantic repair applied by the same provider/model.");
           markDiagnosticsResolution(allDiagnostics, validated.diagnostics, "repaired");
-          return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
+          return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
         }
+        repairRecord.validation = "failed";
+        repairRecord.diagnosticCodes = diagnosticCodes(repairedValidation.diagnostics);
+        attemptRecords.push(repairRecord);
         if (repairedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
         allDiagnostics.push(...repairedValidation.diagnostics);
+        latestPlan = repairedParsed.value;
+        latestDiagnostics = repairedValidation.diagnostics;
         warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
       } catch (error) {
-        allDiagnostics.push(...diagnosticsOf(error, "schema"));
+        const diagnostics = diagnosticsOf(error, "schema");
+        allDiagnostics.push(...diagnostics);
+        repairRecord.validation = "failed";
+        repairRecord.diagnosticCodes = diagnosticCodes(diagnostics);
+        repairRecord.failureReason = messageOf(error);
+        attemptRecords.push(repairRecord);
         warnings.push(`Planning semantic repair failed: ${messageOf(error)}`);
       }
-      if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) break;
+      }
     }
+
+    if (provider.escalate && latestDiagnostics.some(isArchitecturalDiagnostic)) {
+      let escalationResult: PlanningProviderResult | undefined;
+      try {
+        warnings.push("Escalating unresolved architectural planning diagnostics to the configured planning tier.");
+        escalationResult = await provider.escalate(input, {
+          plan: latestPlan,
+          diagnostics: latestDiagnostics,
+          model: result.model,
+          tier: result.tier
+        });
+      } catch (error) {
+        const failureReason = messageOf(error);
+        attemptRecords.push(attemptRecord("escalation", result, {
+          invocation: "failed",
+          validation: "not-attempted",
+          failureReason
+        }));
+        warnings.push(`Planning architecture escalation failed: ${failureReason}`);
+      }
+      if (escalationResult) {
+        const escalationRecord = attemptRecord("escalation", escalationResult, {
+          invocation: "succeeded",
+          validation: "not-attempted"
+        });
+        try {
+          const escalatedParsed = parsePlanningPayload(escalationResult.raw);
+          const escalatedValidation = validateCandidate(args, escalatedParsed.value);
+          if (escalatedValidation.ok) {
+            escalationRecord.validation = "passed";
+            attemptRecords.push(escalationRecord);
+            semanticRepairApplied = true;
+            warnings.push("Planning architecture escalation produced a valid bounded plan.");
+            return modelResult(escalatedValidation.plan, escalationResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
+          }
+          escalationRecord.validation = "failed";
+          escalationRecord.diagnosticCodes = diagnosticCodes(escalatedValidation.diagnostics);
+          attemptRecords.push(escalationRecord);
+          allDiagnostics.push(...escalatedValidation.diagnostics);
+          if (escalatedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
+          warnings.push(`Planning architecture escalation failed validation: ${diagnosticSummary(escalatedValidation.diagnostics)}`);
+        } catch (error) {
+          const diagnostics = diagnosticsOf(error, "schema");
+          allDiagnostics.push(...diagnostics);
+          escalationRecord.validation = "failed";
+          escalationRecord.diagnosticCodes = diagnosticCodes(diagnostics);
+          escalationRecord.failureReason = messageOf(error);
+          attemptRecords.push(escalationRecord);
+          warnings.push(`Planning architecture escalation returned invalid output: ${messageOf(error)}`);
+        }
+      }
+    }
+    if (validated.diagnostics.some((diagnostic) => diagnostic.stage === "quality")) break;
   }
 
   const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
   const approvalBlockedReason = sawConstraintContradiction
     ? "Model planning contradicted approved constraints and repair did not produce a valid plan; plan approval is disabled until the plan is revised."
-    : sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan)
-    ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised."
+    : isGenericFallbackPlan(input.deterministicPlan)
+    ? sawQualityRepairablePlan
+      ? "Deterministic fallback plan is generic while a model-generated plan did not pass targeted repair; plan approval is disabled until planning is retried or the plan is revised."
+      : "Model planning failed before producing an approval-quality plan and the deterministic fallback is generic; plan approval is disabled until planning is retried or the plan is revised."
     : undefined;
   if (approvalBlockedReason) {
     for (const diagnostic of allDiagnostics) {
@@ -206,7 +333,8 @@ export async function runPlanning(args: {
     diagnostics: allDiagnostics,
     syntaxRepairApplied,
     semanticRepairApplied,
-    approvalBlockedReason
+    approvalBlockedReason,
+    attemptRecords
   };
 }
 
@@ -272,6 +400,45 @@ function isConstraintDiagnostic(diagnostic: PlanDiagnostic): boolean {
   return diagnostic.code.startsWith("constraint.");
 }
 
+function isArchitecturalDiagnostic(diagnostic: PlanDiagnostic): boolean {
+  return diagnostic.code === "scope.mixed_architectural_boundaries"
+    || diagnostic.code === "closure.future_dependency"
+    || diagnostic.code === "dependency.unlinked_producer"
+    || diagnostic.code === "dependency.write_boundary_overlap";
+}
+
+function isStructuralProviderFailure(error: unknown): boolean {
+  return (error instanceof TriageProviderError || error instanceof PlanningProviderInvocationError)
+    && ["provider_process_failure", "max_turns", "max_budget"].includes(error.kind);
+}
+
+function failedAttemptResult(error: unknown): PlanningProviderResult | undefined {
+  return error instanceof PlanningProviderInvocationError
+    ? { raw: undefined, ...error.attempt }
+    : undefined;
+}
+
+function diagnosticCodes(diagnostics: PlanDiagnostic[]): string[] {
+  return [...new Set(diagnostics.map((diagnostic) => diagnostic.code))];
+}
+
+function attemptRecord(
+  stage: PlanningAttemptRecord["stage"],
+  result: PlanningProviderResult | undefined,
+  outcome: Pick<PlanningAttemptRecord, "invocation" | "validation"> & Partial<Pick<PlanningAttemptRecord, "diagnosticCodes" | "failureReason">>
+): PlanningAttemptRecord {
+  return {
+    stage,
+    tier: result?.tier,
+    model: result?.model,
+    launchMode: result?.launchMode,
+    invocation: outcome.invocation,
+    validation: outcome.validation,
+    diagnosticCodes: outcome.diagnosticCodes ?? [],
+    failureReason: outcome.failureReason
+  };
+}
+
 function markDiagnosticsResolution(allDiagnostics: PlanDiagnostic[], matched: PlanDiagnostic[], resolution: NonNullable<PlanDiagnostic["resolution"]>): void {
   for (const diagnostic of allDiagnostics) {
     if (!matched.some((candidate) => candidate.code === diagnostic.code && candidate.message === diagnostic.message && candidate.path.join(".") === diagnostic.path.join("."))) continue;
@@ -286,7 +453,8 @@ function modelResult(
   warnings: string[],
   diagnostics: PlanDiagnostic[],
   syntaxRepairApplied: boolean,
-  semanticRepairApplied: boolean
+  semanticRepairApplied: boolean,
+  attemptRecords: PlanningAttemptRecord[]
 ): PlanningRunResult {
   return {
     plan,
@@ -297,7 +465,8 @@ function modelResult(
     warnings,
     diagnostics,
     syntaxRepairApplied,
-    semanticRepairApplied
+    semanticRepairApplied,
+    attemptRecords
   };
 }
 

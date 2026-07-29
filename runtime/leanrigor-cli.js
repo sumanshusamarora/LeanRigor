@@ -20701,36 +20701,771 @@ async function loadConfigForUninstall(root) {
   }
 }
 
-// src/adapters/claude/triage-provider.ts
-init_models();
-import { spawn } from "node:child_process";
-import { existsSync as existsSync2 } from "node:fs";
-import { open, readFile as readFile8 } from "node:fs/promises";
-import path11 from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
+// node_modules/jsonrepair/lib/esm/utils/JSONRepairError.js
+var JSONRepairError = class extends Error {
+  constructor(message, position) {
+    super(`${message} at position ${position}`);
+    this.position = position;
+  }
+};
 
-// src/core/claude-prompt.ts
-import { mkdtemp, rm, writeFile as writeFile6 } from "node:fs/promises";
-import os from "node:os";
-import path8 from "node:path";
-async function createClaudePromptFile(prompt) {
-  const directory = await mkdtemp(path8.join(os.tmpdir(), "leanrigor-claude-prompt-"));
-  const promptPath = path8.join(directory, "prompt.txt");
-  await writeFile6(promptPath, prompt, "utf8");
-  let cleaned = false;
-  return {
-    path: promptPath,
-    async cleanup() {
-      if (cleaned) return;
-      cleaned = true;
-      await rm(directory, { recursive: true, force: true });
+// node_modules/jsonrepair/lib/esm/utils/stringUtils.js
+var codeSpace = 32;
+var codeNewline = 10;
+var codeTab = 9;
+var codeReturn = 13;
+var codeNonBreakingSpace = 160;
+var codeMongolianVowelSeparator = 6158;
+var codeEnQuad = 8192;
+var codeZeroWidthSpace = 8203;
+var codeNarrowNoBreakSpace = 8239;
+var codeMediumMathematicalSpace = 8287;
+var codeIdeographicSpace = 12288;
+var codeZeroWidthNoBreakSpace = 65279;
+function isHex(char) {
+  return /^[0-9A-Fa-f]$/.test(char);
+}
+function isDigit(char) {
+  return char >= "0" && char <= "9";
+}
+function isValidStringCharacter(char) {
+  return char >= " ";
+}
+function isDelimiter(char) {
+  return ",:[]/{}()\n+".includes(char);
+}
+function isFunctionNameCharStart(char) {
+  return char >= "a" && char <= "z" || char >= "A" && char <= "Z" || char === "_" || char === "$";
+}
+function isFunctionNameChar(char) {
+  return char >= "a" && char <= "z" || char >= "A" && char <= "Z" || char === "_" || char === "$" || char >= "0" && char <= "9";
+}
+var regexUrlStart = /^(http|https|ftp|mailto|file|data|irc):\/\/$/;
+var regexUrlChar = /^[A-Za-z0-9-._~:/?#@!$&'()*+;=]$/;
+function isUnquotedStringDelimiter(char) {
+  return ",[]/{}\n+".includes(char);
+}
+function isStartOfValue(char) {
+  return isQuote(char) || regexStartOfValue.test(char);
+}
+var regexStartOfValue = /^[[{\w-]$/;
+function isControlCharacter(char) {
+  return char === "\n" || char === "\r" || char === "	" || char === "\b" || char === "\f";
+}
+function isWhitespace(text, index) {
+  const code = text.charCodeAt(index);
+  return code === codeSpace || code === codeNewline || code === codeTab || code === codeReturn;
+}
+function isWhitespaceExceptNewline(text, index) {
+  const code = text.charCodeAt(index);
+  return code === codeSpace || code === codeTab || code === codeReturn;
+}
+function isSpecialWhitespace(text, index) {
+  const code = text.charCodeAt(index);
+  return code === codeNonBreakingSpace || code === codeMongolianVowelSeparator || code >= codeEnQuad && code <= codeZeroWidthSpace || code === codeNarrowNoBreakSpace || code === codeMediumMathematicalSpace || code === codeIdeographicSpace || code === codeZeroWidthNoBreakSpace;
+}
+function isQuote(char) {
+  return isDoubleQuoteLike(char) || isSingleQuoteLike(char);
+}
+function isDoubleQuoteLike(char) {
+  return char === '"' || char === "\u201C" || char === "\u201D";
+}
+function isDoubleQuote(char) {
+  return char === '"';
+}
+function isSingleQuoteLike(char) {
+  return char === "'" || char === "\u2018" || char === "\u2019" || char === "`" || char === "\xB4";
+}
+function isSingleQuote(char) {
+  return char === "'";
+}
+function stripLastOccurrence(text, textToStrip) {
+  let stripRemainingText = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : false;
+  const index = text.lastIndexOf(textToStrip);
+  return index !== -1 ? text.substring(0, index) + (stripRemainingText ? "" : text.substring(index + 1)) : text;
+}
+function insertBeforeLastWhitespace(text, textToInsert) {
+  let index = text.length;
+  if (!isWhitespace(text, index - 1)) {
+    return text + textToInsert;
+  }
+  while (isWhitespace(text, index - 1)) {
+    index--;
+  }
+  return text.substring(0, index) + textToInsert + text.substring(index);
+}
+function removeAtIndex(text, start, count) {
+  return text.substring(0, start) + text.substring(start + count);
+}
+function endsWithCommaOrNewline(text) {
+  return /[,\n][ \t\r]*$/.test(text);
+}
+var namedHtmlEntities = {
+  "&quot;": '"',
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&apos;": "'"
+};
+var maxHtmlEntityLength = 12;
+function matchHtmlEntity(fragment) {
+  if (fragment.charAt(0) !== "&") {
+    return null;
+  }
+  const semicolon = fragment.indexOf(";");
+  if (semicolon === -1) {
+    return null;
+  }
+  const entity = fragment.substring(0, semicolon + 1);
+  const named = namedHtmlEntities[entity];
+  if (named !== void 0) {
+    return {
+      char: named,
+      length: entity.length
+    };
+  }
+  if (fragment.charAt(1) === "#") {
+    const body = fragment.substring(2, semicolon);
+    const hex3 = body.charAt(0) === "x" || body.charAt(0) === "X";
+    const digits = hex3 ? body.substring(1) : body;
+    if (digits.length > 0) {
+      const code = Number.parseInt(digits, hex3 ? 16 : 10);
+      if (!Number.isNaN(code) && code >= 0 && code <= 1114111) {
+        return {
+          char: String.fromCodePoint(code),
+          length: entity.length
+        };
+      }
     }
-  };
+  }
+  return null;
+}
+function isDoubleQuoteEntity(match) {
+  return match !== null && match.char === '"';
+}
+function isSingleQuoteEntity(match) {
+  return match !== null && match.char === "'";
+}
+function countOccurrences(text, char) {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charAt(i) === char) {
+      count++;
+    }
+  }
+  return count;
+}
+function isInsideUnclosedBracket(text, closeChar) {
+  switch (closeChar) {
+    case ")":
+      return countOccurrences(text, "(") > countOccurrences(text, ")");
+    case "]":
+      return countOccurrences(text, "[") > countOccurrences(text, "]");
+    case "}":
+      return countOccurrences(text, "{") > countOccurrences(text, "}");
+    default:
+      return false;
+  }
+}
+
+// node_modules/jsonrepair/lib/esm/regular/jsonrepair.js
+var controlCharacters = {
+  "\b": "\\b",
+  "\f": "\\f",
+  "\n": "\\n",
+  "\r": "\\r",
+  "	": "\\t"
+};
+var escapeCharacters = {
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "	"
+  // note that \u is handled separately in parseString()
+};
+function jsonrepair(text) {
+  let i = 0;
+  let output = "";
+  parseMarkdownCodeBlock(["```", "[```", "{```"]);
+  const processed = parseValue();
+  if (!processed) {
+    throwUnexpectedEnd();
+  }
+  parseMarkdownCodeBlock(["```", "```]", "```}"]);
+  const processedComma = parseCharacter(",");
+  if (processedComma) {
+    parseWhitespaceAndSkipComments();
+  }
+  if (isStartOfValue(text[i]) && endsWithCommaOrNewline(output)) {
+    if (!processedComma) {
+      output = insertBeforeLastWhitespace(output, ",");
+    }
+    parseNewlineDelimitedJSON();
+  } else if (processedComma) {
+    output = stripLastOccurrence(output, ",");
+  }
+  while (text[i] === "}" || text[i] === "]") {
+    i++;
+    parseWhitespaceAndSkipComments();
+  }
+  if (i >= text.length) {
+    return output;
+  }
+  throwUnexpectedCharacter();
+  function parseValue() {
+    parseWhitespaceAndSkipComments();
+    const processed2 = parseObject() || parseArray() || parseString() || parseNumber() || parseKeywords() || parseUnquotedString(false) || parseRegex();
+    parseWhitespaceAndSkipComments();
+    return processed2;
+  }
+  function parseWhitespaceAndSkipComments() {
+    let skipNewline = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : true;
+    const start = i;
+    let changed = parseWhitespace(skipNewline);
+    do {
+      changed = parseComment();
+      if (changed) {
+        changed = parseWhitespace(skipNewline);
+      }
+    } while (changed);
+    return i > start;
+  }
+  function parseWhitespace(skipNewline) {
+    const _isWhiteSpace = skipNewline ? isWhitespace : isWhitespaceExceptNewline;
+    let whitespace = "";
+    while (true) {
+      if (_isWhiteSpace(text, i)) {
+        whitespace += text[i];
+        i++;
+      } else if (isSpecialWhitespace(text, i)) {
+        whitespace += " ";
+        i++;
+      } else {
+        break;
+      }
+    }
+    if (whitespace.length > 0) {
+      output += whitespace;
+      return true;
+    }
+    return false;
+  }
+  function parseComment() {
+    if (text[i] === "/" && text[i + 1] === "*") {
+      while (i < text.length && !atEndOfBlockComment(text, i)) {
+        i++;
+      }
+      i += 2;
+      return true;
+    }
+    if (text[i] === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        i++;
+      }
+      return true;
+    }
+    return false;
+  }
+  function parseMarkdownCodeBlock(blocks) {
+    if (skipMarkdownCodeBlock(blocks)) {
+      if (isFunctionNameCharStart(text[i])) {
+        while (i < text.length && isFunctionNameChar(text[i])) {
+          i++;
+        }
+      }
+      parseWhitespaceAndSkipComments();
+      return true;
+    }
+    return false;
+  }
+  function skipMarkdownCodeBlock(blocks) {
+    parseWhitespace(true);
+    for (const block of blocks) {
+      const end = i + block.length;
+      if (text.slice(i, end) === block) {
+        i = end;
+        return true;
+      }
+    }
+    return false;
+  }
+  function parseCharacter(char) {
+    if (text[i] === char) {
+      output += text[i];
+      i++;
+      return true;
+    }
+    return false;
+  }
+  function skipCharacter(char) {
+    if (text[i] === char) {
+      i++;
+      return true;
+    }
+    return false;
+  }
+  function skipEscapeCharacter() {
+    return skipCharacter("\\");
+  }
+  function skipEllipsis() {
+    parseWhitespaceAndSkipComments();
+    if (text[i] === "." && text[i + 1] === "." && text[i + 2] === ".") {
+      i += 3;
+      parseWhitespaceAndSkipComments();
+      skipCharacter(",");
+      return true;
+    }
+    return false;
+  }
+  function parseObject() {
+    if (text[i] === "{") {
+      output += "{";
+      i++;
+      parseWhitespaceAndSkipComments();
+      if (skipCharacter(",")) {
+        parseWhitespaceAndSkipComments();
+      }
+      let initial = true;
+      while (i < text.length && text[i] !== "}") {
+        let processedComma2;
+        if (!initial) {
+          processedComma2 = parseCharacter(",");
+          if (!processedComma2) {
+            output = insertBeforeLastWhitespace(output, ",");
+          }
+          parseWhitespaceAndSkipComments();
+        } else {
+          processedComma2 = true;
+        }
+        skipEllipsis();
+        const processedKey = parseString() || parseUnquotedString(true);
+        if (!processedKey) {
+          if (text[i] === "}" || text[i] === "{" || text[i] === "]" || text[i] === "[" || text[i] === void 0) {
+            if (!initial) {
+              output = stripLastOccurrence(output, ",");
+            }
+          } else {
+            throwObjectKeyExpected();
+          }
+          break;
+        }
+        parseWhitespaceAndSkipComments();
+        const processedColon = parseCharacter(":");
+        const truncatedText = i >= text.length;
+        if (!processedColon) {
+          if (isStartOfValue(text[i]) || truncatedText) {
+            output = insertBeforeLastWhitespace(output, ":");
+          } else {
+            throwColonExpected();
+          }
+        }
+        const processedValue = parseValue();
+        if (!processedValue) {
+          if (processedColon || truncatedText) {
+            output += "null";
+          } else {
+            throwColonExpected();
+          }
+        }
+        initial = false;
+      }
+      if (text[i] === "}") {
+        output += "}";
+        i++;
+      } else {
+        output = insertBeforeLastWhitespace(output, "}");
+      }
+      return true;
+    }
+    return false;
+  }
+  function parseArray() {
+    if (text[i] === "[") {
+      output += "[";
+      i++;
+      parseWhitespaceAndSkipComments();
+      if (skipCharacter(",")) {
+        parseWhitespaceAndSkipComments();
+      }
+      let initial = true;
+      while (i < text.length && text[i] !== "]") {
+        if (!initial) {
+          const processedComma2 = parseCharacter(",");
+          if (!processedComma2) {
+            output = insertBeforeLastWhitespace(output, ",");
+          }
+        }
+        skipEllipsis();
+        const processedValue = parseValue();
+        if (!processedValue) {
+          if (!initial) {
+            output = stripLastOccurrence(output, ",");
+          }
+          break;
+        }
+        initial = false;
+      }
+      if (text[i] === "]") {
+        output += "]";
+        i++;
+      } else {
+        output = insertBeforeLastWhitespace(output, "]");
+      }
+      return true;
+    }
+    return false;
+  }
+  function parseNewlineDelimitedJSON() {
+    let initial = true;
+    let processedValue = true;
+    while (processedValue) {
+      if (!initial) {
+        const processedComma2 = parseCharacter(",");
+        if (!processedComma2) {
+          output = insertBeforeLastWhitespace(output, ",");
+        }
+      } else {
+        initial = false;
+      }
+      processedValue = parseValue();
+    }
+    if (!processedValue) {
+      output = stripLastOccurrence(output, ",");
+    }
+    output = `[
+${output}
+]`;
+  }
+  function parseString() {
+    let stopAtDelimiter = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : false;
+    let stopAtIndex = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : -1;
+    const skipEscapeChars = text[i] === "\\";
+    if (skipEscapeChars) {
+      i++;
+      if (!isQuote(text[i])) {
+        throwUnexpectedCharacter();
+      }
+    }
+    const openEntity = text[i] === "&" ? matchHtmlEntity(text.slice(i, i + maxHtmlEntityLength)) : null;
+    const openedByEntity = isDoubleQuoteEntity(openEntity) || isSingleQuoteEntity(openEntity);
+    if (isQuote(text[i]) || openedByEntity) {
+      const isEndQuote = isDoubleQuote(text[i]) ? isDoubleQuote : isSingleQuote(text[i]) ? isSingleQuote : isSingleQuoteLike(text[i]) ? isSingleQuoteLike : isDoubleQuoteLike;
+      const iBefore = i;
+      const oBefore = output.length;
+      let str = '"';
+      i += openedByEntity && openEntity ? openEntity.length : 1;
+      while (true) {
+        if (i >= text.length) {
+          const iPrev = prevNonWhitespaceIndex(i - 1);
+          if (!stopAtDelimiter && isDelimiter(text.charAt(iPrev))) {
+            i = iBefore;
+            output = output.substring(0, oBefore);
+            return parseString(true);
+          }
+          str = insertBeforeLastWhitespace(str, '"');
+          output += str;
+          return true;
+        }
+        if (i === stopAtIndex) {
+          str = insertBeforeLastWhitespace(str, '"');
+          output += str;
+          return true;
+        }
+        const entity = openedByEntity && text[i] === "&" ? matchHtmlEntity(text.slice(i, i + maxHtmlEntityLength)) : null;
+        const isEnd = entity && openEntity ? entity.char === openEntity.char : isEndQuote(text[i]);
+        if (isEnd) {
+          const iQuote = i;
+          const oQuote = str.length;
+          str += '"';
+          i += entity ? entity.length : 1;
+          output += str;
+          parseWhitespaceAndSkipComments(false);
+          if (stopAtDelimiter || i >= text.length || isDelimiter(text[i]) && // only count the brackets inside the string when actually needed,
+          // i.e. when the quote is directly followed by a closing bracket
+          !isInsideUnclosedBracket(str, text[i]) || isQuote(text[i]) && !nextQuoteIsEndQuote(i) || isDigit(text[i])) {
+            parseConcatenatedString();
+            return true;
+          }
+          if (text[i] === "\\") {
+            throwUnexpectedCharacter();
+          }
+          const iPrevChar = prevNonWhitespaceIndex(iQuote - 1);
+          const prevChar = text.charAt(iPrevChar);
+          if (prevChar === ",") {
+            i = iBefore;
+            output = output.substring(0, oBefore);
+            return parseString(false, iPrevChar);
+          }
+          if (isDelimiter(prevChar)) {
+            i = iBefore;
+            output = output.substring(0, oBefore);
+            return parseString(true);
+          }
+          output = output.substring(0, oBefore);
+          i = iQuote + (entity ? entity.length : 1);
+          str = `${str.substring(0, oQuote)}\\${str.substring(oQuote)}`;
+        } else if (stopAtDelimiter && isUnquotedStringDelimiter(text[i])) {
+          if (text[i - 1] === ":" && regexUrlStart.test(text.substring(iBefore + 1, i + 2))) {
+            while (i < text.length && regexUrlChar.test(text[i])) {
+              str += text[i];
+              i++;
+            }
+          }
+          str = insertBeforeLastWhitespace(str, '"');
+          output += str;
+          parseConcatenatedString();
+          return true;
+        } else if (entity) {
+          const char = entity.char;
+          if (char === '"') {
+            str += '\\"';
+          } else if (isControlCharacter(char)) {
+            str += controlCharacters[char];
+          } else {
+            str += char;
+          }
+          i += entity.length;
+        } else if (text[i] === "\\") {
+          const char = text.charAt(i + 1);
+          const escapeChar = escapeCharacters[char];
+          if (escapeChar !== void 0) {
+            str += text.slice(i, i + 2);
+            i += 2;
+          } else if (char === "u") {
+            let j = 2;
+            while (j < 6 && isHex(text[i + j])) {
+              j++;
+            }
+            if (j === 6) {
+              str += text.slice(i, i + 6);
+              i += 6;
+            } else if (i + j >= text.length) {
+              i = text.length;
+            } else {
+              throwInvalidUnicodeCharacter();
+            }
+          } else if (char === "\n") {
+            str += "\\n";
+            i += 2;
+          } else {
+            str += char;
+            i += 2;
+          }
+        } else {
+          const char = text.charAt(i);
+          if (char === '"' && text[i - 1] !== "\\") {
+            str += `\\${char}`;
+            i++;
+          } else if (isControlCharacter(char)) {
+            str += controlCharacters[char];
+            i++;
+          } else {
+            if (!isValidStringCharacter(char)) {
+              throwInvalidCharacter(char);
+            }
+            str += char;
+            i++;
+          }
+        }
+        if (skipEscapeChars) {
+          skipEscapeCharacter();
+        }
+      }
+    }
+    return false;
+  }
+  function parseConcatenatedString() {
+    let processed2 = false;
+    parseWhitespaceAndSkipComments();
+    while (text[i] === "+") {
+      processed2 = true;
+      i++;
+      parseWhitespaceAndSkipComments();
+      output = stripLastOccurrence(output, '"', true);
+      const start = output.length;
+      const parsedStr = parseString();
+      if (parsedStr) {
+        output = removeAtIndex(output, start, 1);
+      } else {
+        output = insertBeforeLastWhitespace(output, '"');
+      }
+    }
+    return processed2;
+  }
+  function parseNumber() {
+    const start = i;
+    let num = "";
+    let invalid = false;
+    if (text[i] === "-") {
+      num += text[i];
+      i++;
+      if (!isDigit(text[i]) && atEndOfNumber()) {
+        num += "0";
+      }
+    }
+    if (text[i] === "0" && isDigit(text[i + 1])) {
+      invalid = true;
+    }
+    while (isDigit(text[i])) {
+      num += text[i];
+      i++;
+    }
+    if (text[i] === ".") {
+      if (num === "" || num === "-") {
+        num += "0";
+      }
+      num += text[i];
+      i++;
+      if (!isDigit(text[i])) {
+        num += "0";
+      }
+      while (isDigit(text[i])) {
+        num += text[i];
+        i++;
+      }
+    }
+    if (i > start) {
+      if (text[i] === "e" || text[i] === "E") {
+        if (num === "-") {
+          invalid = true;
+        }
+        num += text[i];
+        i++;
+        if (text[i] === "-" || text[i] === "+") {
+          num += text[i];
+          i++;
+        }
+        if (!isDigit(text[i])) {
+          num += "0";
+        }
+        while (isDigit(text[i])) {
+          num += text[i];
+          i++;
+        }
+      }
+      if (!atEndOfNumber()) {
+        i = start;
+        return false;
+      }
+      output += invalid ? `"${text.substring(start, i)}"` : num;
+      return true;
+    }
+    return false;
+  }
+  function parseKeywords() {
+    return parseKeyword("true", "true") || parseKeyword("false", "false") || parseKeyword("null", "null") || // repair Python keywords True, False, None
+    parseKeyword("True", "true") || parseKeyword("False", "false") || parseKeyword("None", "null");
+  }
+  function parseKeyword(name, value) {
+    if (text.slice(i, i + name.length) === name && !isFunctionNameChar(text[i + name.length])) {
+      output += value;
+      i += name.length;
+      return true;
+    }
+    return false;
+  }
+  function parseUnquotedString(isKey) {
+    const start = i;
+    if (isFunctionNameCharStart(text[i])) {
+      while (i < text.length && isFunctionNameChar(text[i])) {
+        i++;
+      }
+      let j = i;
+      while (isWhitespace(text, j)) {
+        j++;
+      }
+      if (text[j] === "(") {
+        i = j + 1;
+        parseValue();
+        if (text[i] === ")") {
+          i++;
+          if (text[i] === ";") {
+            i++;
+          }
+        }
+        return true;
+      }
+    }
+    while (i < text.length && !isUnquotedStringDelimiter(text[i]) && !isQuote(text[i]) && (!isKey || text[i] !== ":")) {
+      i++;
+    }
+    if (text[i - 1] === ":" && regexUrlStart.test(text.substring(start, i + 2))) {
+      while (i < text.length && regexUrlChar.test(text[i])) {
+        i++;
+      }
+    }
+    if (i > start) {
+      while (isWhitespace(text, i - 1) && i > 0) {
+        i--;
+      }
+      const symbol2 = text.slice(start, i);
+      output += symbol2 === "undefined" ? "null" : JSON.stringify(symbol2);
+      if (text[i] === '"') {
+        i++;
+      }
+      return true;
+    }
+  }
+  function parseRegex() {
+    if (text[i] === "/") {
+      const start = i;
+      i++;
+      while (i < text.length && (text[i] !== "/" || text[i - 1] === "\\")) {
+        i++;
+      }
+      i++;
+      output += JSON.stringify(text.substring(start, i));
+      return true;
+    }
+  }
+  function prevNonWhitespaceIndex(start) {
+    let prev = start;
+    while (prev > 0 && isWhitespace(text, prev)) {
+      prev--;
+    }
+    return prev;
+  }
+  function nextQuoteIsEndQuote(index) {
+    let next = index + 1;
+    while (next < text.length && isWhitespace(text, next)) {
+      next++;
+    }
+    return next >= text.length || isDelimiter(text[next]);
+  }
+  function atEndOfNumber() {
+    return i >= text.length || isDelimiter(text[i]) || isWhitespace(text, i);
+  }
+  function throwInvalidCharacter(char) {
+    throw new JSONRepairError(`Invalid character ${JSON.stringify(char)}`, i);
+  }
+  function throwUnexpectedCharacter() {
+    throw new JSONRepairError(`Unexpected character ${JSON.stringify(text[i])}`, i);
+  }
+  function throwUnexpectedEnd() {
+    throw new JSONRepairError("Unexpected end of json string", text.length);
+  }
+  function throwObjectKeyExpected() {
+    throw new JSONRepairError("Object key expected", i);
+  }
+  function throwColonExpected() {
+    throw new JSONRepairError("Colon expected", i);
+  }
+  function throwInvalidUnicodeCharacter() {
+    const chars = text.slice(i, i + 6);
+    throw new JSONRepairError(`Invalid unicode character "${chars}"`, i);
+  }
+}
+function atEndOfBlockComment(text, i) {
+  return text[i] === "*" && text[i + 1] === "/";
 }
 
 // src/core/triage-runner.ts
 import { existsSync } from "node:fs";
-import path10 from "node:path";
+import path9 from "node:path";
 
 // src/core/clarification-policy.ts
 function evaluateClarification(input) {
@@ -20830,7 +21565,7 @@ function decisionReason(ownership, finalMode) {
 // src/core/triage-evidence.ts
 import { execFile as execFile2 } from "node:child_process";
 import { access as access2, constants, lstat, readFile as readFile7 } from "node:fs/promises";
-import path9 from "node:path";
+import path8 from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/core/work-item-resolver.ts
@@ -21034,7 +21769,7 @@ var SIGNAL_PATTERNS = {
   externalIntegration: /\b(webhook|external api|third-party|integration|oauth|stripe|slack|github app)\b/i
 };
 async function collectTriageEvidence(args) {
-  const root = path9.resolve(args.root);
+  const root = path8.resolve(args.root);
   const request = args.request;
   const findings = [];
   const namedPaths = explicitPaths(request).slice(0, MAX_NAMED_PATHS);
@@ -21163,7 +21898,7 @@ function explicitPaths(request) {
 }
 function addPathCandidate(values, raw) {
   const cleaned = raw.trim().replace(/[),.;:]+$/g, "").replace(/^["']|["']$/g, "");
-  if (!cleaned || cleaned.startsWith("-") || path9.isAbsolute(cleaned) || cleaned.includes("..")) return;
+  if (!cleaned || cleaned.startsWith("-") || path8.isAbsolute(cleaned) || cleaned.includes("..")) return;
   if (/^readme$/i.test(cleaned)) {
     values.add("README.md");
     return;
@@ -21209,18 +21944,18 @@ async function detectLanguages(root, manifest) {
   if (manifest) {
     languages.add("JavaScript/TypeScript");
   }
-  if (await exists(path9.join(root, "tsconfig.json"))) languages.add("TypeScript");
-  if (await exists(path9.join(root, "pyproject.toml"))) languages.add("Python");
-  if (await exists(path9.join(root, "go.mod"))) languages.add("Go");
-  if (await exists(path9.join(root, "Cargo.toml"))) languages.add("Rust");
+  if (await exists(path8.join(root, "tsconfig.json"))) languages.add("TypeScript");
+  if (await exists(path8.join(root, "pyproject.toml"))) languages.add("Python");
+  if (await exists(path8.join(root, "go.mod"))) languages.add("Go");
+  if (await exists(path8.join(root, "Cargo.toml"))) languages.add("Rust");
   return [...languages].sort();
 }
 async function detectPackageManager(root, manifest) {
   const declared = typeof manifest?.packageManager === "string" ? manifest.packageManager : void 0;
-  if (declared?.startsWith("pnpm@") || await exists(path9.join(root, "pnpm-lock.yaml"))) return "pnpm";
-  if (declared?.startsWith("yarn@") || await exists(path9.join(root, "yarn.lock"))) return "yarn";
-  if (declared?.startsWith("bun@") || await exists(path9.join(root, "bun.lock")) || await exists(path9.join(root, "bun.lockb"))) return "bun";
-  if (declared?.startsWith("npm@") || await exists(path9.join(root, "package-lock.json"))) return "npm";
+  if (declared?.startsWith("pnpm@") || await exists(path8.join(root, "pnpm-lock.yaml"))) return "pnpm";
+  if (declared?.startsWith("yarn@") || await exists(path8.join(root, "yarn.lock"))) return "yarn";
+  if (declared?.startsWith("bun@") || await exists(path8.join(root, "bun.lock")) || await exists(path8.join(root, "bun.lockb"))) return "bun";
+  if (declared?.startsWith("npm@") || await exists(path8.join(root, "package-lock.json"))) return "npm";
   return manifest ? "npm" : void 0;
 }
 function detectProjectType(manifest, languages) {
@@ -21232,7 +21967,7 @@ function detectProjectType(manifest, languages) {
   return "Node package";
 }
 async function readPackageJson(root) {
-  const file2 = path9.join(root, "package.json");
+  const file2 = path8.join(root, "package.json");
   try {
     const stats = await lstat(file2);
     if (stats.size > MAX_MANIFEST_BYTES) return void 0;
@@ -21243,7 +21978,7 @@ async function readPackageJson(root) {
 }
 async function hasAnyPath(root, candidates) {
   for (const candidate of candidates) {
-    if (await exists(path9.join(root, candidate))) return true;
+    if (await exists(path8.join(root, candidate))) return true;
   }
   return false;
 }
@@ -21251,7 +21986,7 @@ async function inspectNamedPaths(root, namedPaths) {
   const findings = [];
   for (const rel of namedPaths.slice(0, MAX_NAMED_PATHS)) {
     try {
-      const stats = await lstat(path9.join(root, rel));
+      const stats = await lstat(path8.join(root, rel));
       add(findings, `path.${rel}`, stats.isDirectory() ? "directory" : "file", "verified", "explicitly named path exists");
     } catch {
       add(findings, `path.${rel}`, "unknown", "unknown", "explicitly named path was not found by bounded lstat");
@@ -21923,7 +22658,7 @@ function derivedInspectionPaths(root, evidence2) {
     if (concept.includes("infra")) add3([".github/workflows", "infra", "infrastructure"]);
     if (concept.includes("schema")) add3(["src/core/types.ts", "src/core/flow.ts"]);
   }
-  return [...candidates].filter((candidate) => existsSync(path10.join(root, candidate))).slice(0, 8);
+  return [...candidates].filter((candidate) => existsSync(path9.join(root, candidate))).slice(0, 8);
 }
 function uniqueQuestions(values) {
   const seen = /* @__PURE__ */ new Set();
@@ -21962,6 +22697,395 @@ function messageOf2(error51) {
 }
 function unique3(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+// src/core/planning-runner.ts
+var PlanningValidationError = class extends Error {
+  constructor(diagnostics) {
+    super(diagnostics.map((diagnostic3) => `${diagnostic3.stage}:${diagnostic3.path.join(".") || "<root>"}:${diagnostic3.message}`).join("\n"));
+    this.diagnostics = diagnostics;
+  }
+  diagnostics;
+};
+var PlanningProviderInvocationError = class extends Error {
+  constructor(message, kind, attempt) {
+    super(message);
+    this.kind = kind;
+    this.attempt = attempt;
+  }
+  kind;
+  attempt;
+};
+async function runPlanning(args) {
+  const { input, provider } = args;
+  const warnings = [];
+  const allDiagnostics = [];
+  const attemptRecords = [];
+  let syntaxRepairApplied = false;
+  let semanticRepairApplied = false;
+  let sawQualityRepairablePlan = false;
+  let sawConstraintContradiction = false;
+  let attempts = 0;
+  if (!input.config.workflow.automaticTriage || !provider) {
+    const fallbackReason2 = !input.config.workflow.automaticTriage ? "automatic model planning is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model planning provider was resolved";
+    return {
+      plan: input.deterministicPlan,
+      source: "deterministic-fallback",
+      provider: provider?.name ?? "deterministic",
+      attempts: 0,
+      fallbackReason: fallbackReason2,
+      warnings,
+      attemptRecords
+    };
+  }
+  const maxAttempts = Math.min(2, input.config.budgets.triageCalls);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    attempts = attempt;
+    let result;
+    try {
+      result = await provider.plan(input);
+    } catch (error51) {
+      const failureReason = messageOf3(error51);
+      warnings.push(`Planning provider invocation ${attempt} failed: ${failureReason}`);
+      attemptRecords.push(attemptRecord("draft", failedAttemptResult(error51), {
+        invocation: "failed",
+        validation: "not-attempted",
+        failureReason
+      }));
+      if (isStructuralProviderFailure(error51)) break;
+      continue;
+    }
+    warnings.push(...result.warnings ?? []);
+    const draftRecord = attemptRecord("draft", result, {
+      invocation: "succeeded",
+      validation: "not-attempted"
+    });
+    let parsed;
+    try {
+      parsed = parsePlanningPayload(result.raw);
+      syntaxRepairApplied ||= parsed.syntaxRepairApplied;
+      if (parsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once before schema validation.");
+    } catch (error51) {
+      const diagnostics = diagnosticsOf(error51, "syntax");
+      allDiagnostics.push(...diagnostics);
+      draftRecord.validation = "failed";
+      draftRecord.diagnosticCodes = diagnosticCodes(diagnostics);
+      draftRecord.failureReason = messageOf3(error51);
+      attemptRecords.push(draftRecord);
+      warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf3(error51)}`);
+      continue;
+    }
+    const validated = validateCandidate(args, parsed.value);
+    if (validated.ok) {
+      draftRecord.validation = "passed";
+      attemptRecords.push(draftRecord);
+      return modelResult(validated.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
+    }
+    allDiagnostics.push(...validated.diagnostics);
+    draftRecord.validation = "failed";
+    draftRecord.diagnosticCodes = diagnosticCodes(validated.diagnostics);
+    attemptRecords.push(draftRecord);
+    if (validated.diagnostics.some((diagnostic3) => diagnostic3.stage === "quality")) sawQualityRepairablePlan = true;
+    if (validated.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
+    warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
+    const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
+    warnings.push(...normalised.warnings ?? []);
+    let latestPlan = normalised.raw;
+    let latestDiagnostics = validated.diagnostics;
+    if (normalised.changed) {
+      const normalisedValidation = validateCandidate(args, normalised.raw);
+      attemptRecords.push(attemptRecord("normalisation", void 0, {
+        invocation: "not-attempted",
+        validation: normalisedValidation.ok ? "passed" : "failed",
+        diagnosticCodes: normalisedValidation.ok ? [] : diagnosticCodes(normalisedValidation.diagnostics)
+      }));
+      if (normalisedValidation.ok) {
+        semanticRepairApplied = true;
+        warnings.push("Planning semantic repair applied with deterministic field normalisation.");
+        return modelResult(normalisedValidation.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
+      }
+      allDiagnostics.push(...normalisedValidation.diagnostics);
+      latestDiagnostics = normalisedValidation.diagnostics;
+    }
+    if (provider.repair) {
+      let repairResult;
+      try {
+        warnings.push("Attempting same-provider/model planning repair for exact validation diagnostics.");
+        repairResult = await provider.repair(input, {
+          plan: normalised.raw,
+          diagnostics: validated.diagnostics.map((diagnostic3) => ({ ...diagnostic3, repairAttempt: "same-model" })),
+          model: result.model,
+          tier: result.tier
+        });
+      } catch (error51) {
+        const failureReason = messageOf3(error51);
+        allDiagnostics.push(...diagnosticsOf(error51, "schema"));
+        attemptRecords.push(attemptRecord("repair", result, {
+          invocation: "failed",
+          validation: "not-attempted",
+          failureReason
+        }));
+        warnings.push(`Planning semantic repair failed: ${failureReason}`);
+      }
+      if (repairResult) {
+        const repairRecord = attemptRecord("repair", repairResult, {
+          invocation: "succeeded",
+          validation: "not-attempted"
+        });
+        try {
+          warnings.push(...repairResult.warnings ?? []);
+          const repairedParsed = parsePlanningPayload(repairResult.raw);
+          syntaxRepairApplied ||= repairedParsed.syntaxRepairApplied;
+          if (repairedParsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once to semantic repair output.");
+          const repairedValidation = validateCandidate(args, repairedParsed.value);
+          if (repairedValidation.ok) {
+            repairRecord.validation = "passed";
+            attemptRecords.push(repairRecord);
+            semanticRepairApplied = true;
+            warnings.push("Planning semantic repair applied by the same provider/model.");
+            markDiagnosticsResolution(allDiagnostics, validated.diagnostics, "repaired");
+            return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
+          }
+          repairRecord.validation = "failed";
+          repairRecord.diagnosticCodes = diagnosticCodes(repairedValidation.diagnostics);
+          attemptRecords.push(repairRecord);
+          if (repairedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
+          allDiagnostics.push(...repairedValidation.diagnostics);
+          latestPlan = repairedParsed.value;
+          latestDiagnostics = repairedValidation.diagnostics;
+          warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
+        } catch (error51) {
+          const diagnostics = diagnosticsOf(error51, "schema");
+          allDiagnostics.push(...diagnostics);
+          repairRecord.validation = "failed";
+          repairRecord.diagnosticCodes = diagnosticCodes(diagnostics);
+          repairRecord.failureReason = messageOf3(error51);
+          attemptRecords.push(repairRecord);
+          warnings.push(`Planning semantic repair failed: ${messageOf3(error51)}`);
+        }
+      }
+    }
+    if (provider.escalate && latestDiagnostics.some(isArchitecturalDiagnostic)) {
+      let escalationResult;
+      try {
+        warnings.push("Escalating unresolved architectural planning diagnostics to the configured planning tier.");
+        escalationResult = await provider.escalate(input, {
+          plan: latestPlan,
+          diagnostics: latestDiagnostics,
+          model: result.model,
+          tier: result.tier
+        });
+      } catch (error51) {
+        const failureReason = messageOf3(error51);
+        attemptRecords.push(attemptRecord("escalation", result, {
+          invocation: "failed",
+          validation: "not-attempted",
+          failureReason
+        }));
+        warnings.push(`Planning architecture escalation failed: ${failureReason}`);
+      }
+      if (escalationResult) {
+        const escalationRecord = attemptRecord("escalation", escalationResult, {
+          invocation: "succeeded",
+          validation: "not-attempted"
+        });
+        try {
+          const escalatedParsed = parsePlanningPayload(escalationResult.raw);
+          const escalatedValidation = validateCandidate(args, escalatedParsed.value);
+          if (escalatedValidation.ok) {
+            escalationRecord.validation = "passed";
+            attemptRecords.push(escalationRecord);
+            semanticRepairApplied = true;
+            warnings.push("Planning architecture escalation produced a valid bounded plan.");
+            return modelResult(escalatedValidation.plan, escalationResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords);
+          }
+          escalationRecord.validation = "failed";
+          escalationRecord.diagnosticCodes = diagnosticCodes(escalatedValidation.diagnostics);
+          attemptRecords.push(escalationRecord);
+          allDiagnostics.push(...escalatedValidation.diagnostics);
+          if (escalatedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
+          warnings.push(`Planning architecture escalation failed validation: ${diagnosticSummary(escalatedValidation.diagnostics)}`);
+        } catch (error51) {
+          const diagnostics = diagnosticsOf(error51, "schema");
+          allDiagnostics.push(...diagnostics);
+          escalationRecord.validation = "failed";
+          escalationRecord.diagnosticCodes = diagnosticCodes(diagnostics);
+          escalationRecord.failureReason = messageOf3(error51);
+          attemptRecords.push(escalationRecord);
+          warnings.push(`Planning architecture escalation returned invalid output: ${messageOf3(error51)}`);
+        }
+      }
+    }
+    if (validated.diagnostics.some((diagnostic3) => diagnostic3.stage === "quality")) break;
+  }
+  const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
+  const approvalBlockedReason = sawConstraintContradiction ? "Model planning contradicted approved constraints and repair did not produce a valid plan; plan approval is disabled until the plan is revised." : isGenericFallbackPlan(input.deterministicPlan) ? sawQualityRepairablePlan ? "Deterministic fallback plan is generic while a model-generated plan did not pass targeted repair; plan approval is disabled until planning is retried or the plan is revised." : "Model planning failed before producing an approval-quality plan and the deterministic fallback is generic; plan approval is disabled until planning is retried or the plan is revised." : void 0;
+  if (approvalBlockedReason) {
+    for (const diagnostic3 of allDiagnostics) {
+      if (isConstraintDiagnostic(diagnostic3) && !diagnostic3.resolution) diagnostic3.resolution = "blocked";
+    }
+  }
+  warnings.push(approvalBlockedReason ?? "Using deterministic planning fallback after model plan could not be validated.");
+  return {
+    plan: input.deterministicPlan,
+    source: "deterministic-fallback",
+    provider: provider.name,
+    attempts,
+    fallbackReason,
+    warnings,
+    diagnostics: allDiagnostics,
+    syntaxRepairApplied,
+    semanticRepairApplied,
+    approvalBlockedReason,
+    attemptRecords
+  };
+}
+function parsePlanningPayload(raw) {
+  if (typeof raw === "object" && raw !== null) {
+    const record2 = raw;
+    if (typeof record2.result === "string") return parsePlanningText(record2.result);
+    if (typeof record2.content === "string") return parsePlanningText(record2.content);
+    return { value: raw, syntaxRepairApplied: false };
+  }
+  if (typeof raw === "string") return parsePlanningText(raw);
+  throw new PlanningValidationError([{ stage: "syntax", path: [], code: "unsupported_payload", message: "Planning provider returned neither JSON nor text." }]);
+}
+function parsePlanningText(text) {
+  const candidate = extractJsonCandidate(text);
+  try {
+    return { value: JSON.parse(candidate), syntaxRepairApplied: false };
+  } catch (firstError) {
+    let repaired;
+    try {
+      repaired = jsonrepair(candidate);
+    } catch {
+      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "invalid_json", message: messageOf3(firstError) }]);
+    }
+    try {
+      return { value: JSON.parse(repaired), syntaxRepairApplied: true };
+    } catch (secondError) {
+      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "jsonrepair_failed", message: messageOf3(secondError) }]);
+    }
+  }
+}
+function extractJsonCandidate(text) {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  if (fenced) return fenced;
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (objectStart >= 0 && objectEnd > objectStart) return trimmed.slice(objectStart, objectEnd + 1);
+  if (arrayStart >= 0 && arrayEnd > arrayStart) return trimmed.slice(arrayStart, arrayEnd + 1);
+  return trimmed;
+}
+function validateCandidate(args, raw) {
+  try {
+    return { ok: true, plan: args.validate(raw) };
+  } catch (error51) {
+    return { ok: false, diagnostics: diagnosticsOf(error51, "schema") };
+  }
+}
+function isConstraintDiagnostic(diagnostic3) {
+  return diagnostic3.code.startsWith("constraint.");
+}
+function isArchitecturalDiagnostic(diagnostic3) {
+  return diagnostic3.code === "scope.mixed_architectural_boundaries" || diagnostic3.code === "closure.future_dependency" || diagnostic3.code === "dependency.unlinked_producer" || diagnostic3.code === "dependency.write_boundary_overlap";
+}
+function isStructuralProviderFailure(error51) {
+  return (error51 instanceof TriageProviderError || error51 instanceof PlanningProviderInvocationError) && ["provider_process_failure", "max_turns", "max_budget"].includes(error51.kind);
+}
+function failedAttemptResult(error51) {
+  return error51 instanceof PlanningProviderInvocationError ? { raw: void 0, ...error51.attempt } : void 0;
+}
+function diagnosticCodes(diagnostics) {
+  return [...new Set(diagnostics.map((diagnostic3) => diagnostic3.code))];
+}
+function attemptRecord(stage, result, outcome) {
+  return {
+    stage,
+    tier: result?.tier,
+    model: result?.model,
+    launchMode: result?.launchMode,
+    invocation: outcome.invocation,
+    validation: outcome.validation,
+    diagnosticCodes: outcome.diagnosticCodes ?? [],
+    failureReason: outcome.failureReason
+  };
+}
+function markDiagnosticsResolution(allDiagnostics, matched, resolution) {
+  for (const diagnostic3 of allDiagnostics) {
+    if (!matched.some((candidate) => candidate.code === diagnostic3.code && candidate.message === diagnostic3.message && candidate.path.join(".") === diagnostic3.path.join("."))) continue;
+    diagnostic3.resolution = resolution;
+  }
+}
+function modelResult(plan, result, attempts, warnings, diagnostics, syntaxRepairApplied, semanticRepairApplied, attemptRecords) {
+  return {
+    plan,
+    source: "model",
+    provider: result.provider,
+    model: result.model,
+    attempts,
+    warnings,
+    diagnostics,
+    syntaxRepairApplied,
+    semanticRepairApplied,
+    attemptRecords
+  };
+}
+function diagnosticsOf(error51, fallbackStage) {
+  if (error51 instanceof PlanningValidationError) return error51.diagnostics;
+  const record2 = error51;
+  if (Array.isArray(record2?.issues)) {
+    return record2.issues.map((issue2) => {
+      const candidate = issue2;
+      return {
+        stage: fallbackStage,
+        path: Array.isArray(candidate.path) ? candidate.path.filter((part) => typeof part === "string" || typeof part === "number") : [],
+        code: candidate.code ?? "validation_error",
+        message: candidate.message ?? messageOf3(issue2)
+      };
+    });
+  }
+  return [{ stage: fallbackStage, path: [], code: "planning_error", message: messageOf3(error51) }];
+}
+function diagnosticSummary(diagnostics) {
+  return diagnostics.map((diagnostic3) => `${diagnostic3.stage}:${diagnostic3.path.join(".") || "<root>"}:${diagnostic3.message}`).join("; ");
+}
+function isGenericFallbackPlan(plan) {
+  const text = plan.phases.map((phase2) => phase2.objective).join("\n").toLowerCase();
+  return /\bimplement (the )?(primary|approved|high-risk) behavior( change)?\b/.test(text) || /\bfocused regression coverage\b/.test(text) || /\bactual implementation work will need\b/.test(plan.summary.toLowerCase());
+}
+function messageOf3(error51) {
+  return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
+}
+
+// src/adapters/claude/triage-provider.ts
+init_models();
+import { spawn } from "node:child_process";
+import { existsSync as existsSync2 } from "node:fs";
+import { open, readFile as readFile8 } from "node:fs/promises";
+import path11 from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// src/core/claude-prompt.ts
+import { mkdtemp, rm, writeFile as writeFile6 } from "node:fs/promises";
+import os from "node:os";
+import path10 from "node:path";
+async function createClaudePromptFile(prompt) {
+  const directory = await mkdtemp(path10.join(os.tmpdir(), "leanrigor-claude-prompt-"));
+  const promptPath = path10.join(directory, "prompt.txt");
+  await writeFile6(promptPath, prompt, "utf8");
+  let cleaned = false;
+  return {
+    path: promptPath,
+    async cleanup() {
+      if (cleaned) return;
+      cleaned = true;
+      await rm(directory, { recursive: true, force: true });
+    }
+  };
 }
 
 // src/adapters/claude/triage-provider.ts
@@ -22206,139 +23330,254 @@ function compactReason(reason) {
   return compact.slice(0, 500);
 }
 
-// src/adapters/claude/planning-provider.ts
-var ClaudeCliPlanningProvider = class {
+// src/adapters/claude/structured-decision-provider.ts
+var ClaudeCliStructuredDecisionProvider = class {
   constructor(runCommand = defaultCommandRunner) {
     this.runCommand = runCommand;
   }
   runCommand;
   name = "claude-cli";
-  async plan(input) {
-    const tier = planningTier(input);
-    const prompt = buildPlanningPrompt(input);
-    const baseArgs = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
+  capabilities() {
+    return { structuredOutput: true, schemaEnforcement: true, minimalContext: true, toolIsolation: true };
+  }
+  async decide(request) {
+    const toolArgs = request.tools === "none" ? ["--tools", ""] : ["--allowedTools", "Read,Grep,Glob", "--disallowedTools", "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Task,TodoWrite,PullRequest,Git,GitHub,GitLab,Jira,Slack,Email,MCP"];
     const attempted = await runClaudeWithTierFallback({
       runCommand: this.runCommand,
-      root: input.root,
-      baseArgs,
-      prompt,
-      preferredTier: tier,
-      config: input.config,
-      stage: "planning"
+      root: request.root,
+      baseArgs: [
+        "-p",
+        "--bare",
+        "--effort",
+        request.effort ?? "low",
+        "--output-format",
+        "json",
+        "--json-schema",
+        JSON.stringify(request.schema),
+        "--no-session-persistence",
+        "--max-turns",
+        String(request.maxTurns),
+        ...toolArgs
+      ],
+      prompt: request.prompt,
+      preferredTier: request.tier,
+      config: request.config,
+      stage: request.stage
     });
-    return { raw: parseCommandOutput2(attempted.result), provider: this.name, model: attempted.model, tier: attempted.tier, warnings: attempted.warnings };
-  }
-  async repair(input, request) {
-    const prompt = buildPlanningRepairPrompt(input, request);
-    const args = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
-    if (request.model) args.push("--model", request.model);
-    const result = await this.runCommand("claude", args, input.root, prompt);
-    if (result.exitCode !== 0) {
-      const reason = compactFailure(result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`);
-      throw new Error(`Claude planning repair failed for ${request.model ? `model '${request.model}'` : "inherited Claude default"}: ${reason}`);
-    }
-    return { raw: parseCommandOutput2(result), provider: this.name, model: request.model, tier: request.tier, warnings: [] };
+    return {
+      value: structuredValue(attempted.result.stdout),
+      provider: this.name,
+      model: attempted.model,
+      tier: attempted.tier,
+      launchMode: "bare",
+      warnings: attempted.warnings
+    };
   }
 };
-function parseCommandOutput2(result) {
+function structuredValue(stdout) {
+  let envelope;
   try {
-    return JSON.parse(result.stdout);
+    envelope = JSON.parse(stdout);
   } catch {
-    return result.stdout;
+    return stdout;
   }
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return envelope;
+  const record2 = envelope;
+  if (record2.structured_output !== void 0) return record2.structured_output;
+  if (typeof record2.result === "string") {
+    try {
+      return JSON.parse(record2.result);
+    } catch {
+      return record2.result;
+    }
+  }
+  return envelope;
 }
-function planningTier(input) {
-  const mode2 = input.triage.workflow.finalMode;
-  const config2 = input.config;
-  if (mode2 === "rigorous") return config2.routing.rigorousPlanning;
-  if (mode2 === "standard") return config2.routing.standardPlanning;
-  return config2.routing.standardPlanning;
+
+// src/adapters/claude/planning-provider.ts
+var ClaudeCliPlanningProvider = class {
+  name = "claude-cli";
+  decisions;
+  constructor(runCommand = defaultCommandRunner) {
+    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand);
+  }
+  async plan(input) {
+    const result = await this.decide({
+      root: input.root,
+      prompt: buildPlanningPrompt(input),
+      schema: planningJsonSchema(input),
+      tier: "small",
+      config: input.config,
+      stage: "planning draft",
+      maxTurns: input.config.budgets.planningMaxTurns,
+      effort: "low",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings
+    };
+  }
+  async repair(input, request) {
+    const result = await this.decide({
+      root: input.root,
+      prompt: buildPlanningRepairPrompt(input, request),
+      schema: planningJsonSchema(input),
+      tier: request.tier ?? "small",
+      config: input.config,
+      stage: "planning repair",
+      maxTurns: input.config.budgets.planningRepairMaxTurns,
+      effort: "low",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings
+    };
+  }
+  async escalate(input, request) {
+    const result = await this.decide({
+      root: input.root,
+      prompt: buildPlanningEscalationPrompt(input, request),
+      schema: planningJsonSchema(input),
+      tier: planningEscalationTier(input),
+      config: input.config,
+      stage: "planning architecture escalation",
+      maxTurns: input.config.budgets.planningMaxTurns,
+      effort: "medium",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings
+    };
+  }
+  async decide(request) {
+    try {
+      return await this.decisions.decide(request);
+    } catch (error51) {
+      const kind = error51 instanceof TriageProviderError ? error51.kind : "provider_process_failure";
+      throw new PlanningProviderInvocationError(
+        error51 instanceof Error ? error51.message : String(error51 ?? "unknown planning provider failure"),
+        kind,
+        { provider: this.name, tier: request.tier, launchMode: "bare" }
+      );
+    }
+  }
+};
+function planningEscalationTier(input) {
+  return input.triage.workflow.finalMode === "rigorous" ? input.config.routing.rigorousPlanning : input.config.routing.standardPlanning;
+}
+function candidateAreas(input) {
+  return [...new Set(input.deterministicPlan.phases.flatMap((phase2) => [
+    ...phase2.expectedReadAreas,
+    ...phase2.expectedWriteAreas,
+    ...phase2.expectedFilesOrAreas
+  ]).map((area) => area.trim()).filter(Boolean))];
+}
+function planningJsonSchema(input) {
+  const candidates = candidateAreas(input);
+  const boundedArea = candidates.length > 0 ? { type: "string", enum: candidates } : { type: "string", minLength: 1 };
+  return {
+    type: "object",
+    properties: {
+      version: { type: "number", const: 1 },
+      summary: { type: "string", minLength: 12 },
+      principles: { type: "array", items: { type: "string", minLength: 4 }, maxItems: 12 },
+      phases: {
+        type: "array",
+        minItems: 1,
+        maxItems: 12,
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", pattern: "^phase-[A-Za-z0-9._-]+$" },
+            objective: { type: "string", minLength: 12 },
+            rationale: { type: "string", minLength: 12 },
+            dependencies: { type: "array", items: { type: "string", pattern: "^phase-[A-Za-z0-9._-]+$" }, uniqueItems: true },
+            expectedReadAreas: { type: "array", items: boundedArea, uniqueItems: true },
+            expectedWriteAreas: { type: "array", minItems: 1, items: boundedArea, uniqueItems: true },
+            expectedFilesOrAreas: { type: "array", minItems: 1, items: boundedArea, uniqueItems: true },
+            acceptanceCriteria: { type: "array", minItems: 1, items: { type: "string", minLength: 12 } },
+            validationCommands: { type: "array", minItems: 1, items: { type: "string", minLength: 2 }, uniqueItems: true },
+            riskLevel: { type: "string", enum: ["low", "medium", "high"] },
+            modelTier: { type: "string", enum: ["small", "medium", "large", "inherit"] }
+          },
+          required: ["id", "objective", "rationale", "dependencies", "expectedReadAreas", "expectedWriteAreas", "expectedFilesOrAreas", "acceptanceCriteria", "validationCommands", "riskLevel", "modelTier"],
+          additionalProperties: false
+        }
+      },
+      revisionRequests: { const: input.revisionRequests }
+    },
+    required: ["version", "summary", "principles", "phases", "revisionRequests"],
+    additionalProperties: false
+  };
 }
 function buildPlanningPrompt(input) {
   return [
-    "You are the bounded sequential planner for LeanRigor.",
-    "You may inspect the repository with Read/Glob/Grep to identify concrete files, existing schemas, tests, and integration points. Keep inspection minimal.",
-    "Return only one JSON object as your final response; no prose or markdown.",
-    "Produce a LeanRigor ExecutionPlan using this compact schema:",
-    JSON.stringify({
-      version: 1,
-      summary: "string",
-      principles: ["string"],
-      phases: [{
-        id: "phase-1",
-        objective: "specific outcome",
-        rationale: "why this phase is separately reviewable",
-        dependencies: [],
-        expectedReadAreas: ["src/example.ts"],
-        expectedWriteAreas: ["src/example.ts"],
-        expectedFilesOrAreas: ["src/example.ts"],
-        acceptanceCriteria: ["specific evidence obligation"],
-        validationCommands: ["npm test"],
-        riskLevel: "low|medium|high",
-        modelTier: "small|medium|large|inherit"
-      }],
-      revisionRequests: input.revisionRequests
-    }, null, 2),
-    "Rules:",
-    "- Prefer concrete repository files or narrow areas over generic areas.",
-    "- Keep phases sequential and independently reviewable.",
-    "- Do not include runtime fields such as status, completion, workspace, filesChanged, commandsRun, validationResults, or repairAttempts.",
-    "- Preserve revisionRequests exactly.",
-    "- Use the deterministic baseline only as a safety floor; improve specificity when repository evidence supports it.",
-    "",
-    "Enforced quality rules:",
-    "- One primary objective means one reviewable outcome in one phase. Supporting actions may be mentioned only when they are necessary evidence for that same outcome.",
-    "- Good objective: 'Persist phase-specific test obligations in workflow state.'",
-    "- Good objective: 'Require completion evidence to satisfy mandatory obligations.'",
-    "- Bad objective: 'Implement backend, frontend, tests, docs, and migration changes.'",
-    "- Bad objective: 'Do everything needed for the referenced work item.'",
-    "- A single architectural boundary is determined from expectedWriteAreas, not from words in the objective. Keep each phase within one production owner such as src/core, src/config, src/cli, or one adapter unless dependencies make the boundary explicit.",
-    "- Migration, security, schema, compatibility, failure, concurrency, recovery, contract, and regression may be obligation categories. These words do not by themselves mean a phase mixes boundaries.",
-    "- Every phase must include specific acceptance criteria, at least one validation command or check expectation, and bounded expected write areas.",
-    "- Preserve final approved effective constraints exactly. Do not reintroduce removed assumptions or scope the user rejected.",
-    "- If an effective constraint says backward compatibility is not required, do not describe any phase as backward-compatible or compatibility-preserving.",
+    "You are the bounded sequential planning candidate generator for LeanRigor.",
+    "Return only the JSON value required by the supplied schema.",
+    "You have no repository tools. Use only the bounded evidence and candidate paths below.",
+    "Never invent a path. Every read and write area must be selected from Candidate repository paths.",
+    "LeanRigor will deterministically validate constraints, ownership, phase sizing, dependencies, and approval safety.",
+    "Keep phases sequential, independently reviewable, and within one production-owner boundary unless the rationale explicitly establishes repository-state closure.",
+    "Every acceptance criterion must describe observable evidence and every phase must include a validation command.",
+    "Preserve revisionRequests exactly.",
     "User request:",
     input.request,
-    "Triage output:",
+    "Bounded triage evidence:",
     JSON.stringify(input.triage, null, 2),
     "Authoritative approved constraint set:",
     JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
-    "Final approved effective constraints:",
-    JSON.stringify(input.effectiveConstraintSet?.finalEffective ?? input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
     "Constraint change audit:",
     JSON.stringify(input.constraintChanges ?? [], null, 2),
-    "Deterministic baseline plan:",
+    "Candidate repository paths:",
+    JSON.stringify(candidateAreas(input), null, 2),
+    "Deterministic baseline safety floor:",
     JSON.stringify(input.deterministicPlan, null, 2)
   ].join("\n\n");
 }
 function buildPlanningRepairPrompt(input, request) {
   return [
-    "You are repairing a LeanRigor ExecutionPlan returned by the same planning model.",
-    "Return only one JSON object; no prose or markdown.",
-    "Repair only the invalid fields named in diagnostics.",
-    "Preserve all valid fields exactly, including phase IDs, dependencies, expectedReadAreas, expectedWriteAreas, expectedFilesOrAreas, acceptanceCriteria, validationCommands, riskLevel, modelTier, and revisionRequests.",
-    "Do not restart planning. Do not add new phases unless a diagnostic explicitly requires it.",
-    "Quality definitions:",
-    "- One primary objective means one reviewable outcome in one phase; supporting evidence can remain in acceptanceCriteria or validationCommands.",
-    "- Single architectural boundary is determined primarily by expectedWriteAreas and component ownership, not by words such as migration, security, schema, compatibility, failure, concurrency, recovery, contract, or regression.",
-    "Original request:",
-    input.request,
-    "Triage constraints and context:",
-    JSON.stringify(input.triage, null, 2),
-    "Authoritative approved constraint set:",
-    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
-    "Final approved effective constraints:",
-    JSON.stringify(input.effectiveConstraintSet?.finalEffective ?? input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
+    "Repair the bounded LeanRigor Workflow Plan candidate using only the exact diagnostics supplied.",
+    "Return only the JSON value required by the supplied schema.",
+    "Do not invent paths or change valid fields. Preserve revisionRequests exactly.",
+    "Candidate repository paths:",
+    JSON.stringify(candidateAreas(input), null, 2),
+    "Authoritative approved constraints:",
+    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? [] }, null, 2),
     "Diagnostics to repair:",
     JSON.stringify(request.diagnostics, null, 2),
     "Invalid plan:",
     JSON.stringify(request.plan, null, 2)
   ].join("\n\n");
 }
-function compactFailure(reason) {
-  const compact = reason.replace(/\s+/g, " ").trim();
-  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return `max_turns_reached: ${compact.slice(0, 450)}`;
-  return compact.slice(0, 500);
+function buildPlanningEscalationPrompt(input, request) {
+  return [
+    "Resolve only the remaining architectural or cross-phase diagnostics in this bounded LeanRigor Workflow Plan candidate.",
+    "Return only the JSON value required by the supplied schema.",
+    "Do not broaden scope, invent paths, reinterpret approved constraints, or change valid fields.",
+    "Candidate repository paths:",
+    JSON.stringify(candidateAreas(input), null, 2),
+    "Authoritative approved constraints:",
+    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? [] }, null, 2),
+    "Remaining diagnostics:",
+    JSON.stringify(request.diagnostics, null, 2),
+    "Plan requiring architectural repair:",
+    JSON.stringify(request.plan, null, 2)
+  ].join("\n\n");
 }
 
 // src/core/execution/claude-provider.ts
@@ -23186,6 +24425,7 @@ registerAdapter({
   id: "claude",
   adapter: new ClaudeAdapter(),
   createTriageProvider: () => new ClaudeCliTriageProvider(),
+  createStructuredDecisionProvider: () => new ClaudeCliStructuredDecisionProvider(),
   createPlanningProvider: () => new ClaudeCliPlanningProvider(),
   createExecutionProvider: (config2) => new ClaudeCliExecutionProvider({ config: config2 })
 });
@@ -25062,984 +26302,6 @@ function isSamePath(left, right) {
 }
 async function pathExists(target) {
   return stat3(target).then(() => true).catch(() => false);
-}
-
-// node_modules/jsonrepair/lib/esm/utils/JSONRepairError.js
-var JSONRepairError = class extends Error {
-  constructor(message, position) {
-    super(`${message} at position ${position}`);
-    this.position = position;
-  }
-};
-
-// node_modules/jsonrepair/lib/esm/utils/stringUtils.js
-var codeSpace = 32;
-var codeNewline = 10;
-var codeTab = 9;
-var codeReturn = 13;
-var codeNonBreakingSpace = 160;
-var codeMongolianVowelSeparator = 6158;
-var codeEnQuad = 8192;
-var codeZeroWidthSpace = 8203;
-var codeNarrowNoBreakSpace = 8239;
-var codeMediumMathematicalSpace = 8287;
-var codeIdeographicSpace = 12288;
-var codeZeroWidthNoBreakSpace = 65279;
-function isHex(char) {
-  return /^[0-9A-Fa-f]$/.test(char);
-}
-function isDigit(char) {
-  return char >= "0" && char <= "9";
-}
-function isValidStringCharacter(char) {
-  return char >= " ";
-}
-function isDelimiter(char) {
-  return ",:[]/{}()\n+".includes(char);
-}
-function isFunctionNameCharStart(char) {
-  return char >= "a" && char <= "z" || char >= "A" && char <= "Z" || char === "_" || char === "$";
-}
-function isFunctionNameChar(char) {
-  return char >= "a" && char <= "z" || char >= "A" && char <= "Z" || char === "_" || char === "$" || char >= "0" && char <= "9";
-}
-var regexUrlStart = /^(http|https|ftp|mailto|file|data|irc):\/\/$/;
-var regexUrlChar = /^[A-Za-z0-9-._~:/?#@!$&'()*+;=]$/;
-function isUnquotedStringDelimiter(char) {
-  return ",[]/{}\n+".includes(char);
-}
-function isStartOfValue(char) {
-  return isQuote(char) || regexStartOfValue.test(char);
-}
-var regexStartOfValue = /^[[{\w-]$/;
-function isControlCharacter(char) {
-  return char === "\n" || char === "\r" || char === "	" || char === "\b" || char === "\f";
-}
-function isWhitespace(text, index) {
-  const code = text.charCodeAt(index);
-  return code === codeSpace || code === codeNewline || code === codeTab || code === codeReturn;
-}
-function isWhitespaceExceptNewline(text, index) {
-  const code = text.charCodeAt(index);
-  return code === codeSpace || code === codeTab || code === codeReturn;
-}
-function isSpecialWhitespace(text, index) {
-  const code = text.charCodeAt(index);
-  return code === codeNonBreakingSpace || code === codeMongolianVowelSeparator || code >= codeEnQuad && code <= codeZeroWidthSpace || code === codeNarrowNoBreakSpace || code === codeMediumMathematicalSpace || code === codeIdeographicSpace || code === codeZeroWidthNoBreakSpace;
-}
-function isQuote(char) {
-  return isDoubleQuoteLike(char) || isSingleQuoteLike(char);
-}
-function isDoubleQuoteLike(char) {
-  return char === '"' || char === "\u201C" || char === "\u201D";
-}
-function isDoubleQuote(char) {
-  return char === '"';
-}
-function isSingleQuoteLike(char) {
-  return char === "'" || char === "\u2018" || char === "\u2019" || char === "`" || char === "\xB4";
-}
-function isSingleQuote(char) {
-  return char === "'";
-}
-function stripLastOccurrence(text, textToStrip) {
-  let stripRemainingText = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : false;
-  const index = text.lastIndexOf(textToStrip);
-  return index !== -1 ? text.substring(0, index) + (stripRemainingText ? "" : text.substring(index + 1)) : text;
-}
-function insertBeforeLastWhitespace(text, textToInsert) {
-  let index = text.length;
-  if (!isWhitespace(text, index - 1)) {
-    return text + textToInsert;
-  }
-  while (isWhitespace(text, index - 1)) {
-    index--;
-  }
-  return text.substring(0, index) + textToInsert + text.substring(index);
-}
-function removeAtIndex(text, start, count) {
-  return text.substring(0, start) + text.substring(start + count);
-}
-function endsWithCommaOrNewline(text) {
-  return /[,\n][ \t\r]*$/.test(text);
-}
-var namedHtmlEntities = {
-  "&quot;": '"',
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&apos;": "'"
-};
-var maxHtmlEntityLength = 12;
-function matchHtmlEntity(fragment) {
-  if (fragment.charAt(0) !== "&") {
-    return null;
-  }
-  const semicolon = fragment.indexOf(";");
-  if (semicolon === -1) {
-    return null;
-  }
-  const entity = fragment.substring(0, semicolon + 1);
-  const named = namedHtmlEntities[entity];
-  if (named !== void 0) {
-    return {
-      char: named,
-      length: entity.length
-    };
-  }
-  if (fragment.charAt(1) === "#") {
-    const body = fragment.substring(2, semicolon);
-    const hex3 = body.charAt(0) === "x" || body.charAt(0) === "X";
-    const digits = hex3 ? body.substring(1) : body;
-    if (digits.length > 0) {
-      const code = Number.parseInt(digits, hex3 ? 16 : 10);
-      if (!Number.isNaN(code) && code >= 0 && code <= 1114111) {
-        return {
-          char: String.fromCodePoint(code),
-          length: entity.length
-        };
-      }
-    }
-  }
-  return null;
-}
-function isDoubleQuoteEntity(match) {
-  return match !== null && match.char === '"';
-}
-function isSingleQuoteEntity(match) {
-  return match !== null && match.char === "'";
-}
-function countOccurrences(text, char) {
-  let count = 0;
-  for (let i = 0; i < text.length; i++) {
-    if (text.charAt(i) === char) {
-      count++;
-    }
-  }
-  return count;
-}
-function isInsideUnclosedBracket(text, closeChar) {
-  switch (closeChar) {
-    case ")":
-      return countOccurrences(text, "(") > countOccurrences(text, ")");
-    case "]":
-      return countOccurrences(text, "[") > countOccurrences(text, "]");
-    case "}":
-      return countOccurrences(text, "{") > countOccurrences(text, "}");
-    default:
-      return false;
-  }
-}
-
-// node_modules/jsonrepair/lib/esm/regular/jsonrepair.js
-var controlCharacters = {
-  "\b": "\\b",
-  "\f": "\\f",
-  "\n": "\\n",
-  "\r": "\\r",
-  "	": "\\t"
-};
-var escapeCharacters = {
-  '"': '"',
-  "\\": "\\",
-  "/": "/",
-  b: "\b",
-  f: "\f",
-  n: "\n",
-  r: "\r",
-  t: "	"
-  // note that \u is handled separately in parseString()
-};
-function jsonrepair(text) {
-  let i = 0;
-  let output = "";
-  parseMarkdownCodeBlock(["```", "[```", "{```"]);
-  const processed = parseValue();
-  if (!processed) {
-    throwUnexpectedEnd();
-  }
-  parseMarkdownCodeBlock(["```", "```]", "```}"]);
-  const processedComma = parseCharacter(",");
-  if (processedComma) {
-    parseWhitespaceAndSkipComments();
-  }
-  if (isStartOfValue(text[i]) && endsWithCommaOrNewline(output)) {
-    if (!processedComma) {
-      output = insertBeforeLastWhitespace(output, ",");
-    }
-    parseNewlineDelimitedJSON();
-  } else if (processedComma) {
-    output = stripLastOccurrence(output, ",");
-  }
-  while (text[i] === "}" || text[i] === "]") {
-    i++;
-    parseWhitespaceAndSkipComments();
-  }
-  if (i >= text.length) {
-    return output;
-  }
-  throwUnexpectedCharacter();
-  function parseValue() {
-    parseWhitespaceAndSkipComments();
-    const processed2 = parseObject() || parseArray() || parseString() || parseNumber() || parseKeywords() || parseUnquotedString(false) || parseRegex();
-    parseWhitespaceAndSkipComments();
-    return processed2;
-  }
-  function parseWhitespaceAndSkipComments() {
-    let skipNewline = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : true;
-    const start = i;
-    let changed = parseWhitespace(skipNewline);
-    do {
-      changed = parseComment();
-      if (changed) {
-        changed = parseWhitespace(skipNewline);
-      }
-    } while (changed);
-    return i > start;
-  }
-  function parseWhitespace(skipNewline) {
-    const _isWhiteSpace = skipNewline ? isWhitespace : isWhitespaceExceptNewline;
-    let whitespace = "";
-    while (true) {
-      if (_isWhiteSpace(text, i)) {
-        whitespace += text[i];
-        i++;
-      } else if (isSpecialWhitespace(text, i)) {
-        whitespace += " ";
-        i++;
-      } else {
-        break;
-      }
-    }
-    if (whitespace.length > 0) {
-      output += whitespace;
-      return true;
-    }
-    return false;
-  }
-  function parseComment() {
-    if (text[i] === "/" && text[i + 1] === "*") {
-      while (i < text.length && !atEndOfBlockComment(text, i)) {
-        i++;
-      }
-      i += 2;
-      return true;
-    }
-    if (text[i] === "/" && text[i + 1] === "/") {
-      while (i < text.length && text[i] !== "\n") {
-        i++;
-      }
-      return true;
-    }
-    return false;
-  }
-  function parseMarkdownCodeBlock(blocks) {
-    if (skipMarkdownCodeBlock(blocks)) {
-      if (isFunctionNameCharStart(text[i])) {
-        while (i < text.length && isFunctionNameChar(text[i])) {
-          i++;
-        }
-      }
-      parseWhitespaceAndSkipComments();
-      return true;
-    }
-    return false;
-  }
-  function skipMarkdownCodeBlock(blocks) {
-    parseWhitespace(true);
-    for (const block of blocks) {
-      const end = i + block.length;
-      if (text.slice(i, end) === block) {
-        i = end;
-        return true;
-      }
-    }
-    return false;
-  }
-  function parseCharacter(char) {
-    if (text[i] === char) {
-      output += text[i];
-      i++;
-      return true;
-    }
-    return false;
-  }
-  function skipCharacter(char) {
-    if (text[i] === char) {
-      i++;
-      return true;
-    }
-    return false;
-  }
-  function skipEscapeCharacter() {
-    return skipCharacter("\\");
-  }
-  function skipEllipsis() {
-    parseWhitespaceAndSkipComments();
-    if (text[i] === "." && text[i + 1] === "." && text[i + 2] === ".") {
-      i += 3;
-      parseWhitespaceAndSkipComments();
-      skipCharacter(",");
-      return true;
-    }
-    return false;
-  }
-  function parseObject() {
-    if (text[i] === "{") {
-      output += "{";
-      i++;
-      parseWhitespaceAndSkipComments();
-      if (skipCharacter(",")) {
-        parseWhitespaceAndSkipComments();
-      }
-      let initial = true;
-      while (i < text.length && text[i] !== "}") {
-        let processedComma2;
-        if (!initial) {
-          processedComma2 = parseCharacter(",");
-          if (!processedComma2) {
-            output = insertBeforeLastWhitespace(output, ",");
-          }
-          parseWhitespaceAndSkipComments();
-        } else {
-          processedComma2 = true;
-        }
-        skipEllipsis();
-        const processedKey = parseString() || parseUnquotedString(true);
-        if (!processedKey) {
-          if (text[i] === "}" || text[i] === "{" || text[i] === "]" || text[i] === "[" || text[i] === void 0) {
-            if (!initial) {
-              output = stripLastOccurrence(output, ",");
-            }
-          } else {
-            throwObjectKeyExpected();
-          }
-          break;
-        }
-        parseWhitespaceAndSkipComments();
-        const processedColon = parseCharacter(":");
-        const truncatedText = i >= text.length;
-        if (!processedColon) {
-          if (isStartOfValue(text[i]) || truncatedText) {
-            output = insertBeforeLastWhitespace(output, ":");
-          } else {
-            throwColonExpected();
-          }
-        }
-        const processedValue = parseValue();
-        if (!processedValue) {
-          if (processedColon || truncatedText) {
-            output += "null";
-          } else {
-            throwColonExpected();
-          }
-        }
-        initial = false;
-      }
-      if (text[i] === "}") {
-        output += "}";
-        i++;
-      } else {
-        output = insertBeforeLastWhitespace(output, "}");
-      }
-      return true;
-    }
-    return false;
-  }
-  function parseArray() {
-    if (text[i] === "[") {
-      output += "[";
-      i++;
-      parseWhitespaceAndSkipComments();
-      if (skipCharacter(",")) {
-        parseWhitespaceAndSkipComments();
-      }
-      let initial = true;
-      while (i < text.length && text[i] !== "]") {
-        if (!initial) {
-          const processedComma2 = parseCharacter(",");
-          if (!processedComma2) {
-            output = insertBeforeLastWhitespace(output, ",");
-          }
-        }
-        skipEllipsis();
-        const processedValue = parseValue();
-        if (!processedValue) {
-          if (!initial) {
-            output = stripLastOccurrence(output, ",");
-          }
-          break;
-        }
-        initial = false;
-      }
-      if (text[i] === "]") {
-        output += "]";
-        i++;
-      } else {
-        output = insertBeforeLastWhitespace(output, "]");
-      }
-      return true;
-    }
-    return false;
-  }
-  function parseNewlineDelimitedJSON() {
-    let initial = true;
-    let processedValue = true;
-    while (processedValue) {
-      if (!initial) {
-        const processedComma2 = parseCharacter(",");
-        if (!processedComma2) {
-          output = insertBeforeLastWhitespace(output, ",");
-        }
-      } else {
-        initial = false;
-      }
-      processedValue = parseValue();
-    }
-    if (!processedValue) {
-      output = stripLastOccurrence(output, ",");
-    }
-    output = `[
-${output}
-]`;
-  }
-  function parseString() {
-    let stopAtDelimiter = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : false;
-    let stopAtIndex = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : -1;
-    const skipEscapeChars = text[i] === "\\";
-    if (skipEscapeChars) {
-      i++;
-      if (!isQuote(text[i])) {
-        throwUnexpectedCharacter();
-      }
-    }
-    const openEntity = text[i] === "&" ? matchHtmlEntity(text.slice(i, i + maxHtmlEntityLength)) : null;
-    const openedByEntity = isDoubleQuoteEntity(openEntity) || isSingleQuoteEntity(openEntity);
-    if (isQuote(text[i]) || openedByEntity) {
-      const isEndQuote = isDoubleQuote(text[i]) ? isDoubleQuote : isSingleQuote(text[i]) ? isSingleQuote : isSingleQuoteLike(text[i]) ? isSingleQuoteLike : isDoubleQuoteLike;
-      const iBefore = i;
-      const oBefore = output.length;
-      let str = '"';
-      i += openedByEntity && openEntity ? openEntity.length : 1;
-      while (true) {
-        if (i >= text.length) {
-          const iPrev = prevNonWhitespaceIndex(i - 1);
-          if (!stopAtDelimiter && isDelimiter(text.charAt(iPrev))) {
-            i = iBefore;
-            output = output.substring(0, oBefore);
-            return parseString(true);
-          }
-          str = insertBeforeLastWhitespace(str, '"');
-          output += str;
-          return true;
-        }
-        if (i === stopAtIndex) {
-          str = insertBeforeLastWhitespace(str, '"');
-          output += str;
-          return true;
-        }
-        const entity = openedByEntity && text[i] === "&" ? matchHtmlEntity(text.slice(i, i + maxHtmlEntityLength)) : null;
-        const isEnd = entity && openEntity ? entity.char === openEntity.char : isEndQuote(text[i]);
-        if (isEnd) {
-          const iQuote = i;
-          const oQuote = str.length;
-          str += '"';
-          i += entity ? entity.length : 1;
-          output += str;
-          parseWhitespaceAndSkipComments(false);
-          if (stopAtDelimiter || i >= text.length || isDelimiter(text[i]) && // only count the brackets inside the string when actually needed,
-          // i.e. when the quote is directly followed by a closing bracket
-          !isInsideUnclosedBracket(str, text[i]) || isQuote(text[i]) && !nextQuoteIsEndQuote(i) || isDigit(text[i])) {
-            parseConcatenatedString();
-            return true;
-          }
-          if (text[i] === "\\") {
-            throwUnexpectedCharacter();
-          }
-          const iPrevChar = prevNonWhitespaceIndex(iQuote - 1);
-          const prevChar = text.charAt(iPrevChar);
-          if (prevChar === ",") {
-            i = iBefore;
-            output = output.substring(0, oBefore);
-            return parseString(false, iPrevChar);
-          }
-          if (isDelimiter(prevChar)) {
-            i = iBefore;
-            output = output.substring(0, oBefore);
-            return parseString(true);
-          }
-          output = output.substring(0, oBefore);
-          i = iQuote + (entity ? entity.length : 1);
-          str = `${str.substring(0, oQuote)}\\${str.substring(oQuote)}`;
-        } else if (stopAtDelimiter && isUnquotedStringDelimiter(text[i])) {
-          if (text[i - 1] === ":" && regexUrlStart.test(text.substring(iBefore + 1, i + 2))) {
-            while (i < text.length && regexUrlChar.test(text[i])) {
-              str += text[i];
-              i++;
-            }
-          }
-          str = insertBeforeLastWhitespace(str, '"');
-          output += str;
-          parseConcatenatedString();
-          return true;
-        } else if (entity) {
-          const char = entity.char;
-          if (char === '"') {
-            str += '\\"';
-          } else if (isControlCharacter(char)) {
-            str += controlCharacters[char];
-          } else {
-            str += char;
-          }
-          i += entity.length;
-        } else if (text[i] === "\\") {
-          const char = text.charAt(i + 1);
-          const escapeChar = escapeCharacters[char];
-          if (escapeChar !== void 0) {
-            str += text.slice(i, i + 2);
-            i += 2;
-          } else if (char === "u") {
-            let j = 2;
-            while (j < 6 && isHex(text[i + j])) {
-              j++;
-            }
-            if (j === 6) {
-              str += text.slice(i, i + 6);
-              i += 6;
-            } else if (i + j >= text.length) {
-              i = text.length;
-            } else {
-              throwInvalidUnicodeCharacter();
-            }
-          } else if (char === "\n") {
-            str += "\\n";
-            i += 2;
-          } else {
-            str += char;
-            i += 2;
-          }
-        } else {
-          const char = text.charAt(i);
-          if (char === '"' && text[i - 1] !== "\\") {
-            str += `\\${char}`;
-            i++;
-          } else if (isControlCharacter(char)) {
-            str += controlCharacters[char];
-            i++;
-          } else {
-            if (!isValidStringCharacter(char)) {
-              throwInvalidCharacter(char);
-            }
-            str += char;
-            i++;
-          }
-        }
-        if (skipEscapeChars) {
-          skipEscapeCharacter();
-        }
-      }
-    }
-    return false;
-  }
-  function parseConcatenatedString() {
-    let processed2 = false;
-    parseWhitespaceAndSkipComments();
-    while (text[i] === "+") {
-      processed2 = true;
-      i++;
-      parseWhitespaceAndSkipComments();
-      output = stripLastOccurrence(output, '"', true);
-      const start = output.length;
-      const parsedStr = parseString();
-      if (parsedStr) {
-        output = removeAtIndex(output, start, 1);
-      } else {
-        output = insertBeforeLastWhitespace(output, '"');
-      }
-    }
-    return processed2;
-  }
-  function parseNumber() {
-    const start = i;
-    let num = "";
-    let invalid = false;
-    if (text[i] === "-") {
-      num += text[i];
-      i++;
-      if (!isDigit(text[i]) && atEndOfNumber()) {
-        num += "0";
-      }
-    }
-    if (text[i] === "0" && isDigit(text[i + 1])) {
-      invalid = true;
-    }
-    while (isDigit(text[i])) {
-      num += text[i];
-      i++;
-    }
-    if (text[i] === ".") {
-      if (num === "" || num === "-") {
-        num += "0";
-      }
-      num += text[i];
-      i++;
-      if (!isDigit(text[i])) {
-        num += "0";
-      }
-      while (isDigit(text[i])) {
-        num += text[i];
-        i++;
-      }
-    }
-    if (i > start) {
-      if (text[i] === "e" || text[i] === "E") {
-        if (num === "-") {
-          invalid = true;
-        }
-        num += text[i];
-        i++;
-        if (text[i] === "-" || text[i] === "+") {
-          num += text[i];
-          i++;
-        }
-        if (!isDigit(text[i])) {
-          num += "0";
-        }
-        while (isDigit(text[i])) {
-          num += text[i];
-          i++;
-        }
-      }
-      if (!atEndOfNumber()) {
-        i = start;
-        return false;
-      }
-      output += invalid ? `"${text.substring(start, i)}"` : num;
-      return true;
-    }
-    return false;
-  }
-  function parseKeywords() {
-    return parseKeyword("true", "true") || parseKeyword("false", "false") || parseKeyword("null", "null") || // repair Python keywords True, False, None
-    parseKeyword("True", "true") || parseKeyword("False", "false") || parseKeyword("None", "null");
-  }
-  function parseKeyword(name, value) {
-    if (text.slice(i, i + name.length) === name && !isFunctionNameChar(text[i + name.length])) {
-      output += value;
-      i += name.length;
-      return true;
-    }
-    return false;
-  }
-  function parseUnquotedString(isKey) {
-    const start = i;
-    if (isFunctionNameCharStart(text[i])) {
-      while (i < text.length && isFunctionNameChar(text[i])) {
-        i++;
-      }
-      let j = i;
-      while (isWhitespace(text, j)) {
-        j++;
-      }
-      if (text[j] === "(") {
-        i = j + 1;
-        parseValue();
-        if (text[i] === ")") {
-          i++;
-          if (text[i] === ";") {
-            i++;
-          }
-        }
-        return true;
-      }
-    }
-    while (i < text.length && !isUnquotedStringDelimiter(text[i]) && !isQuote(text[i]) && (!isKey || text[i] !== ":")) {
-      i++;
-    }
-    if (text[i - 1] === ":" && regexUrlStart.test(text.substring(start, i + 2))) {
-      while (i < text.length && regexUrlChar.test(text[i])) {
-        i++;
-      }
-    }
-    if (i > start) {
-      while (isWhitespace(text, i - 1) && i > 0) {
-        i--;
-      }
-      const symbol2 = text.slice(start, i);
-      output += symbol2 === "undefined" ? "null" : JSON.stringify(symbol2);
-      if (text[i] === '"') {
-        i++;
-      }
-      return true;
-    }
-  }
-  function parseRegex() {
-    if (text[i] === "/") {
-      const start = i;
-      i++;
-      while (i < text.length && (text[i] !== "/" || text[i - 1] === "\\")) {
-        i++;
-      }
-      i++;
-      output += JSON.stringify(text.substring(start, i));
-      return true;
-    }
-  }
-  function prevNonWhitespaceIndex(start) {
-    let prev = start;
-    while (prev > 0 && isWhitespace(text, prev)) {
-      prev--;
-    }
-    return prev;
-  }
-  function nextQuoteIsEndQuote(index) {
-    let next = index + 1;
-    while (next < text.length && isWhitespace(text, next)) {
-      next++;
-    }
-    return next >= text.length || isDelimiter(text[next]);
-  }
-  function atEndOfNumber() {
-    return i >= text.length || isDelimiter(text[i]) || isWhitespace(text, i);
-  }
-  function throwInvalidCharacter(char) {
-    throw new JSONRepairError(`Invalid character ${JSON.stringify(char)}`, i);
-  }
-  function throwUnexpectedCharacter() {
-    throw new JSONRepairError(`Unexpected character ${JSON.stringify(text[i])}`, i);
-  }
-  function throwUnexpectedEnd() {
-    throw new JSONRepairError("Unexpected end of json string", text.length);
-  }
-  function throwObjectKeyExpected() {
-    throw new JSONRepairError("Object key expected", i);
-  }
-  function throwColonExpected() {
-    throw new JSONRepairError("Colon expected", i);
-  }
-  function throwInvalidUnicodeCharacter() {
-    const chars = text.slice(i, i + 6);
-    throw new JSONRepairError(`Invalid unicode character "${chars}"`, i);
-  }
-}
-function atEndOfBlockComment(text, i) {
-  return text[i] === "*" && text[i + 1] === "/";
-}
-
-// src/core/planning-runner.ts
-var PlanningValidationError = class extends Error {
-  constructor(diagnostics) {
-    super(diagnostics.map((diagnostic3) => `${diagnostic3.stage}:${diagnostic3.path.join(".") || "<root>"}:${diagnostic3.message}`).join("\n"));
-    this.diagnostics = diagnostics;
-  }
-  diagnostics;
-};
-async function runPlanning(args) {
-  const { input, provider } = args;
-  const warnings = [];
-  const allDiagnostics = [];
-  let syntaxRepairApplied = false;
-  let semanticRepairApplied = false;
-  let sawQualityRepairablePlan = false;
-  let sawConstraintContradiction = false;
-  let attempts = 0;
-  if (!input.config.workflow.automaticTriage || !provider) {
-    const fallbackReason2 = !input.config.workflow.automaticTriage ? "automatic model planning is disabled by configuration" : args.providerSelection === "deterministic" ? "deterministic provider explicitly selected" : "no model planning provider was resolved";
-    return {
-      plan: input.deterministicPlan,
-      source: "deterministic-fallback",
-      provider: provider?.name ?? "deterministic",
-      attempts: 0,
-      fallbackReason: fallbackReason2,
-      warnings
-    };
-  }
-  const maxAttempts = Math.min(2, input.config.budgets.triageCalls);
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    attempts = attempt;
-    let result;
-    try {
-      result = await provider.plan(input);
-    } catch (error51) {
-      warnings.push(`Planning provider invocation ${attempt} failed: ${messageOf3(error51)}`);
-      continue;
-    }
-    warnings.push(...result.warnings ?? []);
-    let parsed;
-    try {
-      parsed = parsePlanningPayload(result.raw);
-      syntaxRepairApplied ||= parsed.syntaxRepairApplied;
-      if (parsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once before schema validation.");
-    } catch (error51) {
-      const diagnostics = diagnosticsOf(error51, "syntax");
-      allDiagnostics.push(...diagnostics);
-      warnings.push(`Planning generation attempt ${attempt} produced unparseable JSON: ${messageOf3(error51)}`);
-      continue;
-    }
-    const validated = validateCandidate(args, parsed.value);
-    if (validated.ok) {
-      return modelResult(validated.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
-    }
-    allDiagnostics.push(...validated.diagnostics);
-    if (validated.diagnostics.some((diagnostic3) => diagnostic3.stage === "quality")) sawQualityRepairablePlan = true;
-    if (validated.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
-    warnings.push(`Planning generation attempt ${attempt} failed validation: ${diagnosticSummary(validated.diagnostics)}`);
-    const normalised = args.normalise?.(parsed.value, validated.diagnostics) ?? { raw: parsed.value, changed: false };
-    warnings.push(...normalised.warnings ?? []);
-    if (normalised.changed) {
-      const normalisedValidation = validateCandidate(args, normalised.raw);
-      if (normalisedValidation.ok) {
-        semanticRepairApplied = true;
-        warnings.push("Planning semantic repair applied with deterministic field normalisation.");
-        return modelResult(normalisedValidation.plan, result, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
-      }
-      allDiagnostics.push(...normalisedValidation.diagnostics);
-    }
-    if (provider.repair) {
-      try {
-        warnings.push("Attempting same-provider/model planning repair for exact validation diagnostics.");
-        const repairResult = await provider.repair(input, {
-          plan: normalised.raw,
-          diagnostics: validated.diagnostics.map((diagnostic3) => ({ ...diagnostic3, repairAttempt: "same-model" })),
-          model: result.model,
-          tier: result.tier
-        });
-        warnings.push(...repairResult.warnings ?? []);
-        const repairedParsed = parsePlanningPayload(repairResult.raw);
-        syntaxRepairApplied ||= repairedParsed.syntaxRepairApplied;
-        if (repairedParsed.syntaxRepairApplied) warnings.push("Planning syntax repair applied once to semantic repair output.");
-        const repairedValidation = validateCandidate(args, repairedParsed.value);
-        if (repairedValidation.ok) {
-          semanticRepairApplied = true;
-          warnings.push("Planning semantic repair applied by the same provider/model.");
-          markDiagnosticsResolution(allDiagnostics, validated.diagnostics, "repaired");
-          return modelResult(repairedValidation.plan, repairResult, attempt, warnings, allDiagnostics, syntaxRepairApplied, semanticRepairApplied);
-        }
-        if (repairedValidation.diagnostics.some(isConstraintDiagnostic)) sawConstraintContradiction = true;
-        allDiagnostics.push(...repairedValidation.diagnostics);
-        warnings.push(`Planning semantic repair output failed validation: ${diagnosticSummary(repairedValidation.diagnostics)}`);
-      } catch (error51) {
-        allDiagnostics.push(...diagnosticsOf(error51, "schema"));
-        warnings.push(`Planning semantic repair failed: ${messageOf3(error51)}`);
-      }
-      if (validated.diagnostics.some((diagnostic3) => diagnostic3.stage === "quality")) break;
-    }
-  }
-  const fallbackReason = `model planning failed after ${attempts} attempt${attempts === 1 ? "" : "s"}`;
-  const approvalBlockedReason = sawConstraintContradiction ? "Model planning contradicted approved constraints and repair did not produce a valid plan; plan approval is disabled until the plan is revised." : sawQualityRepairablePlan && isGenericFallbackPlan(input.deterministicPlan) ? "Deterministic fallback plan is generic while a model-generated plan only needed targeted repair; plan approval is disabled until the plan is revised." : void 0;
-  if (approvalBlockedReason) {
-    for (const diagnostic3 of allDiagnostics) {
-      if (isConstraintDiagnostic(diagnostic3) && !diagnostic3.resolution) diagnostic3.resolution = "blocked";
-    }
-  }
-  warnings.push(approvalBlockedReason ?? "Using deterministic planning fallback after model plan could not be validated.");
-  return {
-    plan: input.deterministicPlan,
-    source: "deterministic-fallback",
-    provider: provider.name,
-    attempts,
-    fallbackReason,
-    warnings,
-    diagnostics: allDiagnostics,
-    syntaxRepairApplied,
-    semanticRepairApplied,
-    approvalBlockedReason
-  };
-}
-function parsePlanningPayload(raw) {
-  if (typeof raw === "object" && raw !== null) {
-    const record2 = raw;
-    if (typeof record2.result === "string") return parsePlanningText(record2.result);
-    if (typeof record2.content === "string") return parsePlanningText(record2.content);
-    return { value: raw, syntaxRepairApplied: false };
-  }
-  if (typeof raw === "string") return parsePlanningText(raw);
-  throw new PlanningValidationError([{ stage: "syntax", path: [], code: "unsupported_payload", message: "Planning provider returned neither JSON nor text." }]);
-}
-function parsePlanningText(text) {
-  const candidate = extractJsonCandidate(text);
-  try {
-    return { value: JSON.parse(candidate), syntaxRepairApplied: false };
-  } catch (firstError) {
-    let repaired;
-    try {
-      repaired = jsonrepair(candidate);
-    } catch {
-      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "invalid_json", message: messageOf3(firstError) }]);
-    }
-    try {
-      return { value: JSON.parse(repaired), syntaxRepairApplied: true };
-    } catch (secondError) {
-      throw new PlanningValidationError([{ stage: "syntax", path: [], code: "jsonrepair_failed", message: messageOf3(secondError) }]);
-    }
-  }
-}
-function extractJsonCandidate(text) {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
-  if (fenced) return fenced;
-  const objectStart = trimmed.indexOf("{");
-  const objectEnd = trimmed.lastIndexOf("}");
-  const arrayStart = trimmed.indexOf("[");
-  const arrayEnd = trimmed.lastIndexOf("]");
-  if (objectStart >= 0 && objectEnd > objectStart) return trimmed.slice(objectStart, objectEnd + 1);
-  if (arrayStart >= 0 && arrayEnd > arrayStart) return trimmed.slice(arrayStart, arrayEnd + 1);
-  return trimmed;
-}
-function validateCandidate(args, raw) {
-  try {
-    return { ok: true, plan: args.validate(raw) };
-  } catch (error51) {
-    return { ok: false, diagnostics: diagnosticsOf(error51, "schema") };
-  }
-}
-function isConstraintDiagnostic(diagnostic3) {
-  return diagnostic3.code.startsWith("constraint.");
-}
-function markDiagnosticsResolution(allDiagnostics, matched, resolution) {
-  for (const diagnostic3 of allDiagnostics) {
-    if (!matched.some((candidate) => candidate.code === diagnostic3.code && candidate.message === diagnostic3.message && candidate.path.join(".") === diagnostic3.path.join("."))) continue;
-    diagnostic3.resolution = resolution;
-  }
-}
-function modelResult(plan, result, attempts, warnings, diagnostics, syntaxRepairApplied, semanticRepairApplied) {
-  return {
-    plan,
-    source: "model",
-    provider: result.provider,
-    model: result.model,
-    attempts,
-    warnings,
-    diagnostics,
-    syntaxRepairApplied,
-    semanticRepairApplied
-  };
-}
-function diagnosticsOf(error51, fallbackStage) {
-  if (error51 instanceof PlanningValidationError) return error51.diagnostics;
-  const record2 = error51;
-  if (Array.isArray(record2?.issues)) {
-    return record2.issues.map((issue2) => {
-      const candidate = issue2;
-      return {
-        stage: fallbackStage,
-        path: Array.isArray(candidate.path) ? candidate.path.filter((part) => typeof part === "string" || typeof part === "number") : [],
-        code: candidate.code ?? "validation_error",
-        message: candidate.message ?? messageOf3(issue2)
-      };
-    });
-  }
-  return [{ stage: fallbackStage, path: [], code: "planning_error", message: messageOf3(error51) }];
-}
-function diagnosticSummary(diagnostics) {
-  return diagnostics.map((diagnostic3) => `${diagnostic3.stage}:${diagnostic3.path.join(".") || "<root>"}:${diagnostic3.message}`).join("; ");
-}
-function isGenericFallbackPlan(plan) {
-  const text = plan.phases.map((phase2) => phase2.objective).join("\n").toLowerCase();
-  return /\bimplement (the )?(primary|approved|high-risk) behavior( change)?\b/.test(text) || /\bfocused regression coverage\b/.test(text) || /\bactual implementation work will need\b/.test(plan.summary.toLowerCase());
-}
-function messageOf3(error51) {
-  return error51 instanceof Error ? error51.message : String(error51 ?? "unknown error");
 }
 
 // src/core/workflow-lock.ts
@@ -28494,6 +28756,7 @@ var workflowActionDecisionSchema = external_exports.object({
     "clarification",
     "approach-approval",
     "workflow-plan-approval",
+    "planning-fallback-review",
     "material-drift-review",
     "execution-recovery",
     "integration-conflict",
@@ -28599,6 +28862,16 @@ var planningDiagnosticSchema = external_exports.object({
   repairAttempt: external_exports.enum(["same-model", "deterministic-normalisation", "none"]).optional(),
   resolution: external_exports.enum(["repaired", "blocked", "fallback"]).optional()
 });
+var planningAttemptRecordSchema = external_exports.object({
+  stage: external_exports.enum(["draft", "normalisation", "repair", "escalation"]),
+  tier: external_exports.enum(["small", "medium", "large", "inherit"]).optional(),
+  model: external_exports.string().optional(),
+  launchMode: external_exports.string().optional(),
+  invocation: external_exports.enum(["not-attempted", "succeeded", "failed"]),
+  validation: external_exports.enum(["not-attempted", "passed", "failed"]),
+  diagnosticCodes: external_exports.array(external_exports.string()).default([]),
+  failureReason: external_exports.string().optional()
+});
 var workflowStateSchema = external_exports.object({
   version: external_exports.literal(STATE_VERSION),
   id: external_exports.string().min(1),
@@ -28640,6 +28913,7 @@ var workflowStateSchema = external_exports.object({
     fallbackReason: external_exports.string().optional(),
     warnings: external_exports.array(external_exports.string()),
     diagnostics: external_exports.array(planningDiagnosticSchema).optional(),
+    attemptRecords: external_exports.array(planningAttemptRecordSchema).optional(),
     syntaxRepairApplied: external_exports.boolean().optional(),
     semanticRepairApplied: external_exports.boolean().optional(),
     approvalBlockedReason: external_exports.string().optional()
@@ -28842,11 +29116,55 @@ async function revisePlan(root, workflowId2, feedback, config2, mutation, planni
     next.review = void 0;
     next.commitPlan = void 0;
     next.blockers = [];
+    if (planningRun.approvalBlockedReason) {
+      next.blockers = [planningRun.approvalBlockedReason];
+      return transition(next, "blocked", "Revised planning still requires an explicit planning fallback review before approval.");
+    }
     return transition(next, "awaiting_plan_approval", "Plan revised and awaiting approval.");
   }, { ...mutation, operation: "revise_plan" });
 }
+async function retryPlanning(root, workflowId2, config2, mutation, planning) {
+  return updateFlowState(root, workflowId2, async (state) => {
+    assertState(state, ["blocked"]);
+    if (!state.planningRun?.approvalBlockedReason) throw new WorkflowStateError("Planning can only be retried through this path after a blocked planning fallback.");
+    if (!state.triage) throw new WorkflowStateError("Cannot retry planning before triage completes.");
+    const next = structuredClone(state);
+    resolveDecisionAction(next, "retry-planning", mutation, "answered", "planning-fallback-review");
+    const planningRun = await generatePlan({
+      request: next.request,
+      root: next.root,
+      triage: state.triage,
+      config: config2,
+      constraints: effectiveConstraintTexts(next, state.triage, config2 ?? defaultConfig()),
+      constraintSet: effectiveConstraintSet(next, state.triage, config2 ?? defaultConfig()),
+      constraintAudit: next.constraints?.audit ?? [],
+      revisionRequests: [...next.approach?.revisionRequests ?? [], ...next.plan?.revisionRequests ?? []],
+      provider: planning?.provider,
+      providerSelection: planning?.providerSelection
+    });
+    next.plan = planningRun.plan;
+    next.planningRun = planningRunMetadata(planningRun);
+    next.phaseBriefs = {};
+    next.phaseBriefFailures = {};
+    supersedePendingPhaseApproval(next);
+    next.approval = {
+      ...next.approval ?? { history: [], decisionHistory: [] },
+      currentAuthorizedPhase: void 0,
+      pendingDecision: void 0,
+      recommendation: approvalRecommendation(next)
+    };
+    next.review = void 0;
+    next.commitPlan = void 0;
+    next.blockers = planningRun.approvalBlockedReason ? [planningRun.approvalBlockedReason] : [];
+    appendEvent(next, "planning_completed", planningEventSummary(planningRun));
+    return planningRun.approvalBlockedReason ? transition(next, "blocked", "Planning retry still requires an explicit planning fallback review before approval.") : transition(next, "awaiting_plan_approval", "Planning retry completed and is awaiting approval.");
+  }, { ...mutation, operation: "retry_planning" });
+}
 async function approvePlan(root, workflowId2, mutation, selectedPolicy, config2 = defaultConfig(), briefProvider) {
   return updateFlowState(root, workflowId2, async (state) => {
+    if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) {
+      throw new WorkflowStateError("This plan cannot be approved because its generic planning fallback requires review. Retry structured planning or revise the Workflow Plan first.");
+    }
     assertState(state, ["awaiting_plan_approval"]);
     if (!state.plan) throw new WorkflowStateError("No plan is available for approval.");
     const next = structuredClone(state);
@@ -30153,6 +30471,7 @@ function planningRunMetadata(run) {
     fallbackReason: run.fallbackReason,
     warnings: run.warnings,
     diagnostics: run.diagnostics,
+    attemptRecords: run.attemptRecords,
     syntaxRepairApplied: run.syntaxRepairApplied,
     semanticRepairApplied: run.semanticRepairApplied,
     approvalBlockedReason: run.approvalBlockedReason
@@ -30308,7 +30627,7 @@ function filterAreas(targets, keywords) {
   return filtered.length > 0 ? filtered : targets;
 }
 function discoverPlanningTargets(root, requestEvidence, proposed) {
-  const explicit = unique9(proposed.filter(isPathLikeArea2));
+  const explicit = unique9(proposed.filter((area) => isRepositoryPlanningTarget(root, area)));
   if (explicit.length > 0) return explicit;
   const glob = require2("fast-glob");
   const files = glob.sync([
@@ -30348,6 +30667,25 @@ function discoverPlanningTargets(root, requestEvidence, proposed) {
     "tests/**",
     .../\b(doc|docs|documentation|readme)\b/i.test(requestEvidence) ? ["docs/**", "README.md"] : []
   ]);
+}
+function isRepositoryPlanningTarget(root, area) {
+  const normalized2 = area.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized2 || path20.posix.isAbsolute(normalized2) || normalized2.split("/").includes("..")) return false;
+  const repositoryRoot = path20.resolve(root);
+  const absolute = path20.resolve(repositoryRoot, normalized2);
+  const relative = path20.relative(repositoryRoot, absolute);
+  if (relative === ".." || relative.startsWith(`..${path20.sep}`) || path20.isAbsolute(relative)) return false;
+  if (existsSync3(absolute)) return true;
+  if (["*", "?", "[", "]", "{", "}", "(", ")"].some((character) => normalized2.includes(character))) {
+    const glob = require2("fast-glob");
+    return glob.sync(normalized2, {
+      cwd: repositoryRoot,
+      onlyFiles: false,
+      unique: true,
+      ignore: ["**/node_modules/**", ".git/**", ".leanrigor/**"]
+    }).length > 0;
+  }
+  return path20.posix.extname(normalized2) !== "";
 }
 function replaceNonPathAreas(value, fallback) {
   const current = Array.isArray(value) ? value.filter((area) => typeof area === "string") : [];
@@ -30952,7 +31290,19 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.phaseBriefs = migrated.phaseBriefs && typeof migrated.phaseBriefs === "object" ? migrated.phaseBriefs : {};
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
+  normalizeLegacyPlanningFallbackDecision(migrated);
   return migrated;
+}
+function normalizeLegacyPlanningFallbackDecision(state) {
+  if (state.state !== "blocked") return;
+  const planningRun = state.planningRun;
+  if (typeof planningRun?.approvalBlockedReason !== "string" || !planningRun.approvalBlockedReason) return;
+  const approval = state.approval;
+  const decision = approval?.pendingDecision;
+  if (!decision || decision.status !== "pending") return;
+  decision.type = "planning-fallback-review";
+  decision.question = planningRun.approvalBlockedReason;
+  decision.allowedActions = ["retry-planning", "revise-plan", "view-details", "cancel-workflow"];
 }
 function normalizeLegacyMaterialBriefDecision(state) {
   const approval = state.approval;
@@ -30988,6 +31338,10 @@ function legacyPendingDecision(state) {
   }
   if (state.state === "blocked") {
     const blockers = Array.isArray(state.blockers) ? state.blockers : [];
+    const planningRun = state.planningRun;
+    if (typeof planningRun?.approvalBlockedReason === "string" && planningRun.approvalBlockedReason) {
+      return { ...base, type: "planning-fallback-review", question: planningRun.approvalBlockedReason, allowedActions: ["retry-planning", "revise-plan", "view-details", "cancel-workflow"] };
+    }
     return { ...base, type: "execution-recovery", question: blockers[0] ?? "Choose a safe recovery action.", allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"] };
   }
   const briefs = state.phaseBriefs && typeof state.phaseBriefs === "object" ? Object.values(state.phaseBriefs) : [];
@@ -31091,6 +31445,14 @@ function syncLifecycleDecision(state, lifecycle) {
     return;
   }
   if (lifecycle === "blocked") {
+    if (state.planningRun?.approvalBlockedReason) {
+      setPendingDecision(state, {
+        type: "planning-fallback-review",
+        question: state.planningRun.approvalBlockedReason,
+        allowedActions: ["retry-planning", "revise-plan", "view-details", "cancel-workflow"]
+      });
+      return;
+    }
     setPendingDecision(state, {
       type: "execution-recovery",
       question: state.blockers[0] ?? "Choose a safe recovery action for the blocked workflow.",
@@ -31358,6 +31720,7 @@ function decisionOption(state, decision, action) {
     "revise-approach": { label: "Revise approach", description: "Record revision feedback and return a fresh approach decision.", command: `leanrigor flow revise-approach ${state.id} --feedback-file <feedback-file> ${common}` },
     "approve-plan": { label: "Approve Workflow Plan and prepare Phase 1 brief", description: "Approve only the Workflow Plan and generate the first detailed brief.", command: `leanrigor flow approve-plan ${state.id} --approval-policy ${state.mode === "rigorous" ? "phase-by-phase" : "workflow-authorized"} ${common}` },
     "revise-plan": { label: "Revise Workflow Plan", description: "Record plan feedback and generate a fresh Workflow Plan decision.", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto ${common}` },
+    "retry-planning": { label: "Retry structured planning", description: "Retry bounded structured planning with the configured provider.", command: `leanrigor flow retry-plan ${state.id} --provider auto ${common}` },
     "approve-phase": { label: `Review and approve ${phaseLabel(phase2)} brief`, description: "Approve exactly the persisted detailed brief revision.", command: `leanrigor flow approve-phase ${state.id} ${phase2} --brief-revision ${decision.briefRevision} --workflow-revision ${decision.workflowRevision} ${common}` },
     "revise-phase-brief": { label: `Revise ${phaseLabel(phase2)} brief`, description: "Persist feedback and create a new unapproved brief revision.", command: `leanrigor flow phase-brief ${state.id} ${phase2} --feedback-file <feedback-file> ${common}` },
     "approve-bootstrap": { label: "Approve workspace bootstrap", description: "Approve only the persisted command and preparation identity.", command: bootstrapCommand(state, decision, common) },
@@ -31532,6 +31895,8 @@ function workflowNextSummary(state) {
           planningSource: state.planningRun?.source ?? "unknown",
           provider: state.planningRun?.provider ?? "unknown",
           model: state.planningRun?.model,
+          attemptRecords: state.planningRun?.attemptRecords ?? [],
+          planningOutcome: planningOutcomeExplanation(state),
           phases: plan?.phases.length ?? 0
         },
         overallStrategy: {
@@ -31786,13 +32151,44 @@ function workflowNextSummary(state) {
   }
   if (state.state === "blocked") {
     const planBlocked = Boolean(state.planningRun?.approvalBlockedReason);
+    if (planBlocked) {
+      const root = quoteArg(state.root);
+      const decision = state.approval?.pendingDecision;
+      const common = decision?.status === "pending" ? ` --decision-id ${quoteArg(decision.id)} --expected-revision ${state.revision}` : "";
+      return {
+        ...base,
+        label: "Planning fallback review",
+        userDecisionRequired: true,
+        pendingDecision: state.planningRun?.approvalBlockedReason ?? "The generated fallback plan is not safe to approve as-is.",
+        pendingAction: "Retry structured planning, revise the plan with feedback, inspect the persisted diagnostics, or cancel.",
+        allowedIntents: ["retry", "revise", "view details", "show status", "cancel"],
+        approvalActions: [
+          { label: "Retry structured planning", intent: "retry", command: `leanrigor flow retry-plan ${state.id} --provider auto${common} --root ${root}`, description: "Retry bounded structured planning using the configured provider." },
+          { label: "Revise Workflow Plan", intent: "revise", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto${common} --root ${root}`, description: "Provide concrete feedback and generate a fresh plan for approval." },
+          { label: "View planning details", intent: "view details", command: `leanrigor flow status ${state.id} --json --root ${root}`, description: "Show the exact invocation, validation, repair, and fallback evidence." },
+          { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id}${common} --root ${root}`, description: "Cancel without implementation, commit, or push." }
+        ],
+        summary: {
+          approvalSafe: false,
+          explanation: planningOutcomeExplanation(state),
+          source: state.planningRun?.source,
+          provider: state.planningRun?.provider,
+          model: state.planningRun?.model,
+          attempts: state.planningRun?.attemptRecords ?? [],
+          warnings: state.planningRun?.warnings ?? [],
+          diagnostics: state.planningRun?.diagnostics ?? [],
+          fallbackReason: state.planningRun?.fallbackReason,
+          blockers: state.blockers
+        }
+      };
+    }
     return {
       ...base,
       label: "Blocked",
       userDecisionRequired: true,
       pendingDecision: state.blockers[0] ?? "Workflow is blocked.",
-      pendingAction: planBlocked ? "Revise the plan before continuing." : "Resolve the blocker, revise the workflow, or cancel.",
-      allowedIntents: planBlocked ? ["revise", "show status", "cancel"] : ["show status", "cancel"],
+      pendingAction: "Resolve the blocker, revise the workflow, or cancel.",
+      allowedIntents: ["show status", "cancel"],
       summary: { blockers: state.blockers }
     };
   }
@@ -31932,9 +32328,25 @@ function internalOperationsFor(state) {
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
   if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
-  if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["revise-plan", "cancel"];
+  if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["retry-plan", "revise-plan", "status", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
   return ["status"];
+}
+function planningOutcomeExplanation(state) {
+  const planning = state.planningRun;
+  if (!planning) return "Planning provenance is unavailable.";
+  const records = planning.attemptRecords ?? [];
+  const draft = records.find((record2) => record2.stage === "draft");
+  if (draft?.invocation === "failed" && draft.validation === "not-attempted") {
+    return "The planning provider failed before returning a candidate plan. Candidate validation and semantic repair were not attempted.";
+  }
+  if (draft?.invocation === "succeeded" && draft.validation === "failed") {
+    const repaired = records.some((record2) => (record2.stage === "repair" || record2.stage === "escalation") && record2.validation === "passed");
+    return repaired ? "The provider returned a candidate that failed deterministic validation; a later bounded repair produced the persisted approval-quality plan." : "The provider returned a candidate that failed deterministic validation, and no later repair produced an approval-quality plan.";
+  }
+  if (draft?.validation === "passed") return "The provider returned a candidate plan that passed deterministic validation.";
+  if (planning.source === "deterministic-fallback") return `Deterministic fallback was applied${planning.fallbackReason ? `: ${planning.fallbackReason}` : "."}`;
+  return "The persisted planning attempt evidence does not include a complete draft outcome.";
 }
 function commitPlanSummary(plan) {
   return plan ? {
@@ -33343,7 +33755,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.29");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.30");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -33685,6 +34097,16 @@ flow.command("revise-plan").argument("<workflow-id>").argument("[feedback]").opt
     options.root,
     workflowId2,
     await textArgument(feedback, options.feedbackFile, "feedback"),
+    await effectiveRepositoryConfig(options.root),
+    mutationOptions(options),
+    { provider: planningProvider(providerSelection), providerSelection }
+  ));
+});
+flow.command("retry-plan").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto").option("--decision-id <id>", "exact persisted decision ID").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+  const providerSelection = triageProviderSelection(options.provider);
+  printFlowState(await retryPlanning(
+    options.root,
+    workflowId2,
     await effectiveRepositoryConfig(options.root),
     mutationOptions(options),
     { provider: planningProvider(providerSelection), providerSelection }
@@ -34059,6 +34481,7 @@ function printFlowState(state) {
       fallbackReason: state.planningRun.fallbackReason,
       warnings: state.planningRun.warnings,
       diagnostics: state.planningRun.diagnostics,
+      attemptRecords: state.planningRun.attemptRecords,
       syntaxRepairApplied: state.planningRun.syntaxRepairApplied,
       semanticRepairApplied: state.planningRun.semanticRepairApplied,
       approvalBlockedReason: state.planningRun.approvalBlockedReason

@@ -56,6 +56,7 @@ import {
   resumeFlow,
   reviseApproach,
   revisePlan,
+  retryPlanning,
   readyPhases,
   startFlow,
   startPhase,
@@ -80,7 +81,7 @@ import type { PlanningProvider } from "../core/planning-runner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.29");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.30");
 
 program.command("setup")
   .alias("init")
@@ -631,6 +632,24 @@ flow.command("revise-plan")
       options.root,
       workflowId,
       await textArgument(feedback, options.feedbackFile, "feedback"),
+      await effectiveRepositoryConfig(options.root),
+      mutationOptions(options),
+      { provider: planningProvider(providerSelection), providerSelection }
+    ));
+  });
+
+flow.command("retry-plan")
+  .argument("<workflow-id>")
+  .option("--root <path>", "repository root", process.cwd())
+  .option("--provider <provider>", "planning provider: auto, claude, or deterministic", "auto")
+  .option("--decision-id <id>", "exact persisted decision ID")
+  .option("--expected-revision <revision>", "expected workflow revision")
+  .option("--owner <id>", "lock owner ID", "cli")
+  .action(async (workflowId, options) => {
+    const providerSelection = triageProviderSelection(options.provider);
+    printFlowState(await retryPlanning(
+      options.root,
+      workflowId,
       await effectiveRepositoryConfig(options.root),
       mutationOptions(options),
       { provider: planningProvider(providerSelection), providerSelection }
@@ -1275,6 +1294,7 @@ function printFlowState(state: SequentialWorkflowState): void {
       fallbackReason: state.planningRun.fallbackReason,
       warnings: state.planningRun.warnings,
       diagnostics: state.planningRun.diagnostics,
+      attemptRecords: state.planningRun.attemptRecords,
       syntaxRepairApplied: state.planningRun.syntaxRepairApplied,
       semanticRepairApplied: state.planningRun.semanticRepairApplied,
       approvalBlockedReason: state.planningRun.approvalBlockedReason

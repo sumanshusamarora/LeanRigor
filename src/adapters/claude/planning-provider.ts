@@ -1,144 +1,193 @@
-import type { LeanRigorConfig } from "../../config/schema.js";
-import type { PlanningProvider, PlanningProviderInput, PlanningProviderResult, PlanningRepairRequest } from "../../core/planning-runner.js";
+import type { ModelTier } from "../../config/schema.js";
+import { PlanningProviderInvocationError, type PlanningProvider, type PlanningProviderInput, type PlanningProviderResult, type PlanningRepairRequest } from "../../core/planning-runner.js";
+import type { JsonSchema, StructuredDecisionProvider, StructuredDecisionRequest, StructuredDecisionResult } from "../../core/structured-decision.js";
+import { TriageProviderError } from "../../core/triage-runner.js";
+import { ClaudeCliStructuredDecisionProvider } from "./structured-decision-provider.js";
 import type { CommandRunner } from "./triage-provider.js";
-import { defaultCommandRunner, runClaudeWithTierFallback } from "./triage-provider.js";
+import { defaultCommandRunner } from "./triage-provider.js";
 
 export class ClaudeCliPlanningProvider implements PlanningProvider {
   name = "claude-cli";
+  private readonly decisions: StructuredDecisionProvider;
 
-  constructor(private readonly runCommand: CommandRunner = defaultCommandRunner) {}
+  constructor(runCommand: CommandRunner = defaultCommandRunner) {
+    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand);
+  }
 
   async plan(input: PlanningProviderInput): Promise<PlanningProviderResult> {
-    const tier = planningTier(input);
-    const prompt = buildPlanningPrompt(input);
-    const baseArgs = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
-    const attempted = await runClaudeWithTierFallback({
-      runCommand: this.runCommand,
+    const result = await this.decide({
       root: input.root,
-      baseArgs,
-      prompt,
-      preferredTier: tier,
+      prompt: buildPlanningPrompt(input),
+      schema: planningJsonSchema(input),
+      tier: "small",
       config: input.config,
-      stage: "planning"
+      stage: "planning draft",
+      maxTurns: input.config.budgets.planningMaxTurns,
+      effort: "low",
+      tools: "none"
     });
-
-    return { raw: parseCommandOutput(attempted.result), provider: this.name, model: attempted.model, tier: attempted.tier, warnings: attempted.warnings };
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings
+    };
   }
 
   async repair(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult> {
-    const prompt = buildPlanningRepairPrompt(input, request);
-    const args = ["-p", "--output-format", "json", "--max-turns", String(input.config.budgets.planningRepairMaxTurns), "--disallowedTools", "Edit", "Write", "Bash", "PullRequest", "Git", "GitHub", "GitLab", "Jira", "Slack", "Email"];
-    if (request.model) args.push("--model", request.model);
-    const result = await this.runCommand("claude", args, input.root, prompt);
-    if (result.exitCode !== 0) {
-      const reason = compactFailure(result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`);
-      throw new Error(`Claude planning repair failed for ${request.model ? `model '${request.model}'` : "inherited Claude default"}: ${reason}`);
+    const result = await this.decide({
+      root: input.root,
+      prompt: buildPlanningRepairPrompt(input, request),
+      schema: planningJsonSchema(input),
+      tier: request.tier ?? "small",
+      config: input.config,
+      stage: "planning repair",
+      maxTurns: input.config.budgets.planningRepairMaxTurns,
+      effort: "low",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings
+    };
+  }
+
+  async escalate(input: PlanningProviderInput, request: PlanningRepairRequest): Promise<PlanningProviderResult> {
+    const result = await this.decide({
+      root: input.root,
+      prompt: buildPlanningEscalationPrompt(input, request),
+      schema: planningJsonSchema(input),
+      tier: planningEscalationTier(input),
+      config: input.config,
+      stage: "planning architecture escalation",
+      maxTurns: input.config.budgets.planningMaxTurns,
+      effort: "medium",
+      tools: "none"
+    });
+    return {
+      raw: result.value,
+      provider: result.provider,
+      model: result.model,
+      tier: result.tier,
+      launchMode: result.launchMode,
+      warnings: result.warnings
+    };
+  }
+
+  private async decide(request: StructuredDecisionRequest): Promise<StructuredDecisionResult> {
+    try {
+      return await this.decisions.decide(request);
+    } catch (error) {
+      const kind = error instanceof TriageProviderError ? error.kind : "provider_process_failure";
+      throw new PlanningProviderInvocationError(
+        error instanceof Error ? error.message : String(error ?? "unknown planning provider failure"),
+        kind,
+        { provider: this.name, tier: request.tier, launchMode: "bare" }
+      );
     }
-    return { raw: parseCommandOutput(result), provider: this.name, model: request.model, tier: request.tier, warnings: [] };
   }
 }
 
-function parseCommandOutput(result: { stdout: string }): unknown {
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    return result.stdout;
-  }
+function planningEscalationTier(input: PlanningProviderInput): ModelTier {
+  return input.triage.workflow.finalMode === "rigorous"
+    ? input.config.routing.rigorousPlanning
+    : input.config.routing.standardPlanning;
 }
 
-function planningTier(input: PlanningProviderInput): LeanRigorConfig["routing"]["triage"] {
-  const mode = input.triage.workflow.finalMode;
-  const config = input.config;
-  if (mode === "rigorous") return config.routing.rigorousPlanning;
-  if (mode === "standard") return config.routing.standardPlanning;
-  return config.routing.standardPlanning;
+function candidateAreas(input: PlanningProviderInput): string[] {
+  return [...new Set(input.deterministicPlan.phases.flatMap((phase) => [
+    ...phase.expectedReadAreas,
+    ...phase.expectedWriteAreas,
+    ...phase.expectedFilesOrAreas
+  ]).map((area) => area.trim()).filter(Boolean))];
+}
+
+function planningJsonSchema(input: PlanningProviderInput): JsonSchema {
+  const candidates = candidateAreas(input);
+  const boundedArea = candidates.length > 0
+    ? { type: "string", enum: candidates }
+    : { type: "string", minLength: 1 };
+  return {
+    type: "object",
+    properties: {
+      version: { type: "number", const: 1 },
+      summary: { type: "string", minLength: 12 },
+      principles: { type: "array", items: { type: "string", minLength: 4 }, maxItems: 12 },
+      phases: {
+        type: "array",
+        minItems: 1,
+        maxItems: 12,
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", pattern: "^phase-[A-Za-z0-9._-]+$" },
+            objective: { type: "string", minLength: 12 },
+            rationale: { type: "string", minLength: 12 },
+            dependencies: { type: "array", items: { type: "string", pattern: "^phase-[A-Za-z0-9._-]+$" }, uniqueItems: true },
+            expectedReadAreas: { type: "array", items: boundedArea, uniqueItems: true },
+            expectedWriteAreas: { type: "array", minItems: 1, items: boundedArea, uniqueItems: true },
+            expectedFilesOrAreas: { type: "array", minItems: 1, items: boundedArea, uniqueItems: true },
+            acceptanceCriteria: { type: "array", minItems: 1, items: { type: "string", minLength: 12 } },
+            validationCommands: { type: "array", minItems: 1, items: { type: "string", minLength: 2 }, uniqueItems: true },
+            riskLevel: { type: "string", enum: ["low", "medium", "high"] },
+            modelTier: { type: "string", enum: ["small", "medium", "large", "inherit"] }
+          },
+          required: ["id", "objective", "rationale", "dependencies", "expectedReadAreas", "expectedWriteAreas", "expectedFilesOrAreas", "acceptanceCriteria", "validationCommands", "riskLevel", "modelTier"],
+          additionalProperties: false
+        }
+      },
+      revisionRequests: { const: input.revisionRequests }
+    },
+    required: ["version", "summary", "principles", "phases", "revisionRequests"],
+    additionalProperties: false
+  };
 }
 
 function buildPlanningPrompt(input: PlanningProviderInput): string {
   return [
-    "You are the bounded sequential planner for LeanRigor.",
-    "You may inspect the repository with Read/Glob/Grep to identify concrete files, existing schemas, tests, and integration points. Keep inspection minimal.",
-    "Return only one JSON object as your final response; no prose or markdown.",
-    "Produce a LeanRigor ExecutionPlan using this compact schema:",
-    JSON.stringify({
-      version: 1,
-      summary: "string",
-      principles: ["string"],
-      phases: [{
-        id: "phase-1",
-        objective: "specific outcome",
-        rationale: "why this phase is separately reviewable",
-        dependencies: [],
-        expectedReadAreas: ["src/example.ts"],
-        expectedWriteAreas: ["src/example.ts"],
-        expectedFilesOrAreas: ["src/example.ts"],
-        acceptanceCriteria: ["specific evidence obligation"],
-        validationCommands: ["npm test"],
-        riskLevel: "low|medium|high",
-        modelTier: "small|medium|large|inherit"
-      }],
-      revisionRequests: input.revisionRequests
-    }, null, 2),
-    "Rules:",
-    "- Prefer concrete repository files or narrow areas over generic areas.",
-    "- Keep phases sequential and independently reviewable.",
-    "- Do not include runtime fields such as status, completion, workspace, filesChanged, commandsRun, validationResults, or repairAttempts.",
-    "- Preserve revisionRequests exactly.",
-    "- Use the deterministic baseline only as a safety floor; improve specificity when repository evidence supports it.",
-    "",
-    "Enforced quality rules:",
-    "- One primary objective means one reviewable outcome in one phase. Supporting actions may be mentioned only when they are necessary evidence for that same outcome.",
-    "- Good objective: 'Persist phase-specific test obligations in workflow state.'",
-    "- Good objective: 'Require completion evidence to satisfy mandatory obligations.'",
-    "- Bad objective: 'Implement backend, frontend, tests, docs, and migration changes.'",
-    "- Bad objective: 'Do everything needed for the referenced work item.'",
-    "- A single architectural boundary is determined from expectedWriteAreas, not from words in the objective. Keep each phase within one production owner such as src/core, src/config, src/cli, or one adapter unless dependencies make the boundary explicit.",
-    "- Migration, security, schema, compatibility, failure, concurrency, recovery, contract, and regression may be obligation categories. These words do not by themselves mean a phase mixes boundaries.",
-    "- Every phase must include specific acceptance criteria, at least one validation command or check expectation, and bounded expected write areas.",
-    "- Preserve final approved effective constraints exactly. Do not reintroduce removed assumptions or scope the user rejected.",
-    "- If an effective constraint says backward compatibility is not required, do not describe any phase as backward-compatible or compatibility-preserving.",
-    "User request:",
-    input.request,
-    "Triage output:",
-    JSON.stringify(input.triage, null, 2),
-    "Authoritative approved constraint set:",
-    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
-    "Final approved effective constraints:",
-    JSON.stringify(input.effectiveConstraintSet?.finalEffective ?? input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
-    "Constraint change audit:",
-    JSON.stringify(input.constraintChanges ?? [], null, 2),
-    "Deterministic baseline plan:",
-    JSON.stringify(input.deterministicPlan, null, 2)
+    "You are the bounded sequential planning candidate generator for LeanRigor.",
+    "Return only the JSON value required by the supplied schema.",
+    "You have no repository tools. Use only the bounded evidence and candidate paths below.",
+    "Never invent a path. Every read and write area must be selected from Candidate repository paths.",
+    "LeanRigor will deterministically validate constraints, ownership, phase sizing, dependencies, and approval safety.",
+    "Keep phases sequential, independently reviewable, and within one production-owner boundary unless the rationale explicitly establishes repository-state closure.",
+    "Every acceptance criterion must describe observable evidence and every phase must include a validation command.",
+    "Preserve revisionRequests exactly.",
+    "User request:", input.request,
+    "Bounded triage evidence:", JSON.stringify(input.triage, null, 2),
+    "Authoritative approved constraint set:", JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
+    "Constraint change audit:", JSON.stringify(input.constraintChanges ?? [], null, 2),
+    "Candidate repository paths:", JSON.stringify(candidateAreas(input), null, 2),
+    "Deterministic baseline safety floor:", JSON.stringify(input.deterministicPlan, null, 2)
   ].join("\n\n");
 }
 
 function buildPlanningRepairPrompt(input: PlanningProviderInput, request: PlanningRepairRequest): string {
   return [
-    "You are repairing a LeanRigor ExecutionPlan returned by the same planning model.",
-    "Return only one JSON object; no prose or markdown.",
-    "Repair only the invalid fields named in diagnostics.",
-    "Preserve all valid fields exactly, including phase IDs, dependencies, expectedReadAreas, expectedWriteAreas, expectedFilesOrAreas, acceptanceCriteria, validationCommands, riskLevel, modelTier, and revisionRequests.",
-    "Do not restart planning. Do not add new phases unless a diagnostic explicitly requires it.",
-    "Quality definitions:",
-    "- One primary objective means one reviewable outcome in one phase; supporting evidence can remain in acceptanceCriteria or validationCommands.",
-    "- Single architectural boundary is determined primarily by expectedWriteAreas and component ownership, not by words such as migration, security, schema, compatibility, failure, concurrency, recovery, contract, or regression.",
-    "Original request:",
-    input.request,
-    "Triage constraints and context:",
-    JSON.stringify(input.triage, null, 2),
-    "Authoritative approved constraint set:",
-    JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? input.triage.constraints.mustNot }, null, 2),
-    "Final approved effective constraints:",
-    JSON.stringify(input.effectiveConstraintSet?.finalEffective ?? input.effectiveConstraints ?? input.triage.constraints.mustNot, null, 2),
-    "Diagnostics to repair:",
-    JSON.stringify(request.diagnostics, null, 2),
-    "Invalid plan:",
-    JSON.stringify(request.plan, null, 2)
+    "Repair the bounded LeanRigor Workflow Plan candidate using only the exact diagnostics supplied.",
+    "Return only the JSON value required by the supplied schema.",
+    "Do not invent paths or change valid fields. Preserve revisionRequests exactly.",
+    "Candidate repository paths:", JSON.stringify(candidateAreas(input), null, 2),
+    "Authoritative approved constraints:", JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? [] }, null, 2),
+    "Diagnostics to repair:", JSON.stringify(request.diagnostics, null, 2),
+    "Invalid plan:", JSON.stringify(request.plan, null, 2)
   ].join("\n\n");
 }
 
-function compactFailure(reason: string): string {
-  const compact = reason.replace(/\s+/g, " ").trim();
-  if (/max[-\s]?turns|turn limit|maximum turns|reached.*turn/i.test(compact)) return `max_turns_reached: ${compact.slice(0, 450)}`;
-  return compact.slice(0, 500);
+function buildPlanningEscalationPrompt(input: PlanningProviderInput, request: PlanningRepairRequest): string {
+  return [
+    "Resolve only the remaining architectural or cross-phase diagnostics in this bounded LeanRigor Workflow Plan candidate.",
+    "Return only the JSON value required by the supplied schema.",
+    "Do not broaden scope, invent paths, reinterpret approved constraints, or change valid fields.",
+    "Candidate repository paths:", JSON.stringify(candidateAreas(input), null, 2),
+    "Authoritative approved constraints:", JSON.stringify(input.effectiveConstraintSet ?? { finalEffective: input.effectiveConstraints ?? [] }, null, 2),
+    "Remaining diagnostics:", JSON.stringify(request.diagnostics, null, 2),
+    "Plan requiring architectural repair:", JSON.stringify(request.plan, null, 2)
+  ].join("\n\n");
 }

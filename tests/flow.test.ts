@@ -24,12 +24,13 @@ import {
   rejectApproach,
   resumeFlow,
   revisePlan,
+  retryPlanning,
   saveFlowState,
   startFlow,
   startPhase,
   validatePlanQuality
 } from "../src/core/flow.js";
-import type { PlanningProvider } from "../src/core/planning-runner.js";
+import { PlanningProviderInvocationError, type PlanningProvider } from "../src/core/planning-runner.js";
 import type { TriageProvider } from "../src/core/triage-runner.js";
 import type { CriterionCompletionEvidence, ExecutionPlan, ModelTriageRecommendation, SequentialWorkflowState, ValidationEvidence, WorkflowPhase } from "../src/core/types.js";
 import { workflowNextSummary } from "../src/core/ux.js";
@@ -739,6 +740,94 @@ describe("sequential workflow orchestration", () => {
     expect(planned.planningRun?.source).toBe("deterministic-fallback");
     expect(planned.planningRun?.approvalBlockedReason).toMatch(/generic/i);
     expect(planned.blockers.join("\n")).toMatch(/plan approval is disabled/i);
+    expect(planned.approval?.pendingDecision).toMatchObject({
+      type: "planning-fallback-review",
+      allowedActions: ["retry-planning", "revise-plan", "view-details", "cancel-workflow"]
+    });
+    const summary = workflowNextSummary(planned);
+    expect(summary.label).toBe("Planning fallback review");
+    expect(summary.approvalActions?.map((action) => action.intent)).toEqual(["retry", "revise", "view details", "cancel"]);
+    expect(summary.approvalActions?.some((action) => action.command.includes("approve-plan"))).toBe(false);
+  });
+
+  it("records provider process failure truthfully, blocks approval, and supports a safe planning retry", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates", root, config: defaultConfig() });
+    const failingProvider: PlanningProvider = {
+      name: "failed-structured-planner",
+      async plan() {
+        throw new PlanningProviderInvocationError(
+          "Claude CLI exited before returning output.",
+          "provider_process_failure",
+          { provider: "claude-cli", tier: "small", model: "small-reliable", launchMode: "bare" }
+        );
+      }
+    };
+
+    const blocked = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: failingProvider,
+      providerSelection: "auto"
+    });
+
+    expect(blocked.state).toBe("blocked");
+    expect(blocked.planningRun?.attempts).toBe(1);
+    expect(blocked.planningRun?.attemptRecords).toEqual([{
+      stage: "draft",
+      tier: "small",
+      model: "small-reliable",
+      launchMode: "bare",
+      invocation: "failed",
+      validation: "not-attempted",
+      diagnosticCodes: [],
+      failureReason: "Claude CLI exited before returning output."
+    }]);
+    expect(workflowNextSummary(blocked).summary).toMatchObject({
+      approvalSafe: false,
+      explanation: expect.stringMatching(/failed before returning a candidate plan/i)
+    });
+
+    const beforeRejectedApproval = await loadFlowState(root, blocked.id);
+    await expect(approveWorkflowPlan(root, blocked.id)).rejects.toThrow(/retry structured planning or revise/i);
+    const afterRejectedApproval = await loadFlowState(root, blocked.id);
+    expect(afterRejectedApproval).toEqual(beforeRejectedApproval);
+
+    const retried = await retryPlanning(root, blocked.id, defaultConfig(), {
+      decisionId: blocked.approval?.pendingDecision?.id,
+      expectedRevision: blocked.revision
+    }, {
+      provider: planningProviderFrom([compactPlan()]),
+      providerSelection: "auto"
+    });
+    expect(retried.state).toBe("awaiting_plan_approval");
+    expect(retried.approval?.pendingDecision?.type).toBe("workflow-plan-approval");
+    expect(retried.planningRun?.source).toBe("model");
+  });
+
+  it("normalizes legacy blocked planning decisions and missing attempt evidence on load", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Implement GitHub issue #12: deterministic test-obligation planning and evidence gates", root, config: defaultConfig() });
+    const blocked = await approveApproach(root, started.id, defaultConfig(), undefined, {
+      provider: planningProviderWithRepair({ plan: compactPlan("Do everything needed for issue 12."), repair: new Error("unavailable") }),
+      providerSelection: "auto"
+    });
+    const workflowPath = path.join(root, ".leanrigor", "workflows", `${blocked.id}.json`);
+    const legacy = JSON.parse(await readFile(workflowPath, "utf8")) as {
+      planningRun?: Record<string, unknown>;
+      approval?: { pendingDecision?: Record<string, unknown> };
+    };
+    delete legacy.planningRun?.attemptRecords;
+    if (legacy.approval?.pendingDecision) {
+      legacy.approval.pendingDecision.type = "execution-recovery";
+      legacy.approval.pendingDecision.allowedActions = ["view-details", "retry-execution", "revise-plan", "cancel-workflow"];
+    }
+    await writeFile(workflowPath, JSON.stringify(legacy, null, 2));
+
+    const loaded = await loadFlowState(root, blocked.id);
+    expect(loaded.planningRun?.attemptRecords).toBeUndefined();
+    expect(loaded.approval?.pendingDecision).toMatchObject({
+      type: "planning-fallback-review",
+      allowedActions: ["retry-planning", "revise-plan", "view-details", "cancel-workflow"]
+    });
   });
 
   it("persists model provider warnings when planning succeeds after tier fallback", async () => {
@@ -840,6 +929,19 @@ describe("sequential workflow orchestration", () => {
 
     expect(targets).toContain("src/workflow-quality.ts");
     expect(targets.every((target) => target.includes("/") || target.includes("."))).toBe(true);
+  });
+
+  it("rejects conceptual planning areas while preserving real and bounded creation targets", async () => {
+    const root = await tempRepo();
+
+    const targets = discoverPlanningTargets(root, "Update assignment behavior", [
+      "provider/model",
+      "state/stage",
+      "src/assignment.ts",
+      "src/new-assignment.ts"
+    ]);
+
+    expect(targets).toEqual(["src/assignment.ts", "src/new-assignment.ts"]);
   });
 
   it("validates one-objective phase sizing and rejects broad containers", async () => {
