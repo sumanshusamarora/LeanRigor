@@ -114,7 +114,8 @@ export class ClaudeCliExecutionProvider implements ExecutionProvider {
       model: resolved.model,
       sessionId,
       resume: canResume,
-      executionIdentity: executionInput.executionIdentity
+      executionIdentity: executionInput.executionIdentity,
+      acceptanceCriterionIds: executionInput.acceptanceCriterionIds
     });
     const safeArgs = buildSafeArgs({
       maxTurns,
@@ -381,6 +382,7 @@ function buildClaudeArgs(args: {
   sessionId: string;
   resume: boolean;
   executionIdentity: PhaseExecutionInput["executionIdentity"];
+  acceptanceCriterionIds?: string[];
 }): string[] {
   const cliArgs: string[] = [];
   if (args.environmentMode === "bare") cliArgs.push("--bare");
@@ -391,7 +393,7 @@ function buildClaudeArgs(args: {
     "--output-format",
     "json",
     "--json-schema",
-    JSON.stringify(phaseExecutionResultJsonSchema(args.executionIdentity)),
+    JSON.stringify(phaseExecutionResultJsonSchema(args.executionIdentity, args.acceptanceCriterionIds)),
     "--max-turns",
     String(args.maxTurns),
     "--permission-mode",
@@ -478,7 +480,8 @@ export function resumePrompt(input: PhaseExecutionInput): string {
     input.previousCheckpoint ? `Existing changed files: ${input.previousCheckpoint.changedFiles.join(", ") || "(none)"}` : undefined,
     input.previousCheckpoint?.diffSummary.text ? `Bounded diff summary:\n${input.previousCheckpoint.diffSummary.text}` : undefined,
     "Remaining acceptance criteria:",
-    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    ...input.acceptanceCriteria.map((criterion, index) => `- [${input.acceptanceCriterionIds?.[index] ?? `${input.phaseId}:criterion-${index + 1}`}] ${criterion}`),
+    "For every criterionEvidence item, return the exact bracketed criterionId. Criterion display text is not an identifier.",
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
     input.turnBudget ? `Additional turn allowance for this continuation: ${input.turnBudget.effectiveTurnLimit}.` : undefined,
@@ -579,7 +582,7 @@ function isPhaseExecutionResult(value: unknown): value is PhaseExecutionResult {
     && Array.isArray(result.remainingRisks);
 }
 
-export function phaseExecutionResultJsonSchema(identity?: PhaseExecutionInput["executionIdentity"]): Record<string, unknown> {
+export function phaseExecutionResultJsonSchema(identity?: PhaseExecutionInput["executionIdentity"], criterionIds?: string[]): Record<string, unknown> {
   const exact = <T extends string | number>(value: T | undefined, type: "string" | "number"): Record<string, unknown> =>
     value === undefined ? { type } : { type, const: value };
   const executionIdentity = {
@@ -629,11 +632,12 @@ export function phaseExecutionResultJsonSchema(identity?: PhaseExecutionInput["e
   const criterion = {
     type: "object",
     properties: {
+      criterionId: criterionIds && criterionIds.length > 0 ? { type: "string", enum: criterionIds } : { type: "string" },
       criterion: { type: "string" },
       status: { enum: ["met", "not_met", "uncertain", "not_applicable"] },
       evidence: { type: "array", items: { type: "string" } }
     },
-    required: ["criterion", "status", "evidence"],
+    required: ["criterionId", "criterion", "status", "evidence"],
     additionalProperties: false
   };
   const deviation = {

@@ -107,6 +107,8 @@ export interface PhaseExecutionInput {
   currentBehaviour?: string;
   implementationApproach: string;
   acceptanceCriteria: string[];
+  /** One stable identifier per acceptance criterion, aligned by index with acceptanceCriteria. */
+  acceptanceCriterionIds?: string[];
   testObligations: string[];
   dependencies: string[];
   assumptions: string[];

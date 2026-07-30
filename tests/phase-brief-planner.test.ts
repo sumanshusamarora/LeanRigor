@@ -69,7 +69,7 @@ describe("phase execution brief generation", () => {
       reason: "Contract boundary confirmed.",
       criteria: [],
       filesChanged: ["src/contract.ts"],
-      validation: { status: "passed", commands: [], skipped: [] },
+      validation: { status: "passed", commands: [], skipped: [], missing: [] },
       scopeDeviations: [],
       assumptions: ["The serialized field remains optional."],
       remainingRisks: [],

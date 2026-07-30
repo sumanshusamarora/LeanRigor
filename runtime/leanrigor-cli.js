@@ -25947,7 +25947,8 @@ function phaseWorkerPrompt(input) {
     input.implementationApproach,
     "",
     "Acceptance criteria:",
-    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    ...input.acceptanceCriteria.map((criterion, index) => `- [${input.acceptanceCriterionIds?.[index] ?? `${input.phaseId}:criterion-${index + 1}`}] ${criterion}`),
+    "For every criterionEvidence item, return the exact bracketed criterionId. Criterion display text is not an identifier.",
     "",
     "Approved files, symbols, and scope:",
     `- Read: ${input.allowedReadAreas.join(", ") || "(none declared)"}`,
@@ -26074,7 +26075,8 @@ var ClaudeCliExecutionProvider = class {
       model: resolved.model,
       sessionId,
       resume: canResume,
-      executionIdentity: executionInput.executionIdentity
+      executionIdentity: executionInput.executionIdentity,
+      acceptanceCriterionIds: executionInput.acceptanceCriterionIds
     });
     const safeArgs = buildSafeArgs({
       maxTurns,
@@ -26334,7 +26336,7 @@ function buildClaudeArgs(args) {
     "--output-format",
     "json",
     "--json-schema",
-    JSON.stringify(phaseExecutionResultJsonSchema(args.executionIdentity)),
+    JSON.stringify(phaseExecutionResultJsonSchema(args.executionIdentity, args.acceptanceCriterionIds)),
     "--max-turns",
     String(args.maxTurns),
     "--permission-mode",
@@ -26410,7 +26412,8 @@ function resumePrompt(input) {
     input.previousCheckpoint?.diffSummary.text ? `Bounded diff summary:
 ${input.previousCheckpoint.diffSummary.text}` : void 0,
     "Remaining acceptance criteria:",
-    ...input.acceptanceCriteria.map((criterion) => `- ${criterion}`),
+    ...input.acceptanceCriteria.map((criterion, index) => `- [${input.acceptanceCriterionIds?.[index] ?? `${input.phaseId}:criterion-${index + 1}`}] ${criterion}`),
+    "For every criterionEvidence item, return the exact bracketed criterionId. Criterion display text is not an identifier.",
     "Validation commands:",
     ...input.validationExpectations.map((command) => `- ${command}`),
     input.turnBudget ? `Additional turn allowance for this continuation: ${input.turnBudget.effectiveTurnLimit}.` : void 0,
@@ -26494,7 +26497,7 @@ function isPhaseExecutionResult(value) {
   const result = value;
   return ["completed", "needs_replan", "needs_review", "failed", "cancelled", "timed_out", "blocked"].includes(result.status) && Boolean(result.executionIdentity && typeof result.executionIdentity === "object") && typeof result.summary === "string" && Array.isArray(result.changedFiles) && Array.isArray(result.validation) && Array.isArray(result.criterionEvidence) && Array.isArray(result.assumptions) && Array.isArray(result.scopeDeviations) && Array.isArray(result.remainingRisks);
 }
-function phaseExecutionResultJsonSchema(identity) {
+function phaseExecutionResultJsonSchema(identity, criterionIds) {
   const exact = (value, type) => value === void 0 ? { type } : { type, const: value };
   const executionIdentity = {
     type: "object",
@@ -26543,11 +26546,12 @@ function phaseExecutionResultJsonSchema(identity) {
   const criterion = {
     type: "object",
     properties: {
+      criterionId: criterionIds && criterionIds.length > 0 ? { type: "string", enum: criterionIds } : { type: "string" },
       criterion: { type: "string" },
       status: { enum: ["met", "not_met", "uncertain", "not_applicable"] },
       evidence: { type: "array", items: { type: "string" } }
     },
-    required: ["criterion", "status", "evidence"],
+    required: ["criterionId", "criterion", "status", "evidence"],
     additionalProperties: false
   };
   const deviation = {
@@ -28540,6 +28544,7 @@ var validationEvidenceSchema = external_exports.object({
   }
 });
 var criterionCompletionSchema = external_exports.object({
+  criterionId: external_exports.string().min(1).optional(),
   criterion: external_exports.string().min(1),
   status: criterionStatusSchema,
   evidence: external_exports.array(external_exports.string().min(1))
@@ -28572,7 +28577,8 @@ var phaseCompletionRecordSchema = external_exports.object({
   validation: external_exports.object({
     status: external_exports.enum(["passed", "failed", "skipped", "missing"]),
     commands: external_exports.array(validationEvidenceSchema),
-    skipped: external_exports.array(external_exports.object({ command: external_exports.string().min(1), reason: external_exports.string().min(1) }))
+    skipped: external_exports.array(external_exports.object({ command: external_exports.string().min(1), reason: external_exports.string().min(1) })),
+    missing: external_exports.array(external_exports.string()).default([])
   }),
   scopeDeviations: external_exports.array(external_exports.string()),
   assumptions: external_exports.array(external_exports.string()),
@@ -28840,7 +28846,7 @@ var phaseExecutionRecordSchema = external_exports.object({
       skippedReason: external_exports.string().optional(),
       timestamp: external_exports.string().optional()
     })),
-    criterionEvidence: external_exports.array(external_exports.object({ criterion: external_exports.string(), status: external_exports.enum(["met", "not_met", "uncertain", "not_applicable"]), evidence: external_exports.array(external_exports.string()) })),
+    criterionEvidence: external_exports.array(external_exports.object({ criterionId: external_exports.string().optional(), criterion: external_exports.string(), status: external_exports.enum(["met", "not_met", "uncertain", "not_applicable"]), evidence: external_exports.array(external_exports.string()) })),
     assumptions: external_exports.array(external_exports.string()),
     scopeDeviations: external_exports.array(external_exports.object({ path: external_exports.string().optional(), reason: external_exports.string() })),
     discoveredMaterialChanges: external_exports.array(materialPlanChangeSchema),
@@ -31322,13 +31328,13 @@ function buildCommitPlan(state) {
   };
 }
 function buildCompletionRecord(args) {
-  const criteria = normaliseCriteria(args.phase, args.criteria);
+  const criteria = normaliseCriteria(args.phase, args.criteria, args.state.phaseBriefs?.[args.phase.id]);
   const validation = summarisePhaseValidation(args.phase, args.state.mode, args.config);
   const approvedConstraints = args.state.constraints?.effective.map((constraint) => constraint.text) ?? args.state.triage?.constraints.mustNot ?? [];
   const policy = decideCompletionGate({
     phase: args.phase,
     criteria,
-    validationStatus: validation.status,
+    validation,
     blockedReason: args.blockedReason,
     remainingRisks: args.remainingRisks ?? [],
     approvedConstraints,
@@ -31356,16 +31362,27 @@ function buildCompletionRecord(args) {
     evidenceArtifact: args.evidenceArtifact
   };
 }
-function normaliseCriteria(phase2, supplied) {
-  const byCriterion = new Map((supplied ?? []).map((criterion) => [criterion.criterion, criterion]));
-  return phase2.acceptanceCriteria.map((criterion) => {
-    const suppliedCriterion = byCriterion.get(criterion);
+function normaliseCriteria(phase2, supplied, brief) {
+  const suppliedCriteria = supplied ?? [];
+  return phase2.acceptanceCriteria.map((criterion, index) => {
+    const criterionId = completionCriterionId(phase2.id, index);
+    const suppliedCriterion = suppliedCriteria.find((candidate) => candidate.criterionId === criterionId) ?? suppliedCriteria.find((candidate) => candidate.criterion === criterion) ?? suppliedCriteria.find((candidate) => criterionTextMatches(candidate.criterion, brief?.acceptanceCriteria[index] ?? criterion));
     return {
+      criterionId,
       criterion,
       status: suppliedCriterion?.status ?? "uncertain",
       evidence: unique10(suppliedCriterion?.evidence ?? [])
     };
   });
+}
+function completionCriterionId(phaseId, index) {
+  return `${phaseId}:criterion-${index + 1}`;
+}
+function criterionTextMatches(candidate, expected) {
+  const normalise = (value) => value.replace(/`/g, "").trim().replace(/\s+/g, " ").replace(/[.!]+$/, "").toLowerCase();
+  const actual = normalise(candidate);
+  const target = normalise(expected);
+  return actual === target || actual.startsWith(`${target}. `) || actual.startsWith(`${target} `);
 }
 function summarisePhaseValidation(phase2, mode2, config2) {
   const activeRepair = phase2.repairAttempts.find((attempt) => !attempt.outcome);
@@ -31375,21 +31392,21 @@ function summarisePhaseValidation(phase2, mode2, config2) {
     reason: evidence2.skippedReason ?? "No reason recorded."
   }));
   if (commands.some((evidence2) => evidence2.status === "failed" || (evidence2.exitStatus ?? 0) !== 0 && !evidence2.skipped)) {
-    return { status: "failed", commands, skipped };
+    return { status: "failed", commands, skipped, missing: [] };
   }
   const expected = phase2.validationCommands;
   const missing = missingRequiredValidationCommands(expected, commands.map((evidence2) => evidence2.command));
   if (commands.length === 0 || missing.length > 0) {
-    if (!gateRequiresValidation(config2)) return { status: "passed", commands, skipped };
-    return { status: "missing", commands, skipped };
+    if (!gateRequiresValidation(config2)) return { status: "passed", commands, skipped, missing };
+    return { status: "missing", commands, skipped, missing };
   }
   if (commands.every((evidence2) => evidence2.status === "skipped")) {
-    return { status: allowSkippedValidation(mode2, config2) ? "skipped" : "failed", commands, skipped };
+    return { status: allowSkippedValidation(mode2, config2) ? "skipped" : "failed", commands, skipped, missing: [] };
   }
   if (commands.some((evidence2) => evidence2.status === "skipped" && !allowSkippedValidation(mode2, config2))) {
-    return { status: "failed", commands, skipped };
+    return { status: "failed", commands, skipped, missing: [] };
   }
-  return { status: "passed", commands, skipped };
+  return { status: "passed", commands, skipped, missing: [] };
 }
 function decideCompletionGate(args) {
   if (!args.config?.completionGate.enabled && args.criteria.every((criterion) => criterion.status === "met" || criterion.status === "not_applicable")) {
@@ -31404,14 +31421,17 @@ function decideCompletionGate(args) {
   if (highRiskDeviation) return { decision: "needs_review", reason: highRiskDeviation };
   const notMet = args.criteria.find((criterion) => criterion.status === "not_met");
   if (notMet) return { decision: "needs_repair", reason: `Criterion not met: ${notMet.criterion}` };
+  if (args.validation.status === "failed") return { decision: "needs_repair", reason: "Validation failed or skipped validation is not allowed in this mode." };
+  if (args.validation.status === "missing") {
+    const commands = args.validation.missing.join(", ") || "the declared validation commands";
+    return { decision: "needs_repair", reason: `Required validation was not recorded: ${commands}. Supplemental checks do not replace this requirement.` };
+  }
   const uncertain = args.criteria.find((criterion) => criterion.status === "uncertain");
   if (uncertain) return { decision: "needs_review", reason: `Criterion uncertain: ${uncertain.criterion}` };
   if (gateRequiresEvidence(args.config)) {
     const missingEvidence = args.criteria.find((criterion) => criterion.status === "met" && criterion.evidence.length === 0);
     if (missingEvidence) return { decision: "needs_review", reason: `Evidence missing for criterion: ${missingEvidence.criterion}` };
   }
-  if (args.validationStatus === "failed") return { decision: "needs_repair", reason: "Validation failed or skipped validation is not allowed in this mode." };
-  if (args.validationStatus === "missing") return { decision: "needs_repair", reason: "Declared validation evidence is missing." };
   const criticalRisk = args.remainingRisks.find((risk2) => /\b(critical|severe|data loss|security|unsafe)\b/i.test(risk2));
   if (criticalRisk) return { decision: "needs_review", reason: `Critical remaining risk: ${criticalRisk}` };
   return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };
@@ -34314,6 +34334,7 @@ var ExecutionCoordinator = class {
       currentBehaviour: brief.currentBehaviour,
       implementationApproach: brief.implementationApproach,
       acceptanceCriteria: brief.acceptanceCriteria,
+      acceptanceCriterionIds: brief.acceptanceCriteria.map((_, index) => `${phase2.id}:criterion-${index + 1}`),
       testObligations: brief.testObligations,
       dependencies: brief.dependencies,
       assumptions: brief.assumptions,
@@ -34870,6 +34891,7 @@ var ScriptedExecutionProvider = class {
         phaseId: handle.phaseId,
         objective: "",
         acceptanceCriteria: result.criterionEvidence.map((criterion) => criterion.criterion),
+        acceptanceCriterionIds: result.criterionEvidence.map((criterion, index) => criterion.criterionId ?? `${handle.phaseId}:criterion-${index + 1}`),
         approvedConstraints: [],
         dependencies: [],
         selectedMode: "standard",
@@ -34914,7 +34936,8 @@ var ScriptedExecutionProvider = class {
       summary: script.summary ?? `Scripted result for ${input.phaseId}.`,
       changedFiles: (script.edits ?? []).map((edit) => edit.path).sort(),
       validation: script.validation ?? [],
-      criterionEvidence: criteriaMode === "missing" ? [] : input.acceptanceCriteria.map((criterion) => ({
+      criterionEvidence: criteriaMode === "missing" ? [] : input.acceptanceCriteria.map((criterion, index) => ({
+        criterionId: input.acceptanceCriterionIds?.[index] ?? `${input.phaseId}:criterion-${index + 1}`,
         criterion,
         status: criteriaMode === "uncertain" ? "uncertain" : "met",
         evidence: criteriaMode === "uncertain" ? ["Scripted evidence is uncertain."] : [`Scripted evidence for ${input.phaseId}.`]
@@ -34930,7 +34953,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.46");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.47");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

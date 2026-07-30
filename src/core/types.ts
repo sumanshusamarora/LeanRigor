@@ -862,6 +862,8 @@ export interface ValidationEvidence {
 }
 
 export interface CriterionCompletionEvidence {
+  /** Stable within a phase's approved workflow revision; display text may be refined by the brief. */
+  criterionId?: string;
   criterion: string;
   status: CriterionStatus;
   evidence: string[];
@@ -885,6 +887,8 @@ export interface PhaseCompletionRecord {
     status: "passed" | "failed" | "skipped" | "missing";
     commands: ValidationEvidence[];
     skipped: Array<{ command: string; reason: string }>;
+    /** Required commands that have no matching recorded evidence. */
+    missing: string[];
   };
   scopeDeviations: string[];
   assumptions: string[];

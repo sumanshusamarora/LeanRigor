@@ -1095,7 +1095,7 @@ describe("sequential workflow orchestration", () => {
       filesChanged: ["README.md"]
     });
 
-    expect(gated.plan?.phases[0]?.status).toBe("needs_review");
+    expect(gated.plan?.phases[0]?.status).toBe("needs_repair");
     expect(gated.plan?.phases[0]?.completion?.dependentPhasesMayProceed).toBe(false);
   });
 
@@ -1181,6 +1181,76 @@ describe("sequential workflow orchestration", () => {
     });
 
     expect(reviewed.plan?.phases[0]?.status).toBe("needs_review");
+  });
+
+  it("accepts provider evidence by stable criterion ID when the brief refines display text", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    const executing = await approvePlan(root, started.id);
+    const phase = executing.plan?.phases[0];
+    if (!phase) throw new Error("expected phase");
+
+    const completed = await completePhaseWithEvidence(root, executing, "phase-1", ["README.md"], {
+      criteria: phase.acceptanceCriteria.map((criterion, index) => ({
+        criterionId: `phase-1:criterion-${index + 1}`,
+        criterion: `${criterion.replace(/[.!]+$/, "")}. Evidence wording was refined for the execution brief.`,
+        status: "met",
+        evidence: ["Provider supplied criterion-linked evidence."]
+      }))
+    });
+
+    expect(completed.plan?.phases[0]?.status).toBe("completed");
+    expect(completed.plan?.phases[0]?.completion?.criteria).toEqual(expect.arrayContaining([
+      expect.objectContaining({ criterionId: "phase-1:criterion-1", status: "met" })
+    ]));
+  });
+
+  it("recovers legacy evidence using the approved brief wording when criterion IDs were absent", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    const executing = await approvePlan(root, started.id);
+    const brief = executing.phaseBriefs?.["phase-1"];
+    if (!brief) throw new Error("expected phase brief");
+
+    const completed = await completePhaseWithEvidence(root, executing, "phase-1", ["README.md"], {
+      criteria: brief.acceptanceCriteria.map((criterion) => ({
+        // Older Claude results did not carry IDs and often omitted Markdown backticks.
+        criterion: criterion.replace(/`/g, ""),
+        status: "met",
+        evidence: ["Legacy provider evidence mapped through approved brief text."]
+      }))
+    });
+
+    expect(completed.plan?.phases[0]?.status).toBe("completed");
+    expect(completed.plan?.phases[0]?.completion?.criteria.every((criterion) => criterion.status === "met")).toBe(true);
+  });
+
+  it("identifies the exact required validation command when only supplemental checks were recorded", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix a typo in README documentation", root, config: defaultConfig() });
+    const executing = await approvePlan(root, started.id);
+    const phase = executing.plan?.phases[0];
+    if (!phase) throw new Error("expected phase");
+    const required = phase.validationCommands[0];
+    if (!required) throw new Error("expected validation command");
+
+    const completed = await completePhaseWithEvidence(root, executing, "phase-1", ["README.md"], {
+      validationEvidence: [{
+        phaseId: phase.id,
+        command: `${required} -- README.md`,
+        exitStatus: 0,
+        result: "targeted supplemental check passed",
+        status: "passed",
+        skipped: false,
+        timestamp: new Date().toISOString()
+      }]
+    });
+
+    expect(completed.plan?.phases[0]?.status).toBe("needs_repair");
+    expect(completed.plan?.phases[0]?.completion).toMatchObject({
+      validation: { status: "missing", missing: expect.arrayContaining([required]) },
+      reason: expect.stringContaining(required)
+    });
   });
 
   it("scope expansion is recorded and escalated for replanning", async () => {
@@ -1578,6 +1648,7 @@ async function runFastToReview(root: string): Promise<SequentialWorkflowState> {
 async function completePhaseWithEvidence(root: string, state: SequentialWorkflowState, phaseId: string, filesChanged: string[], options: {
   criteria?: CriterionCompletionEvidence[];
   validationStatus?: "passed" | "failed" | "skipped";
+  validationEvidence?: ValidationEvidence[];
   scopeDeviations?: string[];
   assumptions?: string[];
   remainingRisks?: string[];
@@ -1603,7 +1674,7 @@ async function completePhaseWithEvidence(root: string, state: SequentialWorkflow
     : current;
   const runningPhase = executable.plan?.phases.find((candidate) => candidate.id === phaseId);
   if (!runningPhase) throw new Error(`Missing phase ${phaseId}`);
-  for (const evidence of validationEvidenceFor(runningPhase, options.validationStatus ?? "passed")) {
+  for (const evidence of options.validationEvidence ?? validationEvidenceFor(runningPhase, options.validationStatus ?? "passed")) {
     await recordValidation({
       root,
       workflowId: executable.id,

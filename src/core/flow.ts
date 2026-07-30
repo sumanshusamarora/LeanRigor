@@ -44,6 +44,7 @@ import type {
   ModelProfile,
   PhaseApprovalDecision,
   PhaseCompletionRecord,
+  PhaseExecutionBrief,
   PhaseRepairAttempt,
   RiskLevel,
   SequentialWorkflowState,
@@ -184,6 +185,7 @@ const validationEvidenceSchema = z.object({
 });
 
 const criterionCompletionSchema = z.object({
+  criterionId: z.string().min(1).optional(),
   criterion: z.string().min(1),
   status: criterionStatusSchema,
   evidence: z.array(z.string().min(1))
@@ -219,7 +221,8 @@ const phaseCompletionRecordSchema = z.object({
   validation: z.object({
     status: z.enum(["passed", "failed", "skipped", "missing"]),
     commands: z.array(validationEvidenceSchema),
-    skipped: z.array(z.object({ command: z.string().min(1), reason: z.string().min(1) }))
+    skipped: z.array(z.object({ command: z.string().min(1), reason: z.string().min(1) })),
+    missing: z.array(z.string()).default([])
   }),
   scopeDeviations: z.array(z.string()),
   assumptions: z.array(z.string()),
@@ -492,7 +495,7 @@ const phaseExecutionRecordSchema = z.object({
     validation: z.array(z.object({
       command: z.string(), exitCode: z.number().int().nullable().optional(), status: z.enum(["passed", "failed", "skipped"]).optional(), result: z.string().optional(), skipped: z.boolean().optional(), skippedReason: z.string().optional(), timestamp: z.string().optional()
     })),
-    criterionEvidence: z.array(z.object({ criterion: z.string(), status: z.enum(["met", "not_met", "uncertain", "not_applicable"]), evidence: z.array(z.string()) })),
+    criterionEvidence: z.array(z.object({ criterionId: z.string().optional(), criterion: z.string(), status: z.enum(["met", "not_met", "uncertain", "not_applicable"]), evidence: z.array(z.string()) })),
     assumptions: z.array(z.string()),
     scopeDeviations: z.array(z.object({ path: z.string().optional(), reason: z.string() })),
     discoveredMaterialChanges: z.array(materialPlanChangeSchema),
@@ -3460,13 +3463,13 @@ function buildCompletionRecord(args: {
   config?: LeanRigorConfig;
   leaseOwnerId?: string;
 }): PhaseCompletionRecord {
-  const criteria = normaliseCriteria(args.phase, args.criteria);
+  const criteria = normaliseCriteria(args.phase, args.criteria, args.state.phaseBriefs?.[args.phase.id]);
   const validation = summarisePhaseValidation(args.phase, args.state.mode, args.config);
   const approvedConstraints = args.state.constraints?.effective.map((constraint) => constraint.text) ?? args.state.triage?.constraints.mustNot ?? [];
   const policy = decideCompletionGate({
     phase: args.phase,
     criteria,
-    validationStatus: validation.status,
+    validation,
     blockedReason: args.blockedReason,
     remainingRisks: args.remainingRisks ?? [],
     approvedConstraints,
@@ -3495,16 +3498,37 @@ function buildCompletionRecord(args: {
   };
 }
 
-function normaliseCriteria(phase: WorkflowPhase, supplied?: CriterionCompletionEvidence[]): CriterionCompletionEvidence[] {
-  const byCriterion = new Map((supplied ?? []).map((criterion) => [criterion.criterion, criterion]));
-  return phase.acceptanceCriteria.map((criterion) => {
-    const suppliedCriterion = byCriterion.get(criterion);
+function normaliseCriteria(phase: WorkflowPhase, supplied?: CriterionCompletionEvidence[], brief?: PhaseExecutionBrief): CriterionCompletionEvidence[] {
+  const suppliedCriteria = supplied ?? [];
+  return phase.acceptanceCriteria.map((criterion, index) => {
+    const criterionId = completionCriterionId(phase.id, index);
+    const suppliedCriterion = suppliedCriteria.find((candidate) => candidate.criterionId === criterionId)
+      ?? suppliedCriteria.find((candidate) => candidate.criterion === criterion)
+      ?? suppliedCriteria.find((candidate) => criterionTextMatches(candidate.criterion, brief?.acceptanceCriteria[index] ?? criterion));
     return {
+      criterionId,
       criterion,
       status: suppliedCriterion?.status ?? "uncertain",
       evidence: unique(suppliedCriterion?.evidence ?? [])
     };
   });
+}
+
+function completionCriterionId(phaseId: string, index: number): string {
+  return `${phaseId}:criterion-${index + 1}`;
+}
+
+/** Legacy results lacked criterion IDs. Accept only the brief's scope-preserving display refinement. */
+function criterionTextMatches(candidate: string, expected: string): boolean {
+  const normalise = (value: string) => value
+    .replace(/`/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[.!]+$/, "")
+    .toLowerCase();
+  const actual = normalise(candidate);
+  const target = normalise(expected);
+  return actual === target || actual.startsWith(`${target}. `) || actual.startsWith(`${target} `);
 }
 
 function summarisePhaseValidation(phase: WorkflowPhase, mode: WorkflowMode, config?: LeanRigorConfig): PhaseCompletionRecord["validation"] {
@@ -3517,27 +3541,27 @@ function summarisePhaseValidation(phase: WorkflowPhase, mode: WorkflowMode, conf
     reason: evidence.skippedReason ?? "No reason recorded."
   }));
   if (commands.some((evidence) => evidence.status === "failed" || (evidence.exitStatus ?? 0) !== 0 && !evidence.skipped)) {
-    return { status: "failed", commands, skipped };
+    return { status: "failed", commands, skipped, missing: [] };
   }
   const expected = phase.validationCommands;
   const missing = missingRequiredValidationCommands(expected, commands.map((evidence) => evidence.command));
   if (commands.length === 0 || missing.length > 0) {
-    if (!gateRequiresValidation(config)) return { status: "passed", commands, skipped };
-    return { status: "missing", commands, skipped };
+    if (!gateRequiresValidation(config)) return { status: "passed", commands, skipped, missing };
+    return { status: "missing", commands, skipped, missing };
   }
   if (commands.every((evidence) => evidence.status === "skipped")) {
-    return { status: allowSkippedValidation(mode, config) ? "skipped" : "failed", commands, skipped };
+    return { status: allowSkippedValidation(mode, config) ? "skipped" : "failed", commands, skipped, missing: [] };
   }
   if (commands.some((evidence) => evidence.status === "skipped" && !allowSkippedValidation(mode, config))) {
-    return { status: "failed", commands, skipped };
+    return { status: "failed", commands, skipped, missing: [] };
   }
-  return { status: "passed", commands, skipped };
+  return { status: "passed", commands, skipped, missing: [] };
 }
 
 function decideCompletionGate(args: {
   phase: WorkflowPhase;
   criteria: CriterionCompletionEvidence[];
-  validationStatus: PhaseCompletionRecord["validation"]["status"];
+  validation: PhaseCompletionRecord["validation"];
   blockedReason?: string;
   remainingRisks: string[];
   approvedConstraints: string[];
@@ -3556,14 +3580,17 @@ function decideCompletionGate(args: {
   if (highRiskDeviation) return { decision: "needs_review", reason: highRiskDeviation };
   const notMet = args.criteria.find((criterion) => criterion.status === "not_met");
   if (notMet) return { decision: "needs_repair", reason: `Criterion not met: ${notMet.criterion}` };
+  if (args.validation.status === "failed") return { decision: "needs_repair", reason: "Validation failed or skipped validation is not allowed in this mode." };
+  if (args.validation.status === "missing") {
+    const commands = args.validation.missing.join(", ") || "the declared validation commands";
+    return { decision: "needs_repair", reason: `Required validation was not recorded: ${commands}. Supplemental checks do not replace this requirement.` };
+  }
   const uncertain = args.criteria.find((criterion) => criterion.status === "uncertain");
   if (uncertain) return { decision: "needs_review", reason: `Criterion uncertain: ${uncertain.criterion}` };
   if (gateRequiresEvidence(args.config)) {
     const missingEvidence = args.criteria.find((criterion) => criterion.status === "met" && criterion.evidence.length === 0);
     if (missingEvidence) return { decision: "needs_review", reason: `Evidence missing for criterion: ${missingEvidence.criterion}` };
   }
-  if (args.validationStatus === "failed") return { decision: "needs_repair", reason: "Validation failed or skipped validation is not allowed in this mode." };
-  if (args.validationStatus === "missing") return { decision: "needs_repair", reason: "Declared validation evidence is missing." };
   const criticalRisk = args.remainingRisks.find((risk) => /\b(critical|severe|data loss|security|unsafe)\b/i.test(risk));
   if (criticalRisk) return { decision: "needs_review", reason: `Critical remaining risk: ${criticalRisk}` };
   return { decision: "completed", reason: "All required criteria and validation expectations are satisfied." };

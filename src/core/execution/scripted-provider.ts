@@ -185,6 +185,7 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
         phaseId: handle.phaseId,
         objective: "",
         acceptanceCriteria: result.criterionEvidence.map((criterion) => criterion.criterion),
+        acceptanceCriterionIds: result.criterionEvidence.map((criterion, index) => criterion.criterionId ?? `${handle.phaseId}:criterion-${index + 1}`),
         approvedConstraints: [],
         dependencies: [],
         selectedMode: "standard",
@@ -232,7 +233,8 @@ export class ScriptedExecutionProvider implements ExecutionProvider {
       validation: script.validation ?? [],
       criterionEvidence: criteriaMode === "missing"
         ? []
-        : input.acceptanceCriteria.map((criterion) => ({
+        : input.acceptanceCriteria.map((criterion, index) => ({
+          criterionId: input.acceptanceCriterionIds?.[index] ?? `${input.phaseId}:criterion-${index + 1}`,
           criterion,
           status: criteriaMode === "uncertain" ? "uncertain" : "met",
           evidence: criteriaMode === "uncertain" ? ["Scripted evidence is uncertain."] : [`Scripted evidence for ${input.phaseId}.`]

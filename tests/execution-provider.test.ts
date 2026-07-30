@@ -48,19 +48,26 @@ describe("Claude CLI execution provider", () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "leanrigor-claude-provider-"));
     const executionInput = input(workspace);
     const identity = { ...executionInput.executionIdentity, providerSessionId: "11111111-1111-4111-8111-111111111111" };
-    const schema = phaseExecutionResultJsonSchema(identity) as {
-      properties: { executionIdentity: { properties: Record<string, { const?: unknown }> } };
+    const schema = phaseExecutionResultJsonSchema(identity, ["phase-api:criterion-1"]) as {
+      properties: {
+        executionIdentity: { properties: Record<string, { const?: unknown }> };
+        criterionEvidence: { items: { properties: { criterionId: { enum?: string[] } }; required: string[] } };
+      };
     };
 
     for (const [field, value] of Object.entries(identity)) {
       expect(schema.properties.executionIdentity.properties[field]?.const).toBe(value);
     }
+    expect(schema.properties.criterionEvidence.items.properties.criterionId.enum).toEqual(["phase-api:criterion-1"]);
+    expect(schema.properties.criterionEvidence.items.required).toContain("criterionId");
     const prompt = resumePrompt({
       ...executionInput,
       executionIdentity: identity,
       resume: { failureReason: "provider_protocol_error", attempt: 2, mode: "compact-retry" }
     });
     expect(prompt).toContain(`Return executionIdentity exactly as supplied: ${JSON.stringify(identity)}`);
+    expect(prompt).toContain("[phase-api:criterion-1] API works.");
+    expect(prompt).toContain("return the exact bracketed criterionId");
     expect(prompt).toContain("Do not modify files outside the approved write areas");
   });
 
@@ -474,7 +481,7 @@ function phaseResult() {
     summary: "Verified: fake Claude completed.",
     changedFiles: ["src/math.js"],
     validation: [{ command: "npm test", exitCode: 0, status: "passed", result: "pass" }],
-    criterionEvidence: [{ criterion: "API works.", status: "met", evidence: ["fake"] }],
+    criterionEvidence: [{ criterionId: "phase-api:criterion-1", criterion: "API works.", status: "met", evidence: ["fake"] }],
     assumptions: [],
     scopeDeviations: [],
     discoveredMaterialChanges: [],

@@ -1160,6 +1160,7 @@ export class ExecutionCoordinator {
       currentBehaviour: brief.currentBehaviour,
       implementationApproach: brief.implementationApproach,
       acceptanceCriteria: brief.acceptanceCriteria,
+      acceptanceCriterionIds: brief.acceptanceCriteria.map((_, index) => `${phase.id}:criterion-${index + 1}`),
       testObligations: brief.testObligations,
       dependencies: brief.dependencies,
       assumptions: brief.assumptions,

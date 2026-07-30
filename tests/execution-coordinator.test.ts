@@ -383,6 +383,7 @@ describe("execution coordinator", () => {
       },
       leaseOwnerId: lease.ownerId,
       selectedMode: "standard",
+      acceptanceCriterionIds: expect.arrayContaining(["phase-a:criterion-1"]),
       workspacePreparation: {
         status: "available",
         packageManager: "npm",
@@ -397,6 +398,7 @@ describe("execution coordinator", () => {
     expect(prompt).toContain(`Approved brief revision: ${capturedInput!.briefRevision}`);
     expect(prompt).toContain("If implementation reveals material scope, risk, dependency, or architecture changes, stop and return needs_replan.");
     expect(prompt).toContain("Workspace status: prepared");
+    expect(prompt).toContain("criterionId");
     expect(prompt).toContain("Do not install dependencies unless LeanRigor explicitly marks preparation incomplete");
     expect(lease.ownerType).toBe("agent");
     await expect(completePhase({
