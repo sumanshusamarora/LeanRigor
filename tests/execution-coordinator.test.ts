@@ -279,7 +279,7 @@ describe("execution coordinator", () => {
       packageManager: "npm",
       dependencies: "missing",
       bootstrapRequired: true,
-      bootstrapCommand: "npm ci",
+      bootstrapCommand: "npm ci --ignore-scripts",
       approvalRequired: true
     });
     expect(state.execution.records["phase-a"]).toBeUndefined();
@@ -289,7 +289,7 @@ describe("execution coordinator", () => {
       briefRevision: state.phaseBriefs?.["phase-a"]?.briefRevision,
       preparationRevision: workspace?.preparation?.preparationRevision,
       workspaceIdentity: workspace?.preparation?.workspaceIdentity,
-      command: "npm ci",
+      command: "npm ci --ignore-scripts",
       status: "pending"
     });
     expect(workflowNextSummary(state)).toMatchObject({
@@ -326,7 +326,7 @@ describe("execution coordinator", () => {
     expect(approvedBootstrap.approval?.decisionHistory.at(-1)).toMatchObject({
       type: "workspace-bootstrap-approval",
       status: "approved",
-      command: "npm ci"
+      command: "npm ci --ignore-scripts"
     });
     await expect(readFile(path.join(workspace!.path, "src", "a.ts"), "utf8")).rejects.toThrow();
   });

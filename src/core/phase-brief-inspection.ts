@@ -139,9 +139,9 @@ export async function inspectPhaseBrief(args: {
         const resolved = await resolveImport(root, relative, imported, io);
         if (!resolved || filesRead.includes(resolved) || candidates.some((item) => item.relative === resolved)) continue;
         addExpansion(request.allowedPaths, request.scopeExpansions, resolved, `Direct import from ${relative} is required to understand the bounded implementation contract.`, relative);
-        candidates.push({ relative: resolved, absolute: path.join(root, resolved), score: candidate.score + 2 });
+        candidates.push({ relative: resolved, absolute: path.join(root, resolved), priority: Math.max(0, candidate.priority - 1), score: candidate.score + 2 });
       }
-      candidates.sort((left, right) => right.score - left.score || left.relative.localeCompare(right.relative));
+      candidates.sort((left, right) => right.priority - left.priority || right.score - left.score || left.relative.localeCompare(right.relative));
     } catch (error) {
       warnings.push(`Could not read ${candidate.relative}: ${messageOf(error)}`);
     }
@@ -230,6 +230,7 @@ const nodeInspectionIo: PhaseBriefInspectionIo = {
 interface Candidate {
   relative: string;
   absolute: string;
+  priority: number;
   score: number;
 }
 
@@ -255,14 +256,14 @@ async function collectCandidates(
     const info = await io.stat(canonical).catch(() => undefined);
     if (!info) continue;
     if (info.isFile) {
-      addCandidate(candidates, root, canonical, scorePath(normalized, tokens, phase, true));
+      addCandidate(candidates, root, canonical, scorePath(normalized, tokens, phase, true), phase);
       continue;
     }
     if (info.isDirectory) await walkDirectory(root, canonical, 0, candidates, tokens, phase, io);
   }
   return [...candidates.values()]
     .filter((candidate) => candidate.score > 0 || isDirectPhasePath(candidate.relative, phase) || metadataFiles.includes(candidate.relative))
-    .sort((left, right) => right.score - left.score || left.relative.localeCompare(right.relative))
+    .sort((left, right) => right.priority - left.priority || right.score - left.score || left.relative.localeCompare(right.relative))
     .slice(0, 250);
 }
 
@@ -289,14 +290,31 @@ async function walkDirectory(
     if (!entry.isFile || !isReadableFile(entry.name)) continue;
     const relative = slash(path.relative(root, absolute));
     const score = scorePath(relative, tokens, phase, false);
-    if (score > 0 || isDirectPhasePath(relative, phase) || metadataFiles.includes(relative)) addCandidate(candidates, root, absolute, score);
+    if (score > 0 || isDirectPhasePath(relative, phase) || metadataFiles.includes(relative)) addCandidate(candidates, root, absolute, score, phase);
   }
 }
 
-function addCandidate(candidates: Map<string, Candidate>, root: string, absolute: string, score: number): void {
+function addCandidate(candidates: Map<string, Candidate>, root: string, absolute: string, score: number, phase: WorkflowPhase): void {
   const relative = slash(path.relative(root, absolute));
   const existing = candidates.get(relative);
-  if (!existing || existing.score < score) candidates.set(relative, { relative, absolute, score });
+  const priority = inspectionPriority(relative, phase);
+  if (!existing || existing.priority < priority || (existing.priority === priority && existing.score < score)) {
+    candidates.set(relative, { relative, absolute, priority, score });
+  }
+}
+
+function inspectionPriority(file: string, phase: WorkflowPhase): number {
+  const matches = (areas: string[]) => areas.some((area) => {
+    const normalized = normalizeScopePath(area);
+    return normalized ? file === normalized || file.startsWith(`${normalized}/`) : false;
+  });
+  const test = isTestFile(file);
+  // Read concrete implementation targets before broad test discovery. This
+  // prevents a large test fixture from exhausting the bounded byte budget.
+  if (matches(phase.expectedWriteAreas)) return test ? 3 : 5;
+  if (matches(phase.expectedReadAreas)) return test ? 2 : 4;
+  if (matches(phase.expectedFilesOrAreas)) return test ? 2 : 3;
+  return metadataFiles.includes(file) ? 1 : 0;
 }
 
 function relevanceTokens(phase: WorkflowPhase): string[] {

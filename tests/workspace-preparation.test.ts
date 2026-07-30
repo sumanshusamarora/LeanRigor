@@ -39,6 +39,8 @@ describe("workspace preparation contract", () => {
       expect(result.status).toBe("prepared");
       expect(result.dependencies).toBe("available");
       expect(result.validationCommandsAvailable).toBe(true);
+      expect(result.bootstrapCommand).toBe("npm ci --ignore-scripts");
+      expect(result.commandRisk.lifecycleScripts).toBe(false);
       expect(result.evidence).toContain("bootstrap exit status 0");
     } finally {
       process.env.PATH = previousPath;

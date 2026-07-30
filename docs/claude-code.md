@@ -170,6 +170,14 @@ provider dispatch, LeanRigor records workspace-preparation state. Missing
 dependencies block by default with the exact bootstrap command and risk summary;
 providers must not improvise package installation.
 
+For npm lockfile workspaces, the approved bootstrap is `npm ci --ignore-scripts`:
+it installs the locked dependency tree without running repository lifecycle hooks
+that could generate unrelated files before provider dispatch. Combined integration
+validation may temporarily reuse a dependency tree from the original checkout or
+a prepared phase workspace only when its package and lockfile identities exactly
+match the integration worktree; otherwise it remains blocked for an explicit
+environment or plan recovery.
+
 ## Marketplace plugin assets
 
 | Path | Purpose |

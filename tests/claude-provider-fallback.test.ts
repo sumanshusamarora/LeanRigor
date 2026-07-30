@@ -113,7 +113,7 @@ describe("Claude provider model tier fallback", () => {
     expect(prompt).not.toContain("TARGET_REPO_SKILL");
   });
 
-  it("starts bounded planning on the small tier and falls back through configured tiers", async () => {
+  it("starts Standard planning on its configured tier and falls back through configured tiers", async () => {
     clearModelEnv();
     const config = defaultConfig();
     const calls: string[][] = [];
@@ -125,15 +125,15 @@ describe("Claude provider model tier fallback", () => {
 
     const result = await provider.plan(planningInput(config));
 
-    expect(modelArgs(calls)).toEqual(["haiku", "sonnet", "inherit"]);
+    expect(modelArgs(calls)).toEqual(["sonnet", "opus", "inherit"]);
     expect(result.model).toBeUndefined();
-    expect(result.warnings?.join("\n")).toContain("planning draft tier 'small'");
     expect(result.warnings?.join("\n")).toContain("planning draft tier 'medium'");
+    expect(result.warnings?.join("\n")).toContain("planning draft tier 'large'");
   });
 
-  it("uses ANTHROPIC_DEFAULT_HAIKU_MODEL for the small structured planning draft", async () => {
+  it("uses ANTHROPIC_DEFAULT_SONNET_MODEL for the Standard structured planning draft", async () => {
     clearModelEnv();
-    vi.stubEnv("ANTHROPIC_DEFAULT_HAIKU_MODEL", "deepseek-env-small");
+    vi.stubEnv("ANTHROPIC_DEFAULT_SONNET_MODEL", "deepseek-env-medium");
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliPlanningProvider(commandRunner({
@@ -144,8 +144,21 @@ describe("Claude provider model tier fallback", () => {
 
     const result = await provider.plan(planningInput(config));
 
-    expect(modelArgs(calls)).toEqual(["deepseek-env-small"]);
-    expect(result.model).toBe("deepseek-env-small");
+    expect(modelArgs(calls)).toEqual(["deepseek-env-medium"]);
+    expect(result.model).toBe("deepseek-env-medium");
+  });
+
+  it("uses the configured large tier for initial Rigorous planning and review", async () => {
+    clearModelEnv();
+    const calls: string[][] = [];
+    const input = planningInput();
+    input.triage.workflow.finalMode = "rigorous";
+    const provider = new ClaudeCliPlanningProvider(commandRunner({ failModels: [], output: compactPlan(), calls }));
+
+    const result = await provider.plan(input);
+
+    expect(modelArgs(calls)).toEqual(["opus"]);
+    expect(result.tier).toBe("large");
   });
 
   it("surfaces max-turn provider fallback diagnostics explicitly", async () => {
@@ -153,7 +166,7 @@ describe("Claude provider model tier fallback", () => {
     const config = defaultConfig();
     const calls: string[][] = [];
     const provider = new ClaudeCliPlanningProvider(commandRunner({
-      failModels: ["haiku"],
+      failModels: ["sonnet"],
       failureReason: "Claude stopped because maximum turns were reached",
       output: compactPlan(),
       calls
@@ -161,7 +174,7 @@ describe("Claude provider model tier fallback", () => {
 
     const result = await provider.plan(planningInput(config));
 
-    expect(modelArgs(calls)).toEqual(["haiku", "sonnet"]);
+    expect(modelArgs(calls)).toEqual(["sonnet", "opus"]);
     expect(result.warnings?.join("\n")).toContain("max_turns_reached");
   });
 
@@ -180,7 +193,7 @@ describe("Claude provider model tier fallback", () => {
     expect(args).toContain("--no-session-persistence");
     expect(args[args.indexOf("--effort") + 1]).toBe("low");
     expect(result.launchMode).toBe("bare");
-    expect(result.tier).toBe("small");
+    expect(result.tier).toBe("medium");
   });
 
   it("uses configured planning and repair turn budgets", async () => {

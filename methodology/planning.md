@@ -28,6 +28,10 @@ Include, scaled to mode:
   inspecting them.
 - Avoid vague phases such as "implement feature" or "update tests".
 - Do not include implementation details that inspection has not supported.
+- State acceptance requirements so their verification is observable. If an
+  approved requirement is intentionally high-level, the later Phase Execution
+  Brief may attach bounded verification evidence without changing that
+  requirement.
 - Keep phase count proportional to mode and risk.
 - Treat the approved effective constraint set as authoritative. Do not
   reintroduce removed triage assumptions, and do not add work that contradicts

@@ -154,6 +154,11 @@ Default routing includes:
 | High-risk review | `large` |
 | Commit planning | `small` |
 
+Fast keeps its compact structured planning draft on the `small` tier. Standard
+and Rigorous use their configured planning tier for both the initial plan and
+its semantic review; a later repair preserves the candidate's tier unless
+escalation is required.
+
 For Claude Code, aliases default to `haiku`, `sonnet`, and `opus`, then resolve through Claude/provider configuration. `inherit` omits an explicit model selection.
 
 ## Workflow and triage

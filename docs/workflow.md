@@ -224,6 +224,12 @@ repository/constraint/inspection identities. Current test obligations are
 derived from task type, risk, mode, plan criteria, and repository checks; the
 more comprehensive deterministic obligation system remains separate work.
 
+The approved Workflow Plan remains the source of requirement intent. When a
+criterion lacks explicit verification wording, Phase Brief construction adds a
+deterministic, scope-preserving evidence sentence tied to an approved
+validation command. This is recorded as a non-material traceability refinement:
+it cannot add a requirement, path, dependency, or approval authority.
+
 Deterministic quality validation rejects copied phase prose, generic approaches,
 unbounded implementation writes, uninspectable criteria, missing validation or
 manual validation, unjustified missing tests, missing risk representation, and
@@ -255,6 +261,10 @@ pending decision. The previous decision is superseded and its approval cannot
 carry forward. Inspection or quality failure remains at phase preflight with
 retry, plan-boundary revision, diagnostics, and cancellation actions; it does
 not prepare a workspace or dispatch an implementation provider.
+
+Inspection prioritises exact non-test write targets before broad test discovery
+so a large fixture cannot consume the bounded read budget before the affected
+implementation is examined.
 
 The approved detailed brief is the implementation provider contract. One
 central guard evaluates workflow state, dependencies and selection, brief

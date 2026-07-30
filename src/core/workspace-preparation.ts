@@ -146,7 +146,7 @@ async function detectPackageManager(workspacePath: string, packageJson = {} as R
   if (await exists(path.join(workspacePath, "pnpm-lock.yaml")) || declared.startsWith("pnpm@")) return { packageManager: "pnpm", bootstrapCommand: ["pnpm", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("pnpm-lock.yaml", declared) };
   if (await exists(path.join(workspacePath, "yarn.lock")) || declared.startsWith("yarn@")) return { packageManager: "yarn", bootstrapCommand: ["yarn", "install", "--immutable"], lockfilePreserving: true, evidence: evidence("yarn.lock", declared) };
   if (await exists(path.join(workspacePath, "bun.lockb")) || await exists(path.join(workspacePath, "bun.lock")) || declared.startsWith("bun@")) return { packageManager: "bun", bootstrapCommand: ["bun", "install", "--frozen-lockfile"], lockfilePreserving: true, evidence: evidence("bun lockfile", declared) };
-  if (await exists(path.join(workspacePath, "package-lock.json")) || await exists(path.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
+  if (await exists(path.join(workspacePath, "package-lock.json")) || await exists(path.join(workspacePath, "npm-shrinkwrap.json")) || declared.startsWith("npm@")) return { packageManager: "npm", bootstrapCommand: ["npm", "ci", "--ignore-scripts"], lockfilePreserving: true, evidence: evidence("package-lock.json", declared) };
   return { packageManager: "npm", bootstrapCommand: ["npm", "install"], lockfilePreserving: false, evidence: evidence("package.json without lockfile", declared) };
 }
 
@@ -182,7 +182,7 @@ function preparation(args: PreparationArgs): WorkspacePreparation {
     commandRisk: {
       localWrite: Boolean(args.bootstrapCommand),
       network: Boolean(args.bootstrapCommand),
-      lifecycleScripts: Boolean(args.bootstrapCommand),
+      lifecycleScripts: Boolean(args.bootstrapCommand && !args.bootstrapCommand.includes("--ignore-scripts")),
       lockfilePreserving: args.bootstrapCommand ? !args.bootstrapCommand.includes("install") || args.bootstrapCommand.includes("ci") || args.bootstrapCommand.includes("--frozen-lockfile") || args.bootstrapCommand.includes("--immutable") : true,
       manifestMutationExpected: args.bootstrapCommand?.join(" ") === "npm install"
     }

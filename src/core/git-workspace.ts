@@ -507,7 +507,10 @@ export async function runIntegrationValidation(state: SequentialWorkflowState): 
   } else {
     const projectFallback = await projectLocalValidationFallback(
       state.git.integration.path,
-      state.git.context.repositoryRoot
+      [
+        state.git.context.repositoryRoot,
+        ...Object.values(state.git.phaseWorkspaces).map((workspace) => workspace.path)
+      ]
     );
     try {
       for (const command of commands) {
@@ -771,30 +774,37 @@ async function runShellCommand(command: string, cwd: string, projectLocalFallbac
 
 async function projectLocalValidationFallback(
   workspacePath: string,
-  projectRoot: string
+  candidateRoots: readonly string[]
 ): Promise<{ cleanup: () => Promise<void> } | undefined> {
-  if (path.resolve(workspacePath) === path.resolve(projectRoot)) return undefined;
   const workspaceModules = path.join(workspacePath, "node_modules");
-  const projectModules = path.join(projectRoot, "node_modules");
   if (await pathExists(path.join(workspaceModules, ".bin"))) return undefined;
-  if (!await pathExists(path.join(projectModules, ".bin"))) return undefined;
+  for (const candidateRoot of stableUnique(candidateRoots.map((root) => path.resolve(root)))) {
+    if (candidateRoot === path.resolve(workspacePath)) continue;
+    const candidateModules = path.join(candidateRoot, "node_modules");
+    if (!await pathExists(path.join(candidateModules, ".bin"))) continue;
+    if (!await matchingPackageIdentity(workspacePath, candidateRoot)) continue;
+    await symlink(candidateModules, workspaceModules, process.platform === "win32" ? "junction" : "dir");
+    return {
+      cleanup: async () => {
+        const info = await lstat(workspaceModules).catch(() => undefined);
+        if (info?.isSymbolicLink()) await rm(workspaceModules, { force: true });
+      }
+    };
+  }
+  return undefined;
+}
+
+async function matchingPackageIdentity(workspacePath: string, candidateRoot: string): Promise<boolean> {
   const identityFiles = ["package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
   let compared = 0;
   for (const name of identityFiles) {
     const workspace = await fileIdentity(path.join(workspacePath, name));
-    const project = await fileIdentity(path.join(projectRoot, name));
-    if (workspace === undefined && project === undefined) continue;
+    const candidate = await fileIdentity(path.join(candidateRoot, name));
+    if (workspace === undefined && candidate === undefined) continue;
     compared += 1;
-    if (workspace === undefined || workspace !== project) return undefined;
+    if (workspace === undefined || workspace !== candidate) return false;
   }
-  if (compared === 0) return undefined;
-  await symlink(projectModules, workspaceModules, process.platform === "win32" ? "junction" : "dir");
-  return {
-    cleanup: async () => {
-      const info = await lstat(workspaceModules).catch(() => undefined);
-      if (info?.isSymbolicLink()) await rm(workspaceModules, { force: true });
-    }
-  };
+  return compared > 0;
 }
 
 async function fileIdentity(file: string): Promise<string | undefined> {

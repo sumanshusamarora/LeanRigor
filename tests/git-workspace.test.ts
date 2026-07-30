@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -137,6 +137,39 @@ describe("Git worktree isolation and integration", () => {
     expect(await git(root, ["rev-list", "--count", "HEAD"])).toBe("1");
   });
 
+  it("uses a matching prepared phase workspace for integration validation when the main checkout has no dependencies", async () => {
+    const root = await gitRepo();
+    const config = defaultConfig();
+    const phase = testPhase("phase-tool", ["src/tool.txt"]);
+    phase.validationCommands = ["npm run check-local-tool"];
+    const workflow = await workflowWithPlan(root, planWithPhases([phase]));
+    await workspaceInit({ root, workflowId: workflow.id, config });
+    await leasePhase({ root, workflowId: workflow.id, phaseId: phase.id, ownerId: phase.id, config, internalCapability: PHASE_PREPARATION_CAPABILITY });
+    const state = await workspaceCreatePhase({ root, workflowId: workflow.id, phaseId: phase.id, ownerId: phase.id, config });
+    const phasePath = state.git!.phaseWorkspaces[phase.id]!.path;
+    await writeFile(path.join(phasePath, "src/tool.txt"), "tool\n");
+    const binDir = path.join(phasePath, "node_modules", ".bin");
+    await mkdir(binDir, { recursive: true });
+    const tool = path.join(binDir, "fake-tool");
+    await writeFile(tool, "#!/bin/sh\nexit 0\n");
+    await chmod(tool, 0o755);
+    await completePhase({
+      root,
+      workflowId: workflow.id,
+      phaseId: phase.id,
+      config,
+      criteria: metCriteria(phase),
+      validation: [{ ...validation(phase.id), command: "npm run check-local-tool" }],
+      mutation: { ownerId: phase.id }
+    });
+    await integratePhase({ root, workflowId: workflow.id, phaseId: phase.id, ownerId: "integrator" });
+
+    const validated = await validateIntegration({ root, workflowId: workflow.id });
+
+    expect(validated.git?.integrationValidation).toMatchObject({ status: "passed" });
+    expect(validated.git?.integrationValidation?.commands[0]?.result).toContain("project-local tool fallback");
+  });
+
   it("detects textual conflicts without touching the original worktree", async () => {
     const root = await gitRepo();
     const workflow = await workflowWithPlan(root, planWithPhases([
@@ -196,7 +229,7 @@ async function initializeGitRepo(root: string): Promise<void> {
   await git(root, ["checkout", "-b", "main"]);
   await git(root, ["config", "user.name", "Test User"]);
   await git(root, ["config", "user.email", "test@example.com"]);
-  await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } }));
+  await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"", "check-local-tool": "fake-tool" } }));
   await writeFile(path.join(root, "README.md"), "base\n");
   await mkdirp(path.join(root, "src"));
   await writeFile(path.join(root, "src", "shared.txt"), "base\n");

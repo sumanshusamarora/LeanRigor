@@ -4230,7 +4230,7 @@ function persistPhaseBriefOutcome(
     supersedePendingPhaseApproval(state);
     const planningFailure = outcome.failure.failureOwnership === "leanrigor_generation_failure";
     const planInsufficiency = outcome.failure.diagnostics.some((item) =>
-      item.code.startsWith("dependency.") || item.code.startsWith("scope."));
+      item.code.startsWith("acceptance.") || item.code.startsWith("dependency.") || item.code.startsWith("scope."));
     const allowedActions = [
       ...(!planningFailure && outcome.failure.recoveryAttempts?.at(-1)?.disposition !== "skipped-identical" ? ["retry-brief"] : []),
       ...(planInsufficiency ? ["revise-plan"] : []),

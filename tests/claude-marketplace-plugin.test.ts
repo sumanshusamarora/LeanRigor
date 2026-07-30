@@ -594,8 +594,8 @@ describe("Claude marketplace plugin runtime", () => {
     });
     expect(planned.code).toBe(0);
     const plannedState = JSON.parse(planned.stdout) as { planning: { source: string; model?: string } };
-    expect(plannedState.planning).toMatchObject({ source: "model", model: "deepseek-user-small" });
-    await expect(readFile(logFile, "utf8")).resolves.toContain("triage:deepseek-user-small\nplanning:deepseek-user-small");
+    expect(plannedState.planning).toMatchObject({ source: "model", model: "deepseek-user-medium" });
+    await expect(readFile(logFile, "utf8")).resolves.toContain("triage:deepseek-user-small\nplanning:deepseek-user-medium");
   });
 
   it("prints a clear error when Node is unavailable", async () => {

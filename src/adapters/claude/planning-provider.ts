@@ -28,7 +28,7 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
       root: input.root,
       prompt: buildPlanningPrompt(input),
       schema: planningJsonSchema(input),
-      tier: "small",
+      tier: planningTier(input),
       config: input.config,
       stage: "planning draft",
       maxTurns: input.config.budgets.planningMaxTurns,
@@ -94,7 +94,7 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
       root: input.root,
       prompt: buildPlanningSemanticReviewPrompt(request.plan),
       schema: planningSemanticReviewSchema(request.plan),
-      tier: "small",
+      tier: planningTier(input),
       config: input.config,
       stage: "planning semantic review",
       maxTurns: input.config.budgets.planningRepairMaxTurns,
@@ -127,9 +127,15 @@ export class ClaudeCliPlanningProvider implements PlanningProvider {
 }
 
 function planningEscalationTier(input: PlanningProviderInput): ModelTier {
-  return input.triage.workflow.finalMode === "rigorous"
-    ? input.config.routing.rigorousPlanning
-    : input.config.routing.standardPlanning;
+  return planningTier(input);
+}
+
+function planningTier(input: PlanningProviderInput): ModelTier {
+  if (input.triage.workflow.finalMode === "rigorous") return input.config.routing.rigorousPlanning;
+  if (input.triage.workflow.finalMode === "standard") return input.config.routing.standardPlanning;
+  // Fast workflows intentionally retain the low-cost structured draft tier:
+  // there is no dedicated fast-planning route in the repository config.
+  return "small";
 }
 
 function candidateAreas(input: PlanningProviderInput): string[] {

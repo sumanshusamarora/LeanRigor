@@ -5,6 +5,7 @@ import type {
   PhaseBriefProposal,
   PhaseBriefRepairRequest
 } from "../../core/phase-brief-planner.js";
+import { synthesizeObservableAcceptanceCriteria } from "../../core/phase-brief-planner.js";
 import type { JsonSchema, StructuredDecisionProvider, StructuredDecisionRequest, StructuredDecisionResult } from "../../core/structured-decision.js";
 import { ClaudeCliStructuredDecisionProvider } from "./structured-decision-provider.js";
 import type { CommandRunner } from "./triage-provider.js";
@@ -69,6 +70,9 @@ function phaseBriefProposalSchema(input: PhaseBriefPlanningInput): JsonSchema {
   const relevantFiles = unique([...input.inspection.relevantFiles, ...input.inspection.filesRead, ...writeAreas]);
   const relevantSymbols = unique(input.inspection.relevantSymbols);
   const validationCommands = unique(input.phase.validationCommands);
+  const acceptanceCriteria = synthesizeObservableAcceptanceCriteria(input.phase.acceptanceCriteria, {
+    validationCommands
+  });
   const dependencies = unique([...input.phase.dependencies, ...input.phase.dependsOn]);
   const enumStrings = (values: string[], minimum = 0): JsonSchema => values.length > 0
     ? { type: "array", items: { type: "string", enum: values }, minItems: minimum, uniqueItems: true }
@@ -88,7 +92,10 @@ function phaseBriefProposalSchema(input: PhaseBriefPlanningInput): JsonSchema {
       dependencies: { const: dependencies },
       assumptions: { type: "array", items: { type: "string", minLength: 1, maxLength: 2000 }, maxItems: 12, uniqueItems: true },
       exclusions: { type: "array", items: { type: "string", minLength: 1, maxLength: 2000 }, maxItems: 24, uniqueItems: true },
-      acceptanceCriteria: { const: input.phase.acceptanceCriteria },
+      // The Workflow Plan owns the requirement. The brief owns the concrete
+      // verification evidence, represented as a deterministic non-material
+      // refinement of that approved requirement.
+      acceptanceCriteria: { const: acceptanceCriteria },
       testObligations: { type: "array", minItems: 1, items: { type: "string", minLength: 8, maxLength: 4000 }, maxItems: 16, uniqueItems: true },
       validationCommands: { const: validationCommands },
       risks: { type: "array", minItems: 1, items: { type: "string", minLength: 8, maxLength: 4000 }, maxItems: 16, uniqueItems: true }
