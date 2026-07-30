@@ -3485,8 +3485,8 @@ __export(models_exports, {
 });
 function resolveModelTierFallbacks(tier, harness, config2) {
   const tiers = [tier, ...tier === "inherit" ? [] : config2.models.fallback[tier] ?? []];
-  const unique11 = [...new Set(tiers)];
-  return unique11.map((candidate) => resolveModelTier(candidate, harness, config2));
+  const unique12 = [...new Set(tiers)];
+  return unique12.map((candidate) => resolveModelTier(candidate, harness, config2));
 }
 function resolveModelTier(tier, harness, config2) {
   if (tier === "inherit") return { tier, source: "inherit" };
@@ -18879,7 +18879,7 @@ var init_schema = __esm({
         phaseBriefRepairAttempts: external_exports.number().int().min(0).max(2).default(1),
         phaseBriefRefreshedInspectionAttempts: external_exports.number().int().min(0).max(2).default(1),
         phaseBriefAlternateStrategyAttempts: external_exports.number().int().min(0).max(2).default(1),
-        phaseBriefDeterministicFallbackAttempts: external_exports.number().int().min(0).max(2).default(1),
+        phaseBriefDeterministicFallbackAttempts: external_exports.number().int().min(0).max(2).default(0),
         planningMaxTurns: external_exports.number().int().min(1).max(50).default(7),
         planningRepairMaxTurns: external_exports.number().int().min(1).max(50).default(4)
       }).prefault({})
@@ -23745,6 +23745,137 @@ function buildPlanningSemanticReviewPrompt(plan) {
   ].join("\n\n");
 }
 
+// src/adapters/claude/phase-brief-provider.ts
+var ClaudeCliPhaseBriefPlanningProvider = class {
+  name = "claude-cli";
+  decisions;
+  constructor(runCommand = defaultCommandRunner) {
+    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand);
+  }
+  async generate(input) {
+    return this.propose(input, "phase brief generation", buildGenerationPrompt(input));
+  }
+  async repair(input, request) {
+    return this.propose(input, "phase brief repair", buildRepairPrompt(input, request));
+  }
+  async alternate(input, request) {
+    return this.propose(input, "phase brief alternate strategy", buildAlternatePrompt(input, request));
+  }
+  async propose(input, stage, prompt) {
+    const result = await this.decide({
+      root: input.state.root,
+      prompt,
+      schema: phaseBriefProposalSchema(input),
+      tier: input.phase.modelTier,
+      config: input.config,
+      stage,
+      maxTurns: input.config.budgets.planningRepairMaxTurns,
+      effort: "medium",
+      tools: "none"
+    });
+    return {
+      proposal: result.value,
+      provider: result.provider,
+      modelTier: result.tier,
+      warnings: [
+        ...result.warnings,
+        `Claude generated this Phase Execution Brief using ${result.model ?? "the inherited Claude model"}.`
+      ]
+    };
+  }
+  async decide(request) {
+    return this.decisions.decide(request);
+  }
+};
+function phaseBriefProposalSchema(input) {
+  const readAreas = unique4([...input.phase.expectedReadAreas, ...input.inspection.filesRead]);
+  const writeAreas = unique4(input.phase.expectedWriteAreas.length > 0 ? input.phase.expectedWriteAreas : input.phase.expectedFilesOrAreas);
+  const relevantFiles = unique4([...input.inspection.relevantFiles, ...input.inspection.filesRead, ...writeAreas]);
+  const relevantSymbols = unique4(input.inspection.relevantSymbols);
+  const validationCommands = unique4(input.phase.validationCommands);
+  const dependencies = unique4([...input.phase.dependencies, ...input.phase.dependsOn]);
+  const enumStrings = (values, minimum = 0) => values.length > 0 ? { type: "array", items: { type: "string", enum: values }, minItems: minimum, uniqueItems: true } : { type: "array", maxItems: 0 };
+  return {
+    type: "object",
+    properties: {
+      objective: { type: "string", minLength: 12, maxLength: 4e3 },
+      deliverable: { type: "string", minLength: 20, maxLength: 8e3 },
+      currentBehaviour: { type: "string", minLength: 12, maxLength: 12e3 },
+      implementationApproach: { type: "string", minLength: 40, maxLength: 16e3 },
+      readAreas: enumStrings(readAreas),
+      writeAreas: enumStrings(writeAreas, writeAreas.length > 0 ? 1 : 0),
+      relevantFiles: enumStrings(relevantFiles, relevantFiles.length > 0 ? 1 : 0),
+      relevantSymbols: enumStrings(relevantSymbols),
+      dependencies: { const: dependencies },
+      assumptions: { type: "array", items: { type: "string", minLength: 1, maxLength: 2e3 }, maxItems: 12, uniqueItems: true },
+      exclusions: { type: "array", items: { type: "string", minLength: 1, maxLength: 2e3 }, maxItems: 24, uniqueItems: true },
+      acceptanceCriteria: { const: input.phase.acceptanceCriteria },
+      testObligations: { type: "array", minItems: 1, items: { type: "string", minLength: 8, maxLength: 4e3 }, maxItems: 16, uniqueItems: true },
+      validationCommands: { const: validationCommands },
+      risks: { type: "array", minItems: 1, items: { type: "string", minLength: 8, maxLength: 4e3 }, maxItems: 16, uniqueItems: true }
+    },
+    required: [
+      "objective",
+      "deliverable",
+      "currentBehaviour",
+      "implementationApproach",
+      "readAreas",
+      "writeAreas",
+      "relevantFiles",
+      "relevantSymbols",
+      "dependencies",
+      "assumptions",
+      "exclusions",
+      "acceptanceCriteria",
+      "testObligations",
+      "validationCommands",
+      "risks"
+    ],
+    additionalProperties: false
+  };
+}
+function buildGenerationPrompt(input) {
+  return [
+    "You are the Phase Execution Brief author for LeanRigor.",
+    "Return only the JSON value required by the supplied schema. You have no repository tools.",
+    "Use only the bounded inspection evidence and approved Workflow Phase below. Do not invent paths, symbols, commands, dependencies, acceptance criteria, or repository facts.",
+    "Write a genuinely repository-specific, actionable implementation brief. Explain the current behaviour from inspected evidence and give an ordered approach tied to concrete inspected files or symbols.",
+    "The schema fixes approval-sensitive fields. Do not try to broaden the phase. LeanRigor will deterministically enforce scope, quality, provenance, and approval safety.",
+    input.feedback ? `Revision feedback to incorporate semantically: ${input.feedback}` : void 0,
+    "Approved Workflow Phase:",
+    JSON.stringify(input.phase, null, 2),
+    "Bounded inspection result:",
+    JSON.stringify(input.inspection, null, 2),
+    "Approved constraints:",
+    JSON.stringify(input.state.constraints?.effective.map((entry) => entry.text) ?? input.state.triage?.constraints.mustNot ?? [], null, 2),
+    input.previous ? "Previous brief to improve rather than echo:" : void 0,
+    input.previous ? JSON.stringify(input.previous, null, 2) : void 0
+  ].filter(Boolean).join("\n\n");
+}
+function buildRepairPrompt(input, request) {
+  return [
+    buildGenerationPrompt(input),
+    "Repair only the diagnosed fields. Preserve valid material while making the resulting brief satisfy every diagnostic.",
+    "Diagnostics:",
+    JSON.stringify(request.diagnostics, null, 2),
+    "Brief requiring repair:",
+    JSON.stringify(request.brief, null, 2)
+  ].join("\n\n");
+}
+function buildAlternatePrompt(input, request) {
+  return [
+    buildGenerationPrompt(input),
+    "Use a distinct explanation and implementation structure, but remain entirely within the schema-constrained approved boundary.",
+    "Remaining diagnostics:",
+    JSON.stringify(request.diagnostics, null, 2),
+    "Prior unsuccessful brief:",
+    JSON.stringify(request.brief, null, 2)
+  ].join("\n\n");
+}
+function unique4(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
 // src/core/execution/claude-provider.ts
 init_models();
 import { execFile as execFile3, spawn as spawn2 } from "node:child_process";
@@ -24623,6 +24754,7 @@ registerAdapter({
   createTriageProvider: () => new ClaudeCliTriageProvider(),
   createStructuredDecisionProvider: () => new ClaudeCliStructuredDecisionProvider(),
   createPlanningProvider: () => new ClaudeCliPlanningProvider(),
+  createPhaseBriefPlanningProvider: () => new ClaudeCliPhaseBriefPlanningProvider(),
   createExecutionProvider: (config2) => new ClaudeCliExecutionProvider({ config: config2 })
 });
 
@@ -25219,10 +25351,10 @@ function normalizeOwnershipPattern(value) {
   return trimmed.replace(/\/+/g, "/");
 }
 function phaseWriteAreas(phase2) {
-  return unique4((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(normalizeMaybe));
+  return unique5((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(normalizeMaybe));
 }
 function phaseReadAreas(phase2) {
-  return unique4((phase2.expectedReadAreas.length > 0 ? phase2.expectedReadAreas : []).map(normalizeMaybe));
+  return unique5((phase2.expectedReadAreas.length > 0 ? phase2.expectedReadAreas : []).map(normalizeMaybe));
 }
 function ownershipIsExplicit(phase2, mode2) {
   const writes = phaseWriteAreas(phase2).filter(isPathLikeArea);
@@ -25243,7 +25375,7 @@ function detectOwnershipConflicts(phases, config2) {
       if (writeWrite.length > 0) conflicts.push(conflict(phaseA.id, phaseB.id, "write_write", writeWrite, "blocking"));
       const sensitive = sharedSensitive(writesA, writesB, config2);
       if (sensitive.length > 0) conflicts.push(conflict(phaseA.id, phaseB.id, "sensitive_shared", sensitive, "blocking"));
-      const writeRead = unique4([...overlappingPatterns(writesA, readsB), ...overlappingPatterns(writesB, readsA)]);
+      const writeRead = unique5([...overlappingPatterns(writesA, readsB), ...overlappingPatterns(writesB, readsA)]);
       if (writeRead.length > 0) {
         conflicts.push(conflict(phaseA.id, phaseB.id, "write_read", writeRead, config2?.execution.writeReadConflictsBlock ?? true ? "blocking" : "review"));
       }
@@ -25264,7 +25396,7 @@ function patternsOverlap(a, b) {
   return globMightOverlap(left, right);
 }
 function sensitivePaths(config2) {
-  return unique4([...DEFAULT_SENSITIVE_PATHS, ...config2?.execution.sensitivePaths ?? []].map(normalizeMaybe));
+  return unique5([...DEFAULT_SENSITIVE_PATHS, ...config2?.execution.sensitivePaths ?? []].map(normalizeMaybe));
 }
 function overlappingPatterns(a, b) {
   const paths = [];
@@ -25273,7 +25405,7 @@ function overlappingPatterns(a, b) {
       if (patternsOverlap(left, right)) paths.push(left === right ? left : `${left} <-> ${right}`);
     }
   }
-  return unique4(paths);
+  return unique5(paths);
 }
 function sharedSensitive(a, b, config2) {
   return sensitivePaths(config2).filter((sensitive) => a.some((pattern) => patternsOverlap(pattern, sensitive)) && b.some((pattern) => patternsOverlap(pattern, sensitive)));
@@ -25300,7 +25432,7 @@ function isPathLikeArea(area) {
 function hasGlob(value) {
   return value.includes("*");
 }
-function unique4(values) {
+function unique5(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -25392,13 +25524,13 @@ function deterministicRiskReasons(state, phase2) {
   if (assessment?.blastRadius === "high") reasons.push("wide blast radius");
   if (phase2?.riskLevel === "high") reasons.push("high phase risk");
   if (phase2 && dependencyIds(phase2).length > 0 && (state.triage?.assumptions.length ?? 0) > 0) reasons.push("later phase depends on unresolved earlier-phase findings");
-  return unique5(reasons);
+  return unique6(reasons);
 }
-function unique5(values) {
+function unique6(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 function dependencyIds(phase2) {
-  return unique5([...phase2.dependencies, ...phase2.dependsOn]);
+  return unique6([...phase2.dependencies, ...phase2.dependsOn]);
 }
 function constraintHash(state) {
   return stableHash(state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? []);
@@ -25629,7 +25761,7 @@ function validatePhaseDag(plan) {
     visited.add(id);
   };
   for (const phase2 of plan.phases) visit(phase2.id);
-  return unique6(issues);
+  return unique7(issues);
 }
 function topologicalPhaseOrder(plan) {
   const issues = validatePhaseDag(plan);
@@ -25717,7 +25849,7 @@ function selectDispatchable(readyPhases2, activeIds, maxParallelPhases) {
   return selected;
 }
 function dependencyIds3(phase2) {
-  return unique6([...phase2?.dependencies ?? [], ...phase2?.dependsOn ?? []]);
+  return unique7([...phase2?.dependencies ?? [], ...phase2?.dependsOn ?? []]);
 }
 var activePhaseStatuses = /* @__PURE__ */ new Set(["leased", "running", "completion_pending"]);
 var terminalPhaseStatuses = /* @__PURE__ */ new Set(["completed", "needs_repair", "needs_review", "needs_replan", "blocked", "cancelled"]);
@@ -25739,7 +25871,7 @@ function emptySchedule(state, maxParallelPhases, blockedReasons) {
     blockedReasons
   };
 }
-function unique6(values) {
+function unique7(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -26687,7 +26819,7 @@ function phaseBriefInspectionQuestions(phase2) {
   ];
 }
 function derivePhaseBriefInspectionRequest(state, phase2, config2) {
-  const initial = unique7([
+  const initial = unique8([
     ...phase2.expectedReadAreas,
     ...phase2.expectedWriteAreas,
     ...phase2.expectedFilesOrAreas,
@@ -26718,7 +26850,7 @@ ${item.body ?? ""}`)) {
     phaseId: phase2.id,
     workflowRevision: state.approval?.workflowPlanRevision ?? state.revision,
     questions: phaseBriefInspectionQuestions(phase2),
-    allowedPaths: unique7(allowedPaths),
+    allowedPaths: unique8(allowedPaths),
     scopeExpansions,
     maxReads: config2.budgets.phaseBriefInspectionMaxReads,
     maxBytes: config2.budgets.phaseBriefInspectionMaxBytes,
@@ -26783,7 +26915,7 @@ async function inspectPhaseBrief(args) {
       questionId: question.id,
       question: question.question,
       answer: answerFor(question.id, items, args.phase, relevantFiles, relevantSymbols, validationCommands),
-      evidence: unique7(items)
+      evidence: unique8(items)
     };
   });
   const unresolvedQuestions = findings.filter((finding) => finding.evidence.length === 0 && ["implementation", "tests", "contracts"].includes(finding.questionId)).map((finding) => finding.question);
@@ -26798,8 +26930,8 @@ async function inspectPhaseBrief(args) {
       bytesRead,
       unresolvedQuestions,
       warnings,
-      relevantFiles: unique7(relevantFiles),
-      relevantSymbols: unique7(relevantSymbols),
+      relevantFiles: unique8(relevantFiles),
+      relevantSymbols: unique8(relevantSymbols),
       validationCommands: [...validationCommands],
       completedAt: (/* @__PURE__ */ new Date()).toISOString(),
       provenance: {
@@ -26896,7 +27028,7 @@ function relevanceTokens(phase2) {
     ...phase2.expectedWriteAreas,
     ...phase2.acceptanceCriteria
   ].join(" ").toLowerCase();
-  return unique7((text.match(/[a-z][a-z0-9_-]{2,}/g) ?? []).filter((token) => !["phase", "implement", "update", "change", "ensure", "with", "from", "that", "this", "tests", "test"].includes(token)));
+  return unique8((text.match(/[a-z][a-z0-9_-]{2,}/g) ?? []).filter((token) => !["phase", "implement", "update", "change", "ensure", "with", "from", "that", "this", "tests", "test"].includes(token)));
 }
 function scorePath(file2, tokens, phase2, explicit) {
   const lower = file2.toLowerCase();
@@ -26939,7 +27071,7 @@ function answerFor(questionId, items, phase2, relevantFiles, relevantSymbols, va
   if (questionId === "tests") return items.length > 0 ? `Existing coverage was found in ${items.slice(0, 6).join(", ")}.` : "No existing targeted test was found within the bounded inspection scope.";
   if (questionId === "contracts") return items.length > 0 ? `Relevant types, schemas, or contracts were found in ${items.slice(0, 6).join(", ")}.` : "No additional contract file was identified within the bounded scope.";
   if (questionId === "validation") return validationCommands.size > 0 ? `Available validation includes ${[...validationCommands].slice(0, 8).join(", ")}.` : "No executable repository validation command was discovered.";
-  if (questionId === "nearby-readonly") return `Context reads are limited to ${unique7(items).slice(0, 8).join(", ") || "the approved inspection paths"}; write scope remains separately bounded.`;
+  if (questionId === "nearby-readonly") return `Context reads are limited to ${unique8(items).slice(0, 8).join(", ") || "the approved inspection paths"}; write scope remains separately bounded.`;
   return `Inspected evidence stayed within the approved paths and recorded read-only expansions; planned writes remain ${phase2.expectedWriteAreas.join(", ") || phase2.expectedFilesOrAreas.join(", ")}.`;
 }
 function symbolsFromText(text) {
@@ -26949,13 +27081,13 @@ function symbolsFromText(text) {
     if (match[1]) symbols.push(match[1]);
     if (symbols.length >= 30) break;
   }
-  return unique7(symbols);
+  return unique8(symbols);
 }
 function relativeImports(text) {
   const imports = [];
   const pattern = /(?:from\s+|require\(\s*|import\(\s*)["'](\.{1,2}\/[^"']+)["']/g;
   for (const match of text.matchAll(pattern)) if (match[1]) imports.push(match[1]);
-  return unique7(imports);
+  return unique8(imports);
 }
 async function resolveImport(root, fromFile, imported, io) {
   const base = path19.resolve(root, path19.dirname(fromFile), imported);
@@ -26980,7 +27112,7 @@ function looksLikeRepositoryPath(value) {
   return normalized2.includes("/") || /(^|\/)(readme|makefile)$/i.test(normalized2) || /\.[A-Za-z0-9]{1,12}(?:$|[*?[{])/.test(normalized2);
 }
 function pathsFromText(text) {
-  return unique7((text.match(/\b(?:src|tests?|docs?|lib|app|packages|config|scripts)\/[A-Za-z0-9._/*-]+/g) ?? []).map((value) => value.replace(/[),.;:]+$/, "")));
+  return unique8((text.match(/\b(?:src|tests?|docs?|lib|app|packages|config|scripts)\/[A-Za-z0-9._/*-]+/g) ?? []).map((value) => value.replace(/[),.;:]+$/, "")));
 }
 function requiresTestDiscovery(state, phase2) {
   const text = `${state.request} ${phase2.objective} ${phase2.rationale}`.toLowerCase();
@@ -27005,7 +27137,7 @@ function addExpansion(paths, expansions, value, reason, sourcePath) {
   expansions.push({ path: normalized2, reason, sourcePath, readOnly: true });
 }
 function addEvidence(evidence2, key, value) {
-  evidence2.set(key, unique7([...evidence2.get(key) ?? [], value]));
+  evidence2.set(key, unique8([...evidence2.get(key) ?? [], value]));
 }
 function isWithin(root, candidate) {
   const relative = path19.relative(root, candidate);
@@ -27025,7 +27157,7 @@ function slash(value) {
 function messageOf4(error51) {
   return error51 instanceof Error ? error51.message : String(error51);
 }
-function unique7(values) {
+function unique8(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -27283,7 +27415,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
         proposal: repairedProposal,
         provider: repaired.provider,
         modelTier: repaired.modelTier ?? generation.modelTier ?? tier,
-        warnings: unique8([...generation.warnings ?? [], ...repaired.warnings ?? []]),
+        warnings: unique9([...generation.warnings ?? [], ...repaired.warnings ?? []]),
         request: inspected.request,
         inspection: inspected.result,
         workflowRevision: planRevision,
@@ -27368,7 +27500,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
           proposal: refreshedGeneration.proposal,
           provider: refreshedGeneration.provider,
           modelTier: refreshedGeneration.modelTier ?? tier,
-          warnings: unique8([...brief.generation.warnings ?? [], ...refreshedGeneration.warnings ?? [], "LeanRigor refreshed bounded repository inspection before regenerating this brief."]),
+          warnings: unique9([...brief.generation.warnings ?? [], ...refreshedGeneration.warnings ?? [], "LeanRigor refreshed bounded repository inspection before regenerating this brief."]),
           request: refreshed.request,
           inspection: refreshed.result,
           workflowRevision: planRevision,
@@ -27438,7 +27570,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
           proposal: alternate.proposal,
           provider: alternate.provider,
           modelTier: alternate.modelTier ?? tier,
-          warnings: unique8([...brief.generation.warnings ?? [], ...alternate.warnings ?? [], "LeanRigor used a bounded alternative planning strategy after diagnosed repair remained invalid."]),
+          warnings: unique9([...brief.generation.warnings ?? [], ...alternate.warnings ?? [], "LeanRigor used a bounded alternative planning strategy after diagnosed repair remained invalid."]),
           request: currentInspection.request,
           inspection: currentInspection.result,
           workflowRevision: planRevision,
@@ -27503,7 +27635,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
       proposal: fallback.proposal,
       provider: fallback.provider,
       modelTier: fallback.modelTier ?? tier,
-      warnings: unique8([...generation.warnings ?? [], "LeanRigor deterministically synthesized a conservative brief after provider repair failed."]),
+      warnings: unique9([...generation.warnings ?? [], "LeanRigor deterministically synthesized a conservative brief after provider repair failed."]),
       request: currentInspection.request,
       inspection: currentInspection.result,
       workflowRevision: planRevision,
@@ -27565,7 +27697,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
 function validatePhaseExecutionBrief(brief, phase2) {
   const diagnostics = [];
   const documentationOnly = isDocumentationOnly(phase2, brief);
-  const concreteReferences = unique8([...brief.relevantFiles, ...brief.relevantSymbols, ...brief.writeAreas]);
+  const concreteReferences = unique9([...brief.relevantFiles, ...brief.relevantSymbols, ...brief.writeAreas]);
   const phaseCopies = /* @__PURE__ */ new Set([
     normalized(phase2.objective),
     normalized(phase2.rationale),
@@ -27662,16 +27794,16 @@ function classifyPhaseBriefChanges(phase2, proposal, approvedContext = []) {
 }
 function deterministicProposal(input) {
   const { state, phase: phase2, inspection } = input;
-  const relevantFiles = unique8([...inspection.relevantFiles, ...concretePlannedTargets(phase2)]);
-  const relevantSymbols = unique8(inspection.relevantSymbols);
+  const relevantFiles = unique9([...inspection.relevantFiles, ...concretePlannedTargets(phase2)]);
+  const relevantSymbols = unique9(inspection.relevantSymbols);
   const writeAreas = refineWriteAreas(phase2, relevantFiles);
-  const readAreas = unique8([...phase2.expectedReadAreas, ...inspection.filesRead.filter((file2) => !writeAreas.includes(file2))]);
-  const primaryTargets = unique8([...relevantSymbols.slice(0, 4), ...writeAreas.slice(0, 4), ...relevantFiles.slice(0, 4)]);
+  const readAreas = unique9([...phase2.expectedReadAreas, ...inspection.filesRead.filter((file2) => !writeAreas.includes(file2))]);
+  const primaryTargets = unique9([...relevantSymbols.slice(0, 4), ...writeAreas.slice(0, 4), ...relevantFiles.slice(0, 4)]);
   const targetSummary = primaryTargets.join(", ") || phase2.id;
   const currentBehaviour = inspection.findings.find((finding) => finding.questionId === "implementation")?.answer ?? `No existing implementation was found within the approved paths; ${writeAreas.join(", ")} is the bounded creation target.`;
   const prior = priorPhaseContext(state, phase2);
   const validationCommands = phaseScopedValidationCommands(
-    unique8([...phase2.validationCommands, ...inspection.validationCommands]),
+    unique9([...phase2.validationCommands, ...inspection.validationCommands]),
     writeAreas
   );
   const documentationOnly = state.triage?.task.type === "documentation" || writeAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area));
@@ -27694,7 +27826,7 @@ function deterministicProposal(input) {
     relevantFiles,
     relevantSymbols,
     dependencies: dependencyIds3(phase2),
-    assumptions: unique8([...state.triage?.assumptions ?? [], ...priorPhaseAssumptions(state, phase2)]),
+    assumptions: unique9([...state.triage?.assumptions ?? [], ...priorPhaseAssumptions(state, phase2)]),
     exclusions: constraints,
     acceptanceCriteria: synthesizeObservableAcceptanceCriteria(phase2.acceptanceCriteria, {
       validationCommands,
@@ -27717,7 +27849,7 @@ function assembleBrief(args) {
   const proposal = {
     ...structuredClone(args.proposal),
     validationCommands: phaseScopedValidationCommands(args.proposal.validationCommands, args.proposal.writeAreas),
-    risks: unique8([...args.proposal.risks, ...riskDiscoveries.map((discovery) => discovery.risk)]),
+    risks: unique9([...args.proposal.risks, ...riskDiscoveries.map((discovery) => discovery.risk)]),
     riskDiscoveries
   };
   const materialChangesFromWorkflowPlan = classifyPhaseBriefChanges(
@@ -27810,10 +27942,10 @@ function proposalFromBrief(brief) {
 function refineWriteAreas(phase2, relevantFiles) {
   const approved = phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas;
   const refinements = relevantFiles.filter((file2) => approved.some((area) => withinArea(file2, area)) && !isMetadata(file2));
-  return unique8(refinements.length > 0 ? refinements : approved);
+  return unique9(refinements.length > 0 ? refinements : approved);
 }
 function concretePlannedTargets(phase2) {
-  return unique8([...phase2.expectedWriteAreas, ...phase2.expectedFilesOrAreas].filter((area) => pathLike(area) && !/[*?[{]/.test(area)));
+  return unique9([...phase2.expectedWriteAreas, ...phase2.expectedFilesOrAreas].filter((area) => pathLike(area) && !/[*?[{]/.test(area)));
 }
 function deriveTestObligations(state, phase2, inspection, documentationOnly) {
   if (documentationOnly) return ["Verify documentation links, examples, and rendered structure against the acceptance criteria."];
@@ -27825,8 +27957,8 @@ function deriveTestObligations(state, phase2, inspection, documentationOnly) {
   if (/schema|type|interface|contract|api/.test(text)) obligations.push("Run schema/type validation and preserve the inspected public or internal contract.");
   if (/compatib|migration/.test(text)) obligations.push("Verify compatibility loading or migration behaviour, including the existing-state path.");
   if (state.mode === "rigorous" || phase2.riskLevel === "high") obligations.push("Cover a relevant failure path or rejected-input path.");
-  for (const command of unique8([...phase2.validationCommands, ...inspection.validationCommands])) obligations.push(`Run configured check: ${command}.`);
-  return unique8(obligations);
+  for (const command of unique9([...phase2.validationCommands, ...inspection.validationCommands])) obligations.push(`Run configured check: ${command}.`);
+  return unique9(obligations);
 }
 function synthesizeObservableAcceptanceCriteria(criteria, context = {}) {
   const validation = context.validationCommands?.[0];
@@ -27908,10 +28040,10 @@ function deriveRisks(state, phase2, inspection) {
   if (inspection.unresolvedQuestions.length > 0) risks.push(`Bounded inspection left unresolved questions: ${inspection.unresolvedQuestions.join("; ")}.`);
   if (phase2.riskLevel !== "none") risks.push(`${phase2.riskLevel} phase risk remains subject to the approved Workflow Plan controls.`);
   if (risks.length === 0) risks.push("No additional material risk was found by bounded inspection.");
-  return unique8(risks);
+  return unique9(risks);
 }
 function approvedPhaseRiskContext(state, phase2) {
-  return unique8([
+  return unique9([
     state.request,
     state.plan?.summary ?? "",
     ...state.plan?.principles ?? [],
@@ -27931,7 +28063,7 @@ function normalizeRiskDiscoveries(discoveries) {
   const normalizedDiscoveries = (discoveries ?? []).filter((discovery) => discovery.source === "inspection").map((discovery) => ({
     risk: discovery.risk.trim(),
     categories: canonicalRiskCategories(discovery.risk),
-    evidence: unique8(discovery.evidence),
+    evidence: unique9(discovery.evidence),
     source: discovery.source
   })).filter((discovery) => discovery.risk.length > 0 && discovery.categories.length > 0 && discovery.evidence.length > 0);
   const seen = /* @__PURE__ */ new Set();
@@ -27959,7 +28091,7 @@ function relevantPriorPhases(state, phase2) {
   return (state.plan?.phases ?? []).filter((candidate) => candidate.status === "completed" && (dependencies.has(candidate.id) || candidate.completedAt));
 }
 function effectiveConstraints(state) {
-  return unique8(state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? []);
+  return unique9(state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot ?? []);
 }
 function manualValidationPlan(documentationOnly, files) {
   return documentationOnly ? `Review links, examples, headings, and rendered formatting in ${files.join(", ") || "the approved documentation files"}.` : `Inspect the changed behaviour in ${files.join(", ") || "the approved write paths"} against every acceptance criterion and record evidence for each result.`;
@@ -28058,12 +28190,12 @@ function slash2(value) {
 function messageOf5(error51) {
   return error51 instanceof Error ? error51.message : String(error51);
 }
-function unique8(values) {
+function unique9(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 function phaseScopedValidationCommands(commands, writeAreas) {
-  if (ownsReleaseVersionSurface(writeAreas)) return unique8(commands);
-  return unique8(commands).filter((command) => !isReleaseVersionGate(command));
+  if (ownsReleaseVersionSurface(writeAreas)) return unique9(commands);
+  return unique9(commands).filter((command) => !isReleaseVersionGate(command));
 }
 function ownsReleaseVersionSurface(writeAreas) {
   const requiredPaths = [
@@ -29598,7 +29730,7 @@ async function completePhase(args) {
     }
     const inspected = await inspectPhaseWorkspaceChanges(next, phase2, ownerId);
     phase2.status = "completion_pending";
-    phase2.filesChanged = unique9([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
+    phase2.filesChanged = unique10([...phase2.filesChanged, ...args.filesChanged ?? [], ...inspected?.changedFiles ?? []]);
     phase2.commandsRun = [...phase2.commandsRun, ...args.commandsRun ?? []];
     for (const evidence2 of args.validation ?? []) {
       validateWorkflowEvidence(evidence2);
@@ -29606,7 +29738,7 @@ async function completePhase(args) {
       phase2.validationResults.push(evidence2);
     }
     const detectedDeviations = detectScopeDeviations(phase2, args.config);
-    phase2.scopeDeviations = unique9([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
+    phase2.scopeDeviations = unique10([...phase2.scopeDeviations, ...args.scopeDeviations ?? [], ...detectedDeviations]);
     const completion = buildCompletionRecord({
       state: next,
       phase: phase2,
@@ -29625,7 +29757,7 @@ async function completePhase(args) {
       const gitEvidence = await captureApprovedPhaseChange(next, phase2, ownerId, args.config ?? defaultConfig());
       if (gitEvidence) {
         completion.gitEvidence = gitEvidence;
-        phase2.filesChanged = unique9([...phase2.filesChanged, ...gitEvidence.changedFiles]);
+        phase2.filesChanged = unique10([...phase2.filesChanged, ...gitEvidence.changedFiles]);
         completion.filesChanged = phase2.filesChanged;
         if (next.git?.phaseWorkspaces[phase2.id]) {
           next.git.phaseWorkspaces[phase2.id] = { ...next.git.phaseWorkspaces[phase2.id], status: "approved", updatedAt: timestamp2() };
@@ -29894,7 +30026,8 @@ async function integratePhase(args) {
         const outcome = await generateInspectedPhaseExecutionBrief({
           state: next,
           phase: nextPhase,
-          config: args.config ?? defaultConfig()
+          config: args.config ?? defaultConfig(),
+          provider: args.briefProvider
         });
         const requiresApproval = next.approval?.policy === "phase-by-phase" || !next.approval?.history.some((entry) => entry.action === "phase-approved");
         persistPhaseBriefOutcome(next, nextPhase, outcome, requiresApproval);
@@ -30220,13 +30353,13 @@ function enforceOneClarification(triage, clarificationAlreadyAnswered) {
   if (!clarificationAlreadyAnswered || !triage.clarification.required) return triage;
   const next = structuredClone(triage);
   next.clarification = { required: false, question: null, reason: null };
-  next.assumptions = unique9([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
+  next.assumptions = unique10([...next.assumptions, "A blocking clarification was already answered; no further clarification question is permitted."]).slice(0, 3);
   return next;
 }
 function initialiseWorkflowConstraints(triage, config2, workflowRevision, transitionName) {
   const createdAt = timestamp2();
-  const original = unique9(triage.constraints.mustNot).map((text) => constraintRecord(text, "triage", createdAt, workflowRevision, transitionName));
-  const policy = unique9(config2.instructions).map((text) => constraintRecord(text, "policy", createdAt, workflowRevision, transitionName));
+  const original = unique10(triage.constraints.mustNot).map((text) => constraintRecord(text, "triage", createdAt, workflowRevision, transitionName));
+  const policy = unique10(config2.instructions).map((text) => constraintRecord(text, "policy", createdAt, workflowRevision, transitionName));
   return recomputeConstraints({
     original,
     policy,
@@ -30390,7 +30523,7 @@ async function withPlan(state, config2, planningOptions) {
   };
   appendEvent(planning, "planning_completed", planningEventSummary(planningRun));
   if (planningRun.approvalBlockedReason) {
-    planning.blockers = unique9([...planning.blockers, planningRun.approvalBlockedReason]);
+    planning.blockers = unique10([...planning.blockers, planningRun.approvalBlockedReason]);
     return transition(planning, "blocked", "Plan approval disabled because deterministic fallback was too generic; revise the plan before continuing.");
   }
   return transition(planning, "awaiting_plan_approval", "Sequential plan is awaiting explicit approval.");
@@ -30484,7 +30617,7 @@ function validateModelPlan(raw, mode2, config2, revisionRequests, constraints) {
         id: candidate.id,
         objective: candidate.objective,
         rationale: candidate.rationale,
-        dependencies: unique9([...candidate.dependencies, ...candidate.dependsOn ?? []]),
+        dependencies: unique10([...candidate.dependencies, ...candidate.dependsOn ?? []]),
         areas,
         readAreas: candidate.expectedReadAreas ?? areas,
         acceptance: candidate.acceptanceCriteria,
@@ -30542,7 +30675,7 @@ function normaliseModelPlan(raw, diagnostics, deterministicPlan) {
           id: candidate.id,
           objective: candidate.objective,
           rationale: candidate.rationale,
-          dependencies: unique9([...candidate.dependencies, ...candidate.dependsOn ?? []]),
+          dependencies: unique10([...candidate.dependencies, ...candidate.dependsOn ?? []]),
           areas,
           readAreas: candidate.expectedReadAreas ?? areas,
           acceptance: candidate.acceptanceCriteria,
@@ -30585,7 +30718,7 @@ function planningPrinciples(triage, constraints) {
     "Record changed files, commands, validation evidence, assumptions, risks, and scope deviations before moving on.",
     "Phase execution is dispatched through the configured execution coordinator unless manual execution was explicitly selected."
   ];
-  return unique9([
+  return unique10([
     ...principles,
     ...(constraints ?? triage?.constraints.mustNot ?? []).map((constraint) => `Constraint: ${constraint}`)
   ]);
@@ -30861,7 +30994,7 @@ function filterAreas(targets, keywords) {
   return filtered.length > 0 ? filtered : targets;
 }
 function discoverPlanningTargets(root, requestEvidence, proposed) {
-  const explicit = unique9(proposed.filter((area) => isRepositoryPlanningTarget(root, area)));
+  const explicit = unique10(proposed.filter((area) => isRepositoryPlanningTarget(root, area)));
   if (explicit.length > 0) return explicit;
   const glob = require2("fast-glob");
   const files = glob.sync([
@@ -30892,11 +31025,11 @@ function discoverPlanningTargets(root, requestEvidence, proposed) {
     if (/\.(test|spec)\./.test(file2) || /^(tests?|__tests__)\//.test(file2)) score += 1;
     return { file: file2, score };
   }).filter((candidate) => candidate.score > 0).sort((left, right) => right.score - left.score || left.file.localeCompare(right.file));
-  const selected = unique9(scored.slice(0, 7).map((candidate) => candidate.file));
+  const selected = unique10(scored.slice(0, 7).map((candidate) => candidate.file));
   if (selected.length > 0) return selected;
   const conservative = files.filter((file2) => /^(src|lib|app|tests?)\//.test(file2)).slice(0, 4);
   if (conservative.length > 0) return conservative;
-  return unique9([
+  return unique10([
     "src/**",
     "tests/**",
     .../\b(doc|docs|documentation|readme)\b/i.test(requestEvidence) ? ["docs/**", "README.md"] : []
@@ -30924,7 +31057,7 @@ function isRepositoryPlanningTarget(root, area) {
 function replaceNonPathAreas(value, fallback) {
   const current = Array.isArray(value) ? value.filter((area) => typeof area === "string") : [];
   const concrete = current.filter(isPathLikeArea2);
-  return unique9(concrete.length > 0 ? concrete : fallback);
+  return unique10(concrete.length > 0 ? concrete : fallback);
 }
 function planningEvidenceText(request, evidence2) {
   const workItems = evidence2?.referencedWorkItems ?? [];
@@ -30939,12 +31072,12 @@ function planningEvidenceText(request, evidence2) {
 }
 function applyEnrichedAcceptanceCriteria(phases, evidence2) {
   if (phases.length === 0) return;
-  const criteria = unique9((evidence2?.referencedWorkItems ?? []).flatMap((item) => item.acceptanceCriteria ?? []));
+  const criteria = unique10((evidence2?.referencedWorkItems ?? []).flatMap((item) => item.acceptanceCriteria ?? []));
   if (criteria.length === 0) return;
   for (const criterion of criteria) {
     const category = classifyAcceptanceOutcome(criterion);
     const index = acceptancePhaseIndex(category, phases.length);
-    phases[index].acceptanceCriteria = unique9([...phases[index].acceptanceCriteria, criterion]);
+    phases[index].acceptanceCriteria = unique10([...phases[index].acceptanceCriteria, criterion]);
   }
 }
 function acceptancePhaseIndex(category, phaseCount) {
@@ -30955,7 +31088,7 @@ function acceptancePhaseIndex(category, phaseCount) {
 }
 function planningSearchTokens(request) {
   const stop = /* @__PURE__ */ new Set(["about", "after", "against", "change", "current", "from", "implement", "into", "issue", "request", "require", "should", "that", "their", "these", "this", "through", "using", "with", "without"]);
-  return unique9((request.toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) ?? []).map((token) => token.replace(/(?:ing|ed|s)$/, "")).filter((token) => token.length >= 4 && !stop.has(token))).slice(0, 24);
+  return unique10((request.toLowerCase().match(/[a-z][a-z0-9-]{3,}/g) ?? []).map((token) => token.replace(/(?:ing|ed|s)$/, "")).filter((token) => token.length >= 4 && !stop.has(token))).slice(0, 24);
 }
 function validatePlanQuality(plan, mode2, config2) {
   return validatePlanQualityDetailed(plan, mode2, config2).map((diagnostic3) => diagnostic3.message);
@@ -31011,7 +31144,7 @@ function isBroadContainer(objective) {
 }
 function mixedArchitecturalBoundary(phase2, mode2) {
   if (mode2 === "fast") return void 0;
-  const productionGroups = unique9((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(areaBoundary).filter((group) => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
+  const productionGroups = unique10((phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas).map(areaBoundary).filter((group) => Boolean(group) && group !== "tests" && group !== "docs" && group !== "risk"));
   if (productionGroups.length <= 1) return void 0;
   if (/\b(independently valid|repository-state closure|producer-consumer|cross-boundary dependency|required producer and consumer)\b/i.test(phase2.rationale)) {
     return void 0;
@@ -31047,8 +31180,8 @@ function uniqueDiagnostics3(diagnostics) {
   return out;
 }
 function phase(args) {
-  const areas = unique9(args.areas);
-  const readAreas = unique9(args.readAreas ?? areas);
+  const areas = unique10(args.areas);
+  const readAreas = unique10(args.readAreas ?? areas);
   return {
     id: args.id,
     objective: args.objective,
@@ -31078,20 +31211,20 @@ function defaultValidationCommands(root, mode2, triage) {
   if (triage.task.type === "documentation") {
     if (scripts.lint) commands.push("npm run lint");
     commands.push("git diff --check");
-    return unique9(commands);
+    return unique10(commands);
   }
   if (mode2 === "fast") {
     if (scripts.typecheck) commands.push("npm run typecheck");
     if (scripts.test) commands.push("npm test -- --runInBand");
     commands.push("git diff --check");
-    return unique9(commands);
+    return unique10(commands);
   }
   if (scripts.test) commands.push("npm test");
   if (scripts.typecheck) commands.push("npm run typecheck");
   if (scripts.lint) commands.push("npm run lint");
   if (mode2 === "rigorous" && scripts.build) commands.push("npm run build");
   commands.push("git diff --check");
-  return unique9(commands);
+  return unique10(commands);
 }
 function readPackageJsonSync(root) {
   try {
@@ -31178,8 +31311,8 @@ function buildCompletionRecord(args) {
     filesChanged: args.phase.filesChanged,
     validation,
     scopeDeviations: args.phase.scopeDeviations,
-    assumptions: unique9(args.assumptions ?? []),
-    remainingRisks: unique9(args.remainingRisks ?? []),
+    assumptions: unique10(args.assumptions ?? []),
+    remainingRisks: unique10(args.remainingRisks ?? []),
     dependentPhasesMayProceed: decision === "completed",
     decision,
     reason: args.blockedReason ?? policy.reason ?? args.requestedRepairScope ?? "Completion gate evaluated.",
@@ -31198,7 +31331,7 @@ function normaliseCriteria(phase2, supplied) {
     return {
       criterion,
       status: suppliedCriterion?.status ?? "uncertain",
-      evidence: unique9(suppliedCriterion?.evidence ?? [])
+      evidence: unique10(suppliedCriterion?.evidence ?? [])
     };
   });
 }
@@ -31308,7 +31441,7 @@ function detectScopeDeviations(phase2, config2) {
       }
     }
   }
-  return unique9(deviations);
+  return unique10(deviations);
 }
 function gateRequiresEvidence(config2) {
   return config2?.completionGate.requireEvidence ?? true;
@@ -31808,7 +31941,7 @@ function persistPhaseBriefOutcome(state, phase2, outcome, requiresApproval) {
     const current = state.phaseBriefs[phase2.id];
     if (current) current.approvalStatus = "stale";
     state.phaseBriefFailures[phase2.id] = outcome.failure;
-    state.blockers = unique9([...state.blockers, `${blockerPrefix} ${outcome.failure.message}`]);
+    state.blockers = unique10([...state.blockers, `${blockerPrefix} ${outcome.failure.message}`]);
     supersedePendingPhaseApproval(state);
     const planningFailure = outcome.failure.failureOwnership === "leanrigor_generation_failure";
     const planInsufficiency = outcome.failure.diagnostics.some((item) => item.code.startsWith("dependency.") || item.code.startsWith("scope."));
@@ -31897,7 +32030,7 @@ function resolveDecisionAction(state, action, mutation, status, expectedType) {
 function formatDispatchBlockers(blockers) {
   return blockers.length > 0 ? `Phase dispatch blocked: ${blockers.map((blocker) => `${blocker.code}: ${blocker.message}`).join("; ")}` : "Phase dispatch blocked.";
 }
-function unique9(values) {
+function unique10(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
@@ -32258,7 +32391,7 @@ function workflowNextSummary(state) {
         overallStrategy: {
           implementationDivision: plan?.summary ?? "Sequential implementation plan.",
           orderRationale: "Dependencies define execution order; each phase is independently reviewable before dependents unlock.",
-          architectureBoundaries: unique10(plan?.phases.flatMap((phase3) => phase3.expectedWriteAreas.map(architectureBoundaryForArea)) ?? []).filter(Boolean)
+          architectureBoundaries: unique11(plan?.phases.flatMap((phase3) => phase3.expectedWriteAreas.map(architectureBoundaryForArea)) ?? []).filter(Boolean)
         },
         phases: plan?.phases.map((candidate, index) => ({
           number: index + 1,
@@ -32275,7 +32408,7 @@ function workflowNextSummary(state) {
         executionStructure: readiness,
         validationStrategy: {
           perPhase: plan?.phases.map((phase3) => ({ phase: phase3.id, commands: phase3.validationCommands, criteria: phase3.acceptanceCriteria })) ?? [],
-          finalIntegratedChecks: unique10(plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
+          finalIntegratedChecks: unique11(plan?.phases.flatMap((candidate) => candidate.validationCommands) ?? []),
           completionEvidence: "Each phase must record changed files, validation evidence, criteria evidence, assumptions, risks, and scope deviations before dependent phases proceed."
         },
         approvedConstraints: state.constraints?.effective.map((constraint) => ({ text: constraint.text, source: constraint.source })) ?? state.triage?.constraints.mustNot ?? [],
@@ -32722,7 +32855,7 @@ function summariseCriteria(criteria) {
     notApplicable: criteria.filter((criterion) => criterion.status === "not_applicable").length
   };
 }
-function unique10(values) {
+function unique11(values) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 function quoteArg(value) {
@@ -33123,6 +33256,7 @@ var ExecutionCoordinator = class {
   workflowId;
   config;
   provider;
+  phaseBriefProvider;
   validationAdvisor;
   coordinatorId;
   clock;
@@ -33131,6 +33265,7 @@ var ExecutionCoordinator = class {
     this.workflowId = options.workflowId;
     this.config = options.config;
     this.provider = options.provider;
+    this.phaseBriefProvider = options.phaseBriefProvider;
     this.validationAdvisor = options.validationAdvisor;
     this.coordinatorId = options.coordinatorId ?? `lr-coordinator-${process.pid}`;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
@@ -33167,6 +33302,7 @@ var ExecutionCoordinator = class {
         workflowId: this.workflowId,
         phaseId: staleBrief.id,
         config: this.config,
+        provider: this.phaseBriefProvider,
         refresh: true,
         requireApproval: true,
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
@@ -33180,6 +33316,7 @@ var ExecutionCoordinator = class {
         workflowId: this.workflowId,
         phaseId: missingBrief.id,
         config: this.config,
+        provider: this.phaseBriefProvider,
         requireApproval: true,
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
       });
@@ -33217,6 +33354,7 @@ var ExecutionCoordinator = class {
               workflowId: this.workflowId,
               phaseId: phase2.id,
               config: this.config,
+              provider: this.phaseBriefProvider,
               refresh: true,
               requireApproval: true,
               mutation: { ownerId: this.coordinatorId, ownerType: "system" }
@@ -33922,7 +34060,7 @@ var ExecutionCoordinator = class {
     for (const phase2 of completed.sort((a, b) => a.id.localeCompare(b.id))) {
       const status = integrationStatus2(state);
       if (status.integratedPhaseIds.includes(phase2.id) || status.conflictedPhaseIds.includes(phase2.id)) continue;
-      const result = await integratePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase2.id, ownerId: this.coordinatorId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
+      const result = await integratePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase2.id, ownerId: this.coordinatorId, config: this.config, briefProvider: this.phaseBriefProvider, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
       state = result.state;
       if (!result.ok) {
         return updateFlowState(this.root, this.workflowId, (current) => {
@@ -33945,6 +34083,7 @@ var ExecutionCoordinator = class {
         workflowId: this.workflowId,
         phaseId: nextPreflight.id,
         config: this.config,
+        provider: this.phaseBriefProvider,
         refresh: Boolean(state.phaseBriefs?.[nextPreflight.id]),
         requireApproval: state.approval?.policy === "phase-by-phase",
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
@@ -35035,19 +35174,22 @@ flow.command("reject-approach").argument("<workflow-id>").requiredOption("--reas
 flow.command("revise-approach").argument("<workflow-id>").argument("[feedback]").option("--feedback-file <path>", "UTF-8 file containing the approach feedback").option("--root <path>", "repository root", process.cwd()).option("--decision-id <id>", "exact persisted decision ID").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, feedback, options) => {
   printFlowState(await reviseApproach(options.root, workflowId2, await textArgument(feedback, options.feedbackFile, "feedback"), mutationOptions(options)));
 });
-flow.command("approve-plan").argument("<workflow-id>").option("--approval-policy <policy>", "workflow-authorized or phase-by-phase").option("--root <path>", "repository root", process.cwd()).option("--decision-id <id>", "exact persisted decision ID").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
+flow.command("approve-plan").argument("<workflow-id>").option("--approval-policy <policy>", "workflow-authorized or phase-by-phase").option("--provider <provider>", "phase brief provider: auto, claude, or deterministic", "auto").option("--root <path>", "repository root", process.cwd()).option("--decision-id <id>", "exact persisted decision ID").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, options) => {
   if (options.approvalPolicy && !["workflow-authorized", "phase-by-phase"].includes(options.approvalPolicy)) {
     throw new Error("Invalid --approval-policy. Use workflow-authorized or phase-by-phase.");
   }
+  const providerSelection = triageProviderSelection(options.provider);
   printFlowState(await approvePlan(
     options.root,
     workflowId2,
     mutationOptions(options),
     options.approvalPolicy,
-    await effectiveRepositoryConfig(options.root)
+    await effectiveRepositoryConfig(options.root),
+    phaseBriefPlanningProvider(providerSelection)
   ));
 });
-flow.command("phase-brief").argument("<workflow-id>").argument("<phase-id>").argument("[feedback]").option("--feedback-file <path>", "UTF-8 file containing phase brief revision feedback").option("--refresh", "rerun bounded inspection and brief planning without revision feedback").option("--root <path>", "repository root", process.cwd()).option("--decision-id <id>", "exact persisted decision ID").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, phaseId, feedback, options) => {
+flow.command("phase-brief").argument("<workflow-id>").argument("<phase-id>").argument("[feedback]").option("--feedback-file <path>", "UTF-8 file containing phase brief revision feedback").option("--refresh", "rerun bounded inspection and brief planning without revision feedback").option("--provider <provider>", "phase brief provider: auto, claude, or deterministic", "auto").option("--root <path>", "repository root", process.cwd()).option("--decision-id <id>", "exact persisted decision ID").option("--expected-revision <revision>", "expected workflow revision").option("--owner <id>", "lock owner ID", "cli").action(async (workflowId2, phaseId, feedback, options) => {
+  const providerSelection = triageProviderSelection(options.provider);
   const revisionFeedback = feedback === void 0 && options.feedbackFile === void 0 ? void 0 : await textArgument(feedback, options.feedbackFile, "feedback");
   const state = await preparePhaseExecutionBrief({
     root: options.root,
@@ -35056,6 +35198,7 @@ flow.command("phase-brief").argument("<workflow-id>").argument("<phase-id>").arg
     config: await effectiveRepositoryConfig(options.root),
     feedback: revisionFeedback,
     refresh: Boolean(revisionFeedback) || Boolean(options.refresh),
+    provider: phaseBriefPlanningProvider(providerSelection),
     mutation: mutationOptions(options)
   });
   const brief = state.phaseBriefs?.[phaseId];
@@ -35274,8 +35417,9 @@ flow.command("workspace-status").argument("<workflow-id>").option("--root <path>
   if (options.json) console.log(JSON.stringify(status, null, 2));
   else console.log(status.git ? `Integration workspace: ${status.git.integration.status}` : "No Git workspace initialized.");
 });
-flow.command("integrate-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "integration owner ID").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print structured integration result").action(async (workflowId2, phaseId, options) => {
-  const result = await integratePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
+flow.command("integrate-phase").argument("<workflow-id>").argument("<phase-id>").requiredOption("--owner <id>", "integration owner ID").option("--provider <provider>", "phase brief provider: auto, claude, or deterministic", "auto").option("--root <path>", "repository root", process.cwd()).option("--expected-revision <revision>", "expected workflow revision").option("--json", "print structured integration result").action(async (workflowId2, phaseId, options) => {
+  const providerSelection = triageProviderSelection(options.provider);
+  const result = await integratePhase({ root: options.root, workflowId: workflowId2, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), briefProvider: phaseBriefPlanningProvider(providerSelection), mutation: mutationOptions(options) });
   if (options.json) console.log(JSON.stringify({ ...result, decisionEnvelope: workflowDecisionEnvelope(result.state) }, null, 2));
   else if (result.ok) console.log(result.code === "already_integrated" ? `Phase ${phaseId} was already integrated.` : `Phase ${phaseId} integrated.`);
   else console.log(`Phase ${phaseId} integration failed: ${result.code}`);
@@ -35465,6 +35609,9 @@ function triageProvider(provider) {
 function planningProvider(provider) {
   return provider === "deterministic" ? void 0 : getAdapterRuntime(provider === "auto" ? "claude" : provider).createPlanningProvider();
 }
+function phaseBriefPlanningProvider(provider) {
+  return provider === "deterministic" ? void 0 : getAdapterRuntime(provider === "auto" ? "claude" : provider).createPhaseBriefPlanningProvider();
+}
 function parseConstraintOverrides(values) {
   return values.map((value) => {
     const match = value.match(/^(.*?)\s*(?:=>|->)\s*(.*?)$/);
@@ -35653,10 +35800,15 @@ async function executionCoordinator(root, workflowId2, providerName, scriptFile)
       workflowId: workflowId2,
       config: config2,
       provider: selected.provider,
+      phaseBriefProvider: phaseBriefProviderForExecution(providerName),
       validationAdvisor: executionValidationAdvisor(providerName)
     }),
     providerFallbackReason: selected.fallbackReason
   };
+}
+function phaseBriefProviderForExecution(providerName) {
+  const adapterId = providerName === "auto" || providerName === "scripted" ? "claude" : providerName.endsWith("-cli") ? providerName.slice(0, -4) : providerName;
+  return availableAdapterIds().includes(adapterId) ? getAdapterRuntime(adapterId).createPhaseBriefPlanningProvider() : void 0;
 }
 function executionValidationAdvisor(providerName) {
   if (providerName === "scripted") return void 0;

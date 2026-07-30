@@ -1,5 +1,6 @@
 import { ClaudeAdapter } from "./claude/adapter.js";
 import { ClaudeCliPlanningProvider } from "./claude/planning-provider.js";
+import { ClaudeCliPhaseBriefPlanningProvider } from "./claude/phase-brief-provider.js";
 import { ClaudeCliStructuredDecisionProvider } from "./claude/structured-decision-provider.js";
 import { ClaudeCliTriageProvider } from "./claude/triage-provider.js";
 import type { AdapterRuntime } from "./types.js";
@@ -28,5 +29,6 @@ registerAdapter({
   createTriageProvider: () => new ClaudeCliTriageProvider(),
   createStructuredDecisionProvider: () => new ClaudeCliStructuredDecisionProvider(),
   createPlanningProvider: () => new ClaudeCliPlanningProvider(),
+  createPhaseBriefPlanningProvider: () => new ClaudeCliPhaseBriefPlanningProvider(),
   createExecutionProvider: (config) => new ClaudeCliExecutionProvider({ config })
 });

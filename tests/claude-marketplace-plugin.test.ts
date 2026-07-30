@@ -93,10 +93,37 @@ async function fakeClaudePath(): Promise<string> {
   const triageEnvelope = JSON.stringify({ result: JSON.stringify(triageOutput) });
   const standardTriageEnvelope = JSON.stringify({ result: JSON.stringify(standardTriageOutput) });
   const planningEnvelope = JSON.stringify({ result: JSON.stringify(planningOutput) });
+  const phaseBriefOutput = (phase: 1 | 2) => ({
+    objective: phase === 1
+      ? "Implement a model-authored phase brief for the flow implementation boundary."
+      : "Implement a model-authored phase brief for the persisted state boundary.",
+    deliverable: phase === 1
+      ? "Update src/core/flow.ts with the approved Phase 1 behavior and verify it through npm test."
+      : "Update src/core/types.ts with the approved Phase 2 contract and verify it through npm test.",
+    currentBehaviour: phase === 1
+      ? "src/core/flow.ts currently exports the base flow fixture used by the installed workflow smoke."
+      : "src/core/types.ts currently exports the base State interface used by the installed workflow smoke.",
+    implementationApproach: phase === 1
+      ? "1. Inspect src/core/flow.ts and the bounded smoke test.\n2. Modify src/core/flow.ts within the approved Phase 1 boundary.\n3. Run npm test and compare the result with the approved acceptance criteria."
+      : "1. Inspect src/core/types.ts and tests/types.test.ts.\n2. Modify src/core/types.ts within the approved Phase 2 boundary.\n3. Run npm test and compare the result with the approved acceptance criteria.",
+    readAreas: phase === 1 ? planningOutput.phases[0].expectedReadAreas : planningOutput.phases[1].expectedReadAreas,
+    writeAreas: phase === 1 ? planningOutput.phases[0].expectedWriteAreas : planningOutput.phases[1].expectedWriteAreas,
+    relevantFiles: phase === 1 ? ["src/core/flow.ts"] : ["src/core/types.ts"],
+    relevantSymbols: [],
+    dependencies: phase === 1 ? [] : ["phase-1"],
+    assumptions: [],
+    exclusions: [],
+    acceptanceCriteria: phase === 1 ? planningOutput.phases[0].acceptanceCriteria : planningOutput.phases[1].acceptanceCriteria,
+    testObligations: ["Run npm test to verify the bounded phase behavior."],
+    validationCommands: ["npm test"],
+    risks: ["The approved medium-risk phase remains subject to its bounded validation controls."]
+  });
+  const phaseOneBriefEnvelope = JSON.stringify({ result: JSON.stringify(phaseBriefOutput(1)) });
+  const phaseTwoBriefEnvelope = JSON.stringify({ result: JSON.stringify(phaseBriefOutput(2)) });
   const script = path.join(binDir, "claude.js");
   await writeFile(
     script,
-    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst stdin = fs.readFileSync(0, "utf8");\nconst prompt = args.join("\\n") + "\\n" + stdin;\nconst stage = prompt.includes("bounded sequential planning candidate generator") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
+    `#!/usr/bin/env node\nconst fs = require("node:fs");\nconst args = process.argv.slice(2);\nconst stdin = fs.readFileSync(0, "utf8");\nconst prompt = args.join("\\n") + "\\n" + stdin;\nconst stage = prompt.includes("Phase Execution Brief author") ? "phase-brief" : prompt.includes("bounded sequential planning candidate generator") ? "planning" : "triage";\nconst modelIndex = args.indexOf("--model");\nconst model = modelIndex >= 0 ? args[modelIndex + 1] : "inherit";\nif (process.env.LEANRIGOR_TEST_MODEL_LOG) fs.appendFileSync(process.env.LEANRIGOR_TEST_MODEL_LOG, stage + ":" + model + "\\n");\nconst output = stage === "planning" ? ${JSON.stringify(`${planningEnvelope}\n`)} : stage === "phase-brief" ? (prompt.includes('"id": "phase-2"') ? ${JSON.stringify(`${phaseTwoBriefEnvelope}\n`)} : ${JSON.stringify(`${phaseOneBriefEnvelope}\n`)}) : prompt.includes("broken assignment API regression") ? ${JSON.stringify(`${standardTriageEnvelope}\n`)} : ${JSON.stringify(`${triageEnvelope}\n`)};\nprocess.stdout.write(output);\n`,
     { mode: 0o755 }
   );
   if (process.platform === "win32") {
@@ -416,6 +443,8 @@ describe("Claude marketplace plugin runtime", () => {
         };
         nextOperation?: { type: string; automaticallyPermitted: boolean };
         nextAction?: string;
+        briefRevision?: number;
+        generation?: { source: string; provider: string };
         dispatched?: Array<{ phaseId: string }>;
         phaseResult?: {
           lifecycle: { completionGate: string; integration: string };
@@ -453,17 +482,23 @@ describe("Claude marketplace plugin runtime", () => {
     ]);
     assertDecision(phaseOne, "phase-brief-approval");
     expect(phaseOne.decision?.phaseId).toBe("phase-1");
+    const phaseOneBrief = await cli(["flow", "phase-brief-show", workflowId, "phase-1"]);
+    expect(phaseOneBrief.generation).toMatchObject({ source: "provider", provider: "claude-cli" });
+    const revisedBrief = await cli(["flow", "phase-brief", workflowId, "phase-1", "Rewrite the implementation approach around the inspected flow boundary."]);
+    expect(revisedBrief.generation).toMatchObject({ source: "provider", provider: "claude-cli" });
+    const revisedPhaseOne = await cli(["flow", "next", workflowId, "--json"]);
+    assertDecision(revisedPhaseOne, "phase-brief-approval");
 
     const blockedDispatch = await cli(["flow", "execute-next", workflowId, "--provider", "scripted", "--json"]);
-    expect(blockedDispatch.decision).toEqual(phaseOne.decision);
+    expect(blockedDispatch.decision).toEqual(revisedPhaseOne.decision);
     expect(blockedDispatch.nextAction).toBe("await_user");
 
     const approved = await cli([
       "flow", "approve-phase", workflowId, "phase-1",
-      "--brief-revision", String(phaseOne.decision!.briefRevision),
-      "--workflow-revision", String(phaseOne.decision!.workflowRevision),
-      "--decision-id", phaseOne.decision!.id,
-      "--expected-revision", String(phaseOne.workflowRevision)
+      "--brief-revision", String(revisedPhaseOne.decision!.briefRevision),
+      "--workflow-revision", String(revisedPhaseOne.decision!.workflowRevision),
+      "--decision-id", revisedPhaseOne.decision!.id,
+      "--expected-revision", String(revisedPhaseOne.workflowRevision)
     ]);
     expect(approved.decision).toBeUndefined();
     expect(approved.nextOperation).toMatchObject({ type: "execute-next", automaticallyPermitted: true });
@@ -481,6 +516,8 @@ describe("Claude marketplace plugin runtime", () => {
     const phaseTwo = await cli(["flow", "execution-poll", workflowId, "--provider", "scripted", "--script-file", scriptFile, "--json"]);
     assertDecision(phaseTwo, "phase-brief-approval");
     expect(phaseTwo.decision?.phaseId).toBe("phase-2");
+    const phaseTwoBrief = await cli(["flow", "phase-brief-show", workflowId, "phase-2"]);
+    expect(phaseTwoBrief.generation).toMatchObject({ source: "provider", provider: "claude-cli" });
     expect(phaseTwo.phaseResult).toMatchObject({
       lifecycle: { completionGate: "completed", integration: "integrated" },
       manualInspection: { required: false }

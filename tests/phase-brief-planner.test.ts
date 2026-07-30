@@ -296,10 +296,12 @@ describe("phase brief repair", () => {
       }
     };
 
+    const config = defaultConfig();
+    config.budgets.phaseBriefDeterministicFallbackAttempts = 1;
     const outcome = await generateInspectedPhaseExecutionBrief({
       state: fixture.state,
       phase: fixture.phase,
-      config: defaultConfig(),
+      config,
       provider
     });
 

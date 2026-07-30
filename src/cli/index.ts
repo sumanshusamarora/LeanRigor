@@ -78,6 +78,7 @@ import { ScriptedExecutionProvider, type ScriptedPhase } from "../core/execution
 import type { CoordinatorResult } from "../core/execution/types.js";
 import { phaseResultView, workflowDecisionEnvelope } from "../core/workflow-envelope.js";
 import type { PlanningProvider } from "../core/planning-runner.js";
+import type { PhaseBriefPlanningProvider } from "../core/phase-brief-planner.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
@@ -512,6 +513,7 @@ flow.command("revise-approach")
 flow.command("approve-plan")
   .argument("<workflow-id>")
   .option("--approval-policy <policy>", "workflow-authorized or phase-by-phase")
+  .option("--provider <provider>", "phase brief provider: auto, claude, or deterministic", "auto")
   .option("--root <path>", "repository root", process.cwd())
   .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
@@ -520,12 +522,14 @@ flow.command("approve-plan")
     if (options.approvalPolicy && !["workflow-authorized", "phase-by-phase"].includes(options.approvalPolicy)) {
       throw new Error("Invalid --approval-policy. Use workflow-authorized or phase-by-phase.");
     }
+    const providerSelection = triageProviderSelection(options.provider);
     printFlowState(await approvePlan(
       options.root,
       workflowId,
       mutationOptions(options),
       options.approvalPolicy,
-      await effectiveRepositoryConfig(options.root)
+      await effectiveRepositoryConfig(options.root),
+      phaseBriefPlanningProvider(providerSelection)
     ));
   });
 
@@ -535,11 +539,13 @@ flow.command("phase-brief")
   .argument("[feedback]")
   .option("--feedback-file <path>", "UTF-8 file containing phase brief revision feedback")
   .option("--refresh", "rerun bounded inspection and brief planning without revision feedback")
+  .option("--provider <provider>", "phase brief provider: auto, claude, or deterministic", "auto")
   .option("--root <path>", "repository root", process.cwd())
   .option("--decision-id <id>", "exact persisted decision ID")
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--owner <id>", "lock owner ID", "cli")
   .action(async (workflowId, phaseId, feedback, options) => {
+    const providerSelection = triageProviderSelection(options.provider);
     const revisionFeedback = feedback === undefined && options.feedbackFile === undefined
       ? undefined
       : await textArgument(feedback, options.feedbackFile, "feedback");
@@ -550,6 +556,7 @@ flow.command("phase-brief")
       config: await effectiveRepositoryConfig(options.root),
       feedback: revisionFeedback,
       refresh: Boolean(revisionFeedback) || Boolean(options.refresh),
+      provider: phaseBriefPlanningProvider(providerSelection),
       mutation: mutationOptions(options)
     });
     const brief = state.phaseBriefs?.[phaseId];
@@ -989,11 +996,13 @@ flow.command("integrate-phase")
   .argument("<workflow-id>")
   .argument("<phase-id>")
   .requiredOption("--owner <id>", "integration owner ID")
+  .option("--provider <provider>", "phase brief provider: auto, claude, or deterministic", "auto")
   .option("--root <path>", "repository root", process.cwd())
   .option("--expected-revision <revision>", "expected workflow revision")
   .option("--json", "print structured integration result")
   .action(async (workflowId, phaseId, options) => {
-    const result = await integratePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), mutation: mutationOptions(options) });
+    const providerSelection = triageProviderSelection(options.provider);
+    const result = await integratePhase({ root: options.root, workflowId, phaseId, ownerId: options.owner, config: await effectiveRepositoryConfig(options.root), briefProvider: phaseBriefPlanningProvider(providerSelection), mutation: mutationOptions(options) });
     if (options.json) console.log(JSON.stringify({ ...result, decisionEnvelope: workflowDecisionEnvelope(result.state) }, null, 2));
     else if (result.ok) console.log(result.code === "already_integrated" ? `Phase ${phaseId} was already integrated.` : `Phase ${phaseId} integrated.`);
     else console.log(`Phase ${phaseId} integration failed: ${result.code}`);
@@ -1310,6 +1319,10 @@ function planningProvider(provider: TriageProviderSelection): PlanningProvider |
   return provider === "deterministic" ? undefined : getAdapterRuntime(provider === "auto" ? "claude" : provider).createPlanningProvider();
 }
 
+function phaseBriefPlanningProvider(provider: TriageProviderSelection): PhaseBriefPlanningProvider | undefined {
+  return provider === "deterministic" ? undefined : getAdapterRuntime(provider === "auto" ? "claude" : provider).createPhaseBriefPlanningProvider();
+}
+
 function parseConstraintOverrides(values: string[]): Array<{ target: string; text: string }> {
   return values.map((value) => {
     const match = value.match(/^(.*?)\s*(?:=>|->)\s*(.*?)$/);
@@ -1503,10 +1516,20 @@ async function executionCoordinator(root: string, workflowId: string, providerNa
       workflowId,
       config,
       provider: selected.provider,
+      phaseBriefProvider: phaseBriefProviderForExecution(providerName),
       validationAdvisor: executionValidationAdvisor(providerName)
     }),
     providerFallbackReason: selected.fallbackReason
   };
+}
+
+function phaseBriefProviderForExecution(providerName: string): PhaseBriefPlanningProvider | undefined {
+  const adapterId = providerName === "auto" || providerName === "scripted"
+    ? "claude"
+    : providerName.endsWith("-cli") ? providerName.slice(0, -4) : providerName;
+  return availableAdapterIds().includes(adapterId)
+    ? getAdapterRuntime(adapterId).createPhaseBriefPlanningProvider()
+    : undefined;
 }
 
 function executionValidationAdvisor(providerName: string) {

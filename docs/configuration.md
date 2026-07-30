@@ -198,7 +198,8 @@ Dedicated triage budgets live under `budgets`:
   attempts when the selected provider exposes that capability. The default is
   one;
 - `phaseBriefDeterministicFallbackAttempts`: bounded conservative deterministic
-  synthesis after provider strategies are exhausted. The default is one.
+  synthesis after provider strategies are exhausted. The default is zero: enable
+  it explicitly only when a deterministic fallback is acceptable.
 
 These budgets do not grant normal triage repository tools. They cap each stage
 after deterministic evidence collection has already bounded the discovery work.

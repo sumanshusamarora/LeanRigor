@@ -1,6 +1,7 @@
 import type { LeanRigorConfig, ModelTier } from "../config/schema.js";
 import type { ExecutionProvider } from "../core/execution/provider.js";
 import type { PlanningProvider } from "../core/planning-runner.js";
+import type { PhaseBriefPlanningProvider } from "../core/phase-brief-planner.js";
 import type { StructuredDecisionProvider } from "../core/structured-decision.js";
 import type { TriageProvider } from "../core/triage-runner.js";
 
@@ -55,5 +56,6 @@ export interface AdapterRuntime {
   createTriageProvider(): TriageProvider;
   createStructuredDecisionProvider?(): StructuredDecisionProvider;
   createPlanningProvider(): PlanningProvider;
+  createPhaseBriefPlanningProvider(): PhaseBriefPlanningProvider;
   createExecutionProvider(config: LeanRigorConfig): ExecutionProvider;
 }

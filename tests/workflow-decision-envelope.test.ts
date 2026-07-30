@@ -45,7 +45,7 @@ describe("normalized workflow decision envelopes", () => {
     expect(coordinatorResultForState(await currentState(harness), "scripted", [], "await_user", "refresh").nextAction).toBe("dispatch");
   });
 
-  it("limits AskUserQuestion decisions to four context-prioritized options", async () => {
+  it("limits AskUserQuestion decisions to five context-prioritized options", async () => {
     const harness = await createExecutionHarness({
       approveFirstPhase: false,
       approvalPolicy: "phase-by-phase",
@@ -67,6 +67,7 @@ describe("normalized workflow decision envelopes", () => {
     expect(workflowDecisionEnvelope(state).decision?.options.map((option) => option.intent)).toEqual([
       "discard-out-of-scope-and-retry",
       "revise-phase-brief",
+      "view-details",
       "revise-plan",
       "cancel-workflow"
     ]);
@@ -80,6 +81,7 @@ describe("normalized workflow decision envelopes", () => {
       "cancel-workflow"
     ];
     expect(workflowDecisionEnvelope(state).decision?.options.map((option) => option.intent)).toEqual([
+      "review-material-drift",
       "revise-plan",
       "revise-phase-brief",
       "view-details",

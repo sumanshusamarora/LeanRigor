@@ -1930,6 +1930,7 @@ export async function integratePhase(args: {
   phaseId: string;
   ownerId: string;
   config?: LeanRigorConfig;
+  briefProvider?: PhaseBriefPlanningProvider;
   mutation?: MutationOptions;
 }): Promise<IntegrationOperationResult> {
   let operation: Omit<IntegrationOperationResult, "state"> | undefined;
@@ -1956,7 +1957,8 @@ export async function integratePhase(args: {
         const outcome = await generateInspectedPhaseExecutionBrief({
           state: next,
           phase: nextPhase,
-          config: args.config ?? defaultConfig()
+          config: args.config ?? defaultConfig(),
+          provider: args.briefProvider
         });
         const requiresApproval = next.approval?.policy === "phase-by-phase"
           || !next.approval?.history.some((entry) => entry.action === "phase-approved");

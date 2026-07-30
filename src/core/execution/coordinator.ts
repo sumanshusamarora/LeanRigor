@@ -4,6 +4,7 @@ import { readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LeanRigorConfig } from "../../config/schema.js";
+import type { PhaseBriefPlanningProvider } from "../phase-brief-planner.js";
 import { preparePhaseWorkspace } from "../workspace-preparation.js";
 import {
   dependencyReadyCandidates,
@@ -45,6 +46,7 @@ export interface ExecutionCoordinatorOptions {
   workflowId: string;
   config: LeanRigorConfig;
   provider: ExecutionProvider;
+  phaseBriefProvider?: PhaseBriefPlanningProvider;
   validationAdvisor?: StructuredDecisionProvider;
   coordinatorId?: string;
   clock?: () => Date;
@@ -55,6 +57,7 @@ export class ExecutionCoordinator {
   private readonly workflowId: string;
   private readonly config: LeanRigorConfig;
   private readonly provider: ExecutionProvider;
+  private readonly phaseBriefProvider?: PhaseBriefPlanningProvider;
   private readonly validationAdvisor?: StructuredDecisionProvider;
   private readonly coordinatorId: string;
   private readonly clock: () => Date;
@@ -64,6 +67,7 @@ export class ExecutionCoordinator {
     this.workflowId = options.workflowId;
     this.config = options.config;
     this.provider = options.provider;
+    this.phaseBriefProvider = options.phaseBriefProvider;
     this.validationAdvisor = options.validationAdvisor;
     this.coordinatorId = options.coordinatorId ?? `lr-coordinator-${process.pid}`;
     this.clock = options.clock ?? (() => new Date());
@@ -103,6 +107,7 @@ export class ExecutionCoordinator {
         workflowId: this.workflowId,
         phaseId: staleBrief.id,
         config: this.config,
+        provider: this.phaseBriefProvider,
         refresh: true,
         requireApproval: true,
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
@@ -116,6 +121,7 @@ export class ExecutionCoordinator {
         workflowId: this.workflowId,
         phaseId: missingBrief.id,
         config: this.config,
+        provider: this.phaseBriefProvider,
         requireApproval: true,
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
       });
@@ -153,6 +159,7 @@ export class ExecutionCoordinator {
               workflowId: this.workflowId,
               phaseId: phase.id,
               config: this.config,
+              provider: this.phaseBriefProvider,
               refresh: true,
               requireApproval: true,
               mutation: { ownerId: this.coordinatorId, ownerType: "system" }
@@ -912,7 +919,7 @@ export class ExecutionCoordinator {
     for (const phase of completed.sort((a, b) => a.id.localeCompare(b.id))) {
       const status = integrationStatus(state);
       if (status.integratedPhaseIds.includes(phase.id) || status.conflictedPhaseIds.includes(phase.id)) continue;
-      const result = await integratePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId: this.coordinatorId, config: this.config, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
+      const result = await integratePhase({ root: this.root, workflowId: this.workflowId, phaseId: phase.id, ownerId: this.coordinatorId, config: this.config, briefProvider: this.phaseBriefProvider, mutation: { ownerId: this.coordinatorId, ownerType: "system" } });
       state = result.state;
       if (!result.ok) {
         return updateFlowState(this.root, this.workflowId, (current) => {
@@ -935,6 +942,7 @@ export class ExecutionCoordinator {
         workflowId: this.workflowId,
         phaseId: nextPreflight.id,
         config: this.config,
+        provider: this.phaseBriefProvider,
         refresh: Boolean(state.phaseBriefs?.[nextPreflight.id]),
         requireApproval: state.approval?.policy === "phase-by-phase",
         mutation: { ownerId: this.coordinatorId, ownerType: "system" }
