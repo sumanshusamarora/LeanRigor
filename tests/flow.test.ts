@@ -1506,7 +1506,7 @@ describe("scope classification", () => {
     expect(result.plan?.phases[0]?.status).toBe("completed");
   });
 
-  it("documentation phase changing a runtime file triggers needs_replan", async () => {
+  it("documentation phase changing a runtime file outside its declared paths triggers needs_replan", async () => {
     const root = await tempRepo();
     const state = await startFlow({
       request: "Add a practical first-workflow guide for new LeanRigor users. Create docs/first-workflow.md and link it prominently from README.md.",
@@ -1522,7 +1522,32 @@ describe("scope classification", () => {
 
     expect(result.plan?.phases[0]?.status).toBe("needs_replan");
     const deviations = result.plan?.phases[0]?.scopeDeviations ?? [];
-    expect(deviations.some((d) => d.includes("scope deviation") && d.includes("runtime"))).toBe(true);
+    expect(deviations.some((d) => d.includes("outside expected scope") && d.includes("src/core/flow.ts"))).toBe(true);
+  });
+
+  it("does not treat explicitly approved source and test paths as documentation-only because a phase also updates docs", async () => {
+    const root = await tempRepo();
+    const state = await startFlow({
+      request: "Add a practical first-workflow guide for new LeanRigor users. Create docs/first-workflow.md and link it prominently from README.md.",
+      root,
+      config: defaultConfig()
+    });
+    const executing = await approvePlan(root, state.id);
+    if (!executing.plan) throw new Error("expected plan");
+    const phase = executing.plan.phases[0];
+    if (!phase) throw new Error("expected phase");
+    const expectedPaths = ["src/core/ux.ts", "tests/flow.test.ts", "docs/claude-code.md", "docs/configuration.md"];
+    phase.expectedFilesOrAreas = expectedPaths;
+    phase.expectedWriteAreas = expectedPaths;
+    const brief = executing.phaseBriefs?.[phase.id];
+    if (!brief) throw new Error("expected phase brief");
+    brief.writeAreas = expectedPaths;
+    await saveFlowState(root, executing, { expectedRevision: executing.revision });
+
+    const result = await completePhaseWithEvidence(root, executing, phase.id, expectedPaths);
+
+    expect(result.plan?.phases[0]?.scopeDeviations).toEqual([]);
+    expect(result.plan?.phases[0]?.status).toBe("completed");
   });
 
   it("diagnostic identifies expected areas and unexpected paths", async () => {
@@ -1536,11 +1561,10 @@ describe("scope classification", () => {
     const result = await completePhaseWithEvidence(root, executing, "phase-1", ["src/other.ts"]);
 
     const deviations = result.plan?.phases[0]?.scopeDeviations ?? [];
-    const docDeviation = deviations.find((d) => d.includes("scope deviation") || d.includes("classified"));
+    const docDeviation = deviations.find((d) => d.includes("outside expected scope"));
     expect(docDeviation).toBeDefined();
-    expect(docDeviation).toMatch(/classified as runtime/i);
+    expect(docDeviation).toMatch(/src\/other\.ts/i);
     expect(docDeviation).toMatch(/expected/i);
-    expect(docDeviation).toContain("README.md");
   });
 });
 

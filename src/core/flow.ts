@@ -3620,7 +3620,13 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
     }
   }
   const objective = phase.objective.toLowerCase();
-  const isDocumentationPhase = /\b(readme|docs?|documentation)\b/.test(objective) || phase.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
+  // Explicit expected paths are the approved scope.  A mixed implementation
+  // phase often includes documentation and tests alongside source changes;
+  // the presence of one docs/ path must not turn that entire phase into a
+  // documentation-only phase.
+  const isDocumentationOnlyPhase = expected.length > 0
+    ? expected.every((area) => classifyFilePath(area) === "documentation")
+    : /\b(readme|docs?|documentation)\b/.test(objective);
 
   for (const file of phase.filesChanged) {
     const lower = file.toLowerCase();
@@ -3637,7 +3643,7 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
       deviations.push(`sensitive path touched by non-rigorous phase: ${file}`);
     }
 
-    if (isDocumentationPhase) {
+    if (isDocumentationOnlyPhase) {
       const classification = classifyFilePath(file);
       if (classification !== "documentation") {
         deviations.push(`scope deviation: '${file}' classified as ${classification}. Phase expected documentation changes only. Expected areas: ${phase.expectedFilesOrAreas.filter(isPathLikeArea).join(", ") || "(none)"}.`);

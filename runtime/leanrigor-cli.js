@@ -31419,7 +31419,7 @@ function detectScopeDeviations(phase2, config2) {
     }
   }
   const objective = phase2.objective.toLowerCase();
-  const isDocumentationPhase = /\b(readme|docs?|documentation)\b/.test(objective) || phase2.expectedFilesOrAreas.some((area) => /\b(document|copy|readme|docs?)\b/i.test(area));
+  const isDocumentationOnlyPhase = expected.length > 0 ? expected.every((area) => classifyFilePath(area) === "documentation") : /\b(readme|docs?|documentation)\b/.test(objective);
   for (const file2 of phase2.filesChanged) {
     const lower = file2.toLowerCase();
     if ((lower === "package.json" || lower === "package-lock.json" || lower.endsWith("/package.json")) && !/\b(dependency|package|build|tooling)\b/.test(objective)) {
@@ -31434,7 +31434,7 @@ function detectScopeDeviations(phase2, config2) {
     if (matchesConfiguredPath(file2, config2?.risk.rigorousPaths ?? []) && phase2.riskLevel !== "high") {
       deviations.push(`sensitive path touched by non-rigorous phase: ${file2}`);
     }
-    if (isDocumentationPhase) {
+    if (isDocumentationOnlyPhase) {
       const classification = classifyFilePath(file2);
       if (classification !== "documentation") {
         deviations.push(`scope deviation: '${file2}' classified as ${classification}. Phase expected documentation changes only. Expected areas: ${phase2.expectedFilesOrAreas.filter(isPathLikeArea2).join(", ") || "(none)"}.`);
@@ -34898,7 +34898,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.42");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.43");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
