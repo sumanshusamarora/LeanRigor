@@ -666,7 +666,7 @@ describe("execution coordinator", () => {
     }
   );
 
-  it("still blocks an additive test file when the approved brief does not require test writes", async () => {
+  it("auto-accepts a new untracked test file as a low-risk artifact even without explicit test obligations", async () => {
     const harness = await createExecutionHarness({
       phases: [testPhase("phase-a", ["src/a.ts"])],
       scripts: {
@@ -684,15 +684,31 @@ describe("execution coordinator", () => {
     const result = await harness.coordinator.poll();
     const state = await currentState(harness);
 
-    expect(result.decision).toMatchObject({ type: "execution-recovery" });
-    expect(state.execution.records["phase-a"]?.diagnostics).toMatchObject({
-      terminalReason: "provider_scope_violation",
-      unexpectedWrites: ["tests/a.test.ts"]
+    // New untracked test files are low-risk artifacts — they should be auto-accepted
+    // rather than blocking with a scope violation.
+    expect(result.decision?.type).not.toBe("execution-recovery");
+    expect(state.plan?.phases[0]).toMatchObject({
+      status: "completed",
+      acceptedDrifts: [expect.objectContaining({
+        acceptedBy: "system-policy",
+        reason: expect.stringContaining("low-risk"),
+        materialChanges: [expect.objectContaining({
+          category: "file-refinement",
+          proposedValue: ["tests/a.test.ts"],
+          material: false
+        })]
+      })]
     });
-    expect(state.plan?.phases[0]?.acceptedDrifts).toEqual([]);
+    expect(state.execution.records["phase-a"]?.diagnostics).toMatchObject({
+      automaticScopeRefinement: {
+        policy: "low-risk-generated-artifact",
+        paths: ["tests/a.test.ts"]
+      }
+    });
+    expect(state.git?.integration.integratedPhaseIds).toEqual(["phase-a"]);
   });
 
-  it("automatically recovers a previously persisted bounded-test scope violation on the next coordinator run", async () => {
+  it("auto-accepts new untracked test files on the first coordinator run without needing a recovery cycle", async () => {
     const harness = await createExecutionHarness({
       phases: [testPhase("phase-a", ["src/a.ts"])],
       scripts: {
@@ -706,28 +722,31 @@ describe("execution coordinator", () => {
       }
     });
 
+    // First run — the new test file is auto-accepted as a low-risk artifact
     await harness.coordinator.runNext();
-    await harness.coordinator.poll();
-    const blocked = await currentState(harness);
-    expect(blocked.execution.records["phase-a"]?.diagnostics?.terminalReason).toBe("provider_scope_violation");
-    blocked.phaseBriefs!["phase-a"]!.testObligations = ["Add a targeted regression test for phase-a."];
-    await saveFlowState(harness.root, blocked, { expectedRevision: blocked.revision });
+    const completed = await harness.coordinator.poll();
+    const state = await currentState(harness);
 
-    const recovered = await harness.coordinator.runNext();
-    expect(recovered.nextAction).toBe("poll");
-    await harness.coordinator.poll();
-    const completed = await currentState(harness);
-
-    expect(completed.plan?.phases[0]).toMatchObject({
+    // Should complete without needing a recovery cycle
+    expect(completed.decision?.type).not.toBe("execution-recovery");
+    expect(state.plan?.phases[0]).toMatchObject({
       status: "completed",
-      acceptedDrifts: [expect.objectContaining({ acceptedBy: "system-policy" })]
+      acceptedDrifts: [expect.objectContaining({
+        acceptedBy: "system-policy",
+        materialChanges: [expect.objectContaining({
+          category: "file-refinement",
+          proposedValue: ["tests/a.test.ts"],
+          material: false
+        })]
+      })]
     });
-    expect(completed.execution.records["phase-a"]?.diagnostics).toMatchObject({
-      automaticScopeRecovery: true,
-      automaticScopeRecoveryPolicy: "bounded-test-artifact",
-      automaticScopeRecoveryPaths: ["tests/a.test.ts"]
+    expect(state.execution.records["phase-a"]?.diagnostics).toMatchObject({
+      automaticScopeRefinement: {
+        policy: "low-risk-generated-artifact",
+        paths: ["tests/a.test.ts"]
+      }
     });
-    expect(completed.git?.integration.integratedPhaseIds).toEqual(["phase-a"]);
+    expect(state.git?.integration.integratedPhaseIds).toEqual(["phase-a"]);
   });
 
   it("keeps genuine provider-reported material discovery on the plan-revision path", async () => {

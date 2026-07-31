@@ -24,6 +24,7 @@ import {
   heartbeatPhase,
   integratePhase,
   integrationStatus,
+  isLowRiskSideEffectArtifact,
   leasePhase,
   loadFlowState,
   preparePhaseExecutionBrief,
@@ -91,7 +92,7 @@ export class ExecutionCoordinator {
 
   async runNext(): Promise<CoordinatorResult> {
     const before = await loadFlowState(this.root, this.workflowId);
-    const automaticallyRecovered = await this.recoverAutomaticTestScopeViolation(before);
+    const automaticallyRecovered = await this.recoverAutomaticScopeViolation(before);
     if (automaticallyRecovered) return automaticallyRecovered;
     if (before.approval?.pendingDecision?.status === "pending" || Object.keys(before.phaseBriefFailures ?? {}).length > 0) {
       return this.result(before, [], "await_user", "A valid Phase Execution Brief and exact approval are required before coordinator execution.");
@@ -652,6 +653,79 @@ export class ExecutionCoordinator {
     return this.dispatchResumedPhase(phaseId, ownerId, "Cleaned and retried");
   }
 
+  async acceptOutOfScopeAndContinue(decisionId: string, expectedRevision: number): Promise<CoordinatorResult> {
+    let phaseId = "";
+    let ownerId = "";
+    await updateFlowState(this.root, this.workflowId, async (state) => {
+      const decision = requirePendingDecision(state, "execution-recovery", "accept-out-of-scope-and-continue", decisionId);
+      if (!decision?.phaseId) throw new Error("The current recovery decision does not identify a phase.");
+      const phase = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const brief = state.phaseBriefs?.[decision.phaseId];
+      const workspace = state.git?.phaseWorkspaces[decision.phaseId];
+      const record = state.execution.records[decision.phaseId];
+      if (!phase || !brief || !workspace || !record?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
+      if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before accepting out-of-scope changes.`);
+      const recordCheckpoint = record.checkpoint;
+      const unexpectedWrites = recordCheckpoint.changedFiles.filter((file) => !writeApproved(file, brief, phase));
+      if (unexpectedWrites.length === 0) throw new Error(`Phase ${decision.phaseId} has no out-of-scope changes to accept.`);
+      // Verify no high-risk files
+      const highRisk = unexpectedWrites.filter((file) => classifyUnexpectedWriteRisk(file, recordCheckpoint) === "high");
+      if (highRisk.length > 0) {
+        throw new Error(`Cannot auto-accept high-risk files: ${highRisk.join(", ")}. Revise the plan or phase brief instead.`);
+      }
+      // Record as user-accepted drifts
+      const refinement: AutomaticScopeRefinement = {
+        paths: uniqueStrings(unexpectedWrites.map(normalizeRelative)),
+        change: {
+          category: "file-refinement",
+          previousValue: brief.writeAreas,
+          proposedValue: uniqueStrings(unexpectedWrites.map(normalizeRelative)),
+          affectedPhase: phase.id,
+          severity: "informational",
+          material: false,
+          reason: `User accepted out-of-scope ${unexpectedWrites.length === 1 ? "write" : "writes"} as low/medium-risk artifacts that were changed as a natural consequence of implementation.`,
+          requiredTransition: "none"
+        },
+        policy: "low-risk-generated-artifact"
+      };
+      appendAutomaticScopeRefinement(state, phase, brief, refinement, this.now());
+      // Update the decision acceptance metadata
+      const updatedDrift = (phase.acceptedDrifts ?? []).at(-1);
+      if (updatedDrift) {
+        updatedDrift.acceptedBy = "user";
+        updatedDrift.reason = `User explicitly accepted out-of-scope ${unexpectedWrites.length === 1 ? "write" : "writes"}: ${unexpectedWrites.join(", ")}.`;
+      }
+      phaseId = decision.phaseId;
+      ownerId = this.ownerId(phaseId);
+      phase.status = "ready";
+      workspace.status = "ready";
+      workspace.updatedAt = this.now();
+      state.execution.records[phaseId] = {
+        ...record,
+        status: "blocked",
+        checkpoint: recordCheckpoint,
+        resultSummary: `Accepted out-of-scope changes (${unexpectedWrites.join(", ")}); continuing with expanded write scope.`,
+        diagnostics: mergeDiagnostics(record.diagnostics, {
+          terminalReason: "provider_scope_violation",
+          acceptedOutOfScopeWrites: unexpectedWrites,
+          acceptanceCompletedAt: this.now(),
+          partialProgressPreserved: recordCheckpoint.dirty,
+          partialProgressAccepted: true
+        }),
+        providerSession: updateSessionStatus(record.providerSession, "completed", this.now())
+      };
+      resolvePendingDecision(state, "approved", "accept-out-of-scope-and-continue", "user", decisionId);
+      return state;
+    }, {
+      expectedRevision,
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      decisionId,
+      operation: "execution_scope_accepted"
+    });
+    return this.dispatchResumedPhase(phaseId, ownerId, "Accepted out-of-scope changes and retried");
+  }
+
   private async dispatchResumedPhase(phaseId: string, ownerId: string, verb: string): Promise<CoordinatorResult> {
     try {
       await leasePhase({
@@ -719,6 +793,9 @@ export class ExecutionCoordinator {
     const phase = state.plan?.phases.find((candidate) => candidate.id === record.phaseId);
     const workspace = state.git?.phaseWorkspaces[record.phaseId];
     const unexpectedWrites = checkpoint.changedFiles.filter((file) => !brief || !phase || !writeApproved(file, brief, phase));
+    const scopeAdvisory = brief && phase && unexpectedWrites.length > 0
+      ? await this.adviseUnexpectedWrites(phase, brief, checkpoint, unexpectedWrites)
+      : undefined;
     const identityIssues = executionIdentityIssues(record, result, state);
     if (identityIssues.length > 0) {
       await this.quarantineRecoveryResult(record, checkpoint, `Provider result identity rejected: ${identityIssues.join("; ")}`, "provider_protocol_error", {
@@ -729,12 +806,14 @@ export class ExecutionCoordinator {
       return "blocked";
     }
     const automaticRefinement = brief && phase
-      ? classifyAutomaticTestScopeRefinement(state, phase, brief, checkpoint, unexpectedWrites, result)
+      ? classifyAutomaticScopeRefinement(state, phase, brief, checkpoint, unexpectedWrites, result, scopeAdvisory)
       : undefined;
     if (automaticRefinement && brief) {
       await this.recordAutomaticScopeRefinement(record.phaseId, brief, automaticRefinement);
     }
-    const unresolvedUnexpectedWrites = automaticRefinement ? [] : unexpectedWrites;
+    const unresolvedUnexpectedWrites = automaticRefinement
+      ? unexpectedWrites.filter((file) => !automaticRefinement.paths.includes(normalizeRelative(file)))
+      : unexpectedWrites;
     const supplementalValidation = supplementalValidationCommands(
       result.validation.map((entry) => entry.command),
       brief?.validationCommands ?? []
@@ -761,7 +840,11 @@ export class ExecutionCoordinator {
         checkpoint,
         `Provider wrote outside the approved phase scope: ${unresolvedUnexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`,
         "provider_scope_violation",
-        { unexpectedWrites: unresolvedUnexpectedWrites, workspaceIdentity: workspace?.preparation?.workspaceIdentity }
+        {
+          unexpectedWrites: unresolvedUnexpectedWrites,
+          workspaceIdentity: workspace?.preparation?.workspaceIdentity,
+          scopeAdvisory
+        }
       );
       return "blocked";
     }
@@ -801,11 +884,12 @@ export class ExecutionCoordinator {
         advisory: supplementalValidationAdvisory
       } : undefined,
       automaticScopeRefinement: automaticRefinement ? {
-        policy: "bounded-test-artifact",
+        policy: automaticRefinement.policy,
         mode: state.mode,
         paths: automaticRefinement.paths,
         reason: automaticRefinement.change.reason
-      } : undefined
+      } : undefined,
+      scopeAdvisory
     });
     if (result.status === "completed" || result.status === "blocked") {
       if (result.status === "blocked") {
@@ -838,7 +922,14 @@ export class ExecutionCoordinator {
         commandsRun: result.validation.map((entry) => entry.command),
         validation,
         scopeDeviations: result.scopeDeviations
-          .filter((deviation) => !deviation.path || !automaticRefinement?.paths.includes(normalizeRelative(deviation.path)))
+          .filter((deviation) => {
+            if (!deviation.path) return true;
+            const normalized = normalizeRelative(deviation.path);
+            if (automaticRefinement?.paths.includes(normalized)) return false;
+            // Filter out scope deviations for low-risk side-effect artifacts
+            if (isLowRiskSideEffectArtifact(normalized)) return false;
+            return true;
+          })
           .map((deviation) => deviation.path ? `${deviation.path}: ${deviation.reason}` : deviation.reason),
         assumptions: result.assumptions,
         remainingRisks: result.remainingRisks,
@@ -864,10 +955,81 @@ export class ExecutionCoordinator {
     return result.status;
   }
 
+  private async adviseUnexpectedWrites(
+    phase: WorkflowPhase,
+    brief: PhaseExecutionBrief,
+    checkpoint: PhaseWorkspaceCheckpoint,
+    unexpectedWrites: string[]
+  ): Promise<UnexpectedWriteScopeAdvice | undefined> {
+    if (!this.validationAdvisor || unexpectedWrites.length === 0) return undefined;
+    const mediumOnly = uniqueStrings(unexpectedWrites.map(normalizeRelative))
+      .filter((file) => classifyUnexpectedWriteRisk(file, checkpoint) === "medium");
+    if (mediumOnly.length === 0 || mediumOnly.length > 8) return undefined;
+    try {
+      const result = await this.validationAdvisor.decide<{ advice: Array<{ path: string; risk: "low" | "medium" | "high"; rationale: string }> }>({
+        root: this.root,
+        prompt: [
+          "You are an advisory scope classifier for unexpected file writes in a software workflow.",
+          "This is advisory only. You MUST NOT authorize execution or override deterministic safety policy.",
+          "Classify each file as low, medium, or high risk based on whether it looks like a natural implementation side effect versus a true scope expansion.",
+          "Never downgrade clear migrations, security-sensitive files, auth-related files, API schemas, or public-contract files; mark those high.",
+          "Prefer low only for generated artifacts, build output, docs, test additions, or obvious repository-maintenance side effects.",
+          `Phase objective: ${phase.objective}`,
+          `Approved write areas: ${JSON.stringify(brief.writeAreas)}`,
+          `Unexpected files to classify: ${JSON.stringify(mediumOnly)}`
+        ].join("\n"),
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["advice"],
+          properties: {
+            advice: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["path", "risk", "rationale"],
+                properties: {
+                  path: { type: "string" },
+                  risk: { type: "string", enum: ["low", "medium", "high"] },
+                  rationale: { type: "string", maxLength: 240 }
+                }
+              }
+            }
+          }
+        },
+        tier: this.config.routing.repositoryInspection,
+        config: this.config,
+        stage: "execution-scope-advisory",
+        maxTurns: 1,
+        effort: "low",
+        tools: "none"
+      });
+      const advice = Array.isArray(result.value?.advice) ? result.value.advice : [];
+      const recommendedRiskByPath: Record<string, "low" | "medium" | "high"> = {};
+      const rationales: string[] = [];
+      for (const entry of advice) {
+        if (!entry || typeof entry.path !== "string") continue;
+        const path = normalizeRelative(entry.path);
+        if (!mediumOnly.includes(path)) continue;
+        if (entry.risk !== "low" && entry.risk !== "medium" && entry.risk !== "high") continue;
+        recommendedRiskByPath[path] = entry.risk;
+        if (typeof entry.rationale === "string" && entry.rationale.trim()) rationales.push(`${path}: ${entry.rationale.trim()}`);
+      }
+      if (Object.keys(recommendedRiskByPath).length === 0) return undefined;
+      return {
+        recommendedRiskByPath,
+        rationale: rationales.join(" | ")
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
   private async recordAutomaticScopeRefinement(
     phaseId: string,
     brief: PhaseExecutionBrief,
-    refinement: AutomaticTestScopeRefinement
+    refinement: AutomaticScopeRefinement
   ): Promise<void> {
     await updateFlowState(this.root, this.workflowId, (state) => {
       const phase = state.plan?.phases.find((candidate) => candidate.id === phaseId);
@@ -881,7 +1043,7 @@ export class ExecutionCoordinator {
     });
   }
 
-  private async recoverAutomaticTestScopeViolation(state: SequentialWorkflowState): Promise<CoordinatorResult | undefined> {
+  private async recoverAutomaticScopeViolation(state: SequentialWorkflowState): Promise<CoordinatorResult | undefined> {
     const decision = state.approval?.pendingDecision;
     if (decision?.status !== "pending" || decision.type !== "execution-recovery" || !decision.phaseId) return undefined;
     const phase = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
@@ -899,7 +1061,7 @@ export class ExecutionCoordinator {
       return undefined;
     }
     const unexpectedWrites = record.checkpoint.changedFiles.filter((file) => !writeApproved(file, brief, phase));
-    const refinement = classifyAutomaticTestScopeRefinement(
+    const refinement = classifyAutomaticScopeRefinement(
       state,
       phase,
       brief,
@@ -922,7 +1084,7 @@ export class ExecutionCoordinator {
         || !currentRecord?.checkpoint
         || !currentWorkspace
       ) {
-        throw new Error(`Automatic bounded-test recovery for ${decision.phaseId} is no longer current.`);
+        throw new Error(`Automatic scope recovery for ${decision.phaseId} is no longer current.`);
       }
       appendAutomaticScopeRefinement(current, currentPhase, currentBrief, refinement, this.now());
       currentPhase.status = "ready";
@@ -934,7 +1096,7 @@ export class ExecutionCoordinator {
         completedAt: undefined,
         diagnostics: mergeDiagnostics(currentRecord.diagnostics, {
           automaticScopeRecovery: true,
-          automaticScopeRecoveryPolicy: "bounded-test-artifact",
+          automaticScopeRecoveryPolicy: refinement.policy,
           automaticScopeRecoveryPaths: refinement.paths,
           automaticScopeRecoveryAt: this.now(),
           partialProgressPreserved: true,
@@ -943,16 +1105,16 @@ export class ExecutionCoordinator {
       };
       currentDecision.allowedActions = uniqueStrings([
         ...currentDecision.allowedActions,
-        "automatic-bounded-test-refinement"
+        "automatic-scope-refinement"
       ]);
-      resolvePendingDecision(current, "approved", "automatic-bounded-test-refinement", "system", decision.id);
+      resolvePendingDecision(current, "approved", "automatic-scope-refinement", "system", decision.id);
       return current;
     }, {
       ownerId: this.coordinatorId,
       ownerType: "system",
-      operation: "bounded_test_scope_violation_auto_recovered"
+      operation: "scope_violation_auto_recovered"
     });
-    return this.dispatchResumedPhase(decision.phaseId, ownerId, "Automatically accepted bounded test artifacts and retried");
+    return this.dispatchResumedPhase(decision.phaseId, ownerId, "Automatically accepted low-risk artifacts and retried");
   }
 
   /**
@@ -1063,18 +1225,32 @@ export class ExecutionCoordinator {
       const unexpectedWrites = Array.isArray(diagnostics.unexpectedWrites)
         ? diagnostics.unexpectedWrites.filter((value): value is string => typeof value === "string")
         : [];
+      // Classify writes by risk to offer appropriate recovery actions
+      const writeRisks = unexpectedWrites.map((file) => ({
+        file,
+        risk: classifyUnexpectedWriteRisk(file, checkpoint)
+      }));
+      const hasHighRisk = writeRisks.some((entry) => entry.risk === "high");
+      const hasAcceptableWrites = unexpectedWrites.length > 0 && !hasHighRisk;
+      const riskSummary = unexpectedWrites.length > 0
+        ? writeRisks.map((entry) => `  - ${entry.file} [${entry.risk} risk]`).join("\n")
+        : "";
+      const enhancedSummary = hasAcceptableWrites
+        ? `${summary}\n\nRisk classification:\n${riskSummary}\n\nThese files appear to be low/medium risk artifacts changed as a natural consequence of implementation. You can accept them and continue, discard them, or revise the plan.`
+        : summary;
       state.execution.records[record.phaseId] = {
         ...record,
         status: "blocked",
         completedAt: this.now(),
-        resultSummary: summary,
+        resultSummary: enhancedSummary,
         diagnostics: mergeDiagnostics(record.diagnostics, {
           ...diagnostics,
           terminalReason,
           resultAccepted: false,
           disposition: "needs_review",
           partialProgressPreserved: checkpoint.dirty,
-          partialProgressAccepted: false
+          partialProgressAccepted: false,
+          unexpectedWriteRisks: writeRisks
         }),
         checkpoint,
         providerSession: updateSessionStatus(record.providerSession, "failed", this.now(), terminalReason)
@@ -1083,8 +1259,9 @@ export class ExecutionCoordinator {
         type: "execution-recovery",
         phaseId: record.phaseId,
         briefRevision: state.phaseBriefs?.[record.phaseId]?.briefRevision,
-        question: summary,
+        question: enhancedSummary,
         allowedActions: [
+          ...(hasAcceptableWrites ? ["accept-out-of-scope-and-continue"] : []),
           ...(unexpectedWrites.length > 0 ? ["discard-out-of-scope-and-retry"] : []),
           ...(unexpectedWrites.length === 0 ? ["retry-execution"] : ["revise-phase-brief"]),
           "view-details",
@@ -1730,24 +1907,30 @@ function pathWithinArea(file: string, area: string): boolean {
   return normalizedFile === normalizedArea || normalizedFile.startsWith(`${normalizedArea}/`);
 }
 
-interface AutomaticTestScopeRefinement {
+interface AutomaticScopeRefinement {
   paths: string[];
   change: MaterialPlanChange;
+  policy: "bounded-test-artifact" | "low-risk-build-artifact" | "low-risk-generated-artifact" | "advisory-low-risk-artifact";
 }
 
-function classifyAutomaticTestScopeRefinement(
+interface UnexpectedWriteScopeAdvice {
+  recommendedRiskByPath: Record<string, "low" | "medium" | "high">;
+  rationale: string;
+}
+
+function classifyAutomaticScopeRefinement(
   state: SequentialWorkflowState,
   phase: WorkflowPhase,
   brief: PhaseExecutionBrief,
   checkpoint: PhaseWorkspaceCheckpoint,
   unexpectedWrites: string[],
-  result?: PhaseExecutionResult
-): AutomaticTestScopeRefinement | undefined {
+  result?: PhaseExecutionResult,
+  scopeAdvisory?: UnexpectedWriteScopeAdvice
+): AutomaticScopeRefinement | undefined {
   const paths = uniqueStrings(unexpectedWrites.map(normalizeRelative));
   if (
     (result !== undefined && result.status !== "completed")
     || result?.discoveredMaterialChanges.some((change) => change.material)
-    || !testObligationsRequireWrite(brief.testObligations)
     || paths.length === 0
     || paths.length > 12
   ) {
@@ -1755,19 +1938,80 @@ function classifyAutomaticTestScopeRefinement(
   }
   const untracked = new Set(checkpoint.untrackedFiles.map(normalizeRelative));
   const deleted = new Set(checkpoint.deletedFiles.map(normalizeRelative));
-  if (paths.some((file) => !untracked.has(file) || deleted.has(file) || !isBoundedTestArtifact(file))) return undefined;
+  // Exclude files that were deleted — we only auto-accept additions/modifications
+  if (paths.some((file) => deleted.has(file))) return undefined;
+
+  // Priority 1: bounded test artifacts — explicit brief requirement for test writes
+  if (testObligationsRequireWrite(brief.testObligations)) {
+    const testOnly = paths.filter((file) => untracked.has(file) && !deleted.has(file) && isBoundedTestArtifact(file));
+    if (testOnly.length === paths.length && testOnly.length > 0) {
+      return {
+        paths: testOnly,
+        change: {
+          category: "file-refinement",
+          previousValue: brief.writeAreas,
+          proposedValue: testOnly,
+          affectedPhase: phase.id,
+          severity: "informational",
+          material: false,
+          reason: `LeanRigor ${state.mode} mode accepted newly created, bounded test artifact${testOnly.length === 1 ? "" : "s"} because the approved brief explicitly requires test writes; production and configuration boundaries remain unchanged.`,
+          requiredTransition: "none"
+        },
+        policy: "bounded-test-artifact"
+      };
+    }
+  }
+
+  // Priority 2: low-risk artifacts that change as a natural side effect
+  const lowRisk: string[] = [];
+  const otherRisk: string[] = [];
+  let usedAdvisoryDowngrade = false;
+  for (const file of paths) {
+    if (!untracked.has(file) && !checkpoint.trackedModified.map(normalizeRelative).includes(file) && !checkpoint.changedFiles.map(normalizeRelative).includes(file)) {
+      otherRisk.push(file);
+      continue;
+    }
+    const deterministicRisk = classifyUnexpectedWriteRisk(file, checkpoint);
+    const advisedRisk = scopeAdvisory?.recommendedRiskByPath[file];
+    // Advisory can downgrade only medium -> low. It cannot override deterministic high-risk.
+    const advisoryDowngrade = deterministicRisk === "medium" && advisedRisk === "low";
+    if (advisoryDowngrade) usedAdvisoryDowngrade = true;
+    const risk = advisoryDowngrade ? "low" : deterministicRisk;
+    if (risk === "low") lowRisk.push(file);
+    else otherRisk.push(file);
+  }
+
+  // Only auto-accept when ALL unexpected writes are low risk
+  if (otherRisk.length > 0 || lowRisk.length === 0) return undefined;
+
+  const buildArtifacts = lowRisk.filter((file) => isBuildArtifact(file));
+  const lockfiles = lowRisk.filter((file) => isLockfile(file));
+  const otherLowRisk = lowRisk.filter((file) => !isBuildArtifact(file) && !isLockfile(file));
+
+  const reasons: string[] = [];
+  if (buildArtifacts.length > 0) reasons.push(`build artifact${buildArtifacts.length === 1 ? "" : "s"}: ${buildArtifacts.join(", ")}`);
+  if (lockfiles.length > 0) reasons.push(`lockfile${lockfiles.length === 1 ? "" : "s"}: ${lockfiles.join(", ")}`);
+  if (otherLowRisk.length > 0) reasons.push(`low-risk file${otherLowRisk.length === 1 ? "" : "s"}: ${otherLowRisk.join(", ")}`);
+
+  const policy: AutomaticScopeRefinement["policy"] = usedAdvisoryDowngrade
+    ? "advisory-low-risk-artifact"
+    : buildArtifacts.length > 0 || lockfiles.length > 0
+      ? "low-risk-build-artifact"
+      : "low-risk-generated-artifact";
+
   return {
-    paths,
+    paths: lowRisk,
     change: {
       category: "file-refinement",
       previousValue: brief.writeAreas,
-      proposedValue: paths,
+      proposedValue: lowRisk,
       affectedPhase: phase.id,
       severity: "informational",
       material: false,
-      reason: `LeanRigor ${state.mode} mode accepted newly created, bounded test artifact${paths.length === 1 ? "" : "s"} because the approved brief explicitly requires test writes; production and configuration boundaries remain unchanged.`,
+      reason: `LeanRigor ${state.mode} mode automatically accepted low-risk ${reasons.join("; ")} that were changed as a natural consequence of implementation. No production logic, security boundary, or API contract was modified.`,
       requiredTransition: "none"
-    }
+    },
+    policy
   };
 }
 
@@ -1775,7 +2019,7 @@ function appendAutomaticScopeRefinement(
   state: SequentialWorkflowState,
   phase: WorkflowPhase,
   brief: PhaseExecutionBrief,
-  refinement: AutomaticTestScopeRefinement,
+  refinement: AutomaticScopeRefinement,
   acceptedAt: string
 ): void {
   const decisionId = automaticRefinementId(phase.id, brief.briefRevision, refinement.paths);
@@ -1787,7 +2031,7 @@ function appendAutomaticScopeRefinement(
     workflowRevision: state.revision,
     briefRevision: brief.briefRevision,
     reason: refinement.change.reason,
-    summary: `Automatically accepted bounded test artifact${refinement.paths.length === 1 ? "" : "s"} required by the approved brief: ${refinement.paths.join(", ")}.`,
+    summary: `Automatically accepted ${refinement.policy === "bounded-test-artifact" ? "bounded test artifacts" : "low-risk artifacts"} that were changed as a natural consequence of implementation: ${refinement.paths.join(", ")}.`,
     materialChanges: [refinement.change]
   }];
 }
@@ -1803,6 +2047,67 @@ function isBoundedTestArtifact(file: string): boolean {
     return false;
   }
   return /\.(?:[cm]?[jt]sx?|py|rb|php|go|rs|java|kt|kts|cs|fs|fsx|swift|scala|sh|bash)$/i.test(normalizedPath);
+}
+
+function isBuildArtifact(file: string): boolean {
+  const normalizedPath = normalizeRelative(file);
+  if (!normalizedPath || normalizedPath.startsWith("/") || normalizedPath.split("/").includes("..")) return false;
+  // Generated build output directories
+  if (/^(?:dist|build|out|runtime|\.next|coverage|__pycache__|target|\.turbo)\//.test(normalizedPath)) return true;
+  // Generated files / bundles
+  const filename = normalizedPath.split("/").at(-1) ?? "";
+  if (/\.(?:d\.ts|d\.cts|d\.mts|map|min\.js|min\.css)$/.test(filename)) return true;
+  if (/\.(?:js|mjs|cjs)$/.test(filename)) {
+    // In runtime/build/dist directories, .js files are build artifacts
+    if (/^(?:dist|build|out|runtime)\//.test(normalizedPath)) return true;
+  }
+  return false;
+}
+
+function isDocumentationArtifact(file: string): boolean {
+  const normalizedPath = normalizeRelative(file);
+  if (!normalizedPath || normalizedPath.startsWith("/") || normalizedPath.split("/").includes("..")) return false;
+  // Known doc directories
+  if (/^(?:docs|documentation)\//.test(normalizedPath)) return true;
+  // Specific doc extensions (NOT plain .txt — that's too broad)
+  if (/\.(?:md|mdx|rst)$/i.test(normalizedPath)) return true;
+  // Known doc filenames
+  const filename = normalizedPath.split("/").at(-1)?.toLowerCase() ?? "";
+  if (["readme.md", "readme.txt", "readme.rst", "changelog.md", "contributing.md", "code_of_conduct.md", "security.md", "license", "license.md", "license.txt"].includes(filename)) return true;
+  return false;
+}
+
+function isLockfile(file: string): boolean {
+  const normalizedPath = normalizeRelative(file);
+  const filename = normalizedPath.split("/").at(-1) ?? "";
+  return ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "composer.lock", "Gemfile.lock", "poetry.lock", "Cargo.lock"].includes(filename);
+}
+
+/**
+ * Returns the risk tier for an unexpected file write.
+ * - "low": safe to auto-accept (build artifacts, lockfiles, docs, test files in approved test areas)
+ * - "medium": may be acceptable but needs user awareness (config files, non-test source files)
+ * - "high": must block (security boundaries, migrations, public contracts, protected paths)
+ */
+function classifyUnexpectedWriteRisk(file: string, checkpoint: PhaseWorkspaceCheckpoint): "low" | "medium" | "high" {
+  if (isBuildArtifact(file)) return "low";
+  if (isLockfile(file)) return "low";
+  const normalizedPath = normalizeRelative(file);
+  // Untracked files are newly created — test and doc additions are low risk
+  const untracked = new Set(checkpoint.untrackedFiles.map(normalizeRelative));
+  if (untracked.has(normalizedPath)) {
+    if (isTestPath(normalizedPath)) return "low";
+    if (isDocumentationArtifact(normalizedPath)) return "low";
+  }
+  // Modified documentation files are low risk
+  if (isDocumentationArtifact(normalizedPath)) return "low";
+  // Modified config files are medium risk
+  if (/\.(?:json|ya?ml|toml)$/i.test(normalizedPath) && !normalizedPath.includes("migration")) return "medium";
+  // Migrations, API schemas, security paths are high risk
+  if (normalizedPath.includes("migration") || /\b(?:api|schema|openapi|graphql|proto)\b/.test(normalizedPath)) return "high";
+  if (/auth|security|credential|secret|token/i.test(normalizedPath)) return "high";
+  // Everything else (source files) is medium risk
+  return "medium";
 }
 
 function approvedWriteAreas(brief: PhaseExecutionBrief, phase: WorkflowPhase): string[] {

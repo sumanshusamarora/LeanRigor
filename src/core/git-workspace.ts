@@ -787,7 +787,10 @@ async function projectLocalValidationFallback(
     return {
       cleanup: async () => {
         const info = await lstat(workspaceModules).catch(() => undefined);
-        if (info?.isSymbolicLink()) await rm(workspaceModules, { force: true });
+        // Linux directory symlinks can report as directories through lstat in
+        // some CI filesystems.  If we created node_modules as a fallback link,
+        // remove the directory entry regardless of how lstat classifies it.
+        if (info) await rm(workspaceModules, { force: true, recursive: info.isDirectory() && !info.isSymbolicLink() });
       }
     };
   }

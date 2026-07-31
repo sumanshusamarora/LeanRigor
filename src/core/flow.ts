@@ -3692,7 +3692,13 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
   ]);
   if (expected.length > 0) {
     for (const file of phase.filesChanged) {
-      if (!expected.some((area) => areaMatchesFile(area, file))) deviations.push(`changed file outside expected scope: ${file}`);
+      if (!expected.some((area) => areaMatchesFile(area, file))) {
+        // Low-risk artifacts that change as a natural side effect of
+        // implementation should not block the completion gate.  Build
+        // artifacts, lockfiles, docs, and test files are auto-accepted.
+        if (isLowRiskSideEffectArtifact(file)) continue;
+        deviations.push(`changed file outside expected scope: ${file}`);
+      }
     }
   }
   const objective = phase.objective.toLowerCase();
@@ -3706,6 +3712,8 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
 
   for (const file of phase.filesChanged) {
     const lower = file.toLowerCase();
+    // Low-risk artifacts are skipped for scope-deviation purposes
+    if (isLowRiskSideEffectArtifact(file)) continue;
     if ((lower === "package.json" || lower === "package-lock.json" || lower.endsWith("/package.json")) && !/\b(dependency|package|build|tooling)\b/.test(objective)) {
       deviations.push(`production dependency or package manifest changed outside approved phase scope: ${file}`);
     }
@@ -3727,6 +3735,31 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
     }
   }
   return unique(deviations);
+}
+
+/**
+ * Files that are naturally changed as a side effect of implementation work
+ * and should not block the completion gate when they appear outside the
+ * approved write areas.  These are files that build tooling, package
+ * managers, or test frameworks regenerate without explicit developer intent.
+ */
+export function isLowRiskSideEffectArtifact(file: string): boolean {
+  const normalized = file.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+  if (!normalized || normalized.startsWith("/") || normalized.split("/").includes("..")) return false;
+  // Build output directories
+  if (/^(?:dist|build|out|runtime|\.next|coverage|__pycache__|target|\.turbo)\//.test(normalized)) return true;
+  // Lockfiles changed as side effect of dependency operations
+  const filename = normalized.split("/").at(-1) ?? "";
+  if (["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "composer.lock", "Gemfile.lock", "poetry.lock", "Cargo.lock"].includes(filename)) return true;
+  // Generated declaration files and source maps
+  if (/\.(?:d\.ts|d\.cts|d\.mts|map|min\.js|min\.css)$/.test(filename)) return true;
+  // Documentation files — only in docs/ directories or known doc formats (.md, .mdx, .rst)
+  // Plain .txt files are NOT auto-accepted to avoid false positives with data/config files
+  if (/^(?:docs|documentation)\//.test(normalized)) return true;
+  if (/\.(?:md|mdx|rst)$/i.test(normalized)) return true;
+  const basename = normalized.split("/").at(-1)?.toLowerCase() ?? "";
+  if (["readme.md", "readme.txt", "readme.rst", "changelog.md", "contributing.md", "code_of_conduct.md", "security.md", "license", "license.md", "license.txt"].includes(basename)) return true;
+  return false;
 }
 
 function acceptedSystemScopeAreas(phase: WorkflowPhase): string[] {
@@ -4052,10 +4085,19 @@ function normalizeLegacyExecutionQuarantineDecision(state: Record<string, unknow
   const phase = plan?.phases?.find((candidate) => candidate.id === decision.phaseId);
   if (phase?.status === "needs_replan") phase.status = "needs_review";
   decision.type = "execution-recovery";
+  // Check if all unexpected writes are low/medium risk for accept action
+  const hasHighRiskWrites = unexpectedWrites.some((file) => {
+    const normalized = String(file).replace(/\\/g, "/").replace(/^\.\//, "");
+    return normalized.includes("migration") || /\b(?:api|schema|openapi|graphql|proto|auth|security|credential|secret|token)\b/.test(normalized);
+  });
+  const canAccept = unexpectedWrites.length > 0 && !hasHighRiskWrites;
   decision.question = identityRejected
     ? `The provider returned a result with the wrong execution identity. Its result was rejected and no work was accepted.${unexpectedWrites.length > 0 ? " Discard the out-of-scope changes and retry, or revise the plan if those files are genuinely required." : " Retry in a fresh compact provider session."}`
-    : `The provider wrote outside the approved phase scope: ${unexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`;
+    : scopeOnly && canAccept
+      ? `The provider wrote outside the approved phase scope: ${unexpectedWrites.join(", ")}. These appear to be low/medium-risk artifacts. You can accept them and continue, discard them and retry, or revise the plan.`
+      : `The provider wrote outside the approved phase scope: ${unexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`;
   decision.allowedActions = [
+    ...(scopeOnly && canAccept ? ["accept-out-of-scope-and-continue"] : []),
     ...(unexpectedWrites.length > 0 ? ["discard-out-of-scope-and-retry"] : []),
     ...(unexpectedWrites.length === 0 ? ["retry-execution"] : ["revise-phase-brief"]),
     "view-details",

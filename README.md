@@ -276,6 +276,7 @@ This path is intended for development and pre-release testing. It creates LeanRi
 |---|---|
 | [**First workflow**](docs/first-workflow.md) | [Architecture](ARCHITECTURE.md) |
 | [Product rationale](PRODUCT.md) | [Workflow and completion gates](docs/workflow.md) |
+| | [**Workflow lifecycle diagram**](docs/workflow-lifecycle.md) |
 | [Setup](docs/setup.md) | [Engineering methodology](docs/methodology.md) |
 | [Claude Code adapter](docs/claude-code.md) | [Configuration reference](docs/configuration.md) |
 | [Claude marketplace plugin](docs/claude-marketplace.md) | [Contributor architecture](docs/contributor-architecture.md) |
