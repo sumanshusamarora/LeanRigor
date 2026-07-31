@@ -158,6 +158,16 @@ describe("phase brief deterministic quality", () => {
     expect(validatePhaseExecutionBrief(brief, fixture.phase).map((item) => item.code).join("\n")).toMatch(expected);
   });
 
+  it("rejects a brief that requires test writes without approving a test write path", () => {
+    const brief = structuredClone(validBrief);
+    brief.writeAreas = brief.writeAreas.filter((area) => !area.startsWith("tests"));
+    brief.testObligations = ["Add focused regression tests for the changed behavior."];
+
+    expect(validatePhaseExecutionBrief(brief, fixture.phase)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "writeAreas", code: "tests.missing_write_boundary" })
+    ]));
+  });
+
   it("does not require implementation write areas or unit tests for documentation-only work", () => {
     const phase = structuredClone(fixture.phase);
     phase.objective = "Update README documentation for the feature contract.";
@@ -377,6 +387,27 @@ describe("phase brief material changes", () => {
     expect(changes).toEqual(expect.arrayContaining([
       expect.objectContaining({ category: "file-refinement", material: false }),
       expect.objectContaining({ category: "symbol-refinement", material: false })
+    ]));
+    expect(changes.filter((change) => change.category === "write-boundary")).toEqual([]);
+  });
+
+  it("classifies a bounded test root required by test obligations as non-material verification support", () => {
+    const phase = structuredClone(fixture.phase);
+    phase.expectedWriteAreas = ["src/feature.ts"];
+    phase.expectedFilesOrAreas = ["src/feature.ts"];
+    const candidate = proposal(validBrief);
+    candidate.writeAreas = ["src/feature.ts", "tests/**"];
+    candidate.testObligations = ["Add focused regression tests for the changed behavior."];
+
+    const changes = classifyPhaseBriefChanges(phase, candidate);
+
+    expect(changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: "file-refinement",
+        proposedValue: ["tests/**"],
+        material: false,
+        requiredTransition: "none"
+      })
     ]));
     expect(changes.filter((change) => change.category === "write-boundary")).toEqual([]);
   });

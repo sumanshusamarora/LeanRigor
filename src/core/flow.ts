@@ -318,7 +318,7 @@ const phaseSchema = z.object({
   acceptedDrifts: z.array(z.object({
     decisionId: z.string().min(1),
     acceptedAt: z.string(),
-    acceptedBy: z.literal("user"),
+    acceptedBy: z.enum(["user", "system-policy"]),
     workflowRevision: z.number().int().min(0),
     briefRevision: z.number().int().min(1),
     reason: z.string().min(1).max(4000),
@@ -3686,7 +3686,10 @@ export function classifyFilePath(raw: string): FileClassification {
 
 function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): string[] {
   const deviations: string[] = [];
-  const expected = phase.expectedFilesOrAreas.filter(isPathLikeArea);
+  const expected = unique([
+    ...phase.expectedFilesOrAreas.filter(isPathLikeArea),
+    ...acceptedSystemScopeAreas(phase)
+  ]);
   if (expected.length > 0) {
     for (const file of phase.filesChanged) {
       if (!expected.some((area) => areaMatchesFile(area, file))) deviations.push(`changed file outside expected scope: ${file}`);
@@ -3724,6 +3727,21 @@ function detectScopeDeviations(phase: WorkflowPhase, config?: LeanRigorConfig): 
     }
   }
   return unique(deviations);
+}
+
+function acceptedSystemScopeAreas(phase: WorkflowPhase): string[] {
+  const accepted = (phase.acceptedDrifts ?? []).filter((entry) => entry.acceptedBy === "system-policy");
+  const latestBriefRevision = accepted.reduce((latest, entry) => Math.max(latest, entry.briefRevision), 0);
+  return unique(accepted
+    .filter((entry) => entry.briefRevision === latestBriefRevision)
+    .flatMap((entry) => entry.materialChanges)
+    .filter((change) => change.category === "file-refinement" && !change.material)
+    .flatMap((change) => Array.isArray(change.proposedValue)
+      ? change.proposedValue
+      : change.proposedValue
+        ? [change.proposedValue]
+        : [])
+    .filter(isPathLikeArea));
 }
 
 function gateRequiresEvidence(config?: LeanRigorConfig): boolean {

@@ -24838,6 +24838,30 @@ var canonicalRiskCategoryPatterns = [
 function canonicalRiskCategories(value) {
   return canonicalRiskCategoryPatterns.filter(([, pattern]) => pattern.test(value)).map(([category]) => category);
 }
+function testObligationsRequireWrite(obligations) {
+  return obligations.some((obligation) => {
+    const value = obligation.toLowerCase();
+    return /\b(?:add|create|introduce|write|update|extend|expand)\b[\s\S]{0,120}\b(?:tests?|specs?|coverage|regression)\b/.test(value) || /\b(?:new|additional|targeted)\b[\s\S]{0,80}\b(?:tests?|specs?|coverage)\b/.test(value);
+  });
+}
+function isTestPath(value) {
+  const normalizedPath = slash2(value).replace(/^\.\/+/, "").replace(/\/+$/, "");
+  if (normalizedPath.startsWith("/") || normalizedPath.split("/").includes("..")) return false;
+  if (/(^|\/)(?:tests?|specs?|__tests__)(\/|$)/i.test(normalizedPath)) return true;
+  const filename = normalizedPath.split("/").at(-1) ?? "";
+  return /(?:^test_.+|.+_(?:test|spec)|.+\.(?:test|spec))\.[A-Za-z0-9]+$/i.test(filename);
+}
+function supportingTestWriteAreas(inspection) {
+  const inspectedAreas = unique8([...inspection.relevantFiles, ...inspection.filesRead].flatMap((candidate) => {
+    const normalizedPath = slash2(candidate).replace(/^\.\/+/, "").replace(/\/+$/, "");
+    if (!isTestPath(normalizedPath)) return [];
+    const segments = normalizedPath.split("/");
+    const directoryIndex = segments.findIndex((segment) => /^(?:tests?|specs?|__tests__)$/i.test(segment));
+    if (directoryIndex >= 0) return [`${segments.slice(0, directoryIndex + 1).join("/")}/**`];
+    return [normalizedPath];
+  }));
+  return inspectedAreas.length > 0 ? inspectedAreas : ["tests/**"];
+}
 var DeterministicPhaseBriefPlanningProvider = class {
   name = "deterministic-phase-brief";
   async generate(input) {
@@ -25300,6 +25324,14 @@ function validatePhaseExecutionBrief(brief, phase2) {
   if (!documentationOnly && testsRequired(brief, phase2) && !brief.testObligations.some((obligation) => /test|regression|failure|type|schema|compatib|check/i.test(obligation))) {
     diagnostics.push(diagnostic("quality", "testObligations", "tests.unjustified", "Implementation work requires a targeted test or repository-check obligation."));
   }
+  if (!documentationOnly && testObligationsRequireWrite(brief.testObligations) && !brief.writeAreas.some(isTestPath)) {
+    diagnostics.push(diagnostic(
+      "quality",
+      "writeAreas",
+      "tests.missing_write_boundary",
+      "The brief requires adding or updating tests but approves no bounded test write path. Add an inspected test file or conventional test root to writeAreas."
+    ));
+  }
   if (!Array.isArray(brief.dependencies)) diagnostics.push(diagnostic("quality", "dependencies", "dependencies.missing", "Dependencies must be represented explicitly."));
   if (!Array.isArray(brief.assumptions)) diagnostics.push(diagnostic("quality", "assumptions", "assumptions.missing", "Assumptions must be represented explicitly."));
   if (!Array.isArray(brief.exclusions)) diagnostics.push(diagnostic("quality", "exclusions", "exclusions.missing", "Exclusions must be represented explicitly."));
@@ -25318,12 +25350,24 @@ function classifyPhaseBriefChanges(phase2, proposal, approvedContext = []) {
   const changes = [];
   const approvedWrites = phase2.expectedWriteAreas.length > 0 ? phase2.expectedWriteAreas : phase2.expectedFilesOrAreas;
   const outsideWrites = proposal.writeAreas.filter((candidate) => !approvedWrites.some((area) => withinArea(candidate, area)));
+  const supportingTestWrites = testObligationsRequireWrite(proposal.testObligations) ? outsideWrites.filter(isTestPath) : [];
+  const materialOutsideWrites = outsideWrites.filter((candidate) => !supportingTestWrites.includes(candidate));
   const refinedWrites = proposal.writeAreas.filter((candidate) => !approvedWrites.includes(candidate) && approvedWrites.some((area) => withinArea(candidate, area)));
   if (refinedWrites.length > 0) changes.push(change("file-refinement", phase2.id, approvedWrites, refinedWrites, false, "Exact files refine an approved write boundary without expanding it."));
+  if (supportingTestWrites.length > 0) {
+    changes.push(change(
+      "file-refinement",
+      phase2.id,
+      approvedWrites,
+      supportingTestWrites,
+      false,
+      "Bounded test paths support verification work explicitly required by the phase brief."
+    ));
+  }
   if (proposal.relevantSymbols.length > 0) changes.push(change("symbol-refinement", phase2.id, [], proposal.relevantSymbols, false, "Inspected symbols refine the approved phase implementation target."));
   const narrowedReads = proposal.readAreas.filter((candidate) => phase2.expectedReadAreas.some((area) => withinArea(candidate, area)) && !phase2.expectedReadAreas.includes(candidate));
   if (narrowedReads.length > 0) changes.push(change("read-boundary", phase2.id, phase2.expectedReadAreas, narrowedReads, false, "Read paths narrow an approved inspection area."));
-  if (outsideWrites.length > 0) changes.push(change("write-boundary", phase2.id, approvedWrites, outsideWrites, true, "The brief proposes a write path outside the approved Workflow Plan boundary."));
+  if (materialOutsideWrites.length > 0) changes.push(change("write-boundary", phase2.id, approvedWrites, materialOutsideWrites, true, "The brief proposes a write path outside the approved Workflow Plan boundary."));
   if (!sameItems(phase2.acceptanceCriteria, proposal.acceptanceCriteria)) {
     const traceabilityRefinement = isScopePreservingAcceptanceRefinement(phase2.acceptanceCriteria, proposal.acceptanceCriteria);
     changes.push(change(
@@ -25374,7 +25418,13 @@ function deterministicProposal(input) {
   const { state, phase: phase2, inspection } = input;
   const relevantFiles = unique8([...inspection.relevantFiles, ...concretePlannedTargets(phase2)]);
   const relevantSymbols = unique8(inspection.relevantSymbols);
-  const writeAreas = refineWriteAreas(phase2, relevantFiles);
+  const baseWriteAreas = refineWriteAreas(phase2, relevantFiles);
+  const documentationOnly = state.triage?.task.type === "documentation" || baseWriteAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area));
+  const testObligations = deriveTestObligations(state, phase2, inspection, documentationOnly);
+  const writeAreas = unique8([
+    ...baseWriteAreas,
+    ...testObligationsRequireWrite(testObligations) ? supportingTestWriteAreas(inspection) : []
+  ]);
   const readAreas = unique8([...phase2.expectedReadAreas, ...inspection.filesRead.filter((file2) => !writeAreas.includes(file2))]);
   const primaryTargets = unique8([...relevantSymbols.slice(0, 4), ...writeAreas.slice(0, 4), ...relevantFiles.slice(0, 4)]);
   const targetSummary = primaryTargets.join(", ") || phase2.id;
@@ -25384,8 +25434,6 @@ function deterministicProposal(input) {
     unique8([...phase2.validationCommands, ...inspection.validationCommands]),
     writeAreas
   );
-  const documentationOnly = state.triage?.task.type === "documentation" || writeAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area));
-  const testObligations = deriveTestObligations(state, phase2, inspection, documentationOnly);
   const constraints = effectiveConstraints(state);
   const approachSteps = [
     `1. Use the inspected current-behaviour evidence in ${relevantFiles.slice(0, 5).join(", ") || writeAreas.join(", ")} to confirm the exact change point${relevantSymbols.length > 0 ? ` (${relevantSymbols.slice(0, 5).join(", ")})` : ""}.`,
@@ -25837,7 +25885,10 @@ var ClaudeCliPhaseBriefPlanningProvider = class {
 };
 function phaseBriefProposalSchema(input) {
   const readAreas = unique9([...input.phase.expectedReadAreas, ...input.inspection.filesRead]);
-  const writeAreas = unique9(input.phase.expectedWriteAreas.length > 0 ? input.phase.expectedWriteAreas : input.phase.expectedFilesOrAreas);
+  const writeAreas = unique9([
+    ...input.phase.expectedWriteAreas.length > 0 ? input.phase.expectedWriteAreas : input.phase.expectedFilesOrAreas,
+    ...supportingTestWriteAreas(input.inspection)
+  ]);
   const relevantFiles = unique9([...input.inspection.relevantFiles, ...input.inspection.filesRead, ...writeAreas]);
   const relevantSymbols = unique9(input.inspection.relevantSymbols);
   const validationCommands = unique9(input.phase.validationCommands);
@@ -25894,6 +25945,7 @@ function buildGenerationPrompt(input) {
     "Return only the JSON value required by the supplied schema. You have no repository tools.",
     "Use only the bounded inspection evidence and approved Workflow Phase below. Do not invent paths, symbols, commands, dependencies, acceptance criteria, or repository facts.",
     "Write a genuinely repository-specific, actionable implementation brief. Explain the current behaviour from inspected evidence and give an ordered approach tied to concrete inspected files or symbols.",
+    "If test obligations add, update, or extend tests, select a bounded inspected test path in writeAreas. Never require test writes while omitting every test write path.",
     "The schema fixes approval-sensitive fields. Do not try to broaden the phase. LeanRigor will deterministically enforce scope, quality, provenance, and approval safety.",
     input.feedback ? `Revision feedback to incorporate semantically: ${input.feedback}` : void 0,
     "Approved Workflow Phase:",
@@ -28699,7 +28751,7 @@ var phaseSchema = external_exports.object({
   acceptedDrifts: external_exports.array(external_exports.object({
     decisionId: external_exports.string().min(1),
     acceptedAt: external_exports.string(),
-    acceptedBy: external_exports.literal("user"),
+    acceptedBy: external_exports.enum(["user", "system-policy"]),
     workflowRevision: external_exports.number().int().min(0),
     briefRevision: external_exports.number().int().min(1),
     reason: external_exports.string().min(1).max(4e3),
@@ -31524,7 +31576,10 @@ function classifyFilePath(raw) {
 }
 function detectScopeDeviations(phase2, config2) {
   const deviations = [];
-  const expected = phase2.expectedFilesOrAreas.filter(isPathLikeArea2);
+  const expected = unique10([
+    ...phase2.expectedFilesOrAreas.filter(isPathLikeArea2),
+    ...acceptedSystemScopeAreas(phase2)
+  ]);
   if (expected.length > 0) {
     for (const file2 of phase2.filesChanged) {
       if (!expected.some((area) => areaMatchesFile(area, file2))) deviations.push(`changed file outside expected scope: ${file2}`);
@@ -31554,6 +31609,11 @@ function detectScopeDeviations(phase2, config2) {
     }
   }
   return unique10(deviations);
+}
+function acceptedSystemScopeAreas(phase2) {
+  const accepted = (phase2.acceptedDrifts ?? []).filter((entry) => entry.acceptedBy === "system-policy");
+  const latestBriefRevision = accepted.reduce((latest, entry) => Math.max(latest, entry.briefRevision), 0);
+  return unique10(accepted.filter((entry) => entry.briefRevision === latestBriefRevision).flatMap((entry) => entry.materialChanges).filter((change2) => change2.category === "file-refinement" && !change2.material).flatMap((change2) => Array.isArray(change2.proposedValue) ? change2.proposedValue : change2.proposedValue ? [change2.proposedValue] : []).filter(isPathLikeArea2));
 }
 function gateRequiresEvidence(config2) {
   return config2?.completionGate.requireEvidence ?? true;
@@ -32272,7 +32332,12 @@ function phaseResultView(state, phaseId) {
       criteria: completion?.criteria ?? [],
       assumptions: completion?.assumptions ?? [],
       remainingRisks: completion?.remainingRisks ?? [],
-      acceptedDrifts: (phase2.acceptedDrifts ?? []).map((drift) => ({ acceptedAt: drift.acceptedAt, reason: drift.reason, summary: drift.summary }))
+      acceptedDrifts: (phase2.acceptedDrifts ?? []).map((drift) => ({
+        acceptedAt: drift.acceptedAt,
+        acceptedBy: drift.acceptedBy,
+        reason: drift.reason,
+        summary: drift.summary
+      }))
     },
     blockers: phaseBlockers(state, phase2, record2?.resultSummary),
     nextSafeActions: phaseNextActions(state, phase2, integrated, conflicted),
@@ -33494,6 +33559,8 @@ var ExecutionCoordinator = class {
   }
   async runNext() {
     const before = await loadFlowState(this.root, this.workflowId);
+    const automaticallyRecovered = await this.recoverAutomaticTestScopeViolation(before);
+    if (automaticallyRecovered) return automaticallyRecovered;
     if (before.approval?.pendingDecision?.status === "pending" || Object.keys(before.phaseBriefFailures ?? {}).length > 0) {
       return this.result(before, [], "await_user", "A valid Phase Execution Brief and exact approval are required before coordinator execution.");
     }
@@ -33863,7 +33930,7 @@ var ExecutionCoordinator = class {
       if (!phase2 || !brief || !workspace) throw new Error(`Phase ${decision.phaseId} no longer has a current brief and workspace.`);
       if (decision.briefRevision !== brief.briefRevision || !briefIsCurrent(state2, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; regenerate and approve a new brief before deciding on drift.`);
       if (executionIdentityIssues(record2, quarantined, state2).length > 0) throw new Error(`Phase ${decision.phaseId} result identity is no longer trusted.`);
-      const unexpectedWrites = currentCheckpoint.changedFiles.filter((file2) => !brief.writeAreas.some((area) => pathWithinArea(file2, area)));
+      const unexpectedWrites = currentCheckpoint.changedFiles.filter((file2) => !writeApproved(file2, brief, phase2));
       if (unexpectedWrites.length > 0) throw new Error(`Phase ${decision.phaseId} has actual writes outside its approved scope: ${unexpectedWrites.join(", ")}. Use recovery instead.`);
       if (!record2.checkpoint || !sameCheckpoint(record2.checkpoint, currentCheckpoint)) throw new Error(`Phase ${decision.phaseId} worktree changed after material drift was quarantined; rerun or replan instead.`);
       if (!["completed", "needs_replan", "needs_review"].includes(quarantined.status)) throw new Error(`Phase ${decision.phaseId} quarantined result cannot be accepted from status ${quarantined.status}.`);
@@ -33984,11 +34051,11 @@ var ExecutionCoordinator = class {
       const record2 = state.execution.records[decision.phaseId];
       if (!phase2 || !brief || !workspace || !record2?.checkpoint) throw new Error(`Phase ${decision.phaseId} has no recoverable execution checkpoint.`);
       if (!briefIsCurrent(state, decision.phaseId)) throw new Error(`Phase ${decision.phaseId} brief is stale; revise or regenerate the brief before retrying.`);
-      const unexpectedWrites = record2.checkpoint.changedFiles.filter((file2) => !brief.writeAreas.some((area) => pathWithinArea(file2, area)));
+      const unexpectedWrites = record2.checkpoint.changedFiles.filter((file2) => !writeApproved(file2, brief, phase2));
       if (unexpectedWrites.length === 0) throw new Error(`Phase ${decision.phaseId} has no out-of-scope changes to discard.`);
       await discardOutOfScopeChanges(record2.workspacePath, workspace.baseCommit, record2.checkpoint, unexpectedWrites);
       const checkpoint = await capturePhaseWorkspaceCheckpoint(record2.workspacePath, brief.validationCommands);
-      const remainingUnexpected = checkpoint.changedFiles.filter((file2) => !brief.writeAreas.some((area) => pathWithinArea(file2, area)));
+      const remainingUnexpected = checkpoint.changedFiles.filter((file2) => !writeApproved(file2, brief, phase2));
       if (remainingUnexpected.length > 0) {
         throw new Error(`Out-of-scope cleanup was incomplete: ${remainingUnexpected.join(", ")}`);
       }
@@ -34083,8 +34150,9 @@ var ExecutionCoordinator = class {
     const checkpoint = await this.captureCheckpoint(record2, result);
     const state = await loadFlowState(this.root, this.workflowId);
     const brief = state.phaseBriefs?.[record2.phaseId];
+    const phase2 = state.plan?.phases.find((candidate) => candidate.id === record2.phaseId);
     const workspace = state.git?.phaseWorkspaces[record2.phaseId];
-    const unexpectedWrites = checkpoint.changedFiles.filter((file2) => !brief || !brief.writeAreas.some((area) => pathWithinArea(file2, area)));
+    const unexpectedWrites = checkpoint.changedFiles.filter((file2) => !brief || !phase2 || !writeApproved(file2, brief, phase2));
     const identityIssues = executionIdentityIssues(record2, result, state);
     if (identityIssues.length > 0) {
       await this.quarantineRecoveryResult(record2, checkpoint, `Provider result identity rejected: ${identityIssues.join("; ")}`, "provider_protocol_error", {
@@ -34094,6 +34162,11 @@ var ExecutionCoordinator = class {
       });
       return "blocked";
     }
+    const automaticRefinement = brief && phase2 ? classifyAutomaticTestScopeRefinement(state, phase2, brief, checkpoint, unexpectedWrites, result) : void 0;
+    if (automaticRefinement && brief) {
+      await this.recordAutomaticScopeRefinement(record2.phaseId, brief, automaticRefinement);
+    }
+    const unresolvedUnexpectedWrites = automaticRefinement ? [] : unexpectedWrites;
     const supplementalValidation = supplementalValidationCommands(
       result.validation.map((entry) => entry.command),
       brief?.validationCommands ?? []
@@ -34105,27 +34178,29 @@ var ExecutionCoordinator = class {
       approvedCommands: brief?.validationCommands ?? [],
       supplemental: supplementalValidation
     }) : void 0;
-    const reportedScopeExpansion = result.scopeDeviations.filter((deviation) => deviation.path && !brief?.writeAreas.some((area) => pathWithinArea(deviation.path, area)));
+    const reportedScopeExpansion = result.scopeDeviations.filter(
+      (deviation) => deviation.path && !automaticRefinement?.paths.includes(normalizeRelative(deviation.path)) && (!brief || !phase2 || !writeApproved(deviation.path, brief, phase2))
+    );
     const materialDiscovery = result.discoveredMaterialChanges.filter((change2) => change2.material);
-    if (unexpectedWrites.length > 0 && reportedScopeExpansion.length === 0 && materialDiscovery.length === 0 && result.status !== "needs_replan") {
+    if (unresolvedUnexpectedWrites.length > 0 && reportedScopeExpansion.length === 0 && materialDiscovery.length === 0 && result.status !== "needs_replan") {
       await this.quarantineRecoveryResult(
         record2,
         checkpoint,
-        `Provider wrote outside the approved phase scope: ${unexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`,
+        `Provider wrote outside the approved phase scope: ${unresolvedUnexpectedWrites.join(", ")}. Discard those writes and retry, or revise the plan if they are genuinely required.`,
         "provider_scope_violation",
-        { unexpectedWrites, workspaceIdentity: workspace?.preparation?.workspaceIdentity }
+        { unexpectedWrites: unresolvedUnexpectedWrites, workspaceIdentity: workspace?.preparation?.workspaceIdentity }
       );
       return "blocked";
     }
     if (reportedScopeExpansion.length > 0 || materialDiscovery.length > 0 || result.status === "needs_replan") {
       const reasons = [
-        unexpectedWrites.length > 0 ? `Unexpected write paths: ${unexpectedWrites.join(", ")}` : void 0,
+        unresolvedUnexpectedWrites.length > 0 ? `Unexpected write paths: ${unresolvedUnexpectedWrites.join(", ")}` : void 0,
         reportedScopeExpansion.length > 0 ? `Reported scope expansion: ${reportedScopeExpansion.map((deviation) => deviation.path).join(", ")}` : void 0,
         materialDiscovery.length > 0 ? `Provider reported ${materialDiscovery.length} material change(s).` : void 0,
         result.status === "needs_replan" ? result.summary : void 0
       ].filter((value) => Boolean(value));
       await this.quarantineResult(record2, result, checkpoint, "needs_replan", reasons.join(" "), {
-        unexpectedWrites,
+        unexpectedWrites: unresolvedUnexpectedWrites,
         reportedScopeExpansion,
         discoveredMaterialChanges: result.discoveredMaterialChanges,
         workspaceIdentity: workspace?.preparation?.workspaceIdentity
@@ -34149,6 +34224,12 @@ var ExecutionCoordinator = class {
       supplementalValidation: supplementalValidation.length > 0 ? {
         commands: supplementalValidation,
         advisory: supplementalValidationAdvisory
+      } : void 0,
+      automaticScopeRefinement: automaticRefinement ? {
+        policy: "bounded-test-artifact",
+        mode: state.mode,
+        paths: automaticRefinement.paths,
+        reason: automaticRefinement.change.reason
       } : void 0
     });
     if (result.status === "completed" || result.status === "blocked") {
@@ -34181,7 +34262,7 @@ var ExecutionCoordinator = class {
         filesChanged: result.changedFiles,
         commandsRun: result.validation.map((entry) => entry.command),
         validation,
-        scopeDeviations: result.scopeDeviations.map((deviation) => deviation.path ? `${deviation.path}: ${deviation.reason}` : deviation.reason),
+        scopeDeviations: result.scopeDeviations.filter((deviation) => !deviation.path || !automaticRefinement?.paths.includes(normalizeRelative(deviation.path))).map((deviation) => deviation.path ? `${deviation.path}: ${deviation.reason}` : deviation.reason),
         assumptions: result.assumptions,
         remainingRisks: result.remainingRisks,
         mutation: { ownerId: record2.leaseOwnerId, ownerType: "system" }
@@ -34204,6 +34285,77 @@ var ExecutionCoordinator = class {
     }
     await this.markPhaseStopped(record2.phaseId, record2.leaseOwnerId, result.status, result.summary, diagnostics);
     return result.status;
+  }
+  async recordAutomaticScopeRefinement(phaseId, brief, refinement) {
+    await updateFlowState(this.root, this.workflowId, (state) => {
+      const phase2 = state.plan?.phases.find((candidate) => candidate.id === phaseId);
+      if (!phase2) throw new Error(`Cannot audit automatic scope refinement for missing phase ${phaseId}.`);
+      appendAutomaticScopeRefinement(state, phase2, brief, refinement, this.now());
+      return state;
+    }, {
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      operation: "bounded_test_scope_refinement_accepted"
+    });
+  }
+  async recoverAutomaticTestScopeViolation(state) {
+    const decision = state.approval?.pendingDecision;
+    if (decision?.status !== "pending" || decision.type !== "execution-recovery" || !decision.phaseId) return void 0;
+    const phase2 = state.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+    const brief = state.phaseBriefs?.[decision.phaseId];
+    const record2 = state.execution.records[decision.phaseId];
+    const workspace = state.git?.phaseWorkspaces[decision.phaseId];
+    if (!phase2 || !brief || !record2?.checkpoint || !workspace || record2.diagnostics?.terminalReason !== "provider_scope_violation" || !briefIsCurrent(state, decision.phaseId)) {
+      return void 0;
+    }
+    const unexpectedWrites = record2.checkpoint.changedFiles.filter((file2) => !writeApproved(file2, brief, phase2));
+    const refinement = classifyAutomaticTestScopeRefinement(
+      state,
+      phase2,
+      brief,
+      record2.checkpoint,
+      unexpectedWrites
+    );
+    if (!refinement) return void 0;
+    const ownerId = this.ownerId(decision.phaseId);
+    await updateFlowState(this.root, this.workflowId, (current) => {
+      const currentDecision = current.approval?.pendingDecision;
+      const currentPhase2 = current.plan?.phases.find((candidate) => candidate.id === decision.phaseId);
+      const currentBrief = current.phaseBriefs?.[decision.phaseId];
+      const currentRecord = current.execution.records[decision.phaseId];
+      const currentWorkspace = current.git?.phaseWorkspaces[decision.phaseId];
+      if (currentDecision?.id !== decision.id || currentDecision.status !== "pending" || !currentPhase2 || !currentBrief || !currentRecord?.checkpoint || !currentWorkspace) {
+        throw new Error(`Automatic bounded-test recovery for ${decision.phaseId} is no longer current.`);
+      }
+      appendAutomaticScopeRefinement(current, currentPhase2, currentBrief, refinement, this.now());
+      currentPhase2.status = "ready";
+      currentWorkspace.status = "ready";
+      currentWorkspace.updatedAt = this.now();
+      current.execution.records[decision.phaseId] = {
+        ...currentRecord,
+        status: "blocked",
+        completedAt: void 0,
+        diagnostics: mergeDiagnostics(currentRecord.diagnostics, {
+          automaticScopeRecovery: true,
+          automaticScopeRecoveryPolicy: "bounded-test-artifact",
+          automaticScopeRecoveryPaths: refinement.paths,
+          automaticScopeRecoveryAt: this.now(),
+          partialProgressPreserved: true,
+          partialProgressAccepted: true
+        })
+      };
+      currentDecision.allowedActions = uniqueStrings([
+        ...currentDecision.allowedActions,
+        "automatic-bounded-test-refinement"
+      ]);
+      resolvePendingDecision(current, "approved", "automatic-bounded-test-refinement", "system", decision.id);
+      return current;
+    }, {
+      ownerId: this.coordinatorId,
+      ownerType: "system",
+      operation: "bounded_test_scope_violation_auto_recovered"
+    });
+    return this.dispatchResumedPhase(decision.phaseId, ownerId, "Automatically accepted bounded test artifacts and retried");
   }
   /**
    * A continuation authorised by the user may first attempt to resume the
@@ -34271,7 +34423,7 @@ var ExecutionCoordinator = class {
         briefRevision: state.phaseBriefs?.[record2.phaseId]?.briefRevision,
         question: summary,
         allowedActions: [
-          ...checkpoint.changedFiles.every((file2) => state.phaseBriefs?.[record2.phaseId]?.writeAreas.some((area) => pathWithinArea(file2, area))) ? ["accept-drift"] : [],
+          ...phase2 && state.phaseBriefs?.[record2.phaseId] && checkpoint.changedFiles.every((file2) => writeApproved(file2, state.phaseBriefs[record2.phaseId], phase2)) ? ["accept-drift"] : [],
           "rerun-drift",
           "review-material-drift",
           "revise-plan",
@@ -34574,7 +34726,7 @@ var ExecutionCoordinator = class {
       workspacePath,
       repositoryRoot: state.git.context.repositoryRoot,
       allowedReadAreas: brief.readAreas,
-      allowedWriteAreas: brief.writeAreas,
+      allowedWriteAreas: approvedWriteAreas(brief, phase2),
       methodologyReferences: [`methodology/modes/${state.mode}.md`, "methodology/evidence.md", "methodology/safeguards.md"],
       validationExpectations: brief.validationCommands,
       leaseOwnerId: ownerId,
@@ -34865,6 +35017,60 @@ function pathWithinArea(file2, area) {
   const normalizedArea = normalizeRelative(area).replace(/\/\*\*.*$/, "").replace(/\/\*.*$/, "");
   if (!normalizedArea || normalizedArea === ".") return false;
   return normalizedFile === normalizedArea || normalizedFile.startsWith(`${normalizedArea}/`);
+}
+function classifyAutomaticTestScopeRefinement(state, phase2, brief, checkpoint, unexpectedWrites, result) {
+  const paths = uniqueStrings(unexpectedWrites.map(normalizeRelative));
+  if (result !== void 0 && result.status !== "completed" || result?.discoveredMaterialChanges.some((change2) => change2.material) || !testObligationsRequireWrite(brief.testObligations) || paths.length === 0 || paths.length > 12) {
+    return void 0;
+  }
+  const untracked = new Set(checkpoint.untrackedFiles.map(normalizeRelative));
+  const deleted = new Set(checkpoint.deletedFiles.map(normalizeRelative));
+  if (paths.some((file2) => !untracked.has(file2) || deleted.has(file2) || !isBoundedTestArtifact(file2))) return void 0;
+  return {
+    paths,
+    change: {
+      category: "file-refinement",
+      previousValue: brief.writeAreas,
+      proposedValue: paths,
+      affectedPhase: phase2.id,
+      severity: "informational",
+      material: false,
+      reason: `LeanRigor ${state.mode} mode accepted newly created, bounded test artifact${paths.length === 1 ? "" : "s"} because the approved brief explicitly requires test writes; production and configuration boundaries remain unchanged.`,
+      requiredTransition: "none"
+    }
+  };
+}
+function appendAutomaticScopeRefinement(state, phase2, brief, refinement, acceptedAt) {
+  const decisionId = automaticRefinementId(phase2.id, brief.briefRevision, refinement.paths);
+  if ((phase2.acceptedDrifts ?? []).some((entry) => entry.decisionId === decisionId)) return;
+  phase2.acceptedDrifts = [...phase2.acceptedDrifts ?? [], {
+    decisionId,
+    acceptedAt,
+    acceptedBy: "system-policy",
+    workflowRevision: state.revision,
+    briefRevision: brief.briefRevision,
+    reason: refinement.change.reason,
+    summary: `Automatically accepted bounded test artifact${refinement.paths.length === 1 ? "" : "s"} required by the approved brief: ${refinement.paths.join(", ")}.`,
+    materialChanges: [refinement.change]
+  }];
+}
+function isBoundedTestArtifact(file2) {
+  const normalizedPath = normalizeRelative(file2);
+  if (!normalizedPath || normalizedPath.startsWith("/") || normalizedPath.split("/").includes("..") || !isTestPath(normalizedPath)) {
+    return false;
+  }
+  return /\.(?:[cm]?[jt]sx?|py|rb|php|go|rs|java|kt|kts|cs|fs|fsx|swift|scala|sh|bash)$/i.test(normalizedPath);
+}
+function approvedWriteAreas(brief, phase2) {
+  const automaticRefinements = (phase2.acceptedDrifts ?? []).filter((entry) => entry.acceptedBy === "system-policy" && entry.briefRevision === brief.briefRevision).flatMap((entry) => entry.materialChanges).filter((change2) => change2.category === "file-refinement" && !change2.material).flatMap((change2) => Array.isArray(change2.proposedValue) ? change2.proposedValue : change2.proposedValue ? [change2.proposedValue] : []);
+  return uniqueStrings([...brief.writeAreas, ...automaticRefinements]);
+}
+function writeApproved(file2, brief, phase2) {
+  return approvedWriteAreas(brief, phase2).some((area) => pathWithinArea(file2, area));
+}
+function automaticRefinementId(phaseId, briefRevision, paths) {
+  const digest = createHash8("sha256").update(JSON.stringify({ phaseId, briefRevision, paths: [...paths].sort() })).digest("hex").slice(0, 16);
+  return `scope-refinement-${digest}`;
 }
 function normalizeRelative(value) {
   return value.replaceAll("\\", "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
@@ -35178,7 +35384,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.51");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.52");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

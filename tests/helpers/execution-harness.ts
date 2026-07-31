@@ -9,7 +9,7 @@ import { approvePhase, approvePlan, loadFlowState, preparePhaseExecutionBrief, s
 import { ExecutionCoordinator } from "../../src/core/execution/coordinator.js";
 import type { ValidationCommandRunner } from "../../src/core/validation-runner.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../../src/core/execution/scripted-provider.js";
-import type { ExecutionPlan, SequentialWorkflowState, WorkflowPhase } from "../../src/core/types.js";
+import type { ExecutionPlan, SequentialWorkflowState, WorkflowMode, WorkflowPhase } from "../../src/core/types.js";
 import type { StructuredDecisionProvider } from "../../src/core/structured-decision.js";
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +34,7 @@ export async function createExecutionHarness(options: {
   approvalPolicy?: "workflow-authorized" | "phase-by-phase";
   validationAdvisor?: StructuredDecisionProvider;
   validationRunner?: ValidationCommandRunner;
+  mode?: WorkflowMode;
 }): Promise<DisposableExecutionHarness> {
   const root = await gitRepo();
   const config = defaultConfig();
@@ -44,7 +45,8 @@ export async function createExecutionHarness(options: {
     root,
     { version: 1, summary: "Test execution plan", principles: ["Use coordinator."], phases: options.phases, revisionRequests: [] },
     options.approveFirstPhase ?? true,
-    options.approvalPolicy ?? "workflow-authorized"
+    options.approvalPolicy ?? (options.mode === "rigorous" ? "phase-by-phase" : "workflow-authorized"),
+    options.mode ?? "standard"
   );
   const provider = new ScriptedExecutionProvider(options.scripts, options.clock ? () => options.clock!().getTime() : undefined);
   const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, validationAdvisor: options.validationAdvisor, validationRunner: options.validationRunner, clock: options.clock });
@@ -105,12 +107,13 @@ async function workflowWithPlan(
   root: string,
   plan: ExecutionPlan,
   approveFirstPhase: boolean,
-  approvalPolicy: "workflow-authorized" | "phase-by-phase"
+  approvalPolicy: "workflow-authorized" | "phase-by-phase",
+  mode: WorkflowMode
 ): Promise<SequentialWorkflowState> {
   const started = await startFlow({ request: "Update bounded internal assignment validation", root, config: defaultConfig() });
   const state = await loadFlowState(root, started.id);
   state.state = "awaiting_plan_approval";
-  state.mode = "standard";
+  state.mode = mode;
   state.request = "Update bounded internal assignment validation";
   state.triage!.assumptions = [];
   state.triage!.assessment = { ...state.triage!.assessment, ambiguity: "low", blastRadius: "low", securityRisk: "none", dataIntegrityRisk: "none", operationalRisk: "none" };

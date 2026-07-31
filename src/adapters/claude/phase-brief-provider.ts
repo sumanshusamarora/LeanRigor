@@ -5,7 +5,10 @@ import type {
   PhaseBriefProposal,
   PhaseBriefRepairRequest
 } from "../../core/phase-brief-planner.js";
-import { synthesizeObservableAcceptanceCriteria } from "../../core/phase-brief-planner.js";
+import {
+  supportingTestWriteAreas,
+  synthesizeObservableAcceptanceCriteria
+} from "../../core/phase-brief-planner.js";
 import type { JsonSchema, StructuredDecisionProvider, StructuredDecisionRequest, StructuredDecisionResult } from "../../core/structured-decision.js";
 import { ClaudeCliStructuredDecisionProvider } from "./structured-decision-provider.js";
 import type { CommandRunner } from "./triage-provider.js";
@@ -66,7 +69,10 @@ export class ClaudeCliPhaseBriefPlanningProvider implements PhaseBriefPlanningPr
 
 function phaseBriefProposalSchema(input: PhaseBriefPlanningInput): JsonSchema {
   const readAreas = unique([...input.phase.expectedReadAreas, ...input.inspection.filesRead]);
-  const writeAreas = unique(input.phase.expectedWriteAreas.length > 0 ? input.phase.expectedWriteAreas : input.phase.expectedFilesOrAreas);
+  const writeAreas = unique([
+    ...(input.phase.expectedWriteAreas.length > 0 ? input.phase.expectedWriteAreas : input.phase.expectedFilesOrAreas),
+    ...supportingTestWriteAreas(input.inspection)
+  ]);
   const relevantFiles = unique([...input.inspection.relevantFiles, ...input.inspection.filesRead, ...writeAreas]);
   const relevantSymbols = unique(input.inspection.relevantSymbols);
   const validationCommands = unique(input.phase.validationCommands);
@@ -115,6 +121,7 @@ function buildGenerationPrompt(input: PhaseBriefPlanningInput): string {
     "Return only the JSON value required by the supplied schema. You have no repository tools.",
     "Use only the bounded inspection evidence and approved Workflow Phase below. Do not invent paths, symbols, commands, dependencies, acceptance criteria, or repository facts.",
     "Write a genuinely repository-specific, actionable implementation brief. Explain the current behaviour from inspected evidence and give an ordered approach tied to concrete inspected files or symbols.",
+    "If test obligations add, update, or extend tests, select a bounded inspected test path in writeAreas. Never require test writes while omitting every test write path.",
     "The schema fixes approval-sensitive fields. Do not try to broaden the phase. LeanRigor will deterministically enforce scope, quality, provenance, and approval safety.",
     input.feedback ? `Revision feedback to incorporate semantically: ${input.feedback}` : undefined,
     "Approved Workflow Phase:", JSON.stringify(input.phase, null, 2),

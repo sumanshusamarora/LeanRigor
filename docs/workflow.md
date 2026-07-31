@@ -239,8 +239,15 @@ it cannot add a requirement, path, dependency, or approval authority.
 
 Deterministic quality validation rejects copied phase prose, generic approaches,
 unbounded implementation writes, uninspectable criteria, missing validation or
-manual validation, unjustified missing tests, missing risk representation, and
-missing or mismatched provenance. It also records separate quality dimensions
+manual validation, unjustified missing tests, test-writing obligations without
+a bounded test write path, missing risk representation, and missing or
+mismatched provenance. When repository inspection finds a conventional test
+root, the brief schema may include that root as non-material verification
+support rather than forcing test files into an unrelated production boundary.
+If no test location exists yet, `tests/**` is the conservative creation
+boundary; the implementation provider still chooses an exact test artifact and
+the completion gate records the files actually changed.
+It also records separate quality dimensions
 for completeness, specificity, traceability, phase closure, dependency
 validity, evidence coverage, recovery viability, and internal consistency.
 Exact diagnostics enter a configured recovery ladder: targeted field repair,
@@ -257,11 +264,27 @@ validation requirements, changed acceptance criteria or dependencies, and newly
 discovered material security, migration, architecture, or public-contract risks
 are structured and visible rather than hidden in prose.
 
+During execution, a newly created test source file outside the literal brief
+write list may be accepted automatically as a bounded verification refinement
+only when the approved brief explicitly requires adding or updating tests, every
+unexpected write is an untracked file with a recognized test-source path and
+extension, and the provider reports no material discovery. LeanRigor records
+the exact paths, workflow mode, brief revision, reason, and a non-material
+`file-refinement` audit entry. This policy is identical in Fast, Standard, and
+Rigorous modes; mode changes validation and review depth, not whether users must
+resolve an implementation-detail contradiction. Existing unapproved test
+modifications, mixed test and production drift, manifests, configuration,
+deletions, excessive file additions, or material discoveries still fail closed.
+Persisted workflows that were already stopped by this exact bounded-test
+condition record the same refinement and automatically retry from the preserved
+worktree on the next coordinator run.
+
 Brief approval is tied to its exact revision. Briefs become stale after a plan
 revision or other material change and are regenerated before they can be
 approved or executed. Provider findings that reveal unexpected scope preserve
 partial work in the phase worktree, then route through replan or review; they
-never silently expand the approved plan.
+never silently expand the approved plan. Automatically accepted verification
+refinements remain visible in persisted phase evidence and status/JSON output.
 
 Revision feedback is persisted and creates a replacement brief revision and
 pending decision. The previous decision is superseded and its approval cannot

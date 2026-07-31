@@ -71,6 +71,39 @@ export function canonicalRiskCategories(value: string): PhaseBriefRiskCategory[]
     .map(([category]) => category);
 }
 
+export function testObligationsRequireWrite(obligations: string[]): boolean {
+  return obligations.some((obligation) => {
+    const value = obligation.toLowerCase();
+    return /\b(?:add|create|introduce|write|update|extend|expand)\b[\s\S]{0,120}\b(?:tests?|specs?|coverage|regression)\b/.test(value)
+      || /\b(?:new|additional|targeted)\b[\s\S]{0,80}\b(?:tests?|specs?|coverage)\b/.test(value);
+  });
+}
+
+export function isTestPath(value: string): boolean {
+  const normalizedPath = slash(value).replace(/^\.\/+/, "").replace(/\/+$/, "");
+  if (normalizedPath.startsWith("/") || normalizedPath.split("/").includes("..")) return false;
+  if (/(^|\/)(?:tests?|specs?|__tests__)(\/|$)/i.test(normalizedPath)) return true;
+  const filename = normalizedPath.split("/").at(-1) ?? "";
+  return /(?:^test_.+|.+_(?:test|spec)|.+\.(?:test|spec))\.[A-Za-z0-9]+$/i.test(filename);
+}
+
+/**
+ * Return repository-inspected test roots that can safely support verification
+ * artifacts. A directory is returned only when inspection already found a
+ * conventional test directory; colocated tests remain exact-file candidates.
+ */
+export function supportingTestWriteAreas(inspection: PhaseBriefInspectionResult): string[] {
+  const inspectedAreas = unique([...inspection.relevantFiles, ...inspection.filesRead].flatMap((candidate) => {
+    const normalizedPath = slash(candidate).replace(/^\.\/+/, "").replace(/\/+$/, "");
+    if (!isTestPath(normalizedPath)) return [];
+    const segments = normalizedPath.split("/");
+    const directoryIndex = segments.findIndex((segment) => /^(?:tests?|specs?|__tests__)$/i.test(segment));
+    if (directoryIndex >= 0) return [`${segments.slice(0, directoryIndex + 1).join("/")}/**`];
+    return [normalizedPath];
+  }));
+  return inspectedAreas.length > 0 ? inspectedAreas : ["tests/**"];
+}
+
 export type AcceptanceOutcomeCategory =
   | "persistence"
   | "compatibility"
@@ -619,6 +652,18 @@ export function validatePhaseExecutionBrief(brief: PhaseExecutionBrief, phase: W
   if (!documentationOnly && testsRequired(brief, phase) && !brief.testObligations.some((obligation) => /test|regression|failure|type|schema|compatib|check/i.test(obligation))) {
     diagnostics.push(diagnostic("quality", "testObligations", "tests.unjustified", "Implementation work requires a targeted test or repository-check obligation."));
   }
+  if (
+    !documentationOnly
+    && testObligationsRequireWrite(brief.testObligations)
+    && !brief.writeAreas.some(isTestPath)
+  ) {
+    diagnostics.push(diagnostic(
+      "quality",
+      "writeAreas",
+      "tests.missing_write_boundary",
+      "The brief requires adding or updating tests but approves no bounded test write path. Add an inspected test file or conventional test root to writeAreas."
+    ));
+  }
   if (!Array.isArray(brief.dependencies)) diagnostics.push(diagnostic("quality", "dependencies", "dependencies.missing", "Dependencies must be represented explicitly."));
   if (!Array.isArray(brief.assumptions)) diagnostics.push(diagnostic("quality", "assumptions", "assumptions.missing", "Assumptions must be represented explicitly."));
   if (!Array.isArray(brief.exclusions)) diagnostics.push(diagnostic("quality", "exclusions", "exclusions.missing", "Exclusions must be represented explicitly."));
@@ -643,12 +688,26 @@ export function classifyPhaseBriefChanges(
   const changes: MaterialPlanChange[] = [];
   const approvedWrites = phase.expectedWriteAreas.length > 0 ? phase.expectedWriteAreas : phase.expectedFilesOrAreas;
   const outsideWrites = proposal.writeAreas.filter((candidate) => !approvedWrites.some((area) => withinArea(candidate, area)));
+  const supportingTestWrites = testObligationsRequireWrite(proposal.testObligations)
+    ? outsideWrites.filter(isTestPath)
+    : [];
+  const materialOutsideWrites = outsideWrites.filter((candidate) => !supportingTestWrites.includes(candidate));
   const refinedWrites = proposal.writeAreas.filter((candidate) => !approvedWrites.includes(candidate) && approvedWrites.some((area) => withinArea(candidate, area)));
   if (refinedWrites.length > 0) changes.push(change("file-refinement", phase.id, approvedWrites, refinedWrites, false, "Exact files refine an approved write boundary without expanding it."));
+  if (supportingTestWrites.length > 0) {
+    changes.push(change(
+      "file-refinement",
+      phase.id,
+      approvedWrites,
+      supportingTestWrites,
+      false,
+      "Bounded test paths support verification work explicitly required by the phase brief."
+    ));
+  }
   if (proposal.relevantSymbols.length > 0) changes.push(change("symbol-refinement", phase.id, [], proposal.relevantSymbols, false, "Inspected symbols refine the approved phase implementation target."));
   const narrowedReads = proposal.readAreas.filter((candidate) => phase.expectedReadAreas.some((area) => withinArea(candidate, area)) && !phase.expectedReadAreas.includes(candidate));
   if (narrowedReads.length > 0) changes.push(change("read-boundary", phase.id, phase.expectedReadAreas, narrowedReads, false, "Read paths narrow an approved inspection area."));
-  if (outsideWrites.length > 0) changes.push(change("write-boundary", phase.id, approvedWrites, outsideWrites, true, "The brief proposes a write path outside the approved Workflow Plan boundary."));
+  if (materialOutsideWrites.length > 0) changes.push(change("write-boundary", phase.id, approvedWrites, materialOutsideWrites, true, "The brief proposes a write path outside the approved Workflow Plan boundary."));
   if (!sameItems(phase.acceptanceCriteria, proposal.acceptanceCriteria)) {
     const traceabilityRefinement = isScopePreservingAcceptanceRefinement(phase.acceptanceCriteria, proposal.acceptanceCriteria);
     changes.push(change(
@@ -702,7 +761,13 @@ function deterministicProposal(input: PhaseBriefPlanningInput): PhaseBriefPropos
   const { state, phase, inspection } = input;
   const relevantFiles = unique([...inspection.relevantFiles, ...concretePlannedTargets(phase)]);
   const relevantSymbols = unique(inspection.relevantSymbols);
-  const writeAreas = refineWriteAreas(phase, relevantFiles);
+  const baseWriteAreas = refineWriteAreas(phase, relevantFiles);
+  const documentationOnly = state.triage?.task.type === "documentation" || baseWriteAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area));
+  const testObligations = deriveTestObligations(state, phase, inspection, documentationOnly);
+  const writeAreas = unique([
+    ...baseWriteAreas,
+    ...(testObligationsRequireWrite(testObligations) ? supportingTestWriteAreas(inspection) : [])
+  ]);
   const readAreas = unique([...phase.expectedReadAreas, ...inspection.filesRead.filter((file) => !writeAreas.includes(file))]);
   const primaryTargets = unique([...relevantSymbols.slice(0, 4), ...writeAreas.slice(0, 4), ...relevantFiles.slice(0, 4)]);
   const targetSummary = primaryTargets.join(", ") || phase.id;
@@ -713,8 +778,6 @@ function deterministicProposal(input: PhaseBriefPlanningInput): PhaseBriefPropos
     unique([...phase.validationCommands, ...inspection.validationCommands]),
     writeAreas
   );
-  const documentationOnly = state.triage?.task.type === "documentation" || writeAreas.every((area) => /(^|\/)(docs?|readme)/i.test(area));
-  const testObligations = deriveTestObligations(state, phase, inspection, documentationOnly);
   const constraints = effectiveConstraints(state);
   const approachSteps = [
     `1. Use the inspected current-behaviour evidence in ${relevantFiles.slice(0, 5).join(", ") || writeAreas.join(", ")} to confirm the exact change point${relevantSymbols.length > 0 ? ` (${relevantSymbols.slice(0, 5).join(", ")})` : ""}.`,

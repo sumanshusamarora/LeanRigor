@@ -51,7 +51,7 @@ export interface PersistedPhaseResultView {
     criteria: Array<{ criterion: string; status: string; evidence: string[] }>;
     assumptions: string[];
     remainingRisks: string[];
-    acceptedDrifts: Array<{ acceptedAt: string; reason: string; summary: string }>;
+    acceptedDrifts: Array<{ acceptedAt: string; acceptedBy: "user" | "system-policy"; reason: string; summary: string }>;
   };
   blockers: string[];
   nextSafeActions: string[];
@@ -179,7 +179,12 @@ export function phaseResultView(state: SequentialWorkflowState, phaseId: string)
       criteria: completion?.criteria ?? [],
       assumptions: completion?.assumptions ?? [],
       remainingRisks: completion?.remainingRisks ?? [],
-      acceptedDrifts: (phase.acceptedDrifts ?? []).map((drift) => ({ acceptedAt: drift.acceptedAt, reason: drift.reason, summary: drift.summary }))
+      acceptedDrifts: (phase.acceptedDrifts ?? []).map((drift) => ({
+        acceptedAt: drift.acceptedAt,
+        acceptedBy: drift.acceptedBy,
+        reason: drift.reason,
+        summary: drift.summary
+      }))
     },
     blockers: phaseBlockers(state, phase, record?.resultSummary),
     nextSafeActions: phaseNextActions(state, phase, integrated, conflicted),

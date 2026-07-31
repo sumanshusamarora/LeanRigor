@@ -616,6 +616,120 @@ describe("execution coordinator", () => {
     });
   });
 
+  it.each(["fast", "standard", "rigorous"] as const)(
+    "automatically accepts a bounded additive test artifact in %s mode when the approved brief requires test writes",
+    async (mode) => {
+      const harness = await createExecutionHarness({
+        mode,
+        phases: [testPhase("phase-a", ["src/a.ts"])],
+        scripts: {
+          "phase-a": {
+            edits: [
+              { path: "src/a.ts", content: "export const a = 1;\n" },
+              { path: "tests/a.test.ts", content: "export const regressionCovered = true;\n" }
+            ],
+            validation: [{ command: "npm test", exitCode: 0 }]
+          }
+        }
+      });
+      const prepared = await currentState(harness);
+      prepared.phaseBriefs!["phase-a"]!.testObligations = ["Add a targeted regression test for phase-a."];
+      prepared.phaseBriefs!["phase-a"]!.writeAreas = ["src/a.ts"];
+      await saveFlowState(harness.root, prepared, { expectedRevision: prepared.revision });
+
+      const dispatched = await harness.coordinator.runNext();
+      expect(dispatched.nextAction).toBe("poll");
+      const result = await harness.coordinator.poll();
+      const state = await currentState(harness);
+
+      expect(result.decision?.type).not.toBe("execution-recovery");
+      expect(state.plan?.phases[0]).toMatchObject({
+        status: "completed",
+        acceptedDrifts: [expect.objectContaining({
+          acceptedBy: "system-policy",
+          reason: expect.stringContaining(`${mode} mode`),
+          materialChanges: [expect.objectContaining({
+            category: "file-refinement",
+            proposedValue: ["tests/a.test.ts"],
+            material: false
+          })]
+        })]
+      });
+      expect(state.execution.records["phase-a"]?.diagnostics).toMatchObject({
+        automaticScopeRefinement: {
+          policy: "bounded-test-artifact",
+          mode,
+          paths: ["tests/a.test.ts"]
+        }
+      });
+      expect(state.git?.integration.integratedPhaseIds).toEqual(["phase-a"]);
+    }
+  );
+
+  it("still blocks an additive test file when the approved brief does not require test writes", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          edits: [
+            { path: "src/a.ts", content: "export const a = 1;\n" },
+            { path: "tests/a.test.ts", content: "export const unapproved = true;\n" }
+          ],
+          validation: [{ command: "npm test", exitCode: 0 }]
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    const result = await harness.coordinator.poll();
+    const state = await currentState(harness);
+
+    expect(result.decision).toMatchObject({ type: "execution-recovery" });
+    expect(state.execution.records["phase-a"]?.diagnostics).toMatchObject({
+      terminalReason: "provider_scope_violation",
+      unexpectedWrites: ["tests/a.test.ts"]
+    });
+    expect(state.plan?.phases[0]?.acceptedDrifts).toEqual([]);
+  });
+
+  it("automatically recovers a previously persisted bounded-test scope violation on the next coordinator run", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": {
+          edits: [
+            { path: "src/a.ts", content: "export const a = 1;\n" },
+            { path: "tests/a.test.ts", content: "export const regressionCovered = true;\n" }
+          ],
+          validation: [{ command: "npm test", exitCode: 0 }]
+        }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const blocked = await currentState(harness);
+    expect(blocked.execution.records["phase-a"]?.diagnostics?.terminalReason).toBe("provider_scope_violation");
+    blocked.phaseBriefs!["phase-a"]!.testObligations = ["Add a targeted regression test for phase-a."];
+    await saveFlowState(harness.root, blocked, { expectedRevision: blocked.revision });
+
+    const recovered = await harness.coordinator.runNext();
+    expect(recovered.nextAction).toBe("poll");
+    await harness.coordinator.poll();
+    const completed = await currentState(harness);
+
+    expect(completed.plan?.phases[0]).toMatchObject({
+      status: "completed",
+      acceptedDrifts: [expect.objectContaining({ acceptedBy: "system-policy" })]
+    });
+    expect(completed.execution.records["phase-a"]?.diagnostics).toMatchObject({
+      automaticScopeRecovery: true,
+      automaticScopeRecoveryPolicy: "bounded-test-artifact",
+      automaticScopeRecoveryPaths: ["tests/a.test.ts"]
+    });
+    expect(completed.git?.integration.integratedPhaseIds).toEqual(["phase-a"]);
+  });
+
   it("keeps genuine provider-reported material discovery on the plan-revision path", async () => {
     const harness = await createExecutionHarness({
       phases: [testPhase("phase-a", ["src/a.ts"])],

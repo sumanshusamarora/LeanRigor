@@ -827,13 +827,14 @@ export interface WorkflowPhase {
 }
 
 /**
- * A user-authorized exception for a quarantined provider result.  It records
- * the decision without widening the phase's approved write boundary.
+ * An audited exception to a phase write boundary. User decisions cover
+ * material drift; system policy may record narrowly bounded, non-material
+ * verification artifacts that are already required by the approved brief.
  */
 export interface PhaseDriftAcceptance {
   decisionId: string;
   acceptedAt: string;
-  acceptedBy: "user";
+  acceptedBy: "user" | "system-policy";
   workflowRevision: number;
   briefRevision: number;
   reason: string;
