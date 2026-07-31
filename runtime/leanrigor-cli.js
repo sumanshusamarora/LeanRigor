@@ -32274,6 +32274,7 @@ function decisionActionsForQuestion(decision) {
   const actions = [...new Set(decision.allowedActions)];
   if (actions.length <= MAX_ASK_USER_QUESTION_OPTIONS) return actions;
   const preferred = decision.type === "execution-recovery" ? [
+    "accept-out-of-scope-and-continue",
     "discard-out-of-scope-and-retry",
     "continue-execution",
     "rerun-validation",
@@ -32426,6 +32427,11 @@ function decisionOption(state, decision, action) {
       label: "Discard out-of-scope changes and retry",
       description: "Restore only rejected out-of-scope paths, preserve approved-scope work, and retry in a fresh compact provider session.",
       command: `leanrigor flow discard-out-of-scope-and-retry ${state.id} --provider auto --json ${common}`
+    },
+    "accept-out-of-scope-and-continue": {
+      label: "Accept out-of-scope changes and continue",
+      description: "Record the extra writes as accepted scope drift and continue \u2014 appropriate for low/medium-risk side-effect files (build artifacts, generated files, docs). High-risk files are rejected.",
+      command: `leanrigor flow accept-out-of-scope-and-continue ${state.id} --provider auto --json ${common}`
     },
     "continue-execution": {
       label: `Continue with ${decision.additionalTurns ?? "additional"} additional turns`,
@@ -35652,7 +35658,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.53");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.54");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

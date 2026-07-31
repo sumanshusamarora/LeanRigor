@@ -79,7 +79,10 @@ AskUserQuestion selector contract at every decision gate.
    exact dispatch blockers. For a workspace bootstrap decision, show the exact
    command and risk summary and run only its persisted approval action; never
    improvise dependency installation. Treat stale/mismatched provider results
-   or unexpected write scope as persisted review/replan gates.
+   or unexpected write scope as persisted review/replan gates. If an
+   execution-recovery decision offers `accept-out-of-scope-and-continue`,
+   present that persisted option explicitly as the simplest forward path for
+   low/medium-risk side-effect files before asking for discard or revision.
 9. Use `decision.question` and every `decision.options` entry verbatim and in
    order. Match the selected option by `intent` and run only its persisted
    command. Never invent, cache, or reconstruct question state. Never call

@@ -94,6 +94,7 @@ function decisionActionsForQuestion(decision: WorkflowPendingDecision): string[]
   if (actions.length <= MAX_ASK_USER_QUESTION_OPTIONS) return actions;
   const preferred = decision.type === "execution-recovery"
     ? [
+        "accept-out-of-scope-and-continue",
         "discard-out-of-scope-and-retry",
         "continue-execution",
         "rerun-validation",
@@ -261,6 +262,11 @@ function decisionOption(state: SequentialWorkflowState, decision: WorkflowPendin
       label: "Discard out-of-scope changes and retry",
       description: "Restore only rejected out-of-scope paths, preserve approved-scope work, and retry in a fresh compact provider session.",
       command: `leanrigor flow discard-out-of-scope-and-retry ${state.id} --provider auto --json ${common}`
+    },
+    "accept-out-of-scope-and-continue": {
+      label: "Accept out-of-scope changes and continue",
+      description: "Record the extra writes as accepted scope drift and continue — appropriate for low/medium-risk side-effect files (build artifacts, generated files, docs). High-risk files are rejected.",
+      command: `leanrigor flow accept-out-of-scope-and-continue ${state.id} --provider auto --json ${common}`
     },
     "continue-execution": {
       label: `Continue with ${decision.additionalTurns ?? "additional"} additional turns`,

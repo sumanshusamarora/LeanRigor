@@ -183,6 +183,13 @@ Rules:
   identity. If status reports stale brief, result identity mismatch,
   unexpected write scope, or material discovery, render the persisted review
   or replan gate. Do not reinterpret provider `completed` as acceptance.
+- For `execution-recovery` decisions caused by unexpected write scope, prefer
+  the persisted recovery action ordering exactly as returned. When
+  `accept-out-of-scope-and-continue` is present, render it explicitly as the
+  simplest forward path for low/medium-risk side-effect files before discard or
+  revision paths. Explain that it records the extra files as accepted scope
+  drift and continues; do not replace it with a free-form request for brief
+  feedback.
 - If provider dispatch or recovery cannot proceed, present only the persisted
   recovery decision. Never silently switch provider or execution mode, and
   never fall back to main-session implementation.
