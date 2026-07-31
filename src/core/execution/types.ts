@@ -285,6 +285,7 @@ export function toValidationEvidence(phaseId: string, entry: ExecutionValidation
     status: skipped ? "skipped" : exitStatus === 0 ? "passed" : "failed",
     skipped,
     skippedReason: entry.skippedReason,
+    source: "provider",
     timestamp: entry.timestamp ?? new Date().toISOString()
   };
 }

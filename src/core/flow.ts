@@ -174,6 +174,7 @@ const validationEvidenceSchema = z.object({
   status: z.enum(["passed", "failed", "skipped"]),
   skipped: z.boolean(),
   skippedReason: z.string().optional(),
+  source: z.enum(["provider", "runner"]).default("provider"),
   timestamp: z.string()
 }).superRefine((value, ctx) => {
   if (value.skipped && !value.skippedReason) {
@@ -1637,7 +1638,13 @@ export async function completePhase(args: {
         phaseId: phase.id,
         briefRevision: next.phaseBriefs?.[phase.id]?.briefRevision,
         question: completion.reason,
-        allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"]
+        allowedActions: [
+          "view-details",
+          ...(completion.validation.status === "failed" || completion.validation.status === "missing" ? ["rerun-validation"] : []),
+          "retry-execution",
+          "revise-plan",
+          "cancel-workflow"
+        ]
       });
       return next;
     }
@@ -1757,6 +1764,37 @@ export async function repairPhase(args: {
     appendEvent(next, "phase_repair_started", `Phase ${phase.id} repair attempt ${attempt.attempt}/${budget} started.`, phase.id);
     return next;
   }, { ...args.mutation, operation: "repair_phase" });
+}
+
+/**
+ * Re-enters the completion gate solely to verify already-approved validation
+ * commands. This is intentionally not an implementation repair attempt and
+ * does not consume the provider repair budget.
+ */
+export async function beginValidationRecheck(args: {
+  root: string;
+  workflowId: string;
+  phaseId: string;
+  config: LeanRigorConfig;
+  mutation?: MutationOptions;
+}): Promise<SequentialWorkflowState> {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (!state.plan) throw new WorkflowStateError("Cannot re-run validation without a plan.");
+    const next = structuredClone(state);
+    const phase = phaseById(next.plan!, args.phaseId);
+    if (!phase) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    if (phase.status !== "needs_repair" || !phase.completion || !["failed", "missing"].includes(phase.completion.validation.status)) {
+      throw new InvalidTransitionError(`Phase ${phase.id} is not awaiting validation recovery.`);
+    }
+    const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    phase.status = "running";
+    phase.startedAt = timestamp();
+    phase.completedAt = undefined;
+    next.phaseLeases[phase.id] = phaseLease(phase, ownerId, args.mutation?.ownerType ?? "system", next.revision, args.config.execution.phaseLeaseTimeoutSeconds);
+    appendEvent(next, "phase_validation_recheck_started", `Runner-owned validation recheck started for ${phase.id}; no provider was dispatched.`, phase.id);
+    return next;
+  }, { ...args.mutation, operation: "phase_validation_recheck" });
 }
 
 export async function recordValidation(args: {
@@ -3533,9 +3571,17 @@ function criterionTextMatches(candidate: string, expected: string): boolean {
 
 function summarisePhaseValidation(phase: WorkflowPhase, mode: WorkflowMode, config?: LeanRigorConfig): PhaseCompletionRecord["validation"] {
   const activeRepair = phase.repairAttempts.find((attempt) => !attempt.outcome);
-  const commands = activeRepair
+  const recordedCommands = activeRepair
     ? phase.validationResults.filter((evidence) => evidence.timestamp >= activeRepair.timestamp)
     : phase.validationResults;
+  const latestRunnerByCommand = new Map<string, ValidationEvidence>();
+  for (const evidence of recordedCommands) {
+    if (evidence.source === "runner") latestRunnerByCommand.set(evidence.command, evidence);
+  }
+  const runnerCommands = [...latestRunnerByCommand.values()];
+  // Once LeanRigor has executed the approved commands itself, its evidence
+  // supersedes earlier provider-reported success or failure for gate purposes.
+  const commands = runnerCommands.length > 0 ? runnerCommands : recordedCommands;
   const skipped = commands.filter((evidence) => evidence.skipped).map((evidence) => ({
     command: evidence.command,
     reason: evidence.skippedReason ?? "No reason recorded."
@@ -3924,10 +3970,29 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
   normalizeLegacyExecutionQuarantineDecision(migrated);
+  normalizeValidationRecoveryDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
   return migrated;
+}
+
+function normalizeValidationRecoveryDecision(state: Record<string, unknown>): void {
+  const approval = state.approval as Record<string, unknown> | undefined;
+  const decision = approval?.pendingDecision as Record<string, unknown> | undefined;
+  if (decision?.type !== "execution-recovery" || decision.status !== "pending" || typeof decision.phaseId !== "string") return;
+  const plan = state.plan as { phases?: Array<Record<string, unknown>> } | undefined;
+  const phase = plan?.phases?.find((candidate) => candidate.id === decision.phaseId);
+  const validation = phase?.completion && typeof phase.completion === "object"
+    ? (phase.completion as { validation?: { status?: unknown } }).validation
+    : undefined;
+  if (validation?.status !== "failed" && validation?.status !== "missing") return;
+  const actions = Array.isArray(decision.allowedActions) ? decision.allowedActions.filter((action): action is string => typeof action === "string") : [];
+  if (actions.includes("rerun-validation")) return;
+  const retryIndex = actions.indexOf("retry-execution");
+  if (retryIndex >= 0) actions.splice(retryIndex, 0, "rerun-validation");
+  else actions.push("rerun-validation");
+  decision.allowedActions = actions;
 }
 
 function normalizeLegacyExecutionQuarantineDecision(state: Record<string, unknown>): void {

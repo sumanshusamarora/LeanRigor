@@ -372,7 +372,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
     }
     return {
       ...base,
-      label: needsIntervention ? "Phase recovery decision" : "Phase execution status",
+      label: needsIntervention && phase.completion?.validation.status === "failed" ? "Phase validation failed" : needsIntervention ? "Phase recovery decision" : "Phase execution status",
       userDecisionRequired: needsIntervention,
       pendingDecision: needsIntervention ? phase.completion?.reason ?? "The active phase needs intervention." : null,
       pendingAction: phase.status === "ready" && readiness.recommendedNextPhase
@@ -387,6 +387,13 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
         completionGate: phase.completion?.decision ?? "pending",
         criteria: phase.completion ? summariseCriteria(phase.completion.criteria) : undefined,
         validation: phase.completion?.validation.status ?? "pending",
+        validationEvidence: phase.completion?.validation.commands.map((evidence) => ({
+          command: evidence.command,
+          status: evidence.status,
+          exitStatus: evidence.exitStatus,
+          source: evidence.source ?? "provider",
+          result: evidence.result
+        })) ?? [],
         repairAttempts: phase.repairAttempts.length,
         scopeDeviations: phase.scopeDeviations,
         recommendedNextPhase: readiness.recommendedNextPhase,
@@ -581,6 +588,18 @@ function phaseApprovalActions(state: SequentialWorkflowState, phase: WorkflowPha
   const root = quoteArg(state.root);
   const actions: ApprovalAction[] = [];
   if (phase.status === "needs_repair") {
+    const decision = state.approval?.pendingDecision;
+    const common = decision?.type === "execution-recovery" && decision.phaseId === phase.id && decision.status === "pending"
+      ? ` --decision-id ${decision.id} --expected-revision ${state.revision}`
+      : "";
+    if ((decision?.allowedActions as readonly string[] | undefined)?.includes("rerun-validation")) {
+      actions.push({
+        label: "Re-run required validation",
+        intent: "rerun validation",
+        command: `leanrigor flow rerun-validation ${state.id} --provider auto --json${common} --root ${root}`,
+        description: "Run the approved commands in the preserved phase workspace without invoking the provider."
+      });
+    }
     actions.push({
       label: "Repair",
       intent: "repair it",
@@ -634,7 +653,7 @@ function internalOperationsFor(state: SequentialWorkflowState): string[] {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "revise-approach", "status", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
-  if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "rerun-validation", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
   if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["retry-plan", "revise-plan", "status", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];

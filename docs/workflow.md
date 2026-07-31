@@ -391,6 +391,14 @@ Provider results are evidence, not authority. A provider can return
 passes. Provider diagnostics are bounded and persisted without full transcripts
 or hidden reasoning.
 
+For every completed provider result, LeanRigor itself re-runs the exact
+validation commands approved in the Phase Execution Brief inside the preserved
+phase workspace. These runner-owned exit codes and bounded outputs are the
+authoritative per-phase validation evidence; provider-reported validation is
+retained as diagnostic context only. If that recheck is needed later, recovery
+offers **Re-run required validation**, which invokes no provider and preserves
+the existing worktree.
+
 Execution attempts may also persist provider-session provenance and a bounded
 worktree checkpoint. On provider failure, max turns, max budget, interruption,
 or malformed output, LeanRigor records tracked changes, untracked files,

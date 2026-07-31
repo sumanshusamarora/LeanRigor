@@ -15,6 +15,7 @@ import { briefIsCurrent, briefStalenessReasons } from "../approval.js";
 import { supplementalValidationCommands } from "../validation-policy.js";
 import { adviseSupplementalValidation } from "../validation-advisory.js";
 import {
+  beginValidationRecheck,
   completePhase,
   heartbeatPhase,
   integratePhase,
@@ -36,6 +37,7 @@ import type { ExecutionProvider } from "./provider.js";
 import type { StructuredDecisionProvider } from "../structured-decision.js";
 import type { CoordinatorResult, DispatchSummary, ExecutionHandle, ExecutionNextAction, PhaseExecutionInput, PhaseExecutionResult, PhaseWorkspaceCheckpoint, ProviderSessionRef, ProviderSessionStatus } from "./types.js";
 import { toValidationEvidence } from "./types.js";
+import { WorkspaceValidationRunner, type ValidationCommandRunner } from "../validation-runner.js";
 
 const ACTIVE_EXECUTION_STATUSES = new Set<PhaseExecutionRecordStatus>(["dispatching", "running", "collecting"]);
 const execFileAsync = promisify(execFile);
@@ -48,6 +50,7 @@ export interface ExecutionCoordinatorOptions {
   provider: ExecutionProvider;
   phaseBriefProvider?: PhaseBriefPlanningProvider;
   validationAdvisor?: StructuredDecisionProvider;
+  validationRunner?: ValidationCommandRunner;
   coordinatorId?: string;
   clock?: () => Date;
 }
@@ -59,6 +62,7 @@ export class ExecutionCoordinator {
   private readonly provider: ExecutionProvider;
   private readonly phaseBriefProvider?: PhaseBriefPlanningProvider;
   private readonly validationAdvisor?: StructuredDecisionProvider;
+  private readonly validationRunner: ValidationCommandRunner;
   private readonly coordinatorId: string;
   private readonly clock: () => Date;
 
@@ -69,6 +73,7 @@ export class ExecutionCoordinator {
     this.provider = options.provider;
     this.phaseBriefProvider = options.phaseBriefProvider;
     this.validationAdvisor = options.validationAdvisor;
+    this.validationRunner = options.validationRunner ?? new WorkspaceValidationRunner();
     this.coordinatorId = options.coordinatorId ?? `lr-coordinator-${process.pid}`;
     this.clock = options.clock ?? (() => new Date());
   }
@@ -393,6 +398,55 @@ export class ExecutionCoordinator {
     return this.dispatchResumedPhase(phaseId, ownerId, "Retried");
   }
 
+  /** Re-run approved validation in the preserved phase workspace without invoking a provider. */
+  async rerunValidation(decisionId: string, expectedRevision: number): Promise<CoordinatorResult> {
+    const state = await loadFlowState(this.root, this.workflowId);
+    const decision = requirePendingDecision(state, "execution-recovery", "rerun-validation", decisionId);
+    const phaseId = decision?.phaseId;
+    const phase = phaseId ? state.plan?.phases.find((candidate) => candidate.id === phaseId) : undefined;
+    const brief = phaseId ? state.phaseBriefs?.[phaseId] : undefined;
+    const record = phaseId ? state.execution.records[phaseId] : undefined;
+    if (!phaseId || !phase || !brief || !record?.checkpoint || !phase.completion) {
+      throw new Error("Validation recovery requires a current approved brief, preserved workspace checkpoint, and completion record.");
+    }
+    if (!briefIsCurrent(state, phaseId)) throw new Error(`Phase ${phaseId} brief is stale; revise or regenerate it before re-running validation.`);
+    const priorCompletion = structuredClone(phase.completion);
+    const ownerId = this.ownerId(phaseId);
+    const started = await beginValidationRecheck({
+      root: this.root,
+      workflowId: this.workflowId,
+      phaseId,
+      config: this.config,
+      mutation: { expectedRevision, ownerId, ownerType: "system", decisionId, operation: "validation_recheck_authorized" }
+    });
+    await updateFlowState(this.root, this.workflowId, (current) => {
+      requirePendingDecision(current, "execution-recovery", "rerun-validation", decisionId);
+      resolvePendingDecision(current, "approved", "rerun-validation", "user", decisionId);
+      return current;
+    }, { expectedRevision: started.revision, ownerId: this.coordinatorId, ownerType: "system", decisionId, operation: "validation_recheck_decision_resolved" });
+    const evidence = await this.validationRunner.run({
+      phaseId,
+      workspacePath: record.workspacePath,
+      commands: brief.validationCommands,
+      timeoutSeconds: this.config.execution.workerTimeoutSeconds
+    });
+    const completed = await completePhase({
+      root: this.root,
+      workflowId: this.workflowId,
+      phaseId,
+      config: this.config,
+      criteria: priorCompletion.criteria,
+      filesChanged: priorCompletion.filesChanged,
+      commandsRun: evidence.map((item) => item.command),
+      validation: evidence,
+      assumptions: priorCompletion.assumptions,
+      remainingRisks: priorCompletion.remainingRisks,
+      requestedRepairScope: "Runner-owned revalidation of approved commands.",
+      mutation: { ownerId, ownerType: "system" }
+    });
+    return this.result(completed, [], this.nextActionForState(completed), "Runner-owned phase validation recheck completed.");
+  }
+
   /**
    * Accept a material-drift result only when it is still the exact trusted
    * result that was quarantined. This is an exception to the planning boundary,
@@ -705,8 +759,17 @@ export class ExecutionCoordinator {
       await this.quarantineResult(record, result, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
       return "blocked";
     }
+    const runnerValidation = result.status === "completed"
+      ? await this.validationRunner.run({
+        phaseId: record.phaseId,
+        workspacePath: record.workspacePath,
+        commands: brief?.validationCommands ?? [],
+        timeoutSeconds: this.config.execution.workerTimeoutSeconds
+      })
+      : [];
     const diagnostics = mergeDiagnostics(record.diagnostics, result.providerDiagnostics, {
       checkpoint,
+      runnerValidation,
       changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles),
       supplementalValidation: supplementalValidation.length > 0 ? {
         commands: supplementalValidation,
@@ -733,7 +796,7 @@ export class ExecutionCoordinator {
         });
         return "blocked";
       }
-      const validation = result.validation.map((entry) => toValidationEvidence(record.phaseId, entry));
+      const validation = [...result.validation.map((entry) => toValidationEvidence(record.phaseId, entry)), ...runnerValidation];
       await completePhase({
         root: this.root,
         workflowId: this.workflowId,

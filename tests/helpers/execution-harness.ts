@@ -7,6 +7,7 @@ import { defaultConfig } from "../../src/config/defaults.js";
 import type { LeanRigorConfig } from "../../src/config/schema.js";
 import { approvePhase, approvePlan, loadFlowState, preparePhaseExecutionBrief, saveFlowState, startFlow } from "../../src/core/flow.js";
 import { ExecutionCoordinator } from "../../src/core/execution/coordinator.js";
+import type { ValidationCommandRunner } from "../../src/core/validation-runner.js";
 import { ScriptedExecutionProvider, type ScriptedPhase } from "../../src/core/execution/scripted-provider.js";
 import type { ExecutionPlan, SequentialWorkflowState, WorkflowPhase } from "../../src/core/types.js";
 import type { StructuredDecisionProvider } from "../../src/core/structured-decision.js";
@@ -32,6 +33,7 @@ export async function createExecutionHarness(options: {
   approveFirstPhase?: boolean;
   approvalPolicy?: "workflow-authorized" | "phase-by-phase";
   validationAdvisor?: StructuredDecisionProvider;
+  validationRunner?: ValidationCommandRunner;
 }): Promise<DisposableExecutionHarness> {
   const root = await gitRepo();
   const config = defaultConfig();
@@ -45,7 +47,7 @@ export async function createExecutionHarness(options: {
     options.approvalPolicy ?? "workflow-authorized"
   );
   const provider = new ScriptedExecutionProvider(options.scripts, options.clock ? () => options.clock!().getTime() : undefined);
-  const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, validationAdvisor: options.validationAdvisor, clock: options.clock });
+  const coordinator = new ExecutionCoordinator({ root, workflowId: workflow.id, config, provider, validationAdvisor: options.validationAdvisor, validationRunner: options.validationRunner, clock: options.clock });
   return {
     root,
     config,

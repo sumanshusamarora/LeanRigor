@@ -140,11 +140,26 @@ describe("execution coordinator", () => {
     expect(state.execution.records["phase-right"]?.status).toBe("blocked");
   });
 
-  it("keeps failed validation out of integration", async () => {
+  it("uses runner-owned validation and can recheck it without redispatching the provider", async () => {
+    let runnerExit = 1;
     const harness = await createExecutionHarness({
       phases: [testPhase("phase-a", ["src/a.ts"])],
       scripts: {
         "phase-a": { edits: [{ path: "src/a.ts", content: "a\n" }], validation: [{ command: "npm test", exitCode: 1, status: "failed" }] }
+      },
+      validationRunner: {
+        async run(request) {
+          return request.commands.map((command) => ({
+            phaseId: request.phaseId,
+            command,
+            exitStatus: runnerExit,
+            result: runnerExit === 0 ? "runner validation passed" : "runner validation failed",
+            status: runnerExit === 0 ? "passed" as const : "failed" as const,
+            skipped: false,
+            source: "runner" as const,
+            timestamp: new Date().toISOString()
+          }));
+        }
       }
     });
 
@@ -153,9 +168,49 @@ describe("execution coordinator", () => {
     const state = await currentState(harness);
 
     expect(result.nextAction).toBe("await_user");
-    expect(result.decision).toMatchObject({ type: "execution-recovery" });
+    expect(result.decision).toMatchObject({ type: "execution-recovery", options: expect.arrayContaining([expect.objectContaining({ intent: "rerun-validation" })]) });
     expect(state.plan?.phases[0]?.status).toBe("needs_repair");
     expect(state.git?.integration.integratedPhaseIds).toEqual([]);
+    expect(state.plan?.phases[0]?.completion?.validation.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: "npm test", source: "runner", status: "failed" })
+    ]));
+
+    runnerExit = 0;
+    const decision = state.approval?.pendingDecision;
+    if (!decision) throw new Error("expected validation recovery decision");
+    await harness.coordinator.rerunValidation(decision.id, state.revision);
+    const rechecked = await currentState(harness);
+
+    expect(rechecked.plan?.phases[0]?.status).toBe("completed");
+    expect(rechecked.plan?.phases[0]?.completion?.validation).toMatchObject({ status: "passed" });
+    expect(rechecked.plan?.phases[0]?.completion?.validation.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: "npm test", source: "runner", status: "passed", result: "runner validation passed" })
+    ]));
+    expect(rechecked.execution.records["phase-a"]?.executionBudget?.attempts).toHaveLength(1);
+  });
+
+  it("does not let a provider-reported validation failure override a passing runner recheck", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {
+        "phase-a": { edits: [{ path: "src/a.ts", content: "a\n" }], validation: [{ command: "npm test", exitCode: 1, status: "failed", result: "provider claimed failure" }] }
+      }
+    });
+
+    await harness.coordinator.runNext();
+    await harness.coordinator.poll();
+    const state = await currentState(harness);
+
+    expect(state.plan?.phases[0]?.status).toBe("completed");
+    expect(state.plan?.phases[0]?.completion?.validation).toMatchObject({ status: "passed" });
+    // Preserve the provider claim for diagnosis, but use the runner's result
+    // as the authoritative completion evidence for the same command.
+    expect(state.plan?.phases[0]?.validationResults).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: "npm test", source: "provider", status: "failed" })
+    ]));
+    expect(state.plan?.phases[0]?.completion?.validation.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: "npm test", source: "runner", status: "passed" })
+    ]));
   });
 
   it("accepts supplemental validation without weakening the required check", async () => {
@@ -178,11 +233,13 @@ describe("execution coordinator", () => {
     const state = await currentState(harness);
 
     expect(result.decision?.type).toBe("final-review");
-    expect(state.plan?.phases[0]?.validationResults.map((entry) => entry.command)).toEqual([
-      "npm test",
-      "npx vitest run tests/flow.test.ts",
-      "npx tsc --noEmit"
-    ]);
+    expect(state.plan?.phases[0]?.validationResults).toEqual(expect.arrayContaining([
+      expect.objectContaining({ command: "npm test", source: "provider" }),
+      expect.objectContaining({ command: "npx vitest run tests/flow.test.ts", source: "provider" }),
+      expect.objectContaining({ command: "npx tsc --noEmit", source: "provider" }),
+      expect.objectContaining({ command: "npm test", source: "runner", status: "passed" }),
+      expect.objectContaining({ command: "npm run test", source: "runner", status: "passed" })
+    ]));
   });
 
   it("records language-agnostic supplemental validation without a review gate", async () => {

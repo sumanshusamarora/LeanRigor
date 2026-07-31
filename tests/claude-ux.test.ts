@@ -243,7 +243,7 @@ describe("Claude conversational workflow UX support", () => {
 
     const next = workflowNextSummary(failed);
 
-    expect(next.label).toBe("Phase recovery decision");
+    expect(next.label).toBe("Phase validation failed");
     expect(next.allowedIntents).not.toContain("continue");
     expect(next.pendingAction).toMatch(/cannot bypass repair/);
   });
@@ -278,7 +278,7 @@ describe("Claude conversational workflow UX support", () => {
     const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
     const executing = await approvePlan(root, (await approveApproach(root, started.id, defaultConfig())).id);
     const failed = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"], "failed");
-    expect(workflowNextSummary(failed).label).toBe("Phase recovery decision");
+    expect(workflowNextSummary(failed).label).toBe("Phase validation failed");
 
     const fastRoot = await tempRepo();
     const validating = await completeFastPhase(fastRoot);
@@ -465,7 +465,7 @@ describe("approval actions", () => {
     const failed = await completePhaseWithEvidence(root, executing, "phase-1", ["src/api.ts"], "failed");
     const next = workflowNextSummary(failed);
 
-    expect(next.label).toBe("Phase recovery decision");
+    expect(next.label).toBe("Phase validation failed");
     expect(next.approvalActions).toBeDefined();
     expect(next.approvalActions?.find((a) => a.intent === "repair it")?.command).toContain("leanrigor flow repair");
     expect(next.approvalActions?.find((a) => a.intent === "revise")?.command).toContain("leanrigor flow revise-plan");

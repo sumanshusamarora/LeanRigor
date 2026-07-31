@@ -858,6 +858,8 @@ export interface ValidationEvidence {
   status: "passed" | "failed" | "skipped";
   skipped: boolean;
   skippedReason?: string;
+  /** Provider-reported evidence is informative; runner evidence is authoritative. */
+  source?: "provider" | "runner";
   timestamp: string;
 }
 

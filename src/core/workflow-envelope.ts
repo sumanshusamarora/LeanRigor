@@ -96,6 +96,7 @@ function decisionActionsForQuestion(decision: WorkflowPendingDecision): string[]
     ? [
         "discard-out-of-scope-and-retry",
         "continue-execution",
+        "rerun-validation",
         "retry-execution",
         "revise-phase-brief",
         "revise-plan",
@@ -250,6 +251,7 @@ function decisionOption(state: SequentialWorkflowState, decision: WorkflowPendin
     "retry-preparation": { label: "Retry workspace preparation", description: "Retry deterministic preparation without authorizing another command.", command: `leanrigor flow execute-next ${state.id} --provider auto --json --root ${root}` },
     "retry-brief": { label: "Retry bounded brief generation", description: "Retry read-only inspection and brief generation within the persisted boundary.", command: `leanrigor flow phase-brief ${state.id} ${phase} --refresh ${common}` },
     "retry-execution": { label: "Retry provider execution", description: "Retry the configured provider using persisted recovery state.", command: `leanrigor flow execution-recover ${state.id} --provider auto --json ${common}` },
+    "rerun-validation": { label: "Re-run required validation", description: "Run only the approved validation commands in the preserved phase workspace; Claude is not invoked.", command: `leanrigor flow rerun-validation ${state.id} --provider auto --json ${common}` },
     "discard-out-of-scope-and-retry": {
       label: "Discard out-of-scope changes and retry",
       description: "Restore only rejected out-of-scope paths, preserve approved-scope work, and retry in a fresh compact provider session.",

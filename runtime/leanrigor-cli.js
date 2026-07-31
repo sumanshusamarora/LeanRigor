@@ -23192,8 +23192,8 @@ async function createClaudePromptFile(prompt) {
 
 // src/adapters/claude/triage-provider.ts
 var ClaudeCliTriageProvider = class {
-  constructor(runCommand = defaultCommandRunner) {
-    this.runCommand = runCommand;
+  constructor(runCommand2 = defaultCommandRunner) {
+    this.runCommand = runCommand2;
   }
   runCommand;
   name = "claude-cli";
@@ -23434,8 +23434,8 @@ function compactReason(reason) {
 
 // src/adapters/claude/structured-decision-provider.ts
 var ClaudeCliStructuredDecisionProvider = class {
-  constructor(runCommand = defaultCommandRunner) {
-    this.runCommand = runCommand;
+  constructor(runCommand2 = defaultCommandRunner) {
+    this.runCommand = runCommand2;
   }
   runCommand;
   name = "claude-cli";
@@ -23500,8 +23500,8 @@ function structuredValue(stdout) {
 var ClaudeCliPlanningProvider = class {
   name = "claude-cli";
   decisions;
-  constructor(runCommand = defaultCommandRunner) {
-    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand);
+  constructor(runCommand2 = defaultCommandRunner) {
+    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand2);
   }
   async plan(input) {
     const result = await this.decide({
@@ -25769,8 +25769,8 @@ function pathAreaContains(area, file2) {
 var ClaudeCliPhaseBriefPlanningProvider = class {
   name = "claude-cli";
   decisions;
-  constructor(runCommand = defaultCommandRunner) {
-    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand);
+  constructor(runCommand2 = defaultCommandRunner) {
+    this.decisions = new ClaudeCliStructuredDecisionProvider(runCommand2);
   }
   async generate(input) {
     return this.propose(input, "phase brief generation", buildGenerationPrompt(input));
@@ -28534,6 +28534,7 @@ var validationEvidenceSchema = external_exports.object({
   status: external_exports.enum(["passed", "failed", "skipped"]),
   skipped: external_exports.boolean(),
   skippedReason: external_exports.string().optional(),
+  source: external_exports.enum(["provider", "runner"]).default("provider"),
   timestamp: external_exports.string()
 }).superRefine((value, ctx) => {
   if (value.skipped && !value.skippedReason) {
@@ -29826,7 +29827,13 @@ async function completePhase(args) {
         phaseId: phase2.id,
         briefRevision: next.phaseBriefs?.[phase2.id]?.briefRevision,
         question: completion.reason,
-        allowedActions: ["view-details", "retry-execution", "revise-plan", "cancel-workflow"]
+        allowedActions: [
+          "view-details",
+          ...completion.validation.status === "failed" || completion.validation.status === "missing" ? ["rerun-validation"] : [],
+          "retry-execution",
+          "revise-plan",
+          "cancel-workflow"
+        ]
       });
       return next;
     }
@@ -29917,6 +29924,25 @@ async function repairPhase(args) {
     appendEvent(next, "phase_repair_started", `Phase ${phase2.id} repair attempt ${attempt.attempt}/${budget} started.`, phase2.id);
     return next;
   }, { ...args.mutation, operation: "repair_phase" });
+}
+async function beginValidationRecheck(args) {
+  return updateFlowState(args.root, args.workflowId, (state) => {
+    assertState(state, ["executing"]);
+    if (!state.plan) throw new WorkflowStateError("Cannot re-run validation without a plan.");
+    const next = structuredClone(state);
+    const phase2 = phaseById2(next.plan, args.phaseId);
+    if (!phase2) throw new WorkflowStateError(`Unknown phase: ${args.phaseId}`);
+    if (phase2.status !== "needs_repair" || !phase2.completion || !["failed", "missing"].includes(phase2.completion.validation.status)) {
+      throw new InvalidTransitionError(`Phase ${phase2.id} is not awaiting validation recovery.`);
+    }
+    const ownerId = args.mutation?.ownerId ?? DEFAULT_OWNER_ID;
+    phase2.status = "running";
+    phase2.startedAt = timestamp2();
+    phase2.completedAt = void 0;
+    next.phaseLeases[phase2.id] = phaseLease(phase2, ownerId, args.mutation?.ownerType ?? "system", next.revision, args.config.execution.phaseLeaseTimeoutSeconds);
+    appendEvent(next, "phase_validation_recheck_started", `Runner-owned validation recheck started for ${phase2.id}; no provider was dispatched.`, phase2.id);
+    return next;
+  }, { ...args.mutation, operation: "phase_validation_recheck" });
 }
 async function recordValidation(args) {
   return updateFlowState(args.root, args.workflowId, (state) => {
@@ -31386,7 +31412,13 @@ function criterionTextMatches(candidate, expected) {
 }
 function summarisePhaseValidation(phase2, mode2, config2) {
   const activeRepair = phase2.repairAttempts.find((attempt) => !attempt.outcome);
-  const commands = activeRepair ? phase2.validationResults.filter((evidence2) => evidence2.timestamp >= activeRepair.timestamp) : phase2.validationResults;
+  const recordedCommands = activeRepair ? phase2.validationResults.filter((evidence2) => evidence2.timestamp >= activeRepair.timestamp) : phase2.validationResults;
+  const latestRunnerByCommand = /* @__PURE__ */ new Map();
+  for (const evidence2 of recordedCommands) {
+    if (evidence2.source === "runner") latestRunnerByCommand.set(evidence2.command, evidence2);
+  }
+  const runnerCommands = [...latestRunnerByCommand.values()];
+  const commands = runnerCommands.length > 0 ? runnerCommands : recordedCommands;
   const skipped = commands.filter((evidence2) => evidence2.skipped).map((evidence2) => ({
     command: evidence2.command,
     reason: evidence2.skippedReason ?? "No reason recorded."
@@ -31699,10 +31731,26 @@ function migrateWorkflowState(raw, root, workflowId2) {
   migrated.phaseBriefFailures = migrated.phaseBriefFailures && typeof migrated.phaseBriefFailures === "object" ? migrated.phaseBriefFailures : {};
   normalizeLegacyMaterialBriefDecision(migrated);
   normalizeLegacyExecutionQuarantineDecision(migrated);
+  normalizeValidationRecoveryDecision(migrated);
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
   return migrated;
+}
+function normalizeValidationRecoveryDecision(state) {
+  const approval = state.approval;
+  const decision = approval?.pendingDecision;
+  if (decision?.type !== "execution-recovery" || decision.status !== "pending" || typeof decision.phaseId !== "string") return;
+  const plan = state.plan;
+  const phase2 = plan?.phases?.find((candidate) => candidate.id === decision.phaseId);
+  const validation = phase2?.completion && typeof phase2.completion === "object" ? phase2.completion.validation : void 0;
+  if (validation?.status !== "failed" && validation?.status !== "missing") return;
+  const actions = Array.isArray(decision.allowedActions) ? decision.allowedActions.filter((action) => typeof action === "string") : [];
+  if (actions.includes("rerun-validation")) return;
+  const retryIndex = actions.indexOf("retry-execution");
+  if (retryIndex >= 0) actions.splice(retryIndex, 0, "rerun-validation");
+  else actions.push("rerun-validation");
+  decision.allowedActions = actions;
 }
 function normalizeLegacyExecutionQuarantineDecision(state) {
   const approval = state.approval;
@@ -32117,6 +32165,7 @@ function decisionActionsForQuestion(decision) {
   const preferred = decision.type === "execution-recovery" ? [
     "discard-out-of-scope-and-retry",
     "continue-execution",
+    "rerun-validation",
     "retry-execution",
     "revise-phase-brief",
     "revise-plan",
@@ -32256,6 +32305,7 @@ function decisionOption(state, decision, action) {
     "retry-preparation": { label: "Retry workspace preparation", description: "Retry deterministic preparation without authorizing another command.", command: `leanrigor flow execute-next ${state.id} --provider auto --json --root ${root}` },
     "retry-brief": { label: "Retry bounded brief generation", description: "Retry read-only inspection and brief generation within the persisted boundary.", command: `leanrigor flow phase-brief ${state.id} ${phase2} --refresh ${common}` },
     "retry-execution": { label: "Retry provider execution", description: "Retry the configured provider using persisted recovery state.", command: `leanrigor flow execution-recover ${state.id} --provider auto --json ${common}` },
+    "rerun-validation": { label: "Re-run required validation", description: "Run only the approved validation commands in the preserved phase workspace; Claude is not invoked.", command: `leanrigor flow rerun-validation ${state.id} --provider auto --json ${common}` },
     "discard-out-of-scope-and-retry": {
       label: "Discard out-of-scope changes and retry",
       description: "Restore only rejected out-of-scope paths, preserve approved-scope work, and retry in a fresh compact provider session.",
@@ -32638,7 +32688,7 @@ function workflowNextSummary(state) {
     }
     return {
       ...base,
-      label: needsIntervention ? "Phase recovery decision" : "Phase execution status",
+      label: needsIntervention && phase2.completion?.validation.status === "failed" ? "Phase validation failed" : needsIntervention ? "Phase recovery decision" : "Phase execution status",
       userDecisionRequired: needsIntervention,
       pendingDecision: needsIntervention ? phase2.completion?.reason ?? "The active phase needs intervention." : null,
       pendingAction: phase2.status === "ready" && readiness.recommendedNextPhase ? `Execute recommended next phase ${readiness.recommendedNextPhase.id}. Other dependency-ready phases require explicit selection.` : phaseNextAction(phase2.status),
@@ -32651,6 +32701,13 @@ function workflowNextSummary(state) {
         completionGate: phase2.completion?.decision ?? "pending",
         criteria: phase2.completion ? summariseCriteria(phase2.completion.criteria) : void 0,
         validation: phase2.completion?.validation.status ?? "pending",
+        validationEvidence: phase2.completion?.validation.commands.map((evidence2) => ({
+          command: evidence2.command,
+          status: evidence2.status,
+          exitStatus: evidence2.exitStatus,
+          source: evidence2.source ?? "provider",
+          result: evidence2.result
+        })) ?? [],
         repairAttempts: phase2.repairAttempts.length,
         scopeDeviations: phase2.scopeDeviations,
         recommendedNextPhase: readiness.recommendedNextPhase,
@@ -32818,6 +32875,16 @@ function phaseApprovalActions(state, phase2) {
   const root = quoteArg(state.root);
   const actions = [];
   if (phase2.status === "needs_repair") {
+    const decision = state.approval?.pendingDecision;
+    const common = decision?.type === "execution-recovery" && decision.phaseId === phase2.id && decision.status === "pending" ? ` --decision-id ${decision.id} --expected-revision ${state.revision}` : "";
+    if (decision?.allowedActions?.includes("rerun-validation")) {
+      actions.push({
+        label: "Re-run required validation",
+        intent: "rerun validation",
+        command: `leanrigor flow rerun-validation ${state.id} --provider auto --json${common} --root ${root}`,
+        description: "Run the approved commands in the preserved phase workspace without invoking the provider."
+      });
+    }
     actions.push({
       label: "Repair",
       intent: "repair it",
@@ -32870,7 +32937,7 @@ function internalOperationsFor(state) {
   if (state.state === "awaiting_clarification") return ["answer"];
   if (state.state === "awaiting_approach_approval") return ["approve-approach", "revise-approach", "status", "cancel"];
   if (state.state === "awaiting_plan_approval") return ["approve-plan", "revise-plan", "cancel"];
-  if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
+  if (state.state === "executing") return ["execute-next", "execution-status", "execution-poll", "rerun-validation", "ready", "repair", "recover-leases", "revise-plan", "cancel"];
   if (state.state === "validating" || state.state === "reviewing") return ["record-validation", "record-review"];
   if (state.state === "blocked" && state.planningRun?.approvalBlockedReason) return ["retry-plan", "revise-plan", "status", "cancel"];
   if (state.state === "awaiting_commit_approval") return ["commit-plan", "complete", "cancel"];
@@ -32977,11 +33044,11 @@ function completionEvidenceArtifactPath(root, workflowId2, phaseId) {
 }
 
 // src/core/execution/coordinator.ts
-import { execFile as execFile7 } from "node:child_process";
+import { execFile as execFile8 } from "node:child_process";
 import { createHash as createHash8 } from "node:crypto";
 import { readFile as readFile17, rm as rm5, stat as stat5 } from "node:fs/promises";
 import path23 from "node:path";
-import { promisify as promisify7 } from "node:util";
+import { promisify as promisify8 } from "node:util";
 
 // src/core/workspace-preparation.ts
 import { execFile as execFile6 } from "node:child_process";
@@ -33295,13 +33362,71 @@ function toValidationEvidence(phaseId, entry) {
     status: skipped ? "skipped" : exitStatus === 0 ? "passed" : "failed",
     skipped,
     skippedReason: entry.skippedReason,
+    source: "provider",
     timestamp: entry.timestamp ?? (/* @__PURE__ */ new Date()).toISOString()
   };
 }
 
+// src/core/validation-runner.ts
+import { execFile as execFile7 } from "node:child_process";
+import { promisify as promisify7 } from "node:util";
+var execFileAsync7 = promisify7(execFile7);
+var MAX_OUTPUT_BYTES = 16 * 1024;
+var WorkspaceValidationRunner = class {
+  async run(request) {
+    const evidence2 = [];
+    for (const command of request.commands) {
+      evidence2.push(await runCommand(request.phaseId, request.workspacePath, command, request.timeoutSeconds));
+    }
+    return evidence2;
+  }
+};
+async function runCommand(phaseId, workspacePath, command, timeoutSeconds) {
+  const timestamp3 = (/* @__PURE__ */ new Date()).toISOString();
+  try {
+    const { stdout, stderr } = await execFileAsync7(shell(), shellArgs(command), {
+      cwd: workspacePath,
+      encoding: "utf8",
+      timeout: Math.max(1, timeoutSeconds) * 1e3,
+      maxBuffer: MAX_OUTPUT_BYTES
+    });
+    return runnerEvidence(phaseId, command, 0, `${stdout}${stderr}`.trim() || "Command completed successfully.", timestamp3);
+  } catch (error51) {
+    const failed = error51;
+    const timedOut = failed.killed || failed.signal === "SIGTERM" || /timed out/i.test(failed.message ?? "");
+    const exitStatus = typeof failed.code === "number" ? failed.code : timedOut ? 124 : 1;
+    const output = `${failed.stdout ?? ""}${failed.stderr ?? ""}`.trim() || (timedOut ? `Command timed out after ${timeoutSeconds} seconds.` : failed.message ?? "Validation command failed without output.");
+    return runnerEvidence(phaseId, command, exitStatus, output, timestamp3);
+  }
+}
+function runnerEvidence(phaseId, command, exitStatus, output, timestamp3) {
+  return {
+    phaseId,
+    command,
+    exitStatus,
+    result: boundOutput(output),
+    status: exitStatus === 0 ? "passed" : "failed",
+    skipped: false,
+    source: "runner",
+    timestamp: timestamp3
+  };
+}
+function shell() {
+  return process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "bash";
+}
+function shellArgs(command) {
+  return process.platform === "win32" ? ["/d", "/c", command] : ["-lc", command];
+}
+function boundOutput(value) {
+  const bytes = Buffer.from(value, "utf8");
+  if (bytes.length <= MAX_OUTPUT_BYTES) return value;
+  return `${bytes.subarray(0, MAX_OUTPUT_BYTES).toString("utf8")}
+[output truncated by LeanRigor]`;
+}
+
 // src/core/execution/coordinator.ts
 var ACTIVE_EXECUTION_STATUSES = /* @__PURE__ */ new Set(["dispatching", "running", "collecting"]);
-var execFileAsync7 = promisify7(execFile7);
+var execFileAsync8 = promisify8(execFile8);
 var CHECKPOINT_DIFF_BYTES = 32 * 1024;
 var ExecutionCoordinator = class {
   root;
@@ -33310,6 +33435,7 @@ var ExecutionCoordinator = class {
   provider;
   phaseBriefProvider;
   validationAdvisor;
+  validationRunner;
   coordinatorId;
   clock;
   constructor(options) {
@@ -33319,6 +33445,7 @@ var ExecutionCoordinator = class {
     this.provider = options.provider;
     this.phaseBriefProvider = options.phaseBriefProvider;
     this.validationAdvisor = options.validationAdvisor;
+    this.validationRunner = options.validationRunner ?? new WorkspaceValidationRunner();
     this.coordinatorId = options.coordinatorId ?? `lr-coordinator-${process.pid}`;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
   }
@@ -33619,6 +33746,54 @@ var ExecutionCoordinator = class {
     });
     return this.dispatchResumedPhase(phaseId, ownerId, "Retried");
   }
+  /** Re-run approved validation in the preserved phase workspace without invoking a provider. */
+  async rerunValidation(decisionId, expectedRevision) {
+    const state = await loadFlowState(this.root, this.workflowId);
+    const decision = requirePendingDecision(state, "execution-recovery", "rerun-validation", decisionId);
+    const phaseId = decision?.phaseId;
+    const phase2 = phaseId ? state.plan?.phases.find((candidate) => candidate.id === phaseId) : void 0;
+    const brief = phaseId ? state.phaseBriefs?.[phaseId] : void 0;
+    const record2 = phaseId ? state.execution.records[phaseId] : void 0;
+    if (!phaseId || !phase2 || !brief || !record2?.checkpoint || !phase2.completion) {
+      throw new Error("Validation recovery requires a current approved brief, preserved workspace checkpoint, and completion record.");
+    }
+    if (!briefIsCurrent(state, phaseId)) throw new Error(`Phase ${phaseId} brief is stale; revise or regenerate it before re-running validation.`);
+    const priorCompletion = structuredClone(phase2.completion);
+    const ownerId = this.ownerId(phaseId);
+    const started = await beginValidationRecheck({
+      root: this.root,
+      workflowId: this.workflowId,
+      phaseId,
+      config: this.config,
+      mutation: { expectedRevision, ownerId, ownerType: "system", decisionId, operation: "validation_recheck_authorized" }
+    });
+    await updateFlowState(this.root, this.workflowId, (current) => {
+      requirePendingDecision(current, "execution-recovery", "rerun-validation", decisionId);
+      resolvePendingDecision(current, "approved", "rerun-validation", "user", decisionId);
+      return current;
+    }, { expectedRevision: started.revision, ownerId: this.coordinatorId, ownerType: "system", decisionId, operation: "validation_recheck_decision_resolved" });
+    const evidence2 = await this.validationRunner.run({
+      phaseId,
+      workspacePath: record2.workspacePath,
+      commands: brief.validationCommands,
+      timeoutSeconds: this.config.execution.workerTimeoutSeconds
+    });
+    const completed = await completePhase({
+      root: this.root,
+      workflowId: this.workflowId,
+      phaseId,
+      config: this.config,
+      criteria: priorCompletion.criteria,
+      filesChanged: priorCompletion.filesChanged,
+      commandsRun: evidence2.map((item) => item.command),
+      validation: evidence2,
+      assumptions: priorCompletion.assumptions,
+      remainingRisks: priorCompletion.remainingRisks,
+      requestedRepairScope: "Runner-owned revalidation of approved commands.",
+      mutation: { ownerId, ownerType: "system" }
+    });
+    return this.result(completed, [], this.nextActionForState(completed), "Runner-owned phase validation recheck completed.");
+  }
   /**
    * Accept a material-drift result only when it is still the exact trusted
    * result that was quarantined. This is an exception to the planning boundary,
@@ -33918,8 +34093,15 @@ var ExecutionCoordinator = class {
       await this.quarantineResult(record2, result, checkpoint, "needs_review", result.summary, { discoveredMaterialChanges: result.discoveredMaterialChanges });
       return "blocked";
     }
+    const runnerValidation = result.status === "completed" ? await this.validationRunner.run({
+      phaseId: record2.phaseId,
+      workspacePath: record2.workspacePath,
+      commands: brief?.validationCommands ?? [],
+      timeoutSeconds: this.config.execution.workerTimeoutSeconds
+    }) : [];
     const diagnostics = mergeDiagnostics(record2.diagnostics, result.providerDiagnostics, {
       checkpoint,
+      runnerValidation,
       changedFileReconciliation: reconcileChangedFiles(result.changedFiles, checkpoint.changedFiles),
       supplementalValidation: supplementalValidation.length > 0 ? {
         commands: supplementalValidation,
@@ -33946,7 +34128,7 @@ var ExecutionCoordinator = class {
         });
         return "blocked";
       }
-      const validation = result.validation.map((entry) => toValidationEvidence(record2.phaseId, entry));
+      const validation = [...result.validation.map((entry) => toValidationEvidence(record2.phaseId, entry)), ...runnerValidation];
       await completePhase({
         root: this.root,
         workflowId: this.workflowId,
@@ -34544,7 +34726,7 @@ ${diffExcerpt}`].filter(Boolean).join("\n\n");
 }
 async function gitText(cwd, args) {
   try {
-    const result = await execFileAsync7("git", args, { cwd, encoding: "utf8", maxBuffer: CHECKPOINT_DIFF_BYTES * 4 });
+    const result = await execFileAsync8("git", args, { cwd, encoding: "utf8", maxBuffer: CHECKPOINT_DIFF_BYTES * 4 });
     return result.stdout;
   } catch {
     return "";
@@ -34569,7 +34751,7 @@ async function discardOutOfScopeChanges(workspacePath, baseCommit, checkpoint, f
     else tracked.push(normalized2);
   }
   if (tracked.length > 0) {
-    await execFileAsync7("git", ["restore", `--source=${baseCommit}`, "--staged", "--worktree", "--", ...tracked], {
+    await execFileAsync8("git", ["restore", `--source=${baseCommit}`, "--staged", "--worktree", "--", ...tracked], {
       cwd: workspace,
       encoding: "utf8",
       maxBuffer: CHECKPOINT_DIFF_BYTES * 4
@@ -34703,7 +34885,7 @@ async function codeGraphUsable(target) {
   try {
     const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "codegraph";
     const args = process.platform === "win32" ? ["/d", "/c", "codegraph", "status", target] : ["status", target];
-    await execFileAsync7(command, args, { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
+    await execFileAsync8(command, args, { encoding: "utf8", timeout: 3e3, maxBuffer: 32 * 1024 });
     return true;
   } catch {
     return false;
@@ -34953,7 +35135,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.47");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.48");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -35387,6 +35569,15 @@ flow.command("execution-recover").argument("<workflow-id>").option("--decision-i
     return;
   }
   printCoordinatorResult(await runCoordinatorCommand(options.root, workflowId2, options.provider, options.scriptFile, (coordinator) => coordinator.recover()), Boolean(options.json));
+});
+flow.command("rerun-validation").argument("<workflow-id>").requiredOption("--decision-id <decision-id>", "exact pending recovery decision ID").requiredOption("--expected-revision <revision>", "exact workflow revision").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
+  const selected = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
+  const result = await selected.coordinator.rerunValidation(
+    options.decisionId,
+    Number.parseInt(options.expectedRevision, 10)
+  );
+  if (selected.providerFallbackReason) result.providerFallbackReason = selected.providerFallbackReason;
+  printCoordinatorResult(result, Boolean(options.json));
 });
 flow.command("continue-execution").argument("<workflow-id>").requiredOption("--decision-id <decision-id>", "exact pending recovery decision ID").requiredOption("--expected-revision <revision>", "exact workflow revision").option("--root <path>", "repository root", process.cwd()).option("--provider <provider>", "execution provider: auto, claude, or scripted", "auto").option("--script-file <path>", "scripted provider JSON file").option("--json", "print structured coordinator result").action(async (workflowId2, options) => {
   const selected = await executionCoordinator(options.root, workflowId2, options.provider, options.scriptFile);
