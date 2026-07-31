@@ -23399,7 +23399,7 @@ async function runClaudeWithTierFallback(args) {
           warnings: failures.map((failure) => `Claude ${args.stage} provider tier fallback: ${failure}`)
         };
       }
-      const reason = result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`;
+      const reason = claudeFailureReason(result);
       failures.push(formatTierFailure(args.stage, resolved, reason));
     } catch (error51) {
       failures.push(formatTierFailure(args.stage, resolved, error51 instanceof Error ? error51.message : String(error51 ?? "unknown error")));
@@ -23412,6 +23412,26 @@ async function runClaudeWithTierFallback(args) {
     `Claude Code could not run LeanRigor ${args.stage} after trying ${tried}. Last failure: ${lastFailure}. Configure the preferred tier with 'leanrigor models --claude-${args.preferredTier} <model-or-alias>', set LEANRIGOR_CLAUDE_MODEL_${args.preferredTier.toUpperCase()}, or adjust models.fallback.`,
     kind
   );
+}
+function claudeFailureReason(result) {
+  const stderr = boundedFailureText(result.stderr);
+  if (stderr) return stderr;
+  try {
+    const envelope = JSON.parse(result.stdout);
+    if (envelope.is_error === true) {
+      for (const key of ["result", "error", "message"]) {
+        const value = envelope[key];
+        if (typeof value === "string" && value.trim()) return boundedFailureText(value);
+      }
+    }
+  } catch {
+  }
+  return `Claude CLI exited with ${result.exitCode}.`;
+}
+function boundedFailureText(value) {
+  const normalized2 = value.replace(/\s+/g, " ").trim();
+  if (!normalized2) return void 0;
+  return normalized2.length <= 500 ? normalized2 : `${normalized2.slice(0, 497)}...`;
 }
 function parseCommandOutput(result) {
   try {
@@ -23932,6 +23952,10 @@ function briefStalenessReasons(state, phaseId) {
   if (brief.repository.dependencyFingerprint && brief.repository.dependencyFingerprint !== stableHash(dependencyIds(phase2))) reasons.push({ code: "brief_dependencies_stale", message: `Phase ${phaseId} dependency definition changed after brief generation.` });
   if (brief.repository.priorPhaseOutcomesHash && brief.repository.priorPhaseOutcomesHash !== priorOutcomesHash(state, phase2)) reasons.push({ code: "brief_prior_outcome_stale", message: `Phase ${phaseId} assumptions are stale because a prior phase outcome changed.` });
   if (state.git?.context.baseCommit && brief.repository.baseCommit && state.git.context.baseCommit !== brief.repository.baseCommit) reasons.push({ code: "brief_repository_stale", message: `Phase ${phaseId} brief repository base ${brief.repository.baseCommit} differs from workflow base ${state.git.context.baseCommit}.` });
+  if (state.git?.integration.headCommit && brief.repository.repositoryRevision !== state.git.integration.headCommit) reasons.push({
+    code: "brief_repository_revision_stale",
+    message: `Phase ${phaseId} brief inspected repository revision ${brief.repository.repositoryRevision}, not integration revision ${state.git.integration.headCommit}.`
+  });
   if (brief.modelTier && brief.modelTier !== phase2.modelTier) reasons.push({ code: "brief_provider_policy_stale", message: `Phase ${phaseId} model policy changed after brief generation.` });
   return reasons;
 }
@@ -24839,9 +24863,10 @@ var DeterministicPhaseBriefPlanningProvider = class {
 async function generateInspectedPhaseExecutionBrief(args) {
   const provider = args.provider ?? new DeterministicPhaseBriefPlanningProvider();
   const recoveryAttempts = [];
+  const inspectionRoot = args.state.git?.integration.path ?? args.state.root;
   const initialRequest = derivePhaseBriefInspectionRequest(args.state, args.phase, args.config);
   const inspected = await inspectPhaseBrief({
-    root: args.state.root,
+    root: inspectionRoot,
     state: args.state,
     phase: args.phase,
     request: initialRequest,
@@ -24906,7 +24931,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
       recoveryAttempts
     });
   }
-  const repo = await repositoryRevision(args.state.root);
+  const repo = await repositoryRevision(inspectionRoot);
   const constraintHash2 = stableHash3(effectiveConstraints(args.state));
   let inspectionResultId = phaseBriefInspectionIdentity(inspected.result);
   let brief = assembleBrief({
@@ -24923,8 +24948,11 @@ async function generateInspectedPhaseExecutionBrief(args) {
     workflowRevision: planRevision,
     briefRevision: initialBriefRevision,
     repository: {
-      baseCommit: repo.baseCommit,
-      repositoryRevision: repo.baseCommit ?? `tree:${inspectionResultId}`,
+      // baseCommit identifies the immutable workflow starting point. The
+      // repository revision identifies the exact integrated tree inspected
+      // for this phase and from which its worktree will be created.
+      baseCommit: args.state.git?.context.baseCommit ?? repo.baseCommit,
+      repositoryRevision: repo.revision === "repository-without-git-head" ? `tree:${inspectionResultId}` : repo.revision,
       constraintHash: constraintHash2,
       inspectionResultId,
       inspectedPaths: inspected.result.filesRead,
@@ -25013,7 +25041,7 @@ async function generateInspectedPhaseExecutionBrief(args) {
   }
   if (diagnostics.length > 0 && args.config.budgets.phaseBriefRefreshedInspectionAttempts > 0) {
     const refreshed = await inspectPhaseBrief({
-      root: args.state.root,
+      root: inspectionRoot,
       state: args.state,
       phase: args.phase,
       request: derivePhaseBriefInspectionRequest(args.state, args.phase, args.config),
@@ -35150,7 +35178,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.49");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.51");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

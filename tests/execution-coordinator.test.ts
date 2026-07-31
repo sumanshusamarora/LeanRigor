@@ -43,8 +43,14 @@ describe("execution coordinator", () => {
 
     expect((await harness.coordinator.runNext()).running.map((phase) => phase.phaseId)).toEqual(["phase-a"]);
     expect((await harness.coordinator.poll()).nextAction).toBe("await_user");
-    const phaseBDecision = (await currentState(harness)).approval?.pendingDecision;
+    const phaseBState = await currentState(harness);
+    const phaseBDecision = phaseBState.approval?.pendingDecision;
     expect(phaseBDecision).toMatchObject({ type: "phase-brief-approval", phaseId: "phase-b", status: "pending" });
+    expect(phaseBState.phaseBriefs?.["phase-b"]?.repository).toMatchObject({
+      baseCommit: phaseBState.git?.context.baseCommit,
+      repositoryRevision: phaseBState.git?.integration.headCommit
+    });
+    expect(phaseBState.git?.integration.headCommit).not.toBe(phaseBState.git?.context.baseCommit);
     if (!phaseBDecision || phaseBDecision.type !== "phase-brief-approval") throw new Error("expected Phase B brief approval");
     await approvePhase({
       root: harness.root,

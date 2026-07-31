@@ -154,9 +154,10 @@ export async function generateInspectedPhaseExecutionBrief(args: {
 }): Promise<PhaseBriefGenerationOutcome> {
   const provider: PhaseBriefPlanningProvider = args.provider ?? new DeterministicPhaseBriefPlanningProvider();
   const recoveryAttempts: ArtifactRecoveryAttempt[] = [];
+  const inspectionRoot = args.state.git?.integration.path ?? args.state.root;
   const initialRequest = derivePhaseBriefInspectionRequest(args.state, args.phase, args.config);
   const inspected = await inspectPhaseBrief({
-    root: args.state.root,
+    root: inspectionRoot,
     state: args.state,
     phase: args.phase,
     request: initialRequest,
@@ -225,7 +226,7 @@ export async function generateInspectedPhaseExecutionBrief(args: {
     });
   }
 
-  const repo = await repositoryRevision(args.state.root);
+  const repo = await repositoryRevision(inspectionRoot);
   const constraintHash = stableHash(effectiveConstraints(args.state));
   let inspectionResultId = phaseBriefInspectionIdentity(inspected.result);
   let brief = assembleBrief({
@@ -242,8 +243,13 @@ export async function generateInspectedPhaseExecutionBrief(args: {
     workflowRevision: planRevision,
     briefRevision: initialBriefRevision,
     repository: {
-      baseCommit: repo.baseCommit,
-      repositoryRevision: repo.baseCommit ?? `tree:${inspectionResultId}`,
+      // baseCommit identifies the immutable workflow starting point. The
+      // repository revision identifies the exact integrated tree inspected
+      // for this phase and from which its worktree will be created.
+      baseCommit: args.state.git?.context.baseCommit ?? repo.baseCommit,
+      repositoryRevision: repo.revision === "repository-without-git-head"
+        ? `tree:${inspectionResultId}`
+        : repo.revision,
       constraintHash,
       inspectionResultId,
       inspectedPaths: inspected.result.filesRead,
@@ -334,7 +340,7 @@ export async function generateInspectedPhaseExecutionBrief(args: {
 
   if (diagnostics.length > 0 && args.config.budgets.phaseBriefRefreshedInspectionAttempts > 0) {
     const refreshed = await inspectPhaseBrief({
-      root: args.state.root,
+      root: inspectionRoot,
       state: args.state,
       phase: args.phase,
       request: derivePhaseBriefInspectionRequest(args.state, args.phase, args.config),

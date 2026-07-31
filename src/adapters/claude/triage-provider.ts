@@ -235,7 +235,7 @@ export async function runClaudeWithTierFallback(args: {
           warnings: failures.map((failure) => `Claude ${args.stage} provider tier fallback: ${failure}`)
         };
       }
-      const reason = result.stderr.trim() || `Claude CLI exited with ${result.exitCode}.`;
+      const reason = claudeFailureReason(result);
       failures.push(formatTierFailure(args.stage, resolved, reason));
     } catch (error) {
       failures.push(formatTierFailure(args.stage, resolved, error instanceof Error ? error.message : String(error ?? "unknown error")));
@@ -252,6 +252,29 @@ export async function runClaudeWithTierFallback(args: {
     `set LEANRIGOR_CLAUDE_MODEL_${args.preferredTier.toUpperCase()}, or adjust models.fallback.`,
     kind
   );
+}
+
+function claudeFailureReason(result: CommandResult): string {
+  const stderr = boundedFailureText(result.stderr);
+  if (stderr) return stderr;
+  try {
+    const envelope = JSON.parse(result.stdout) as Record<string, unknown>;
+    if (envelope.is_error === true) {
+      for (const key of ["result", "error", "message"]) {
+        const value = envelope[key];
+        if (typeof value === "string" && value.trim()) return boundedFailureText(value)!;
+      }
+    }
+  } catch {
+    // Successful and failed Claude versions do not all emit the same envelope.
+  }
+  return `Claude CLI exited with ${result.exitCode}.`;
+}
+
+function boundedFailureText(value: string): string | undefined {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  return normalized.length <= 500 ? normalized : `${normalized.slice(0, 497)}...`;
 }
 
 function parseCommandOutput(result: CommandResult): unknown {

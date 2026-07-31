@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCliPlanningProvider } from "../src/adapters/claude/planning-provider.js";
-import { buildTriagePrompt, ClaudeCliTriageProvider, defaultCommandRunner, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
+import { buildTriagePrompt, ClaudeCliTriageProvider, defaultCommandRunner, runClaudeWithTierFallback, type CommandRunner } from "../src/adapters/claude/triage-provider.js";
 import { defaultConfig } from "../src/config/defaults.js";
 import { assessTask } from "../src/core/assessment.js";
 import { PlanningValidationError, runPlanning, type PlanningProviderInput } from "../src/core/planning-runner.js";
@@ -176,6 +176,25 @@ describe("Claude provider model tier fallback", () => {
 
     expect(modelArgs(calls)).toEqual(["sonnet", "opus"]);
     expect(result.warnings?.join("\n")).toContain("max_turns_reached");
+  });
+
+  it("surfaces Claude JSON error envelopes written to stdout", async () => {
+    clearModelEnv();
+    const config = defaultConfig();
+
+    await expect(runClaudeWithTierFallback({
+      runCommand: async () => ({
+        stdout: JSON.stringify({ type: "result", is_error: true, result: "Not logged in · Please run /login" }),
+        stderr: "",
+        exitCode: 1
+      }),
+      root: process.cwd(),
+      baseArgs: ["-p"],
+      prompt: "Return JSON.",
+      preferredTier: "large",
+      config,
+      stage: "phase brief generation"
+    })).rejects.toThrow("Not logged in · Please run /login");
   });
 
   it("uses bare schema-constrained minimal mode with no tools for planning", async () => {

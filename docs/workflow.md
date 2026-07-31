@@ -224,6 +224,13 @@ repository/constraint/inspection identities. Current test obligations are
 derived from task type, risk, mode, plan criteria, and repository checks; the
 more comprehensive deterministic obligation system remains separate work.
 
+The workflow base commit and the inspected repository revision have distinct
+roles. The base commit remains the immutable starting point for the whole
+workflow. Once dependencies have been integrated, later Phase Briefs inspect
+the integration worktree and record its exact HEAD as `repositoryRevision`.
+Dispatch rejects a brief if that integration revision changes before its phase
+workspace is created.
+
 The approved Workflow Plan remains the source of requirement intent. When a
 criterion lacks explicit verification wording, Phase Brief construction adds a
 deterministic, scope-preserving evidence sentence tied to an approved

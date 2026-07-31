@@ -76,6 +76,19 @@ describe("central phase dispatch eligibility", () => {
       .toContain("brief_repository_stale");
   });
 
+  it("invalidates a brief when the inspected integration revision changes", async () => {
+    const harness = await createExecutionHarness({
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: { "phase-a": { edits: [{ path: "src/a.ts", content: "ok\n" }] } }
+    });
+    await harness.coordinator.runNext();
+    const state = await currentState(harness);
+    state.git!.integration.headCommit = "updated-integration-head";
+
+    expect(briefStalenessReasons(state, "phase-a").map((reason) => reason.code))
+      .toContain("brief_repository_revision_stale");
+  });
+
   it("invalidates a later brief when a dependency outcome changes", async () => {
     const harness = await createExecutionHarness({
       phases: [

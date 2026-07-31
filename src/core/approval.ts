@@ -85,6 +85,10 @@ export function briefStalenessReasons(state: SequentialWorkflowState, phaseId: s
   if (brief.repository.dependencyFingerprint && brief.repository.dependencyFingerprint !== stableHash(dependencyIds(phase))) reasons.push({ code: "brief_dependencies_stale", message: `Phase ${phaseId} dependency definition changed after brief generation.` });
   if (brief.repository.priorPhaseOutcomesHash && brief.repository.priorPhaseOutcomesHash !== priorOutcomesHash(state, phase)) reasons.push({ code: "brief_prior_outcome_stale", message: `Phase ${phaseId} assumptions are stale because a prior phase outcome changed.` });
   if (state.git?.context.baseCommit && brief.repository.baseCommit && state.git.context.baseCommit !== brief.repository.baseCommit) reasons.push({ code: "brief_repository_stale", message: `Phase ${phaseId} brief repository base ${brief.repository.baseCommit} differs from workflow base ${state.git.context.baseCommit}.` });
+  if (state.git?.integration.headCommit && brief.repository.repositoryRevision !== state.git.integration.headCommit) reasons.push({
+    code: "brief_repository_revision_stale",
+    message: `Phase ${phaseId} brief inspected repository revision ${brief.repository.repositoryRevision}, not integration revision ${state.git.integration.headCommit}.`
+  });
   if (brief.modelTier && brief.modelTier !== phase.modelTier) reasons.push({ code: "brief_provider_policy_stale", message: `Phase ${phaseId} model policy changed after brief generation.` });
   return reasons;
 }
