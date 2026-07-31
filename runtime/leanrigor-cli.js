@@ -33372,6 +33372,11 @@ import { execFile as execFile7 } from "node:child_process";
 import { promisify as promisify7 } from "node:util";
 var execFileAsync7 = promisify7(execFile7);
 var MAX_OUTPUT_BYTES = 16 * 1024;
+var CLAUDE_LAUNCHER_ENVIRONMENT = [
+  "CLAUDE_PLUGIN_ROOT",
+  "LEANRIGOR_CLAUDE_PLUGIN_ROOT",
+  "LEANRIGOR_RUNTIME_SOURCE"
+];
 var WorkspaceValidationRunner = class {
   async run(request) {
     const evidence2 = [];
@@ -33386,6 +33391,11 @@ async function runCommand(phaseId, workspacePath, command, timeoutSeconds) {
   try {
     const { stdout, stderr } = await execFileAsync7(shell(), shellArgs(command), {
       cwd: workspacePath,
+      // A phase validation command verifies the repository, not the ambient
+      // Claude marketplace launcher. Do not leak launcher-only variables into
+      // child tests: LeanRigor's own installation-mode tests deliberately
+      // branch on them.
+      env: validationEnvironment(),
       encoding: "utf8",
       timeout: Math.max(1, timeoutSeconds) * 1e3,
       maxBuffer: MAX_OUTPUT_BYTES
@@ -33416,6 +33426,11 @@ function shell() {
 }
 function shellArgs(command) {
   return process.platform === "win32" ? ["/d", "/c", command] : ["-lc", command];
+}
+function validationEnvironment() {
+  const environment = { ...process.env };
+  for (const variable of CLAUDE_LAUNCHER_ENVIRONMENT) delete environment[variable];
+  return environment;
 }
 function boundOutput(value) {
   const bytes = Buffer.from(value, "utf8");
@@ -35135,7 +35150,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.48");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.49");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

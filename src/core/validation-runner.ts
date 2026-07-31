@@ -4,6 +4,11 @@ import type { ValidationEvidence } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT_BYTES = 16 * 1024;
+const CLAUDE_LAUNCHER_ENVIRONMENT = [
+  "CLAUDE_PLUGIN_ROOT",
+  "LEANRIGOR_CLAUDE_PLUGIN_ROOT",
+  "LEANRIGOR_RUNTIME_SOURCE"
+] as const;
 
 export interface ValidationRunRequest {
   phaseId: string;
@@ -36,6 +41,11 @@ async function runCommand(phaseId: string, workspacePath: string, command: strin
   try {
     const { stdout, stderr } = await execFileAsync(shell(), shellArgs(command), {
       cwd: workspacePath,
+      // A phase validation command verifies the repository, not the ambient
+      // Claude marketplace launcher. Do not leak launcher-only variables into
+      // child tests: LeanRigor's own installation-mode tests deliberately
+      // branch on them.
+      env: validationEnvironment(),
       encoding: "utf8",
       timeout: Math.max(1, timeoutSeconds) * 1000,
       maxBuffer: MAX_OUTPUT_BYTES
@@ -70,6 +80,12 @@ function shell(): string {
 
 function shellArgs(command: string): string[] {
   return process.platform === "win32" ? ["/d", "/c", command] : ["-lc", command];
+}
+
+function validationEnvironment(): NodeJS.ProcessEnv {
+  const environment = { ...process.env };
+  for (const variable of CLAUDE_LAUNCHER_ENVIRONMENT) delete environment[variable];
+  return environment;
 }
 
 function boundOutput(value: string): string {
