@@ -32052,13 +32052,24 @@ function legacyPendingDecision(state) {
   const briefs = state.phaseBriefs && typeof state.phaseBriefs === "object" ? Object.values(state.phaseBriefs) : [];
   const pendingBrief = briefs.find((item) => item && typeof item === "object" && item.approvalStatus === "pending");
   if (pendingBrief) {
+    const objective = typeof pendingBrief.objective === "string" ? pendingBrief.objective : "";
+    const deliverable = typeof pendingBrief.deliverable === "string" ? pendingBrief.deliverable : "";
+    const writeAreas = Array.isArray(pendingBrief.writeAreas) ? pendingBrief.writeAreas.filter((v) => typeof v === "string").join(", ") : "";
+    const validation = Array.isArray(pendingBrief.validationCommands) ? pendingBrief.validationCommands.filter((v) => typeof v === "string").join(", ") : "";
+    const lines = [
+      objective,
+      deliverable ? `Deliverable: ${deliverable}` : "",
+      writeAreas ? `Write areas: ${writeAreas}` : "",
+      validation ? `Validation: ${validation}` : ""
+    ].filter(Boolean);
+    lines.push("", `Review and approve ${String(pendingBrief.phaseId)} Execution Brief revision ${String(pendingBrief.briefRevision)}?`);
     return {
       ...base,
       type: "phase-brief-approval",
       workflowRevision: typeof pendingBrief.workflowRevision === "number" ? pendingBrief.workflowRevision : revision,
       phaseId: pendingBrief.phaseId,
       briefRevision: pendingBrief.briefRevision,
-      question: `Review and approve ${String(pendingBrief.phaseId)} Execution Brief revision ${String(pendingBrief.briefRevision)}?`,
+      question: lines.join("\n"),
       allowedActions: ["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"]
     };
   }
@@ -32258,13 +32269,24 @@ function persistPhaseBriefOutcome(state, phase2, outcome, requiresApproval) {
 }
 function setPendingPhaseApproval(state, brief) {
   if (!state.approval) throw new WorkflowStateError("Cannot request phase approval before the Workflow Plan is approved.");
+  const lines = [
+    brief.objective,
+    "",
+    `Deliverable: ${brief.deliverable}`,
+    `Write areas: ${brief.writeAreas.join(", ") || "(none)"}`,
+    `Validation: ${brief.validationCommands.join(", ") || "(none)"}`
+  ];
+  if (brief.testObligations.length > 0) lines.push(`Test obligations: ${brief.testObligations.join("; ")}`);
+  if (brief.risks.length > 0) lines.push(`Risks: ${brief.risks.join("; ")}`);
+  if (brief.exclusions.length > 0) lines.push(`Exclusions: ${brief.exclusions.join("; ")}`);
+  lines.push("", `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`);
   setPendingDecision(state, {
     type: "phase-brief-approval",
     workflowRevision: brief.workflowRevision,
     stateRevision: state.revision + 1,
     phaseId: brief.phaseId,
     briefRevision: brief.briefRevision,
-    question: `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`,
+    question: lines.join("\n"),
     allowedActions: [...PHASE_APPROVAL_ACTIONS],
     source: "system"
   });
@@ -35724,7 +35746,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.56");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.57");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
