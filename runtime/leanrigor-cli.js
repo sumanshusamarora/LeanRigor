@@ -31840,6 +31840,7 @@ function migrateWorkflowState(raw, root, workflowId2) {
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
+  normalizeLegacyMaterialPlanChanges(migrated);
   return migrated;
 }
 function normalizeValidationRecoveryDecision(state) {
@@ -31970,6 +31971,55 @@ function normalizeLegacyMaterialBriefDecision(state) {
   decision.type = "material-drift-review";
   decision.question = `Phase ${decision.phaseId} Execution Brief revision ${String(decision.briefRevision)} contains material changes from the approved Workflow Plan. Revise the plan or revise the brief to remain within it.`;
   decision.allowedActions = ["revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"];
+}
+function normalizeLegacyMaterialPlanChanges(state) {
+  const execution = state.execution;
+  for (const [phaseId, record2] of Object.entries(execution?.records ?? {})) {
+    const quarantined = record2.quarantinedResult;
+    if (quarantined && Array.isArray(quarantined.discoveredMaterialChanges)) {
+      quarantined.discoveredMaterialChanges = quarantined.discoveredMaterialChanges.map(
+        (entry) => normalizeMaterialChange(entry, phaseId)
+      );
+    }
+    const diagnostics = record2.diagnostics;
+    if (diagnostics && Array.isArray(diagnostics.discoveredMaterialChanges)) {
+      diagnostics.discoveredMaterialChanges = diagnostics.discoveredMaterialChanges.map(
+        (entry) => normalizeMaterialChange(entry, phaseId)
+      );
+    }
+  }
+  const briefs = state.phaseBriefs;
+  for (const [phaseId, brief] of Object.entries(briefs ?? {})) {
+    if (Array.isArray(brief.materialChangesFromWorkflowPlan)) {
+      brief.materialChangesFromWorkflowPlan = brief.materialChangesFromWorkflowPlan.map(
+        (entry) => normalizeMaterialChange(entry, phaseId)
+      );
+    }
+  }
+}
+function normalizeMaterialChange(raw, fallbackPhaseId) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      category: "file-refinement",
+      affectedPhase: fallbackPhaseId,
+      severity: "informational",
+      material: false,
+      reason: "Legacy material change; normalized during workflow migration.",
+      requiredTransition: "none"
+    };
+  }
+  const entry = raw;
+  const validCategories = ["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"];
+  return {
+    category: typeof entry.category === "string" && validCategories.includes(entry.category) ? entry.category : "file-refinement",
+    previousValue: entry.previousValue,
+    proposedValue: entry.proposedValue,
+    affectedPhase: typeof entry.affectedPhase === "string" && entry.affectedPhase ? entry.affectedPhase : fallbackPhaseId,
+    severity: entry.severity === "informational" || entry.severity === "medium" || entry.severity === "high" ? entry.severity : "informational",
+    material: typeof entry.material === "boolean" ? entry.material : false,
+    reason: typeof entry.reason === "string" && entry.reason.trim() ? entry.reason : "Legacy material change; normalized during workflow migration.",
+    requiredTransition: entry.requiredTransition === "none" || entry.requiredTransition === "reapprove-plan" || entry.requiredTransition === "revise-plan" || entry.requiredTransition === "revise-phase-brief" ? entry.requiredTransition : "none"
+  };
 }
 function legacyPendingDecision(state) {
   const revision = typeof state.revision === "number" ? state.revision : 0;
@@ -35658,7 +35708,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.54");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.55");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

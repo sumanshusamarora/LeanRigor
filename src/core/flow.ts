@@ -4025,6 +4025,7 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   normalizeLegacyPlanningFallbackDecision(migrated);
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
+  normalizeLegacyMaterialPlanChanges(migrated);
   return migrated;
 }
 
@@ -4178,6 +4179,66 @@ function normalizeLegacyMaterialBriefDecision(state: Record<string, unknown>): v
   decision.type = "material-drift-review";
   decision.question = `Phase ${decision.phaseId} Execution Brief revision ${String(decision.briefRevision)} contains material changes from the approved Workflow Plan. Revise the plan or revise the brief to remain within it.`;
   decision.allowedActions = ["revise-plan", "revise-phase-brief", "view-details", "cancel-workflow"];
+}
+
+/**
+ * Normalizes legacy {@link MaterialPlanChange} entries that were persisted
+ * before all required fields (category, affectedPhase, severity, reason,
+ * requiredTransition) were part of the schema.  Missing fields are filled
+ * with safe defaults so the workflow can be loaded and recovered.
+ */
+function normalizeLegacyMaterialPlanChanges(state: Record<string, unknown>): void {
+  // Walk execution records → quarantinedResult.discoveredMaterialChanges
+  const execution = state.execution as { records?: Record<string, Record<string, unknown>> } | undefined;
+  for (const [phaseId, record] of Object.entries(execution?.records ?? {})) {
+    const quarantined = record.quarantinedResult as Record<string, unknown> | undefined;
+    if (quarantined && Array.isArray(quarantined.discoveredMaterialChanges)) {
+      quarantined.discoveredMaterialChanges = quarantined.discoveredMaterialChanges.map(
+        (entry) => normalizeMaterialChange(entry, phaseId)
+      );
+    }
+    const diagnostics = record.diagnostics as Record<string, unknown> | undefined;
+    if (diagnostics && Array.isArray(diagnostics.discoveredMaterialChanges)) {
+      diagnostics.discoveredMaterialChanges = (diagnostics.discoveredMaterialChanges as unknown[]).map(
+        (entry) => normalizeMaterialChange(entry, phaseId)
+      );
+    }
+  }
+
+  // Walk phase briefs → materialChangesFromWorkflowPlan
+  const briefs = state.phaseBriefs as Record<string, Record<string, unknown>> | undefined;
+  for (const [phaseId, brief] of Object.entries(briefs ?? {})) {
+    if (Array.isArray(brief.materialChangesFromWorkflowPlan)) {
+      brief.materialChangesFromWorkflowPlan = brief.materialChangesFromWorkflowPlan.map(
+        (entry) => normalizeMaterialChange(entry, phaseId)
+      );
+    }
+  }
+}
+
+function normalizeMaterialChange(raw: unknown, fallbackPhaseId: string): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      category: "file-refinement",
+      affectedPhase: fallbackPhaseId,
+      severity: "informational",
+      material: false,
+      reason: "Legacy material change; normalized during workflow migration.",
+      requiredTransition: "none"
+    };
+  }
+  const entry = raw as Record<string, unknown>;
+  const validCategories = ["write-boundary", "migration", "compatibility", "public-contract", "security", "concurrency", "recovery", "data-integrity", "production-infrastructure", "destructive-operation", "network-operation", "acceptance-criteria", "validation", "dependency", "ordering", "architecture", "provider", "file-refinement", "symbol-refinement", "read-boundary", "risk"];
+  return {
+    category: typeof entry.category === "string" && validCategories.includes(entry.category) ? entry.category : "file-refinement",
+    previousValue: entry.previousValue,
+    proposedValue: entry.proposedValue,
+    affectedPhase: typeof entry.affectedPhase === "string" && entry.affectedPhase ? entry.affectedPhase : fallbackPhaseId,
+    severity: entry.severity === "informational" || entry.severity === "medium" || entry.severity === "high" ? entry.severity : "informational",
+    material: typeof entry.material === "boolean" ? entry.material : false,
+    reason: typeof entry.reason === "string" && entry.reason.trim() ? entry.reason : "Legacy material change; normalized during workflow migration.",
+    requiredTransition: entry.requiredTransition === "none" || entry.requiredTransition === "reapprove-plan" || entry.requiredTransition === "revise-plan" || entry.requiredTransition === "revise-phase-brief" ? entry.requiredTransition : "none"
+  };
 }
 
 function legacyPendingDecision(state: Record<string, unknown>): Record<string, unknown> | undefined {
