@@ -499,7 +499,7 @@ describe("Claude marketplace plugin runtime", () => {
     expect(approachNext.summary).toHaveProperty("assessment");
     expect(approachNext.summary).toHaveProperty("constraints");
     expect(approachNext.summary).toHaveProperty("noImplementationStarted", true);
-    expect(approachNext.presentation?.markdown).toContain("# Approach approval");
+    expect(approachNext.presentation?.markdown).toContain("# Workflow strategy");
 
     const planned = await cli([
       "flow", "approve-approach", workflowId,

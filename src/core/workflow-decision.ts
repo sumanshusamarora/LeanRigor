@@ -24,6 +24,43 @@ export interface PendingDecisionInput {
   source?: WorkflowDecisionSource;
 }
 
+type DecisionQuestion = Pick<PendingDecisionInput, "type" | "phaseId" | "briefRevision" | "question">;
+
+/**
+ * AskUserQuestion is a compact selector, not an artifact renderer. Keep its
+ * prompt to one actionable sentence; the corresponding workflow summary is
+ * rendered separately as normal assistant Markdown.
+ */
+export function selectorQuestionForDecision(decision: DecisionQuestion): string {
+  const phase = decision.phaseId ? ` for ${decision.phaseId}` : "";
+  switch (decision.type) {
+    case "clarification":
+      return compactClarificationQuestion(decision.question);
+    case "approach-approval":
+      return "Approve the workflow strategy before Workflow Plan generation?";
+    case "workflow-plan-approval":
+      return "Approve the Workflow Plan and its execution policy?";
+    case "planning-fallback-review":
+      return "Choose how to proceed with workflow planning?";
+    case "phase-brief-approval":
+      return `Review and approve ${decision.phaseId ?? "the current phase"} Execution Brief${decision.briefRevision === undefined ? "" : ` revision ${decision.briefRevision}`}?`;
+    case "workspace-bootstrap-approval":
+      return `Approve workspace preparation${phase}?`;
+    case "material-drift-review":
+      return `Review material drift${phase}?`;
+    case "execution-recovery":
+      return `Choose a recovery action${phase}?`;
+    case "integration-conflict":
+      return `Resolve the integration conflict${phase}?`;
+    case "final-review":
+      return "Record the final integrated review?";
+    case "final-completion":
+      return "Complete the workflow?";
+    default:
+      return "Choose the next persisted workflow action.";
+  }
+}
+
 export function setPendingDecision(state: SequentialWorkflowState, input: PendingDecisionInput): WorkflowPendingDecision {
   ensureApprovalState(state);
   const previous = state.approval!.pendingDecision;
@@ -41,7 +78,7 @@ export function setPendingDecision(state: SequentialWorkflowState, input: Pendin
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,
-    question: input.question,
+    question: selectorQuestionForDecision(input),
     status: "pending",
     allowedActions: [...input.allowedActions],
     createdAt: new Date().toISOString(),
@@ -122,9 +159,12 @@ export function migrateWorkflowDecision(raw: unknown, index: number): unknown {
     ...decision,
     id,
     stateRevision: typeof decision.stateRevision === "number" ? decision.stateRevision : decision.workflowRevision ?? 0,
-    question: typeof decision.question === "string" && decision.question.length > 0
-      ? decision.question
-      : legacyQuestion(decision.type),
+    question: selectorQuestionForDecision({
+      type: decision.type as WorkflowDecisionType,
+      phaseId: typeof decision.phaseId === "string" ? decision.phaseId : undefined,
+      briefRevision: typeof decision.briefRevision === "number" ? decision.briefRevision : undefined,
+      question: typeof decision.question === "string" ? decision.question : legacyQuestion(decision.type)
+    }),
     createdAt,
     source: typeof decision.source === "string" ? decision.source : "legacy-migration"
   };
@@ -140,4 +180,10 @@ function legacyQuestion(type: unknown): string {
   if (type === "phase-brief-approval") return "Approve the current Phase Execution Brief revision?";
   if (type === "workspace-bootstrap-approval") return "Approve the persisted workspace bootstrap request?";
   return "Choose the next persisted workflow action.";
+}
+
+function compactClarificationQuestion(question: string): string {
+  const singleLine = question.replace(/\s+/g, " ").trim();
+  if (!singleLine) return "Answer the persisted clarification question.";
+  return singleLine.length <= 240 ? singleLine : `${singleLine.slice(0, 237).trimEnd()}…`;
 }

@@ -142,6 +142,9 @@ function workflowNextSummaryData(state: SequentialWorkflowState): WorkflowNextSu
         validation: state.approach?.validationStrategy ?? [],
         revisionRequests: state.approach?.revisionRequests ?? [],
         noImplementationStarted: true
+      },
+      presentation: {
+        markdown: approachPresentation(workflow, state)
       }
     };
   }
@@ -619,6 +622,38 @@ function workflowPlanPresentation(
   ].join("\n");
 }
 
+function approachPresentation(workflow: WorkflowListSummary, state: SequentialWorkflowState): string {
+  const constraints = state.constraints?.effective.map((constraint) => constraint.text)
+    ?? state.triage?.constraints?.mustNot
+    ?? [];
+  const task = state.triage?.task?.summary ?? state.request;
+  const approach = state.approach;
+  return [
+    "# Workflow strategy",
+    "",
+    `**Workflow:** ${workflow.id}`,
+    `**Mode:** ${modeLabel(workflow.mode)}`,
+    "",
+    "## Goal",
+    boundedPresentationText(task),
+    "",
+    "## Proposed approach",
+    boundedPresentationText(approach?.proposed ?? "No approach summary was recorded."),
+    "",
+    "## Why this mode",
+    boundedPresentationText(approach?.preferredBecause ?? "The persisted triage policy selected this workflow mode."),
+    "",
+    "## Primary risks",
+    ...markdownList(approach?.primaryRisks ?? []),
+    "",
+    "## Constraints",
+    ...markdownList(constraints),
+    "",
+    "## Before you approve",
+    "No implementation, file edits, tests, commits, or pushes have started."
+  ].join("\n");
+}
+
 function phaseBriefPresentation(
   workflow: WorkflowListSummary,
   state: SequentialWorkflowState,
@@ -688,19 +723,20 @@ function listInline(values: string[]): string {
 }
 
 function workflowStatePresentation(next: WorkflowNextSummary): string {
+  const selectorQuestion = next.decisionEnvelope.decision?.question ?? next.pendingDecision;
   return [
     `# ${next.label}`,
     "",
     `**Workflow:** ${next.workflow.id}`,
-    `**Request:** ${next.workflow.request}`,
+    `**Request:** ${boundedPresentationText(next.workflow.request)}`,
     `**Mode:** ${modeLabel(next.workflow.mode)}`,
     `**State:** ${next.workflow.state}`,
-    next.pendingDecision ? "" : undefined,
-    next.pendingDecision ? "## Decision" : undefined,
-    next.pendingDecision ?? undefined,
+    selectorQuestion ? "" : undefined,
+    selectorQuestion ? "## Decision" : undefined,
+    selectorQuestion ?? undefined,
     "",
     "## Next action",
-    next.pendingAction,
+    boundedPresentationText(next.pendingAction),
     ...summaryPresentationSections(next.summary)
   ].filter((line): line is string => line !== undefined).join("\n");
 }
@@ -712,19 +748,24 @@ function summaryPresentationSections(summary: Record<string, unknown>): string[]
 }
 
 function presentationValue(value: unknown): string[] {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (typeof value === "string") return [boundedPresentationText(value)];
+  if (typeof value === "number" || typeof value === "boolean") return [String(value)];
   if (Array.isArray(value)) {
     if (value.length === 0) return ["None."];
-    return value.flatMap((item) => {
-      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") return [`- ${String(item)}`];
-      if (item && typeof item === "object") return [`- ${presentationObjectInline(item as Record<string, unknown>)}`];
+    const shown = value.slice(0, 8).flatMap((item) => {
+      if (typeof item === "string") return [`- ${boundedPresentationText(item)}`];
+      if (typeof item === "number" || typeof item === "boolean") return [`- ${String(item)}`];
+      if (item && typeof item === "object") return [`- ${boundedPresentationText(presentationObjectInline(item as Record<string, unknown>))}`];
       return [];
     });
+    return value.length > shown.length ? [...shown, `- ${value.length - shown.length} more item(s) available in details.`] : shown;
   }
   if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).filter(([, nested]) => nested !== undefined && nested !== null && nested !== "");
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, nested]) => nested !== undefined && nested !== null && nested !== "")
+      .slice(0, 8);
     return entries.length > 0
-      ? entries.flatMap(([key, nested]) => [`- **${presentationLabel(key)}:** ${presentationInline(nested)}`])
+      ? entries.flatMap(([key, nested]) => [`- **${presentationLabel(key)}:** ${boundedPresentationText(presentationInline(nested))}`])
       : ["None."];
   }
   return ["None."];
@@ -733,15 +774,22 @@ function presentationValue(value: unknown): string[] {
 function presentationObjectInline(value: Record<string, unknown>): string {
   return Object.entries(value)
     .filter(([, nested]) => nested !== undefined && nested !== null && nested !== "")
+    .slice(0, 8)
     .map(([key, nested]) => `${presentationLabel(key)}: ${presentationInline(nested)}`)
     .join("; ");
 }
 
 function presentationInline(value: unknown): string {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.map((item) => presentationInline(item)).join(", ") || "None.";
+  if (typeof value === "string") return boundedPresentationText(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.slice(0, 8).map((item) => presentationInline(item)).join(", ") || "None.";
   if (value && typeof value === "object") return presentationObjectInline(value as Record<string, unknown>) || "None.";
   return "None.";
+}
+
+function boundedPresentationText(value: string, maximum = 360): string {
+  const normalised = value.replace(/\s+/g, " ").trim();
+  return normalised.length <= maximum ? normalised : `${normalised.slice(0, maximum - 1).trimEnd()}…`;
 }
 
 function presentationLabel(value: string): string {

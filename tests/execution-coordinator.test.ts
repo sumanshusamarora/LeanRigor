@@ -889,7 +889,7 @@ describe("execution coordinator", () => {
       additionalTurns: 12,
       allowedActions: ["continue-execution", "view-details", "revise-plan", "cancel-workflow"]
     });
-    expect(decision?.question).toContain("24-turn execution limit");
+    expect(decision?.question).toBe("Choose a recovery action for phase-a?");
     expect(recovery.decision?.options[0]).toMatchObject({
       intent: "continue-execution",
       label: "Continue with 12 additional turns"
@@ -1208,7 +1208,7 @@ describe("execution coordinator", () => {
       status: "unavailable",
       resumePermitted: false
     });
-    expect(normalized.approval?.pendingDecision?.question).toContain("fresh compact provider session");
+    expect(normalized.approval?.pendingDecision?.question).toBe("Choose a recovery action for phase-a?");
 
     scripts["phase-a"] = {
       edits: [{ path: "src/a.ts", content: "fresh-session\n" }],

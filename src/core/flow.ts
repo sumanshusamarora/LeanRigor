@@ -4026,6 +4026,18 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
   normalizeLegacyMaterialPlanChanges(migrated);
+  // Legacy repair normalizers can replace a pending decision after the first
+  // migration pass. Canonicalize once more so no persistence path can put a
+  // diagnostic-sized prompt into the AskUserQuestion selector.
+  if (migrated.approval && typeof migrated.approval === "object") {
+    const approval = migrated.approval as Record<string, unknown>;
+    if (approval.pendingDecision) {
+      approval.pendingDecision = migrateWorkflowDecision(
+        approval.pendingDecision,
+        Array.isArray(approval.decisionHistory) ? approval.decisionHistory.length : 0
+      );
+    }
+  }
   return migrated;
 }
 
@@ -4340,24 +4352,9 @@ function syncLifecycleDecision(state: SequentialWorkflowState, lifecycle: Workfl
     return;
   }
   if (lifecycle === "awaiting_approach_approval") {
-    const approach = state.approach;
-    const mode = state.mode;
-    const proposed = approach?.proposed
-      ?? (state.triageRun?.recommendation as Record<string, unknown> | undefined)?.approachSummary as string
-      ?? state.triage?.task?.summary
-      ?? "No approach summary recorded.";
-    const reason = approach?.preferredBecause ? `\n\nWhy: ${approach.preferredBecause}` : "";
-    const risks = approach?.primaryRisks?.length
-      ? `\n\nPrimary risks: ${approach.primaryRisks.join("; ")}`
-      : "";
-    const constraints = state.constraints?.effective?.length
-      ? `\n\nConstraints: ${state.constraints.effective.map((c) => c.text).join("; ")}`
-      : state.triage?.constraints?.mustNot?.length
-        ? `\n\nConstraints: ${state.triage.constraints.mustNot.join("; ")}`
-        : "";
     setPendingDecision(state, {
       type: "approach-approval",
-      question: `${proposed}${reason}${risks}${constraints}\n\nWorkflow mode: ${mode}. Approve this approach before Workflow Plan generation?`,
+      question: "Approve the workflow strategy before Workflow Plan generation?",
       allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
     });
     return;

@@ -28433,6 +28433,35 @@ function normaliseValidationCommand(command) {
 
 // src/core/workflow-decision.ts
 import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
+function selectorQuestionForDecision(decision) {
+  const phase2 = decision.phaseId ? ` for ${decision.phaseId}` : "";
+  switch (decision.type) {
+    case "clarification":
+      return compactClarificationQuestion(decision.question);
+    case "approach-approval":
+      return "Approve the workflow strategy before Workflow Plan generation?";
+    case "workflow-plan-approval":
+      return "Approve the Workflow Plan and its execution policy?";
+    case "planning-fallback-review":
+      return "Choose how to proceed with workflow planning?";
+    case "phase-brief-approval":
+      return `Review and approve ${decision.phaseId ?? "the current phase"} Execution Brief${decision.briefRevision === void 0 ? "" : ` revision ${decision.briefRevision}`}?`;
+    case "workspace-bootstrap-approval":
+      return `Approve workspace preparation${phase2}?`;
+    case "material-drift-review":
+      return `Review material drift${phase2}?`;
+    case "execution-recovery":
+      return `Choose a recovery action${phase2}?`;
+    case "integration-conflict":
+      return `Resolve the integration conflict${phase2}?`;
+    case "final-review":
+      return "Record the final integrated review?";
+    case "final-completion":
+      return "Complete the workflow?";
+    default:
+      return "Choose the next persisted workflow action.";
+  }
+}
 function setPendingDecision(state, input) {
   ensureApprovalState(state);
   const previous = state.approval.pendingDecision;
@@ -28450,7 +28479,7 @@ function setPendingDecision(state, input) {
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,
-    question: input.question,
+    question: selectorQuestionForDecision(input),
     status: "pending",
     allowedActions: [...input.allowedActions],
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -28513,7 +28542,12 @@ function migrateWorkflowDecision(raw, index) {
     ...decision,
     id,
     stateRevision: typeof decision.stateRevision === "number" ? decision.stateRevision : decision.workflowRevision ?? 0,
-    question: typeof decision.question === "string" && decision.question.length > 0 ? decision.question : legacyQuestion(decision.type),
+    question: selectorQuestionForDecision({
+      type: decision.type,
+      phaseId: typeof decision.phaseId === "string" ? decision.phaseId : void 0,
+      briefRevision: typeof decision.briefRevision === "number" ? decision.briefRevision : void 0,
+      question: typeof decision.question === "string" ? decision.question : legacyQuestion(decision.type)
+    }),
     createdAt,
     source: typeof decision.source === "string" ? decision.source : "legacy-migration"
   };
@@ -28527,6 +28561,11 @@ function legacyQuestion(type) {
   if (type === "phase-brief-approval") return "Approve the current Phase Execution Brief revision?";
   if (type === "workspace-bootstrap-approval") return "Approve the persisted workspace bootstrap request?";
   return "Choose the next persisted workflow action.";
+}
+function compactClarificationQuestion(question) {
+  const singleLine = question.replace(/\s+/g, " ").trim();
+  if (!singleLine) return "Answer the persisted clarification question.";
+  return singleLine.length <= 240 ? singleLine : `${singleLine.slice(0, 237).trimEnd()}\u2026`;
 }
 
 // src/core/flow.ts
@@ -31841,6 +31880,15 @@ function migrateWorkflowState(raw, root, workflowId2) {
   normalizeLegacyMaxTurnRecoveryDecision(migrated);
   normalizeLegacyUnavailableProviderSession(migrated);
   normalizeLegacyMaterialPlanChanges(migrated);
+  if (migrated.approval && typeof migrated.approval === "object") {
+    const approval = migrated.approval;
+    if (approval.pendingDecision) {
+      approval.pendingDecision = migrateWorkflowDecision(
+        approval.pendingDecision,
+        Array.isArray(approval.decisionHistory) ? approval.decisionHistory.length : 0
+      );
+    }
+  }
   return migrated;
 }
 function normalizeValidationRecoveryDecision(state) {
@@ -32116,25 +32164,9 @@ function syncLifecycleDecision(state, lifecycle) {
     return;
   }
   if (lifecycle === "awaiting_approach_approval") {
-    const approach = state.approach;
-    const mode2 = state.mode;
-    const proposed = approach?.proposed ?? state.triageRun?.recommendation?.approachSummary ?? state.triage?.task?.summary ?? "No approach summary recorded.";
-    const reason = approach?.preferredBecause ? `
-
-Why: ${approach.preferredBecause}` : "";
-    const risks = approach?.primaryRisks?.length ? `
-
-Primary risks: ${approach.primaryRisks.join("; ")}` : "";
-    const constraints = state.constraints?.effective?.length ? `
-
-Constraints: ${state.constraints.effective.map((c) => c.text).join("; ")}` : state.triage?.constraints?.mustNot?.length ? `
-
-Constraints: ${state.triage.constraints.mustNot.join("; ")}` : "";
     setPendingDecision(state, {
       type: "approach-approval",
-      question: `${proposed}${reason}${risks}${constraints}
-
-Workflow mode: ${mode2}. Approve this approach before Workflow Plan generation?`,
+      question: "Approve the workflow strategy before Workflow Plan generation?",
       allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
     });
     return;
@@ -32332,7 +32364,7 @@ function workflowDecisionEnvelope(state) {
       preparationRevision: decision.preparationRevision,
       integrationRevision: decision.integrationRevision,
       additionalTurns: decision.additionalTurns,
-      question: decision.question,
+      question: selectorQuestionForDecision(decision),
       options: decisionActionsForQuestion(decision).map((action) => decisionOption(state, decision, action))
     } : void 0,
     nextOperation: nextOperation(state, phase2, decision)
@@ -32444,7 +32476,7 @@ function workflowStatus(state, phase2, decision) {
   if (decision) {
     return {
       code: `awaiting_${decision.type.replaceAll("-", "_")}`,
-      summary: decision.question,
+      summary: selectorQuestionForDecision(decision),
       phaseId: decision.phaseId,
       briefRevision: decision.briefRevision
     };
@@ -32654,6 +32686,9 @@ function workflowNextSummaryData(state) {
         validation: state.approach?.validationStrategy ?? [],
         revisionRequests: state.approach?.revisionRequests ?? [],
         noImplementationStarted: true
+      },
+      presentation: {
+        markdown: approachPresentation(workflow, state)
       }
     };
   }
@@ -33086,6 +33121,35 @@ function workflowPlanPresentation(workflow, state, recommendation) {
     recommendation.reasons.join(" ") || "Review the plan and select an approval policy."
   ].join("\n");
 }
+function approachPresentation(workflow, state) {
+  const constraints = state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints?.mustNot ?? [];
+  const task = state.triage?.task?.summary ?? state.request;
+  const approach = state.approach;
+  return [
+    "# Workflow strategy",
+    "",
+    `**Workflow:** ${workflow.id}`,
+    `**Mode:** ${modeLabel(workflow.mode)}`,
+    "",
+    "## Goal",
+    boundedPresentationText(task),
+    "",
+    "## Proposed approach",
+    boundedPresentationText(approach?.proposed ?? "No approach summary was recorded."),
+    "",
+    "## Why this mode",
+    boundedPresentationText(approach?.preferredBecause ?? "The persisted triage policy selected this workflow mode."),
+    "",
+    "## Primary risks",
+    ...markdownList(approach?.primaryRisks ?? []),
+    "",
+    "## Constraints",
+    ...markdownList(constraints),
+    "",
+    "## Before you approve",
+    "No implementation, file edits, tests, commits, or pushes have started."
+  ].join("\n");
+}
 function phaseBriefPresentation(workflow, state, brief) {
   if (!brief) return "# Phase Execution Brief\n\nThe persisted brief is unavailable.";
   return [
@@ -33148,19 +33212,20 @@ function listInline(values) {
   return values.length > 0 ? values.join(", ") : "None.";
 }
 function workflowStatePresentation(next) {
+  const selectorQuestion = next.decisionEnvelope.decision?.question ?? next.pendingDecision;
   return [
     `# ${next.label}`,
     "",
     `**Workflow:** ${next.workflow.id}`,
-    `**Request:** ${next.workflow.request}`,
+    `**Request:** ${boundedPresentationText(next.workflow.request)}`,
     `**Mode:** ${modeLabel(next.workflow.mode)}`,
     `**State:** ${next.workflow.state}`,
-    next.pendingDecision ? "" : void 0,
-    next.pendingDecision ? "## Decision" : void 0,
-    next.pendingDecision ?? void 0,
+    selectorQuestion ? "" : void 0,
+    selectorQuestion ? "## Decision" : void 0,
+    selectorQuestion ?? void 0,
     "",
     "## Next action",
-    next.pendingAction,
+    boundedPresentationText(next.pendingAction),
     ...summaryPresentationSections(next.summary)
   ].filter((line) => line !== void 0).join("\n");
 }
@@ -33170,29 +33235,37 @@ function summaryPresentationSections(summary) {
   return entries.flatMap(([key, value]) => ["", `## ${presentationLabel(key)}`, ...presentationValue(value)]);
 }
 function presentationValue(value) {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (typeof value === "string") return [boundedPresentationText(value)];
+  if (typeof value === "number" || typeof value === "boolean") return [String(value)];
   if (Array.isArray(value)) {
     if (value.length === 0) return ["None."];
-    return value.flatMap((item) => {
-      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") return [`- ${String(item)}`];
-      if (item && typeof item === "object") return [`- ${presentationObjectInline(item)}`];
+    const shown = value.slice(0, 8).flatMap((item) => {
+      if (typeof item === "string") return [`- ${boundedPresentationText(item)}`];
+      if (typeof item === "number" || typeof item === "boolean") return [`- ${String(item)}`];
+      if (item && typeof item === "object") return [`- ${boundedPresentationText(presentationObjectInline(item))}`];
       return [];
     });
+    return value.length > shown.length ? [...shown, `- ${value.length - shown.length} more item(s) available in details.`] : shown;
   }
   if (value && typeof value === "object") {
-    const entries = Object.entries(value).filter(([, nested]) => nested !== void 0 && nested !== null && nested !== "");
-    return entries.length > 0 ? entries.flatMap(([key, nested]) => [`- **${presentationLabel(key)}:** ${presentationInline(nested)}`]) : ["None."];
+    const entries = Object.entries(value).filter(([, nested]) => nested !== void 0 && nested !== null && nested !== "").slice(0, 8);
+    return entries.length > 0 ? entries.flatMap(([key, nested]) => [`- **${presentationLabel(key)}:** ${boundedPresentationText(presentationInline(nested))}`]) : ["None."];
   }
   return ["None."];
 }
 function presentationObjectInline(value) {
-  return Object.entries(value).filter(([, nested]) => nested !== void 0 && nested !== null && nested !== "").map(([key, nested]) => `${presentationLabel(key)}: ${presentationInline(nested)}`).join("; ");
+  return Object.entries(value).filter(([, nested]) => nested !== void 0 && nested !== null && nested !== "").slice(0, 8).map(([key, nested]) => `${presentationLabel(key)}: ${presentationInline(nested)}`).join("; ");
 }
 function presentationInline(value) {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) return value.map((item) => presentationInline(item)).join(", ") || "None.";
+  if (typeof value === "string") return boundedPresentationText(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.slice(0, 8).map((item) => presentationInline(item)).join(", ") || "None.";
   if (value && typeof value === "object") return presentationObjectInline(value) || "None.";
   return "None.";
+}
+function boundedPresentationText(value, maximum = 360) {
+  const normalised = value.replace(/\s+/g, " ").trim();
+  return normalised.length <= maximum ? normalised : `${normalised.slice(0, maximum - 1).trimEnd()}\u2026`;
 }
 function presentationLabel(value) {
   return value.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase());
@@ -35881,7 +35954,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.60");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.62");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

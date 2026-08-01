@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { approvePhase, loadFlowState } from "../src/core/flow.js";
 import { coordinatorResultForState } from "../src/core/execution/coordinator.js";
 import { phaseResultView, workflowDecisionEnvelope } from "../src/core/workflow-envelope.js";
+import { selectorQuestionForDecision } from "../src/core/workflow-decision.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("normalized workflow decision envelopes", () => {
@@ -87,6 +88,41 @@ describe("normalized workflow decision envelopes", () => {
       "view-details",
       "cancel-workflow"
     ]);
+  });
+
+  it("uses compact selector prompts for every workflow decision stage", () => {
+    const question = (type: Parameters<typeof selectorQuestionForDecision>[0]["type"], phaseId?: string) =>
+      selectorQuestionForDecision({ type, phaseId, briefRevision: 2, question: "Detailed persisted diagnostics that belong in Markdown." });
+
+    expect(question("approach-approval")).toBe("Approve the workflow strategy before Workflow Plan generation?");
+    expect(question("workflow-plan-approval")).toBe("Approve the Workflow Plan and its execution policy?");
+    expect(question("planning-fallback-review")).toBe("Choose how to proceed with workflow planning?");
+    expect(question("phase-brief-approval", "phase-a")).toBe("Review and approve phase-a Execution Brief revision 2?");
+    expect(question("workspace-bootstrap-approval", "phase-a")).toBe("Approve workspace preparation for phase-a?");
+    expect(question("material-drift-review", "phase-a")).toBe("Review material drift for phase-a?");
+    expect(question("execution-recovery", "phase-a")).toBe("Choose a recovery action for phase-a?");
+    expect(question("integration-conflict", "phase-a")).toBe("Resolve the integration conflict for phase-a?");
+    expect(question("final-review")).toBe("Record the final integrated review?");
+    expect(question("final-completion")).toBe("Complete the workflow?");
+    expect(question("clarification")).toBe("Detailed persisted diagnostics that belong in Markdown.");
+  });
+
+  it("normalizes a verbose persisted decision when it is read into the envelope", async () => {
+    const harness = await createExecutionHarness({
+      approveFirstPhase: false,
+      approvalPolicy: "phase-by-phase",
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {}
+    });
+    const state = await currentState(harness);
+    const decision = state.approval?.pendingDecision;
+    if (!decision) throw new Error("expected pending decision");
+    decision.type = "approach-approval";
+    decision.question = "A long legacy strategy, with risks, constraints, and whitespace that must never be shown in the selector.\n\nApprove?";
+
+    const envelope = workflowDecisionEnvelope(state);
+    expect(envelope.decision?.question).toBe("Approve the workflow strategy before Workflow Plan generation?");
+    expect(envelope.status.summary).toBe("Approve the workflow strategy before Workflow Plan generation?");
   });
 
   it("rejects duplicate and stale decision answers by stable identity", async () => {

@@ -6,6 +6,7 @@ import type {
   WorkflowPendingDecision,
   WorkflowPhase
 } from "./types.js";
+import { selectorQuestionForDecision } from "./workflow-decision.js";
 
 export interface PersistedPhaseResultView {
   workflowId: string;
@@ -80,7 +81,7 @@ export function workflowDecisionEnvelope(state: SequentialWorkflowState): Workfl
       preparationRevision: decision.preparationRevision,
       integrationRevision: decision.integrationRevision,
       additionalTurns: decision.additionalTurns,
-      question: decision.question,
+      question: selectorQuestionForDecision(decision),
       options: decisionActionsForQuestion(decision).map((action) => decisionOption(state, decision, action))
     } : undefined,
     nextOperation: nextOperation(state, phase, decision)
@@ -204,7 +205,7 @@ function workflowStatus(
   if (decision) {
     return {
       code: `awaiting_${decision.type.replaceAll("-", "_")}`,
-      summary: decision.question,
+      summary: selectorQuestionForDecision(decision),
       phaseId: decision.phaseId,
       briefRevision: decision.briefRevision
     };
