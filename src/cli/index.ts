@@ -25,7 +25,8 @@ import {
   phaseRepairBudget,
   resolveSingleActiveWorkflow,
   workflowNextSummary,
-  type ActiveWorkflowSelection
+  type ActiveWorkflowSelection,
+  type WorkflowNextSummary
 } from "../core/ux.js";
 import {
   answerClarification,
@@ -1236,9 +1237,9 @@ flow.command("next")
   .option("--json", "print structured next-step data")
   .action(async (workflowId, { root, json }) => {
     const state = workflowId ? await resumeFlow(root, workflowId) : await resolveSingleActiveWorkflow(root);
-    const envelope = workflowDecisionEnvelope(state);
-    if (json) console.log(JSON.stringify(envelope, null, 2));
-    else printDecisionEnvelope(envelope);
+    const summary = workflowNextSummary(state);
+    if (json) console.log(JSON.stringify(summary, null, 2));
+    else printNextSummary(summary);
   });
 
 flow.command("resume")
@@ -1677,6 +1678,28 @@ function printDecisionEnvelope(envelope: ReturnType<typeof workflowDecisionEnvel
     ...(envelope.decision?.options.map((option) => `- ${option.label}: ${option.description}`) ?? []),
     envelope.nextOperation ? `Next operation: ${envelope.nextOperation.type} (${envelope.nextOperation.automaticallyPermitted ? "automatically permitted" : "user decision required"})` : undefined
   ].filter((line): line is string => Boolean(line));
+  console.log(lines.join("\n"));
+}
+
+function printNextSummary(summary: WorkflowNextSummary): void {
+  const lines = [
+    `LeanRigor - ${summary.label}`,
+    "",
+    `Workflow: ${summary.workflow.id}`,
+    `Request: ${summary.workflow.request}`,
+    `Mode: ${labelMode(summary.workflow.mode)}`,
+    `State: ${summary.workflow.state}`,
+    summary.decisionEnvelope.decision
+      ? `Decision: ${summary.decisionEnvelope.decision.question}`
+      : undefined,
+    ...(summary.decisionEnvelope.decision?.options.map(
+      (option) => `- ${option.label}: ${option.description}`
+    ) ?? []),
+    summary.pendingDecision
+      ? `Pending decision: ${summary.pendingDecision}`
+      : undefined,
+    `Next action: ${summary.pendingAction}`,
+  ].filter((line): line is string => line !== undefined);
   console.log(lines.join("\n"));
 }
 

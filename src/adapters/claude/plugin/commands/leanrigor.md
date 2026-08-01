@@ -38,7 +38,7 @@ AskUserQuestion selector contract at every decision gate.
    provider completion, completion-gate acceptance, integration, final
    integrated validation, and user-approved final completion distinct.
    The post-triage approach selector options are exactly `Approve approach and
-   create plan`, `Revise approach`, `View workflow details`, and `Cancel
+   create plan`, `Add constraints to workflow strategy`, `View workflow details`, and `Cancel
    workflow`; state that no implementation has started.
    At `awaiting_clarification`, render `Question: <persisted question>`
    verbatim and `Why this matters: <persisted reason>` when present. Do not

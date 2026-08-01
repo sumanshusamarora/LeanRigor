@@ -137,7 +137,10 @@ genuinely unavailable in the current Claude Code environment. Each action has a
 deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response.
 Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 
-For the post-triage approach gate, render a compact summary before the selector:
+For the post-triage approach gate, render a compact summary before the selector.
+`flow next --json` returns both the decision envelope and the rich `summary`
+field in a single call. Render `summary` first, then call `AskUserQuestion`
+with `decisionEnvelope.decision.question` and `.options`:
 
 ```text
 Workflow created and triaged
@@ -162,7 +165,7 @@ these options in order:
 
 1. `Approve approach and create plan` — Continue to model-assisted planning
    using the approved triage constraints.
-2. `Revise approach` — Let me provide changes or additional constraints before
+2. `Add constraints to workflow strategy` — Let me provide changes or additional constraints before
    planning.
 3. `View workflow details` — Show full triage, policy, provenance, and current
    workflow state.
@@ -211,7 +214,7 @@ The following typed responses remain supported as a fallback:
   as the primary action. Show `otherDependencyReadyPhases` separately as
   available only after explicit user choice. Do not replace Phase 2 with Phase
   4 merely because both are dependency-ready.
-- `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> --feedback-file <feedback-file>`, rerender the updated approach summary, and ask for approval again. Do not start planning.
+- `revise ...` at `awaiting_approach_approval`: record the feedback with `flow revise-approach <workflow-id> --feedback-file <feedback-file>`, rerender the updated workflow strategy summary, and ask for approval again. Do not start planning. This action records additional constraints; it does not regenerate the approach.
 - `revise ...` at `awaiting_plan_approval`: use `flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto` unless deterministic planning was explicitly requested.
 - `reject because ...`: reject the approach with the supplied reason.
 - `cancel`: cancel the workflow after confirming intent when destructive to progress.
@@ -224,12 +227,15 @@ Ask one concise clarification for ambiguous responses.
 ## Phase And Review Rules
 
 Before phase approval, render the persisted Phase Execution Brief from `flow
-next --json`. Show its objective, concrete deliverable, inspected current
-behaviour, implementation approach, read/write paths, relevant files and
-symbols, acceptance criteria, test obligations, validation, dependencies,
-assumptions, exclusions, risks, changes from the approved Workflow Plan, and
-inspection provenance. Use the returned decision options in order. Do not
-summarise the Workflow Plan phase as though it were the detailed brief.
+next --json`. The response includes both `decisionEnvelope` (question and
+options for `AskUserQuestion`) and `summary` (the rich brief details). Show the
+objective, concrete deliverable, inspected current behaviour, implementation
+approach, read/write paths, relevant files and symbols, acceptance criteria,
+test obligations, validation, dependencies, assumptions, exclusions, risks,
+changes from the approved Workflow Plan, and inspection provenance from
+`summary`. Use the returned decision options in order from
+`decisionEnvelope.decision.options`. Do not summarise the Workflow Plan phase as
+though it were the detailed brief.
 
 Brief generation is a read-only planning operation. It must not initialize a
 workspace, dispatch the implementation provider, approve a phase, or expand
@@ -290,7 +296,12 @@ current integration head has passing combined validation.
 
 ## Presentation
 
-Render human summaries first:
+Render human summaries first. `flow next --json` returns both `decisionEnvelope`
+and the rich `summary` field — always render the relevant `summary` content
+before (or alongside) the decision selector. Never call `AskUserQuestion` with
+only the decision question; the artifact being approved must be visible.
+
+Render at minimum:
 
 - workflow ID, request, mode, state;
 - current phase and completion-gate status;

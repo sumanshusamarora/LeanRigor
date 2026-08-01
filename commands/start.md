@@ -33,7 +33,7 @@ Behaviour:
 5. At approval gates, render the persisted envelope `status` with a
    concise summary and use `AskUserQuestion` for the action selector when
    available. The post-triage approach selector options are exactly `Approve
-   approach and create plan`, `Revise approach`, `View workflow details`, and
+   approach and create plan`, `Add constraints to workflow strategy`, `View workflow details`, and
    `Cancel workflow`; state that no implementation has started. After explicit
    approach approval, invoke
    `flow approve-approach <workflow-id> --provider auto` internally so plan
