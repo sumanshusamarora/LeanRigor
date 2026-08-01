@@ -35,6 +35,9 @@ export interface WorkflowNextSummary {
   allowedIntents: string[];
   approvalActions?: ApprovalAction[];
   summary: Record<string, unknown>;
+  presentation?: {
+    markdown: string;
+  };
   troubleshooting: {
     showCommandsOnlyOnFailure: true;
     internalOperations: string[];
@@ -68,6 +71,18 @@ export async function resolveSingleActiveWorkflow(root: string): Promise<Sequent
 }
 
 export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNextSummary {
+  const next = workflowNextSummaryData(state);
+  return next.presentation
+    ? next
+    : {
+        ...next,
+        presentation: {
+          markdown: workflowStatePresentation(next)
+        }
+      };
+}
+
+function workflowNextSummaryData(state: SequentialWorkflowState): WorkflowNextSummary {
   const workflow = workflowListSummary(state);
   const phase = currentPhaseObject(state);
   const base = {
@@ -110,7 +125,7 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
       allowedIntents: ["approve", "looks good", "continue", "revise", "view details", "show status", "cancel"],
       approvalActions: [
         { label: "Approve approach and create plan", intent: "approve", command: `leanrigor flow approve-approach ${state.id} --provider auto --root ${root}`, description: "Continue to model-assisted planning using the approved triage constraints." },
-        { label: "Revise approach", intent: "revise", command: `leanrigor flow revise-approach ${state.id} "<feedback>" --root ${root}`, description: "Let me provide changes or additional constraints before planning." },
+        { label: "Add constraints to workflow strategy", intent: "revise", command: `leanrigor flow revise-approach ${state.id} "<feedback>" --root ${root}`, description: "Let me provide changes or additional constraints before planning." },
         { label: "View workflow details", intent: "view details", command: `leanrigor flow status ${state.id} --root ${root}`, description: "Show full triage, policy, provenance, and current workflow state." },
         { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Stop this workflow without starting implementation." }
       ],
@@ -206,6 +221,9 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
           reason: recommendation.reasons.join(" "),
           permittedPolicies: state.mode === "rigorous" ? ["phase-by-phase"] : ["workflow-authorized", "phase-by-phase"]
         }
+      },
+      presentation: {
+        markdown: workflowPlanPresentation(workflow, state, recommendation)
       }
     };
   }
@@ -333,6 +351,9 @@ export function workflowNextSummary(state: SequentialWorkflowState): WorkflowNex
           pendingDecision,
           recommendation,
           withinApprovedPlan: !brief?.materialChangesFromWorkflowPlan.some((change) => change.material)
+        },
+        presentation: {
+          markdown: phaseBriefPresentation(workflow, state, brief)
         }
       };
     }
@@ -564,6 +585,171 @@ function workflowListSummary(state: SequentialWorkflowState): WorkflowListSummar
     mode: state.mode,
     updatedAt: state.updatedAt
   };
+}
+
+function workflowPlanPresentation(
+  workflow: WorkflowListSummary,
+  state: SequentialWorkflowState,
+  recommendation: ReturnType<typeof approvalRecommendation>
+): string {
+  const plan = state.plan;
+  const phases = plan?.phases ?? [];
+  return [
+    "# Workflow Plan",
+    "",
+    `**Workflow:** ${workflow.id}`,
+    `**Mode:** ${modeLabel(workflow.mode)}`,
+    `**Plan revision:** ${state.revision}`,
+    "",
+    "## Strategy",
+    plan?.summary ?? "Sequential implementation plan.",
+    "",
+    "## Phases",
+    ...(phases.length > 0
+      ? phases.flatMap((phase, index) => [
+          `${index + 1}. **${phase.id}** — ${phase.objective}`,
+          `   - Write areas: ${listInline(phase.expectedWriteAreas)}`,
+          `   - Dependencies: ${listInline(phase.dependencies)}`,
+          `   - Validation: ${listInline(phase.validationCommands)}`
+        ])
+      : ["No phases are available."]),
+    "",
+    "## Approval",
+    recommendation.reasons.join(" ") || "Review the plan and select an approval policy."
+  ].join("\n");
+}
+
+function phaseBriefPresentation(
+  workflow: WorkflowListSummary,
+  state: SequentialWorkflowState,
+  brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string] | undefined
+): string {
+  if (!brief) return "# Phase Execution Brief\n\nThe persisted brief is unavailable.";
+  return [
+    `# ${phaseLabel(brief.phaseId)} Execution Brief`,
+    "",
+    `**Workflow:** ${workflow.id}`,
+    `**Mode:** ${modeLabel(workflow.mode)}`,
+    `**Workflow Plan revision:** ${brief.workflowRevision}`,
+    `**Brief revision:** ${brief.briefRevision}`,
+    "",
+    "## Objective",
+    brief.objective,
+    "",
+    "## Deliverable",
+    brief.deliverable,
+    "",
+    "## Current behaviour",
+    brief.currentBehaviour,
+    "",
+    "## Implementation approach",
+    brief.implementationApproach,
+    "",
+    "## Scope",
+    `- Read areas: ${listInline(brief.readAreas)}`,
+    `- Write areas: ${listInline(brief.writeAreas)}`,
+    `- Relevant files: ${listInline(brief.relevantFiles)}`,
+    `- Relevant symbols: ${listInline(brief.relevantSymbols)}`,
+    "",
+    "## Acceptance criteria",
+    ...markdownList(brief.acceptanceCriteria),
+    "",
+    "## Test and validation",
+    "### Test obligations",
+    ...markdownList(brief.testObligations),
+    "",
+    "### Validation commands",
+    ...markdownList(brief.validationCommands),
+    "",
+    "## Dependencies and assumptions",
+    `- Dependencies: ${listInline(brief.dependencies)}`,
+    `- Assumptions: ${listInline(brief.assumptions)}`,
+    `- Exclusions: ${listInline(brief.exclusions)}`,
+    "",
+    "## Risks",
+    ...markdownList(brief.risks),
+    "",
+    "## Inspection provenance",
+    `- Repository revision: ${brief.repository.repositoryRevision}`,
+    `- Inspected paths: ${listInline(brief.repository.inspectedPaths)}`,
+    `- Bounded reads: ${brief.inspectionResult.filesRead.length} file(s), ${brief.inspectionResult.bytesRead} byte(s)`,
+    `- Source: ${brief.inspectionResult.provenance.source}`,
+    `- Provider: ${brief.generation.provider}`,
+    `- Model tier: ${brief.generation.modelTier}`
+  ].join("\n");
+}
+
+function markdownList(values: string[]): string[] {
+  return values.length > 0 ? values.map((value) => `- ${value}`) : ["- None."];
+}
+
+function listInline(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "None.";
+}
+
+function workflowStatePresentation(next: WorkflowNextSummary): string {
+  return [
+    `# ${next.label}`,
+    "",
+    `**Workflow:** ${next.workflow.id}`,
+    `**Request:** ${next.workflow.request}`,
+    `**Mode:** ${modeLabel(next.workflow.mode)}`,
+    `**State:** ${next.workflow.state}`,
+    next.pendingDecision ? "" : undefined,
+    next.pendingDecision ? "## Decision" : undefined,
+    next.pendingDecision ?? undefined,
+    "",
+    "## Next action",
+    next.pendingAction,
+    ...summaryPresentationSections(next.summary)
+  ].filter((line): line is string => line !== undefined).join("\n");
+}
+
+function summaryPresentationSections(summary: Record<string, unknown>): string[] {
+  const entries = Object.entries(summary).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  if (entries.length === 0) return [];
+  return entries.flatMap(([key, value]) => ["", `## ${presentationLabel(key)}`, ...presentationValue(value)]);
+}
+
+function presentationValue(value: unknown): string[] {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ["None."];
+    return value.flatMap((item) => {
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") return [`- ${String(item)}`];
+      if (item && typeof item === "object") return [`- ${presentationObjectInline(item as Record<string, unknown>)}`];
+      return [];
+    });
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, nested]) => nested !== undefined && nested !== null && nested !== "");
+    return entries.length > 0
+      ? entries.flatMap(([key, nested]) => [`- **${presentationLabel(key)}:** ${presentationInline(nested)}`])
+      : ["None."];
+  }
+  return ["None."];
+}
+
+function presentationObjectInline(value: Record<string, unknown>): string {
+  return Object.entries(value)
+    .filter(([, nested]) => nested !== undefined && nested !== null && nested !== "")
+    .map(([key, nested]) => `${presentationLabel(key)}: ${presentationInline(nested)}`)
+    .join("; ");
+}
+
+function presentationInline(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map((item) => presentationInline(item)).join(", ") || "None.";
+  if (value && typeof value === "object") return presentationObjectInline(value as Record<string, unknown>) || "None.";
+  return "None.";
+}
+
+function presentationLabel(value: string): string {
+  return value.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase());
+}
+
+function modeLabel(mode: WorkflowMode): string {
+  return mode[0].toUpperCase() + mode.slice(1);
 }
 
 function phaseNextAction(status: string): string {

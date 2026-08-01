@@ -174,6 +174,11 @@ describe("detailed phase brief approval lifecycle", () => {
       "View full details",
       "Cancel workflow"
     ]);
+    expect(next.decisionEnvelope.decision?.question).toBe("Review and approve phase-1 Execution Brief revision 1?");
+    expect(next.decisionEnvelope.decision?.question).not.toContain("\n");
+    expect(next.decisionEnvelope.decision?.question).not.toContain("Deliverable:");
+    expect(next.presentation?.markdown).toContain("# Phase 1 Execution Brief");
+    expect(next.presentation?.markdown).toContain("## Inspection provenance");
     expect(rendered).not.toContain("Approve this phase only");
   });
 

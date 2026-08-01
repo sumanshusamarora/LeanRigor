@@ -258,6 +258,7 @@ describe("Claude conversational workflow UX support", () => {
     expect(next.label).toBe("Plan approval");
     expect(next.troubleshooting.showCommandsOnlyOnFailure).toBe(true);
     expect(JSON.stringify(next.summary)).not.toMatch(/leanrigor flow/);
+    expect(next.presentation?.markdown).toContain("# Workflow Plan");
   });
 
   it("labels clarification-gated mode as provisional", async () => {
@@ -271,6 +272,8 @@ describe("Claude conversational workflow UX support", () => {
       provisionalRecommendation: state.mode,
       finalMode: null
     });
+    expect(next.presentation?.markdown).toContain("# Clarification");
+    expect(next.presentation?.markdown).toContain("## Next action");
   });
 
   it("review command can distinguish phase review from final integrated review", async () => {
@@ -340,6 +343,8 @@ describe("Claude conversational workflow UX support", () => {
       expect(content).toMatch(/Never infer, cache, or reconstruct a question/);
       expect(content).toMatch(/Never call `AskUserQuestion` without a\s+current `decision`/);
       expect(content).toContain("ExitPlanMode");
+      expect(content).toContain("presentation.markdown");
+      expect(content).toMatch(/selector[\s\S]{0,160}decision\.question|decision\.question[\s\S]{0,160}selector/i);
     }
   });
 
@@ -393,7 +398,7 @@ describe("approval actions", () => {
 
     const revise = next.approvalActions?.find((a) => a.intent === "revise");
     expect(revise).toBeDefined();
-    expect(revise?.label).toBe("Revise approach");
+    expect(revise?.label).toBe("Add constraints to workflow strategy");
     expect(revise?.command).toContain("leanrigor flow revise-approach");
 
     const details = next.approvalActions?.find((a) => a.intent === "view details");

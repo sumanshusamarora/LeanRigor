@@ -32052,24 +32052,13 @@ function legacyPendingDecision(state) {
   const briefs = state.phaseBriefs && typeof state.phaseBriefs === "object" ? Object.values(state.phaseBriefs) : [];
   const pendingBrief = briefs.find((item) => item && typeof item === "object" && item.approvalStatus === "pending");
   if (pendingBrief) {
-    const objective = typeof pendingBrief.objective === "string" ? pendingBrief.objective : "";
-    const deliverable = typeof pendingBrief.deliverable === "string" ? pendingBrief.deliverable : "";
-    const writeAreas = Array.isArray(pendingBrief.writeAreas) ? pendingBrief.writeAreas.filter((v) => typeof v === "string").join(", ") : "";
-    const validation = Array.isArray(pendingBrief.validationCommands) ? pendingBrief.validationCommands.filter((v) => typeof v === "string").join(", ") : "";
-    const lines = [
-      objective,
-      deliverable ? `Deliverable: ${deliverable}` : "",
-      writeAreas ? `Write areas: ${writeAreas}` : "",
-      validation ? `Validation: ${validation}` : ""
-    ].filter(Boolean);
-    lines.push("", `Review and approve ${String(pendingBrief.phaseId)} Execution Brief revision ${String(pendingBrief.briefRevision)}?`);
     return {
       ...base,
       type: "phase-brief-approval",
       workflowRevision: typeof pendingBrief.workflowRevision === "number" ? pendingBrief.workflowRevision : revision,
       phaseId: pendingBrief.phaseId,
       briefRevision: pendingBrief.briefRevision,
-      question: lines.join("\n"),
+      question: phaseBriefApprovalQuestion(String(pendingBrief.phaseId), String(pendingBrief.briefRevision)),
       allowedActions: ["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"]
     };
   }
@@ -32269,27 +32258,19 @@ function persistPhaseBriefOutcome(state, phase2, outcome, requiresApproval) {
 }
 function setPendingPhaseApproval(state, brief) {
   if (!state.approval) throw new WorkflowStateError("Cannot request phase approval before the Workflow Plan is approved.");
-  const lines = [
-    brief.objective,
-    "",
-    `Deliverable: ${brief.deliverable}`,
-    `Write areas: ${brief.writeAreas.join(", ") || "(none)"}`,
-    `Validation: ${brief.validationCommands.join(", ") || "(none)"}`
-  ];
-  if (brief.testObligations.length > 0) lines.push(`Test obligations: ${brief.testObligations.join("; ")}`);
-  if (brief.risks.length > 0) lines.push(`Risks: ${brief.risks.join("; ")}`);
-  if (brief.exclusions.length > 0) lines.push(`Exclusions: ${brief.exclusions.join("; ")}`);
-  lines.push("", `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`);
   setPendingDecision(state, {
     type: "phase-brief-approval",
     workflowRevision: brief.workflowRevision,
     stateRevision: state.revision + 1,
     phaseId: brief.phaseId,
     briefRevision: brief.briefRevision,
-    question: lines.join("\n"),
+    question: phaseBriefApprovalQuestion(brief.phaseId, String(brief.briefRevision)),
     allowedActions: [...PHASE_APPROVAL_ACTIONS],
     source: "system"
   });
+}
+function phaseBriefApprovalQuestion(phaseId, briefRevision) {
+  return `Review and approve ${phaseId} Execution Brief revision ${briefRevision}?`;
 }
 function setPendingMaterialDriftReview(state, brief) {
   if (!state.approval) throw new WorkflowStateError("Cannot request material drift review before the Workflow Plan is approved.");
@@ -32606,6 +32587,15 @@ async function resolveSingleActiveWorkflow(root) {
   return resumeFlow(root, selection.workflow.id);
 }
 function workflowNextSummary(state) {
+  const next = workflowNextSummaryData(state);
+  return next.presentation ? next : {
+    ...next,
+    presentation: {
+      markdown: workflowStatePresentation(next)
+    }
+  };
+}
+function workflowNextSummaryData(state) {
   const workflow = workflowListSummary(state);
   const phase2 = currentPhaseObject(state);
   const base = {
@@ -32647,7 +32637,7 @@ function workflowNextSummary(state) {
       allowedIntents: ["approve", "looks good", "continue", "revise", "view details", "show status", "cancel"],
       approvalActions: [
         { label: "Approve approach and create plan", intent: "approve", command: `leanrigor flow approve-approach ${state.id} --provider auto --root ${root}`, description: "Continue to model-assisted planning using the approved triage constraints." },
-        { label: "Revise approach", intent: "revise", command: `leanrigor flow revise-approach ${state.id} "<feedback>" --root ${root}`, description: "Let me provide changes or additional constraints before planning." },
+        { label: "Add constraints to workflow strategy", intent: "revise", command: `leanrigor flow revise-approach ${state.id} "<feedback>" --root ${root}`, description: "Let me provide changes or additional constraints before planning." },
         { label: "View workflow details", intent: "view details", command: `leanrigor flow status ${state.id} --root ${root}`, description: "Show full triage, policy, provenance, and current workflow state." },
         { label: "Cancel workflow", intent: "cancel", command: `leanrigor flow cancel ${state.id} --root ${root}`, description: "Stop this workflow without starting implementation." }
       ],
@@ -32741,6 +32731,9 @@ function workflowNextSummary(state) {
           reason: recommendation.reasons.join(" "),
           permittedPolicies: state.mode === "rigorous" ? ["phase-by-phase"] : ["workflow-authorized", "phase-by-phase"]
         }
+      },
+      presentation: {
+        markdown: workflowPlanPresentation(workflow, state, recommendation)
       }
     };
   }
@@ -32859,6 +32852,9 @@ function workflowNextSummary(state) {
           pendingDecision,
           recommendation,
           withinApprovedPlan: !brief?.materialChangesFromWorkflowPlan.some((change2) => change2.material)
+        },
+        presentation: {
+          markdown: phaseBriefPresentation(workflow, state, brief)
         }
       };
     }
@@ -33064,6 +33060,145 @@ function workflowListSummary(state) {
     mode: state.mode,
     updatedAt: state.updatedAt
   };
+}
+function workflowPlanPresentation(workflow, state, recommendation) {
+  const plan = state.plan;
+  const phases = plan?.phases ?? [];
+  return [
+    "# Workflow Plan",
+    "",
+    `**Workflow:** ${workflow.id}`,
+    `**Mode:** ${modeLabel(workflow.mode)}`,
+    `**Plan revision:** ${state.revision}`,
+    "",
+    "## Strategy",
+    plan?.summary ?? "Sequential implementation plan.",
+    "",
+    "## Phases",
+    ...phases.length > 0 ? phases.flatMap((phase2, index) => [
+      `${index + 1}. **${phase2.id}** \u2014 ${phase2.objective}`,
+      `   - Write areas: ${listInline(phase2.expectedWriteAreas)}`,
+      `   - Dependencies: ${listInline(phase2.dependencies)}`,
+      `   - Validation: ${listInline(phase2.validationCommands)}`
+    ]) : ["No phases are available."],
+    "",
+    "## Approval",
+    recommendation.reasons.join(" ") || "Review the plan and select an approval policy."
+  ].join("\n");
+}
+function phaseBriefPresentation(workflow, state, brief) {
+  if (!brief) return "# Phase Execution Brief\n\nThe persisted brief is unavailable.";
+  return [
+    `# ${phaseLabel2(brief.phaseId)} Execution Brief`,
+    "",
+    `**Workflow:** ${workflow.id}`,
+    `**Mode:** ${modeLabel(workflow.mode)}`,
+    `**Workflow Plan revision:** ${brief.workflowRevision}`,
+    `**Brief revision:** ${brief.briefRevision}`,
+    "",
+    "## Objective",
+    brief.objective,
+    "",
+    "## Deliverable",
+    brief.deliverable,
+    "",
+    "## Current behaviour",
+    brief.currentBehaviour,
+    "",
+    "## Implementation approach",
+    brief.implementationApproach,
+    "",
+    "## Scope",
+    `- Read areas: ${listInline(brief.readAreas)}`,
+    `- Write areas: ${listInline(brief.writeAreas)}`,
+    `- Relevant files: ${listInline(brief.relevantFiles)}`,
+    `- Relevant symbols: ${listInline(brief.relevantSymbols)}`,
+    "",
+    "## Acceptance criteria",
+    ...markdownList(brief.acceptanceCriteria),
+    "",
+    "## Test and validation",
+    "### Test obligations",
+    ...markdownList(brief.testObligations),
+    "",
+    "### Validation commands",
+    ...markdownList(brief.validationCommands),
+    "",
+    "## Dependencies and assumptions",
+    `- Dependencies: ${listInline(brief.dependencies)}`,
+    `- Assumptions: ${listInline(brief.assumptions)}`,
+    `- Exclusions: ${listInline(brief.exclusions)}`,
+    "",
+    "## Risks",
+    ...markdownList(brief.risks),
+    "",
+    "## Inspection provenance",
+    `- Repository revision: ${brief.repository.repositoryRevision}`,
+    `- Inspected paths: ${listInline(brief.repository.inspectedPaths)}`,
+    `- Bounded reads: ${brief.inspectionResult.filesRead.length} file(s), ${brief.inspectionResult.bytesRead} byte(s)`,
+    `- Source: ${brief.inspectionResult.provenance.source}`,
+    `- Provider: ${brief.generation.provider}`,
+    `- Model tier: ${brief.generation.modelTier}`
+  ].join("\n");
+}
+function markdownList(values) {
+  return values.length > 0 ? values.map((value) => `- ${value}`) : ["- None."];
+}
+function listInline(values) {
+  return values.length > 0 ? values.join(", ") : "None.";
+}
+function workflowStatePresentation(next) {
+  return [
+    `# ${next.label}`,
+    "",
+    `**Workflow:** ${next.workflow.id}`,
+    `**Request:** ${next.workflow.request}`,
+    `**Mode:** ${modeLabel(next.workflow.mode)}`,
+    `**State:** ${next.workflow.state}`,
+    next.pendingDecision ? "" : void 0,
+    next.pendingDecision ? "## Decision" : void 0,
+    next.pendingDecision ?? void 0,
+    "",
+    "## Next action",
+    next.pendingAction,
+    ...summaryPresentationSections(next.summary)
+  ].filter((line) => line !== void 0).join("\n");
+}
+function summaryPresentationSections(summary) {
+  const entries = Object.entries(summary).filter(([, value]) => value !== void 0 && value !== null && value !== "");
+  if (entries.length === 0) return [];
+  return entries.flatMap(([key, value]) => ["", `## ${presentationLabel(key)}`, ...presentationValue(value)]);
+}
+function presentationValue(value) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ["None."];
+    return value.flatMap((item) => {
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") return [`- ${String(item)}`];
+      if (item && typeof item === "object") return [`- ${presentationObjectInline(item)}`];
+      return [];
+    });
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).filter(([, nested]) => nested !== void 0 && nested !== null && nested !== "");
+    return entries.length > 0 ? entries.flatMap(([key, nested]) => [`- **${presentationLabel(key)}:** ${presentationInline(nested)}`]) : ["None."];
+  }
+  return ["None."];
+}
+function presentationObjectInline(value) {
+  return Object.entries(value).filter(([, nested]) => nested !== void 0 && nested !== null && nested !== "").map(([key, nested]) => `${presentationLabel(key)}: ${presentationInline(nested)}`).join("; ");
+}
+function presentationInline(value) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map((item) => presentationInline(item)).join(", ") || "None.";
+  if (value && typeof value === "object") return presentationObjectInline(value) || "None.";
+  return "None.";
+}
+function presentationLabel(value) {
+  return value.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase());
+}
+function modeLabel(mode2) {
+  return mode2[0].toUpperCase() + mode2.slice(1);
 }
 function phaseNextAction(status) {
   if (status === "needs_repair") return "Repair the phase within the gate's requested scope; continue cannot bypass repair.";
@@ -35746,7 +35881,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.59");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.60");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

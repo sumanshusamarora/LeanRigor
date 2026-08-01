@@ -4272,24 +4272,13 @@ function legacyPendingDecision(state: Record<string, unknown>): Record<string, u
   const briefs = state.phaseBriefs && typeof state.phaseBriefs === "object" ? Object.values(state.phaseBriefs as Record<string, unknown>) : [];
   const pendingBrief = briefs.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).approvalStatus === "pending") as Record<string, unknown> | undefined;
   if (pendingBrief) {
-    const objective = typeof pendingBrief.objective === "string" ? pendingBrief.objective : "";
-    const deliverable = typeof pendingBrief.deliverable === "string" ? pendingBrief.deliverable : "";
-    const writeAreas = Array.isArray(pendingBrief.writeAreas) ? pendingBrief.writeAreas.filter((v): v is string => typeof v === "string").join(", ") : "";
-    const validation = Array.isArray(pendingBrief.validationCommands) ? pendingBrief.validationCommands.filter((v): v is string => typeof v === "string").join(", ") : "";
-    const lines = [
-      objective,
-      deliverable ? `Deliverable: ${deliverable}` : "",
-      writeAreas ? `Write areas: ${writeAreas}` : "",
-      validation ? `Validation: ${validation}` : ""
-    ].filter(Boolean);
-    lines.push("", `Review and approve ${String(pendingBrief.phaseId)} Execution Brief revision ${String(pendingBrief.briefRevision)}?`);
     return {
       ...base,
       type: "phase-brief-approval",
       workflowRevision: typeof pendingBrief.workflowRevision === "number" ? pendingBrief.workflowRevision : revision,
       phaseId: pendingBrief.phaseId,
       briefRevision: pendingBrief.briefRevision,
-      question: lines.join("\n"),
+      question: phaseBriefApprovalQuestion(String(pendingBrief.phaseId), String(pendingBrief.briefRevision)),
       allowedActions: ["approve-phase", "revise-phase-brief", "view-details", "cancel-workflow"]
     };
   }
@@ -4510,27 +4499,20 @@ function persistPhaseBriefOutcome(
 
 function setPendingPhaseApproval(state: SequentialWorkflowState, brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string]): void {
   if (!state.approval) throw new WorkflowStateError("Cannot request phase approval before the Workflow Plan is approved.");
-  const lines = [
-    brief.objective,
-    "",
-    `Deliverable: ${brief.deliverable}`,
-    `Write areas: ${brief.writeAreas.join(", ") || "(none)"}`,
-    `Validation: ${brief.validationCommands.join(", ") || "(none)"}`
-  ];
-  if (brief.testObligations.length > 0) lines.push(`Test obligations: ${brief.testObligations.join("; ")}`);
-  if (brief.risks.length > 0) lines.push(`Risks: ${brief.risks.join("; ")}`);
-  if (brief.exclusions.length > 0) lines.push(`Exclusions: ${brief.exclusions.join("; ")}`);
-  lines.push("", `Review and approve ${brief.phaseId} Execution Brief revision ${brief.briefRevision}?`);
   setPendingDecision(state, {
     type: "phase-brief-approval",
     workflowRevision: brief.workflowRevision,
     stateRevision: state.revision + 1,
     phaseId: brief.phaseId,
     briefRevision: brief.briefRevision,
-    question: lines.join("\n"),
+    question: phaseBriefApprovalQuestion(brief.phaseId, String(brief.briefRevision)),
     allowedActions: [...PHASE_APPROVAL_ACTIONS],
     source: "system"
   });
+}
+
+function phaseBriefApprovalQuestion(phaseId: string, briefRevision: string): string {
+  return `Review and approve ${phaseId} Execution Brief revision ${briefRevision}?`;
 }
 
 function setPendingMaterialDriftReview(state: SequentialWorkflowState, brief: NonNullable<SequentialWorkflowState["phaseBriefs"]>[string]): void {

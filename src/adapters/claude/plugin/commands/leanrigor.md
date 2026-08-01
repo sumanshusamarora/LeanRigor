@@ -33,7 +33,11 @@ AskUserQuestion selector contract at every decision gate.
    natural-language response when present.
 4. If multiple active workflows exist, present the selection and ask the user
    to choose.
-5. Render the envelope's `status` exactly. Keep Workflow Plan approval, Phase
+5. Render the envelope's `status` exactly. `flow next --json` always returns
+   `presentation.markdown`; render it verbatim as a normal assistant message
+   before opening the selector. The selector question is only the compact
+   persisted `decision.question`; never put the brief, plan, status, or
+   Markdown artifact inside it. Keep Workflow Plan approval, Phase
    Execution Brief approval, workspace preparation, provider dispatch,
    provider completion, completion-gate acceptance, integration, final
    integrated validation, and user-approved final completion distinct.
@@ -65,8 +69,9 @@ AskUserQuestion selector contract at every decision gate.
    repair history. Present only the persisted retry-planning, revise-plan,
    view-details, and cancel actions; never offer plan approval. A retry uses
    `leanrigor flow retry-plan <workflow-id> --provider auto`.
-8. After Workflow Plan approval, refresh, render the persisted
-   Phase Execution Brief decision, and wait for exact brief approval. When
+8. After Workflow Plan approval, refresh, render `presentation.markdown` as a
+   normal assistant message, then open the persisted Phase Execution Brief
+   decision selector and wait for exact brief approval. When
    execution providers/workspaces are configured, only then use the coordinator
    execution path (`flow execute-next --provider auto` /
    `flow execution-poll --provider auto`) and render only persisted
@@ -87,7 +92,9 @@ AskUserQuestion selector contract at every decision gate.
    order. Match the selected option by `intent` and run only its persisted
    command. Never invent, cache, or reconstruct question state. Never call
    `AskUserQuestion` when `decision` is absent, and never report "No new
-   question to present" while a persisted decision exists.
+   question to present" while a persisted decision exists. `decision.question`
+   is a compact selector prompt, not a rendering surface for an approval
+   artifact.
 10. Never compensate for an unavailable workflow transition by narrating that the
    workflow is complete. Report the persisted state and the exact blocker.
 

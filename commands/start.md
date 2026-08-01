@@ -32,7 +32,11 @@ Behaviour:
    Do not guess.
 5. At approval gates, render the persisted envelope `status` with a
    concise summary and use `AskUserQuestion` for the action selector when
-   available. The post-triage approach selector options are exactly `Approve
+   available. `flow next --json` always returns `presentation.markdown`; render
+   that Markdown as a normal assistant message before opening any selector.
+   The selector must contain only the short persisted `decision.question` and
+   its options; never put the brief, plan, status, or Markdown artifact into
+   the selector question. The post-triage approach selector options are exactly `Approve
    approach and create plan`, `Add constraints to workflow strategy`, `View workflow details`, and
    `Cancel workflow`; state that no implementation has started. After explicit
    approach approval, invoke
@@ -52,7 +56,8 @@ Behaviour:
    Preserve any explicit user request for deterministic planning.
 7. During execution, use `execution.mode = coordinator` when execution
    providers/workspaces are configured. After Workflow Plan approval, invoke
-   `flow next --json`, render every persisted Phase Execution Brief section and
+   `flow next --json`, render `presentation.markdown` as normal assistant
+   Markdown and
    its bounded-inspection provenance, and wait for exact brief approval. If the
    brief is blocked, present the persisted recovery actions instead of a
    placeholder. Only then invoke `flow execute-next --provider auto`
@@ -79,7 +84,8 @@ Use the selector input shape `questions[0].question`, `questions[0].header`,
 labels and descriptions copied from the at-most-four presented
 `decision.options` in order.
 Use `decision.question` verbatim. Never call `AskUserQuestion` without a
-current decision or reconstruct one from conversational context.
+current decision or reconstruct one from conversational context. It is a
+compact selector prompt, not a rendering surface for an approval artifact.
 
 Never compensate for an unavailable workflow transition by narrating that the
 workflow is complete. Report the persisted state and the exact blocker.

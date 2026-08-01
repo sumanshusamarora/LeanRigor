@@ -390,7 +390,7 @@ describe("Claude marketplace plugin runtime", () => {
     expect(state.next?.summary.constraints).toBeDefined();
     expect(state.next?.approvalActions.map((action) => action.label)).toEqual([
       "Approve approach and create plan",
-      "Revise approach",
+      "Add constraints to workflow strategy",
       "View workflow details",
       "Cancel workflow"
     ]);
@@ -431,6 +431,17 @@ describe("Claude marketplace plugin runtime", () => {
         id?: string;
         workflowRevision?: number;
         state?: string;
+        status?: { code: string; summary: string; phaseId?: string };
+        decision?: {
+          id: string;
+          type: string;
+          workflowRevision: number;
+          phaseId?: string;
+          briefRevision?: number;
+          question: string;
+          options: Array<{ intent: string; label: string; command?: string }>;
+        };
+        nextOperation?: { type: string; automaticallyPermitted: boolean };
         workflow?: { id: string; request: string; state: string; mode: string };
         decisionEnvelope?: {
           workflowId: string;
@@ -450,6 +461,7 @@ describe("Claude marketplace plugin runtime", () => {
         };
         label?: string;
         summary?: Record<string, unknown>;
+        presentation?: { markdown: string };
         pendingDecision?: string | null;
         pendingAction?: string;
         approved?: boolean;
@@ -487,6 +499,7 @@ describe("Claude marketplace plugin runtime", () => {
     expect(approachNext.summary).toHaveProperty("assessment");
     expect(approachNext.summary).toHaveProperty("constraints");
     expect(approachNext.summary).toHaveProperty("noImplementationStarted", true);
+    expect(approachNext.presentation?.markdown).toContain("# Approach approval");
 
     const planned = await cli([
       "flow", "approve-approach", workflowId,
@@ -513,6 +526,7 @@ describe("Claude marketplace plugin runtime", () => {
     const summaryExec = (planNext.summary as Record<string, unknown>).execution as Record<string, unknown>;
     expect(summaryExec.mainWorkingTree).toBe("remains untouched");
     expect(summaryExec.implementationStarted).toBe(false);
+    expect(planNext.presentation?.markdown).toContain("# Workflow Plan");
 
     const phaseOne = await cli([
       "flow", "approve-plan", workflowId,
@@ -522,6 +536,10 @@ describe("Claude marketplace plugin runtime", () => {
     ]);
     assertDecision(phaseOne, "phase-brief-approval");
     expect(phaseOne.decision?.phaseId).toBe("phase-1");
+    const phaseOneNext = await cli(["flow", "next", workflowId, "--json"]);
+    expect(phaseOneNext.decisionEnvelope?.decision?.question).toBe("Review and approve phase-1 Execution Brief revision 1?");
+    expect(phaseOneNext.decisionEnvelope?.decision?.question).not.toContain("\n");
+    expect(phaseOneNext.presentation?.markdown).toContain("# Phase 1 Execution Brief");
     const phaseOneBrief = await cli(["flow", "phase-brief-show", workflowId, "phase-1"]);
     expect(phaseOneBrief.generation).toMatchObject({ source: "provider", provider: "claude-cli" });
     const revisedBrief = await cli(["flow", "phase-brief", workflowId, "phase-1", "Rewrite the implementation approach around the inspected flow boundary."]);
@@ -563,6 +581,7 @@ describe("Claude marketplace plugin runtime", () => {
       lifecycle: { completionGate: "completed", integration: "integrated" },
       manualInspection: { required: false }
     });
+    if (!phaseTwo.status) throw new Error("expected phase-two lifecycle status");
     expect(phaseTwo.status.summary).not.toMatch(/complete and approved/i);
     expect(commandLog.flat().join(" ")).not.toMatch(/\bgit\s+diff\b|phase-worktree|cd\s+/);
   });

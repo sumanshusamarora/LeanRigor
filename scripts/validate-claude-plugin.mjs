@@ -189,7 +189,7 @@ if (!marketplaceWorkflowSkill.includes("decision.question") || !marketplaceWorkf
 if (!marketplaceWorkflowSkill.includes("automaticallyPermitted")) fail("marketplace workflow skill must distinguish automatic operations from decisions");
 if (!marketplaceWorkflowSkill.includes("flow phase-result")) fail("marketplace workflow skill must use persisted phase results");
 if (!/Never call `AskUserQuestion` without a\s+current `decision`/.test(marketplaceWorkflowSkill)) fail("marketplace workflow skill must prohibit stale question presentation");
-for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
+for (const option of ["Approve approach and create plan", "Add constraints to workflow strategy", "View workflow details", "Cancel workflow"]) {
   if (!marketplaceWorkflowSkill.includes(option)) fail(`marketplace workflow skill must document post-triage option: ${option}`);
 }
 if (!marketplaceWorkflowSkill.includes("No implementation has started")) fail("marketplace workflow skill must state that no implementation has started at the approach gate");
@@ -208,7 +208,7 @@ if (!localWorkflow.includes("ExitPlanMode")) fail("project-local workflow must p
 if (!localWorkflow.includes("automaticallyPermitted")) fail("project-local workflow must distinguish automatic operations from decisions");
 if (!localWorkflow.includes("flow phase-result")) fail("project-local workflow must use persisted phase results");
 if (!localWorkflow.includes("Never call `AskUserQuestion` without a")) fail("project-local workflow must prohibit stale question presentation");
-for (const option of ["Approve approach and create plan", "Revise approach", "View workflow details", "Cancel workflow"]) {
+for (const option of ["Approve approach and create plan", "Add constraints to workflow strategy", "View workflow details", "Cancel workflow"]) {
   if (!localWorkflow.includes(option)) fail(`project-local workflow must document post-triage option: ${option}`);
 }
 if (!localWorkflow.includes("No implementation has started")) fail("project-local workflow must state that no implementation has started at the approach gate");

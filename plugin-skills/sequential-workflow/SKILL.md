@@ -112,6 +112,13 @@ at most four options for `AskUserQuestion`. Match the selected option by persist
 only its persisted command. Never infer, cache, or reconstruct a question.
 Never call `AskUserQuestion` without a current `decision`.
 
+Keep the two presentation surfaces separate throughout the workflow. `flow next
+--json` always includes `presentation.markdown`; render it verbatim as normal
+assistant Markdown before calling `AskUserQuestion`. The selector question must be exactly
+`decision.question`; never copy `summary`, `status`, or
+`presentation.markdown` into it. The selector is for a compact choice, not for
+displaying an approval artifact.
+
 Use this `AskUserQuestion` input shape for approval selectors:
 
 ```json
@@ -227,8 +234,10 @@ Ask one concise clarification for ambiguous responses.
 ## Phase And Review Rules
 
 Before phase approval, render the persisted Phase Execution Brief from `flow
-next --json`. The response includes both `decisionEnvelope` (question and
-options for `AskUserQuestion`) and `summary` (the rich brief details). Show the
+next --json`. Render `presentation.markdown` verbatim in a normal assistant
+message before the selector. The response also includes both
+`decisionEnvelope` (question and options for `AskUserQuestion`) and `summary`
+(the rich brief details). Show the
 objective, concrete deliverable, inspected current behaviour, implementation
 approach, read/write paths, relevant files and symbols, acceptance criteria,
 test obligations, validation, dependencies, assumptions, exclusions, risks,
@@ -297,9 +306,11 @@ current integration head has passing combined validation.
 ## Presentation
 
 Render human summaries first. `flow next --json` returns both `decisionEnvelope`
-and the rich `summary` field — always render the relevant `summary` content
-before (or alongside) the decision selector. Never call `AskUserQuestion` with
-only the decision question; the artifact being approved must be visible.
+and the rich `summary` field, plus a deterministic `presentation.markdown`
+artifact for every workflow state. Always render that artifact as normal
+assistant Markdown before a decision selector. Never put that artifact inside
+`AskUserQuestion`: the selector receives only `decision.question` and its
+options.
 
 Render at minimum:
 

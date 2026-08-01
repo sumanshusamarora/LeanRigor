@@ -117,6 +117,11 @@ Rules:
   (maximum 12 characters) derived from the decision type. Fall back to a
   numbered list only when `AskUserQuestion` is unavailable. Do not infer
   approval from tone and do not use `ExitPlanMode` as LeanRigor approval.
+- Keep the approval artifact and selector separate throughout the workflow.
+  `flow next --json` always includes `presentation.markdown`; render it verbatim as normal assistant
+  Markdown before calling `AskUserQuestion`. The selector must use only
+  `decision.question`; never copy the brief, plan, summary, status, or Markdown
+  artifact into the question body.
 - At the post-triage approach gate, render a compact `Workflow created and triaged` summary with workflow ID, mode, assessment, key constraints, recommended approach, and `No implementation has started. Your approval is required before planning.` Then call `AskUserQuestion` in the same turn with exactly these options in order: `Approve approach and create plan`, `Add constraints to workflow strategy`, `View workflow details`, `Cancel workflow`.
 - At the clarification gate (`state: awaiting_clarification`), render the persisted question explicitly and verbatim: `Question: <next.summary.question or clarification.question>`. Also render `Why this matters: <next.summary.reason or clarification.reason>` when present. If `next.summary.modeStatus` is `provisional`, label the shown mode as `Provisional recommendation` and do not present it as final. Do not invent additional triage questions from repository scope or planning uncertainty; LeanRigor core has already filtered model-requested clarification. Do not replace the question with the reason, and do not end with a blank prompt after "before continuing". If `AskUserQuestion` is available, ask exactly the persisted question there as well; otherwise ask for a free-form answer in plain language. Record the answer with `leanrigor flow answer <workflow-id> --answer-file <answer-file> --provider auto`.
 - Interpret `approve`, `looks good`, and `continue` as free-form fallback responses according to the current gate.
@@ -153,8 +158,9 @@ Rules:
   cancel. Match the selected
   persisted action to its deterministic transition; never infer an approval
   from conversational tone or use ExitPlanMode.
-- After Workflow Plan approval and before coordinator dispatch, refresh state
-  and render the persisted Phase Execution Brief approval decision. Offer
+- After Workflow Plan approval and before coordinator dispatch, refresh state,
+  render `presentation.markdown` as normal assistant Markdown, then open the
+  persisted Phase Execution Brief approval decision selector. Offer
   `Approve <phase-id>`, `Revise phase
   brief`, `View full details`, and `Cancel workflow`.
   Approval must reference the decision's exact workflow and brief revisions.
@@ -227,6 +233,8 @@ Rules:
 Presentation:
 
 - Human-readable first: workflow ID, request, mode, state, current phase, gate status, criteria/validation progress, repair attempts, blockers, and next action.
+- Render `presentation.markdown` before every approval selector. The selector
+  must contain only `decision.question` and its options.
 - Do not print raw JSON or CLI commands unless troubleshooting or explicitly requested.
 
 Troubleshooting fallback:
