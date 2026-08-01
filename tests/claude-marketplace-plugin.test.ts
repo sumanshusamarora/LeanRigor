@@ -429,19 +429,30 @@ describe("Claude marketplace plugin runtime", () => {
       return JSON.parse(result.stdout) as {
         workflowId?: string;
         id?: string;
-        workflowRevision: number;
-        state: string;
-        status: { code: string; summary: string; phaseId?: string };
-        decision?: {
-          id: string;
-          type: string;
+        workflowRevision?: number;
+        state?: string;
+        workflow?: { id: string; request: string; state: string; mode: string };
+        decisionEnvelope?: {
+          workflowId: string;
           workflowRevision: number;
-          phaseId?: string;
-          briefRevision?: number;
-          question: string;
-          options: Array<{ intent: string; label: string; command?: string }>;
+          state: string;
+          status: { code: string; summary: string; phaseId?: string };
+          decision?: {
+            id: string;
+            type: string;
+            workflowRevision: number;
+            phaseId?: string;
+            briefRevision?: number;
+            question: string;
+            options: Array<{ intent: string; label: string; command?: string }>;
+          };
+          nextOperation?: { type: string; automaticallyPermitted: boolean };
         };
-        nextOperation?: { type: string; automaticallyPermitted: boolean };
+        label?: string;
+        summary?: Record<string, unknown>;
+        pendingDecision?: string | null;
+        pendingAction?: string;
+        approved?: boolean;
         nextAction?: string;
         briefRevision?: number;
         generation?: { source: string; provider: string };
@@ -452,14 +463,17 @@ describe("Claude marketplace plugin runtime", () => {
         };
       };
     };
-    const assertDecision = (envelope: Awaited<ReturnType<typeof cli>>, type: string) => {
-      expect(envelope.decision).toMatchObject({
+    const assertDecision = (output: Awaited<ReturnType<typeof cli>>, type: string) => {
+      const decision = "decisionEnvelope" in output && output.decisionEnvelope?.decision
+        ? output.decisionEnvelope.decision
+        : output.decision;
+      expect(decision).toMatchObject({
         type,
         question: expect.any(String),
         options: expect.arrayContaining([expect.objectContaining({ intent: expect.any(String), label: expect.any(String) })])
       });
-      expect(envelope.decision!.question.length).toBeGreaterThan(0);
-      expect(envelope.decision!.options.length).toBeGreaterThan(0);
+      expect(decision!.question.length).toBeGreaterThan(0);
+      expect(decision!.options.length).toBeGreaterThan(0);
     };
 
     const started = await cli(["flow", "start", "Change authentication migration handling for production credentials"]);
@@ -488,17 +502,18 @@ describe("Claude marketplace plugin runtime", () => {
     expect(revisedBrief.generation).toMatchObject({ source: "provider", provider: "claude-cli" });
     const revisedPhaseOne = await cli(["flow", "next", workflowId, "--json"]);
     assertDecision(revisedPhaseOne, "phase-brief-approval");
+    const revisedDecision = revisedPhaseOne.decisionEnvelope!.decision!;
 
     const blockedDispatch = await cli(["flow", "execute-next", workflowId, "--provider", "scripted", "--json"]);
-    expect(blockedDispatch.decision).toEqual(revisedPhaseOne.decision);
+    expect(blockedDispatch.decision).toEqual(revisedDecision);
     expect(blockedDispatch.nextAction).toBe("await_user");
 
     const approved = await cli([
       "flow", "approve-phase", workflowId, "phase-1",
-      "--brief-revision", String(revisedPhaseOne.decision!.briefRevision),
-      "--workflow-revision", String(revisedPhaseOne.decision!.workflowRevision),
-      "--decision-id", revisedPhaseOne.decision!.id,
-      "--expected-revision", String(revisedPhaseOne.workflowRevision)
+      "--brief-revision", String(revisedDecision.briefRevision),
+      "--workflow-revision", String(revisedDecision.workflowRevision),
+      "--decision-id", revisedDecision.id,
+      "--expected-revision", String(revisedPhaseOne.decisionEnvelope!.workflowRevision)
     ]);
     expect(approved.decision).toBeUndefined();
     expect(approved.nextOperation).toMatchObject({ type: "execute-next", automaticallyPermitted: true });
