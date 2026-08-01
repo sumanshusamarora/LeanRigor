@@ -32500,7 +32500,7 @@ function decisionOption(state, decision, action) {
   const options = {
     answer: { label: "Answer clarification", description: "Record an answer to the persisted clarification question.", command: `leanrigor flow answer ${state.id} --answer-file <answer-file> ${common}` },
     "approve-approach": { label: "Approve approach and create plan", description: "Approve the persisted approach and generate the Workflow Plan.", command: `leanrigor flow approve-approach ${state.id} --provider auto ${common}` },
-    "revise-approach": { label: "Revise approach", description: "Record revision feedback and return a fresh approach decision.", command: `leanrigor flow revise-approach ${state.id} --feedback-file <feedback-file> ${common}` },
+    "revise-approach": { label: "Add constraints to workflow strategy", description: "Persist additional constraints or feedback on the workflow strategy before re-approving.", command: `leanrigor flow revise-approach ${state.id} --feedback-file <feedback-file> ${common}` },
     "approve-plan": { label: "Approve Workflow Plan and prepare Phase 1 brief", description: "Approve only the Workflow Plan and generate the first detailed brief.", command: `leanrigor flow approve-plan ${state.id} --approval-policy ${state.mode === "rigorous" ? "phase-by-phase" : "workflow-authorized"} ${common}` },
     "revise-plan": { label: "Revise Workflow Plan", description: "Record plan feedback and generate a fresh Workflow Plan decision.", command: `leanrigor flow revise-plan ${state.id} --feedback-file <feedback-file> --provider auto ${common}` },
     "retry-planning": { label: "Retry structured planning", description: "Retry bounded structured planning with the configured provider.", command: `leanrigor flow retry-plan ${state.id} --provider auto ${common}` },
@@ -35746,7 +35746,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.57");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.58");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -36383,9 +36383,9 @@ flow.command("active").option("--root <path>", "repository root", process.cwd())
 });
 flow.command("next").argument("[workflow-id]").option("--root <path>", "repository root", process.cwd()).option("--json", "print structured next-step data").action(async (workflowId2, { root, json: json2 }) => {
   const state = workflowId2 ? await resumeFlow(root, workflowId2) : await resolveSingleActiveWorkflow(root);
-  const envelope = workflowDecisionEnvelope(state);
-  if (json2) console.log(JSON.stringify(envelope, null, 2));
-  else printDecisionEnvelope(envelope);
+  const summary = workflowNextSummary(state);
+  if (json2) console.log(JSON.stringify(summary, null, 2));
+  else printNextSummary(summary);
 });
 flow.command("resume").argument("<workflow-id>").option("--root <path>", "repository root", process.cwd()).action(async (workflowId2, { root }) => {
   printFlowState(await resumeFlow(root, workflowId2));
@@ -36765,14 +36765,21 @@ ${selection.message}`);
     console.log(`- ${workflow.id} | ${workflow.state} | ${labelMode(workflow.mode)} | ${workflow.request} | updated ${workflow.updatedAt}`);
   }
 }
-function printDecisionEnvelope(envelope) {
+function printNextSummary(summary) {
   const lines = [
-    `Workflow ${envelope.workflowId} revision ${envelope.workflowRevision}: ${envelope.state}`,
-    envelope.status.summary,
-    envelope.decision ? `Decision: ${envelope.decision.question}` : void 0,
-    ...envelope.decision?.options.map((option) => `- ${option.label}: ${option.description}`) ?? [],
-    envelope.nextOperation ? `Next operation: ${envelope.nextOperation.type} (${envelope.nextOperation.automaticallyPermitted ? "automatically permitted" : "user decision required"})` : void 0
-  ].filter((line) => Boolean(line));
+    `LeanRigor - ${summary.label}`,
+    "",
+    `Workflow: ${summary.workflow.id}`,
+    `Request: ${summary.workflow.request}`,
+    `Mode: ${labelMode(summary.workflow.mode)}`,
+    `State: ${summary.workflow.state}`,
+    summary.decisionEnvelope.decision ? `Decision: ${summary.decisionEnvelope.decision.question}` : void 0,
+    ...summary.decisionEnvelope.decision?.options.map(
+      (option) => `- ${option.label}: ${option.description}`
+    ) ?? [],
+    summary.pendingDecision ? `Pending decision: ${summary.pendingDecision}` : void 0,
+    `Next action: ${summary.pendingAction}`
+  ].filter((line) => line !== void 0);
   console.log(lines.join("\n"));
 }
 function renderPhaseResult(result) {
