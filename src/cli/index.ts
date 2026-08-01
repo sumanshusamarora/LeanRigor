@@ -83,7 +83,7 @@ import type { PhaseBriefPlanningProvider } from "../core/phase-brief-planner.js"
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.58");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.59");
 
 program.command("setup")
   .alias("init")
@@ -1670,17 +1670,6 @@ function printActiveSelection(selection: ActiveWorkflowSelection): void {
   }
 }
 
-function printDecisionEnvelope(envelope: ReturnType<typeof workflowDecisionEnvelope>): void {
-  const lines = [
-    `Workflow ${envelope.workflowId} revision ${envelope.workflowRevision}: ${envelope.state}`,
-    envelope.status.summary,
-    envelope.decision ? `Decision: ${envelope.decision.question}` : undefined,
-    ...(envelope.decision?.options.map((option) => `- ${option.label}: ${option.description}`) ?? []),
-    envelope.nextOperation ? `Next operation: ${envelope.nextOperation.type} (${envelope.nextOperation.automaticallyPermitted ? "automatically permitted" : "user decision required"})` : undefined
-  ].filter((line): line is string => Boolean(line));
-  console.log(lines.join("\n"));
-}
-
 function printNextSummary(summary: WorkflowNextSummary): void {
   const lines = [
     `LeanRigor - ${summary.label}`,
@@ -1700,7 +1689,55 @@ function printNextSummary(summary: WorkflowNextSummary): void {
       : undefined,
     `Next action: ${summary.pendingAction}`,
   ].filter((line): line is string => line !== undefined);
+
+  // Render the rich summary payload (assessment, constraints, phases, etc.)
+  if (summary.summary && typeof summary.summary === "object" && Object.keys(summary.summary as Record<string, unknown>).length > 0) {
+    lines.push("");
+    renderSummarySections(summary.summary as Record<string, unknown>, lines, "");
+  }
+
   console.log(lines.join("\n"));
+}
+
+/** Render a Record<string, unknown> as labeled indented sections. */
+function renderSummarySections(record: Record<string, unknown>, lines: string[], indent: string): void {
+  for (const [key, value] of Object.entries(record)) {
+    if (value === null || value === undefined) continue;
+    const label = indent + capitalise(key);
+
+    if (typeof value === "string") {
+      lines.push(`${label}: ${value}`);
+    } else if (typeof value === "number") {
+      lines.push(`${label}: ${value}`);
+    } else if (typeof value === "boolean") {
+      lines.push(`${label}: ${value ? "yes" : "no"}`);
+    } else if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      lines.push(`${label}:`);
+      for (const item of value) {
+        if (typeof item === "string") {
+          lines.push(`${indent}  - ${item}`);
+        } else if (typeof item === "object" && item !== null) {
+          const record = item as Record<string, unknown>;
+          // Render compactly: prefer a "text" or "summary" field, else show keys
+          if (typeof record.text === "string") {
+            lines.push(`${indent}  - ${record.text}`);
+          } else if (typeof record.label === "string") {
+            const desc = typeof record.description === "string" ? ` — ${record.description}` : "";
+            lines.push(`${indent}  - ${record.label}${desc}`);
+          } else {
+            renderSummarySections(record, lines, `${indent}  `);
+          }
+        } else {
+          lines.push(`${indent}  - ${String(item)}`);
+        }
+      }
+    } else if (typeof value === "object") {
+      const nested = value as Record<string, unknown>;
+      lines.push(`${label}:`);
+      renderSummarySections(nested, lines, `${indent}  `);
+    }
+  }
 }
 
 function renderPhaseResult(result: ReturnType<typeof phaseResultView>): string {

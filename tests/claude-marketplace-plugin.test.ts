@@ -481,12 +481,38 @@ describe("Claude marketplace plugin runtime", () => {
     assertDecision(started, "approach-approval");
     const workflowId = started.workflowId ?? started.id!;
 
+    // Verify flow next --json exposes the rich approach summary for conversational rendering
+    const approachNext = await cli(["flow", "next", workflowId, "--json"]);
+    expect(approachNext.summary).toBeDefined();
+    expect(approachNext.summary).toHaveProperty("assessment");
+    expect(approachNext.summary).toHaveProperty("constraints");
+    expect(approachNext.summary).toHaveProperty("noImplementationStarted", true);
+
     const planned = await cli([
       "flow", "approve-approach", workflowId,
       "--decision-id", started.decision!.id,
       "--expected-revision", String(started.workflowRevision)
     ]);
     assertDecision(planned, "workflow-plan-approval");
+
+    // Verify flow next --json exposes the rich plan summary for conversational rendering
+    const planNext = await cli(["flow", "next", workflowId, "--json"]);
+    expect(planNext.summary).toBeDefined();
+    expect(planNext.summary).toHaveProperty("workflow");
+    expect(planNext.summary).toHaveProperty("phases");
+    expect(planNext.summary).toHaveProperty("overallStrategy");
+    const summaryPhases = (planNext.summary as Record<string, unknown>).phases as Array<Record<string, unknown>>;
+    expect(Array.isArray(summaryPhases)).toBe(true);
+    expect(summaryPhases.length).toBeGreaterThan(0);
+    for (const phase of summaryPhases) {
+      expect(phase).toHaveProperty("id");
+      expect(phase).toHaveProperty("objective");
+      expect(phase).toHaveProperty("expectedWriteAreas");
+      expect(phase).toHaveProperty("validation");
+    }
+    const summaryExec = (planNext.summary as Record<string, unknown>).execution as Record<string, unknown>;
+    expect(summaryExec.mainWorkingTree).toBe("remains untouched");
+    expect(summaryExec.implementationStarted).toBe(false);
 
     const phaseOne = await cli([
       "flow", "approve-plan", workflowId,

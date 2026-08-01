@@ -35746,7 +35746,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.58");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.59");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });
@@ -36780,7 +36780,48 @@ function printNextSummary(summary) {
     summary.pendingDecision ? `Pending decision: ${summary.pendingDecision}` : void 0,
     `Next action: ${summary.pendingAction}`
   ].filter((line) => line !== void 0);
+  if (summary.summary && typeof summary.summary === "object" && Object.keys(summary.summary).length > 0) {
+    lines.push("");
+    renderSummarySections(summary.summary, lines, "");
+  }
   console.log(lines.join("\n"));
+}
+function renderSummarySections(record2, lines, indent) {
+  for (const [key, value] of Object.entries(record2)) {
+    if (value === null || value === void 0) continue;
+    const label2 = indent + capitalise(key);
+    if (typeof value === "string") {
+      lines.push(`${label2}: ${value}`);
+    } else if (typeof value === "number") {
+      lines.push(`${label2}: ${value}`);
+    } else if (typeof value === "boolean") {
+      lines.push(`${label2}: ${value ? "yes" : "no"}`);
+    } else if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      lines.push(`${label2}:`);
+      for (const item of value) {
+        if (typeof item === "string") {
+          lines.push(`${indent}  - ${item}`);
+        } else if (typeof item === "object" && item !== null) {
+          const record3 = item;
+          if (typeof record3.text === "string") {
+            lines.push(`${indent}  - ${record3.text}`);
+          } else if (typeof record3.label === "string") {
+            const desc = typeof record3.description === "string" ? ` \u2014 ${record3.description}` : "";
+            lines.push(`${indent}  - ${record3.label}${desc}`);
+          } else {
+            renderSummarySections(record3, lines, `${indent}  `);
+          }
+        } else {
+          lines.push(`${indent}  - ${String(item)}`);
+        }
+      }
+    } else if (typeof value === "object") {
+      const nested = value;
+      lines.push(`${label2}:`);
+      renderSummarySections(nested, lines, `${indent}  `);
+    }
+  }
 }
 function renderPhaseResult(result) {
   return [
