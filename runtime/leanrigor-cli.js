@@ -32116,9 +32116,25 @@ function syncLifecycleDecision(state, lifecycle) {
     return;
   }
   if (lifecycle === "awaiting_approach_approval") {
+    const approach = state.approach;
+    const mode2 = state.mode;
+    const proposed = approach?.proposed ?? state.triageRun?.recommendation?.approachSummary ?? state.triage?.task?.summary ?? "No approach summary recorded.";
+    const reason = approach?.preferredBecause ? `
+
+Why: ${approach.preferredBecause}` : "";
+    const risks = approach?.primaryRisks?.length ? `
+
+Primary risks: ${approach.primaryRisks.join("; ")}` : "";
+    const constraints = state.constraints?.effective?.length ? `
+
+Constraints: ${state.constraints.effective.map((c) => c.text).join("; ")}` : state.triage?.constraints?.mustNot?.length ? `
+
+Constraints: ${state.triage.constraints.mustNot.join("; ")}` : "";
     setPendingDecision(state, {
       type: "approach-approval",
-      question: "Approve the persisted approach before Workflow Plan generation?",
+      question: `${proposed}${reason}${risks}${constraints}
+
+Workflow mode: ${mode2}. Approve this approach before Workflow Plan generation?`,
       allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
     });
     return;
@@ -35708,7 +35724,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.55");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.56");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

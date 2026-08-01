@@ -4340,9 +4340,24 @@ function syncLifecycleDecision(state: SequentialWorkflowState, lifecycle: Workfl
     return;
   }
   if (lifecycle === "awaiting_approach_approval") {
+    const approach = state.approach;
+    const mode = state.mode;
+    const proposed = approach?.proposed
+      ?? (state.triageRun?.recommendation as Record<string, unknown> | undefined)?.approachSummary as string
+      ?? state.triage?.task?.summary
+      ?? "No approach summary recorded.";
+    const reason = approach?.preferredBecause ? `\n\nWhy: ${approach.preferredBecause}` : "";
+    const risks = approach?.primaryRisks?.length
+      ? `\n\nPrimary risks: ${approach.primaryRisks.join("; ")}`
+      : "";
+    const constraints = state.constraints?.effective?.length
+      ? `\n\nConstraints: ${state.constraints.effective.map((c) => c.text).join("; ")}`
+      : state.triage?.constraints?.mustNot?.length
+        ? `\n\nConstraints: ${state.triage.constraints.mustNot.join("; ")}`
+        : "";
     setPendingDecision(state, {
       type: "approach-approval",
-      question: "Approve the persisted approach before Workflow Plan generation?",
+      question: `${proposed}${reason}${risks}${constraints}\n\nWorkflow mode: ${mode}. Approve this approach before Workflow Plan generation?`,
       allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
     });
     return;
