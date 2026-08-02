@@ -31,8 +31,8 @@ Behaviour:
    selector when available. Do not render an ordinary text question first.
    Do not guess.
 5. At approval gates, use `AskUserQuestion` for the action selector when
-   available. `decision.question` may contain a bounded, persisted plain-text
-   preview and must be used verbatim: it is the reliable native approval
+   available. `decision.question` contains a bounded, persisted stage-specific
+   plain-text preview and must be used verbatim: it is the reliable native approval
    surface. `presentation.markdown` remains available for explicit detail
    requests; never copy the raw brief, plan, status, or Markdown artifact into
    the selector. The post-triage approach selector options are exactly `Approve
@@ -83,8 +83,8 @@ Use the selector input shape `questions[0].question`, `questions[0].header`,
 labels and descriptions copied from the at-most-four presented
 `decision.options` in order.
 Use `decision.question` verbatim. Never call `AskUserQuestion` without a
-current decision or reconstruct one from conversational context. It is a
-compact selector prompt, not a rendering surface for an approval artifact.
+current decision or reconstruct one from conversational context. It is the
+bounded approval context and action prompt; do not replace it with Markdown.
 
 Never compensate for an unavailable workflow transition by narrating that the
 workflow is complete. Report the persisted state and the exact blocker.

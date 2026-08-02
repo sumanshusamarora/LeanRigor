@@ -189,6 +189,30 @@ describe("sequential workflow orchestration", () => {
     expect(selector).not.toContain("##");
   });
 
+  it("persists and restores Workflow Plan context for the native approval selector", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const planned = await approveApproach(root, started.id, defaultConfig());
+    const pending = planned.approval?.pendingDecision;
+
+    expect(pending?.type).toBe("workflow-plan-approval");
+    expect(pending?.selectorPreview).toMatch(/^Workflow Plan\nMode: Standard\nSummary:/);
+    expect(pending?.selectorPreview).toContain("Phases:");
+    expect(pending?.selectorPreview).toContain("Planning:");
+
+    const workflowPath = path.join(root, ".leanrigor", "workflows", `${planned.id}.json`);
+    const legacy = JSON.parse(await readFile(workflowPath, "utf8")) as { approval?: { pendingDecision?: Record<string, unknown> } };
+    if (!legacy.approval?.pendingDecision) throw new Error("expected pending decision");
+    delete legacy.approval.pendingDecision.selectorPreview;
+    await writeFile(workflowPath, JSON.stringify(legacy, null, 2));
+
+    const reloaded = await loadFlowState(root, planned.id);
+    const selector = workflowNextSummary(reloaded).decisionEnvelope.decision?.question;
+    expect(reloaded.approval?.pendingDecision?.selectorPreview).toContain("Workflow Plan");
+    expect(selector).toContain("Workflow Plan");
+    expect(selector).toContain("Approve the Workflow Plan and its execution policy?");
+  });
+
   it("supports at most one blocking clarification and persists the answer", async () => {
     const root = await tempRepo();
     const state = await startFlow({ request: "fix", root, config: defaultConfig() });

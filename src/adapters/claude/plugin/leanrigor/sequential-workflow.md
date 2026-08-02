@@ -117,8 +117,8 @@ Rules:
   (maximum 12 characters) derived from the decision type. Fall back to a
   numbered list only when `AskUserQuestion` is unavailable. Do not infer
   approval from tone and do not use `ExitPlanMode` as LeanRigor approval.
-- At a mandatory selector gate, use `decision.question` verbatim. It may carry
-  a bounded persisted plain-text preview for the native selector;
+- At a mandatory selector gate, use `decision.question` verbatim. It contains
+  a bounded persisted stage-specific plain-text preview for the native selector;
   `presentation.markdown` remains available for explicit detail requests.
   Never copy raw brief, plan, summary, status, or Markdown content into the
   selector.
@@ -139,9 +139,10 @@ Rules:
 - Plan revisions use
   `leanrigor flow revise-plan <workflow-id> --feedback-file <feedback-file> --provider auto`
   unless deterministic planning was explicitly requested.
-- A `planning-fallback-review` is not a Workflow Plan approval gate. Render
-  the persisted `planning.attemptRecords`, warnings, diagnostics, and fallback
-  reason before the selector. Invocation and deterministic validation are
+- A `planning-fallback-review` is not a Workflow Plan approval gate. Its native
+  selector preview contains the bounded fallback reason, diagnostics, and
+  planning provenance; show `planning.attemptRecords`, warnings, diagnostics,
+  and the full fallback reason only on `View details`. Invocation and deterministic validation are
   separate facts: if invocation failed and validation is `not-attempted`, say
   that no candidate plan was returned and do not describe structural defects,
   semantic repair, or rejected phase contents. Never invent planning history
@@ -149,9 +150,9 @@ Rules:
   view-details, and cancel options into `AskUserQuestion`; never add plan
   approval. Run `leanrigor flow retry-plan <workflow-id> --provider auto` only
   when the persisted retry option is selected.
-- At the Workflow Plan gate, render the persisted Workflow Plan contract: strategy,
-  phase DAG, effective constraints, validation strategy, provider/workspace
-  policy, and deterministic approval recommendation with concise reasons. For
+- At the Workflow Plan gate, the native selector preview contains the bounded
+  plan summary, phases, policy, and planning provenance. Show the full plan
+  contract only on `View details`. For
   Standard, present the persisted Workflow Plan policy choices plus `Revise
   plan`, `View full details`, and `Cancel workflow`. For Rigorous, present
   `Approve Workflow Plan and prepare Phase 1 brief` plus revise, details, and
@@ -159,7 +160,9 @@ Rules:
   persisted action to its deterministic transition; never infer an approval
   from conversational tone or use ExitPlanMode.
 - After Workflow Plan approval and before coordinator dispatch, refresh state,
-  then open the persisted Phase Execution Brief approval decision selector. Offer
+  then open the persisted Phase Execution Brief approval decision selector. Its
+  bounded preview is the required approval context; full inspection detail is
+  available through `View details`. Offer
   `Approve <phase-id>`, `Revise phase
   brief`, `View full details`, and `Cancel workflow`.
   Approval must reference the decision's exact workflow and brief revisions.

@@ -34,7 +34,7 @@ AskUserQuestion selector contract at every decision gate.
 4. If multiple active workflows exist, present the selection and ask the user
    to choose.
 5. Render the envelope's `status` exactly. Use the persisted
-   `decision.question` verbatim: it may contain a bounded native selector
+   `decision.question` verbatim: it contains a bounded stage-specific native selector
    preview. `presentation.markdown` remains available for explicit detail
    requests; never put raw brief, plan, status, or Markdown content into the
    selector. Keep Workflow Plan approval, Phase
@@ -92,8 +92,8 @@ AskUserQuestion selector contract at every decision gate.
    command. Never invent, cache, or reconstruct question state. Never call
    `AskUserQuestion` when `decision` is absent, and never report "No new
    question to present" while a persisted decision exists. `decision.question`
-   is a compact selector prompt, not a rendering surface for an approval
-   artifact.
+is the bounded approval context and action prompt; do not replace it with
+Markdown.
 10. Never compensate for an unavailable workflow transition by narrating that the
    workflow is complete. Report the persisted state and the exact blocker.
 

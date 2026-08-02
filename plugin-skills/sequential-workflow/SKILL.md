@@ -112,8 +112,8 @@ at most four options for `AskUserQuestion`. Match the selected option by persist
 only its persisted command. Never infer, cache, or reconstruct a question.
 Never call `AskUserQuestion` without a current `decision`.
 
-At a mandatory selector gate, use `decision.question` verbatim. It may include
-a bounded, persisted plain-text preview for the native selector; this is the
+At a mandatory selector gate, use `decision.question` verbatim. It includes a
+bounded, persisted stage-specific plain-text preview for the native selector; this is the
 reliable approval surface. `presentation.markdown` remains the detailed
 artifact for status and explicit detail requests. Never copy raw `summary`,
 `status`, or `presentation.markdown` into the selector.
@@ -143,10 +143,11 @@ genuinely unavailable in the current Claude Code environment. Each action has a
 deterministic `command` which remains the authority for the transition. Do not infer approval from conversational tone — the user must select an action or type an explicit response.
 Do not use `ExitPlanMode` as a substitute for LeanRigor approval.
 
-For the post-triage approach gate, render a compact summary before the selector.
-`flow next --json` returns both the decision envelope and the rich `summary`
-field in a single call. Render `summary` first, then call `AskUserQuestion`
-with `decisionEnvelope.decision.question` and `.options`:
+For the post-triage approach gate, the persisted selector preview is the
+complete bounded summary required for a native selector. Do not rely on a
+normal assistant summary appearing before `AskUserQuestion`. `flow next --json`
+also returns rich `summary` and `presentation.markdown` content for an explicit
+`View workflow details` request:
 
 ```text
 Workflow created and triaged
@@ -233,13 +234,10 @@ Ask one concise clarification for ambiguous responses.
 ## Phase And Review Rules
 
 Before phase approval, use the persisted `decisionEnvelope` question and
-options from `flow next --json`. The response also includes `summary` and
-`presentation.markdown` for explicit detail requests. Show the
-objective, concrete deliverable, inspected current behaviour, implementation
-approach, read/write paths, relevant files and symbols, acceptance criteria,
-test obligations, validation, dependencies, assumptions, exclusions, risks,
-changes from the approved Workflow Plan, and inspection provenance from
-`summary`. Use the returned decision options in order from
+options from `flow next --json`. Its selector preview carries the bounded
+objective, deliverable, write scope, validation, risks, and provenance needed
+for approval. `summary` and `presentation.markdown` contain the full brief and
+are shown only for an explicit detail request. Use the returned decision options in order from
 `decisionEnvelope.decision.options`. Do not summarise the Workflow Plan phase as
 though it were the detailed brief.
 
@@ -304,9 +302,9 @@ current integration head has passing combined validation.
 
 `flow next --json` returns both `decisionEnvelope` and the rich `summary`
 field, plus a deterministic `presentation.markdown` artifact for every
-workflow state. At a mandatory selector, use only `decision.question` and its
-options; its bounded native preview is the visible approval context. Reserve
-the full artifact for explicit detail requests.
+workflow state. At every mandatory selector, `decision.question` contains the
+bounded, stage-specific approval context; use it verbatim with its options.
+Reserve the full artifact for explicit detail requests.
 
 Render at minimum:
 

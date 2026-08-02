@@ -6456,10 +6456,10 @@ var init_schemas = __esm({
         const shape = def.shape;
         const propValues = {};
         for (const key in shape) {
-          const field = shape[key]._zod;
-          if (field.values) {
+          const field2 = shape[key]._zod;
+          if (field2.values) {
             propValues[key] ?? (propValues[key] = /* @__PURE__ */ new Set());
-            for (const v of field.values)
+            for (const v of field2.values)
               propValues[key].add(v);
           }
         }
@@ -24875,7 +24875,7 @@ var DeterministicPhaseBriefPlanningProvider = class {
     const baseline = deterministicProposal(input);
     const deficient = new Set(request.diagnostics.map((diagnostic3) => diagnostic3.field));
     const proposal = proposalFromBrief(request.brief);
-    for (const field of deficient) copyProposalField(proposal, baseline, field);
+    for (const field2 of deficient) copyProposalField(proposal, baseline, field2);
     return {
       proposal,
       provider: this.name,
@@ -25536,12 +25536,12 @@ function blockedFailure(args) {
 }
 function mergeDiagnosedFields(original, repaired, diagnostics) {
   const merged = structuredClone(original);
-  for (const field of new Set(diagnostics.map((item) => item.field))) copyProposalField(merged, repaired, field);
+  for (const field2 of new Set(diagnostics.map((item) => item.field))) copyProposalField(merged, repaired, field2);
   return merged;
 }
-function copyProposalField(target, source, field) {
-  if (field in target && field in source) {
-    target[field] = structuredClone(source[field]);
+function copyProposalField(target, source, field2) {
+  if (field2 in target && field2 in source) {
+    target[field2] = structuredClone(source[field2]);
   }
 }
 function proposalFromBrief(brief) {
@@ -25777,8 +25777,8 @@ function change(category, phaseId, previousValue, proposedValue, material, reaso
     requiredTransition: material ? "revise-plan" : "none"
   };
 }
-function diagnostic(stage, field, code, message, repairAttempt = "none") {
-  return { stage, field, code, message, repairAttempt, resolution: "unresolved" };
+function diagnostic(stage, field2, code, message, repairAttempt = "none") {
+  return { stage, field: field2, code, message, repairAttempt, resolution: "unresolved" };
 }
 function uniqueDiagnostics(values) {
   const seen = /* @__PURE__ */ new Set();
@@ -28464,8 +28464,8 @@ function selectorQuestionForDecision(decision) {
         return "Choose the next persisted workflow action.";
     }
   })();
-  const preview = compactSelectorPreview(decision.selectorPreview);
-  return preview ? `${preview}
+  const preview2 = compactSelectorPreview(decision.selectorPreview);
+  return preview2 ? `${preview2}
 
 ${action}` : action;
 }
@@ -28473,6 +28473,7 @@ function setPendingDecision(state, input) {
   ensureApprovalState(state);
   const previous = state.approval.pendingDecision;
   if (previous) resolvePendingDecision(state, "superseded", void 0, "system", previous.id);
+  const selectorPreview = compactSelectorPreview(input.selectorPreview ?? selectorPreviewForDecision(state, input));
   const decision = {
     id: `decision-${randomUUID4()}`,
     type: input.type,
@@ -28483,11 +28484,11 @@ function setPendingDecision(state, input) {
     preparationRevision: input.preparationRevision,
     integrationRevision: input.integrationRevision,
     additionalTurns: input.additionalTurns,
-    selectorPreview: compactSelectorPreview(input.selectorPreview),
+    selectorPreview,
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,
-    question: selectorQuestionForDecision(input),
+    question: selectorQuestionForDecision({ ...input, selectorPreview }),
     status: "pending",
     allowedActions: [...input.allowedActions],
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -28496,6 +28497,109 @@ function setPendingDecision(state, input) {
   };
   state.approval.pendingDecision = decision;
   return decision;
+}
+function selectorPreviewForDecision(state, input) {
+  const phaseId = input.phaseId;
+  const brief = phaseId ? state.phaseBriefs?.[phaseId] : void 0;
+  const phase2 = phaseId ? state.plan?.phases.find((candidate) => candidate.id === phaseId) : void 0;
+  const planning = state.planningRun;
+  const planningProvenance = provenanceLine("Planning", planning?.provider, planning?.model, planning?.source, planning?.attempts);
+  const briefProvenance = provenanceLine("Brief", brief?.generation.provider, brief?.generation.modelTier, void 0, void 0);
+  switch (input.type) {
+    case "clarification":
+      return preview([
+        "Clarification",
+        field("Question", state.clarification?.question ?? input.question, 260),
+        field("Why", state.clarification?.reason, 180)
+      ]);
+    case "approach-approval":
+      return preview([
+        "Workflow strategy",
+        field("Mode", selectorModeLabel(state.mode)),
+        field("Approach", state.approach?.proposed ?? state.triage?.task.summary, 200),
+        field("Why", state.approach?.preferredBecause, 160),
+        listField("Key risks", state.approach?.primaryRisks, 2, 150),
+        listField("Key constraints", state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints.mustNot, 2, 150),
+        provenanceLine("Triage", state.triageRun?.provider, state.triageRun?.model, state.triageRun?.source, state.triageRun?.attempts)
+      ]);
+    case "workflow-plan-approval":
+      return preview([
+        "Workflow Plan",
+        field("Mode", selectorModeLabel(state.mode)),
+        field("Summary", state.plan?.summary, 220),
+        planPhases(state),
+        field("Approval policy", state.mode === "rigorous" ? "Phase-by-phase review is required." : "Approve the plan policy before execution."),
+        planningProvenance
+      ]);
+    case "planning-fallback-review":
+      return preview([
+        "Planning recovery",
+        field("Reason", planning?.approvalBlockedReason ?? input.question, 300),
+        planningProvenance,
+        listField("Diagnostics", planning?.diagnostics?.map((diagnostic3) => diagnostic3.message), 2, 140)
+      ]);
+    case "phase-brief-approval":
+      return preview([
+        "Phase Execution Brief",
+        field("Phase", phaseId),
+        field("Objective", brief?.objective ?? phase2?.objective, 190),
+        field("Deliverable", brief?.deliverable, 160),
+        listField("Write areas", brief?.writeAreas ?? phase2?.expectedWriteAreas, 2, 120),
+        listField("Validation", brief?.validationCommands ?? phase2?.validationCommands, 2, 120),
+        listField("Key risks", brief?.risks, 2, 120),
+        briefProvenance
+      ]);
+    case "workspace-bootstrap-approval":
+      return preview([
+        "Workspace preparation",
+        field("Phase", phaseId),
+        field("Command", input.command, 200),
+        listField("Risks", input.riskSummary, 2, 140),
+        field("Workspace identity", input.workspaceIdentity, 120)
+      ]);
+    case "material-drift-review":
+      return preview([
+        "Material drift review",
+        field("Phase", phaseId),
+        field("Change", input.question, 260),
+        listField("Proposed changes", brief?.materialChangesFromWorkflowPlan.map((change2) => change2.reason), 2, 150),
+        field("Brief revision", input.briefRevision === void 0 ? void 0 : String(input.briefRevision))
+      ]);
+    case "execution-recovery":
+      return preview([
+        "Execution recovery",
+        field("Phase", phaseId),
+        field("Reason", input.question, 300),
+        field("Provider result", phaseId ? state.execution.records[phaseId]?.resultSummary : void 0, 180),
+        field("Additional turns", input.additionalTurns === void 0 ? void 0 : String(input.additionalTurns))
+      ]);
+    case "integration-conflict":
+      return preview([
+        "Integration conflict",
+        field("Phase", phaseId),
+        field("Conflict", input.question, 260),
+        field("Integration validation", state.git?.integrationValidation?.status),
+        listField("Write areas", brief?.writeAreas ?? phase2?.expectedWriteAreas, 2, 120)
+      ]);
+    case "final-review":
+      return preview([
+        "Final integrated review",
+        field("Integration validation", state.git?.integrationValidation?.status ?? validationStatus(state)),
+        listField("Validation", state.validation.map((entry) => `${entry.command}: ${entry.status}`), 2, 140),
+        field("Completed phases", state.plan ? `${state.plan.phases.filter((candidate) => candidate.status === "completed").length}/${state.plan.phases.length}` : void 0),
+        listField("Blockers", state.blockers, 2, 140)
+      ]);
+    case "final-completion":
+      return preview([
+        "Workflow completion",
+        field("Final review", state.review ? `${state.review.status}: ${state.review.summary}` : void 0, 220),
+        field("Integration validation", state.git?.integrationValidation?.status ?? validationStatus(state)),
+        field("Commit plan", state.commitPlan ? `${state.commitPlan.groups.length} proposed commit group(s)` : "No commit is executed by this approval."),
+        listField("Commit messages", state.commitPlan?.groups.map((group) => group.message), 2, 120)
+      ]);
+    default:
+      return void 0;
+  }
 }
 function resolvePendingDecision(state, status, selectedAction, source = "system", decisionId) {
   ensureApprovalState(state);
@@ -28577,12 +28681,54 @@ function compactClarificationQuestion(question) {
   if (!singleLine) return "Answer the persisted clarification question.";
   return singleLine.length <= 240 ? singleLine : `${singleLine.slice(0, 237).trimEnd()}\u2026`;
 }
-function compactSelectorPreview(preview) {
-  if (!preview) return void 0;
-  const lines = preview.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+function compactSelectorPreview(preview2) {
+  if (!preview2) return void 0;
+  const lines = preview2.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
   if (lines.length === 0) return void 0;
   const compact = lines.join("\n");
   return compact.length <= MAX_SELECTOR_PREVIEW_LENGTH ? compact : `${compact.slice(0, MAX_SELECTOR_PREVIEW_LENGTH - 1).trimEnd()}\u2026`;
+}
+function preview(lines) {
+  const visible = lines.filter((line) => Boolean(line));
+  return visible.length > 0 ? visible.join("\n") : void 0;
+}
+function field(label2, value, maximum = 180) {
+  const text = compactText(value, maximum);
+  return text ? `${label2}: ${text}` : void 0;
+}
+function listField(label2, values, count, maximum) {
+  const visible = (values ?? []).map((value) => compactText(value, maximum)).filter((value) => Boolean(value)).slice(0, count);
+  if (visible.length === 0) return void 0;
+  const omitted = Math.max(0, (values?.length ?? 0) - visible.length);
+  return `${label2}: ${visible.join("; ")}${omitted > 0 ? `; +${omitted} more` : ""}`;
+}
+function planPhases(state) {
+  const phases = state.plan?.phases ?? [];
+  if (phases.length === 0) return void 0;
+  const visible = phases.slice(0, 2).map((phase2) => {
+    const objective = compactText(phase2.objective, 90) ?? phase2.id;
+    const writes = phase2.expectedWriteAreas.slice(0, 2).join(", ");
+    return `${phase2.id}: ${objective}${writes ? ` [${writes}]` : ""}`;
+  });
+  return `Phases: ${visible.join("; ")}${phases.length > visible.length ? `; +${phases.length - visible.length} more` : ""}`;
+}
+function provenanceLine(label2, provider, model, source, attempts) {
+  const values = [provider, model, source, attempts === void 0 ? void 0 : `${attempts} attempt${attempts === 1 ? "" : "s"}`].filter(Boolean);
+  return values.length > 0 ? `${label2}: ${values.join(" / ")}` : void 0;
+}
+function validationStatus(state) {
+  if (state.validation.length === 0) return void 0;
+  const statuses = [...new Set(state.validation.map((entry) => entry.status))];
+  return statuses.join(", ");
+}
+function compactText(value, maximum) {
+  if (!value) return void 0;
+  const normalised = value.replace(/\s+/g, " ").trim();
+  if (!normalised) return void 0;
+  return normalised.length <= maximum ? normalised : `${normalised.slice(0, maximum - 1).trimEnd()}\u2026`;
+}
+function selectorModeLabel(mode2) {
+  return mode2 ? `${mode2[0].toUpperCase()}${mode2.slice(1)}` : mode2;
 }
 
 // src/core/flow.ts
@@ -31907,24 +32053,39 @@ function migrateWorkflowState(raw, root, workflowId2) {
       );
     }
   }
-  attachApproachSelectorPreview(migrated);
+  attachMissingSelectorPreview(migrated);
   return migrated;
 }
-function attachApproachSelectorPreview(migrated) {
-  if (migrated.state !== "awaiting_approach_approval") return;
+function attachMissingSelectorPreview(migrated) {
   const approval = migrated.approval;
   if (!approval || typeof approval !== "object") return;
   const pending = approval.pendingDecision;
   if (!pending || typeof pending !== "object") return;
   const decision = pending;
-  if (decision.type !== "approach-approval" || typeof decision.selectorPreview === "string") return;
+  if (decision.status !== "pending" || typeof decision.selectorPreview === "string" && decision.selectorPreview.trim()) return;
   const state = migrated;
-  const selectorPreview = approachSelectorPreview(state);
+  const input = {
+    type: decision.type,
+    phaseId: typeof decision.phaseId === "string" ? decision.phaseId : void 0,
+    briefRevision: typeof decision.briefRevision === "number" ? decision.briefRevision : void 0,
+    preparationRevision: typeof decision.preparationRevision === "number" ? decision.preparationRevision : void 0,
+    integrationRevision: typeof decision.integrationRevision === "number" ? decision.integrationRevision : void 0,
+    additionalTurns: typeof decision.additionalTurns === "number" ? decision.additionalTurns : void 0,
+    workspaceIdentity: typeof decision.workspaceIdentity === "string" ? decision.workspaceIdentity : void 0,
+    command: typeof decision.command === "string" ? decision.command : void 0,
+    riskSummary: Array.isArray(decision.riskSummary) ? decision.riskSummary.filter((value) => typeof value === "string") : void 0,
+    question: typeof decision.question === "string" ? decision.question : "Choose the next persisted workflow action.",
+    allowedActions: Array.isArray(decision.allowedActions) ? decision.allowedActions.filter((value) => typeof value === "string") : []
+  };
+  const selectorPreview = selectorPreviewForDecision(state, input);
+  if (!selectorPreview) return;
   decision.selectorPreview = selectorPreview;
   decision.question = selectorQuestionForDecision({
-    type: "approach-approval",
+    type: input.type,
+    phaseId: input.phaseId,
+    briefRevision: input.briefRevision,
     selectorPreview,
-    question: typeof decision.question === "string" ? decision.question : "Approve the workflow strategy before Workflow Plan generation?"
+    question: input.question
   });
 }
 function normalizeValidationRecoveryDecision(state) {
@@ -36019,7 +36180,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.63");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.64");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

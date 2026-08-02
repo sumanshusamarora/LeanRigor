@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { approvePhase, loadFlowState } from "../src/core/flow.js";
 import { coordinatorResultForState } from "../src/core/execution/coordinator.js";
 import { phaseResultView, workflowDecisionEnvelope } from "../src/core/workflow-envelope.js";
-import { selectorQuestionForDecision } from "../src/core/workflow-decision.js";
+import { selectorQuestionForDecision, setPendingDecision } from "../src/core/workflow-decision.js";
+import type { WorkflowDecisionType } from "../src/core/types.js";
 import { createExecutionHarness, currentState, testPhase } from "./helpers/execution-harness.js";
 
 describe("normalized workflow decision envelopes", () => {
@@ -120,6 +121,50 @@ describe("normalized workflow decision envelopes", () => {
     ].join("\n"));
   });
 
+  it("persists stage-specific native context for every selector gate", async () => {
+    const harness = await createExecutionHarness({
+      approveFirstPhase: false,
+      approvalPolicy: "phase-by-phase",
+      phases: [testPhase("phase-a", ["src/a.ts"])],
+      scripts: {}
+    });
+    const base = await currentState(harness);
+    base.validation.push({ command: "npm test", exitStatus: 0, status: "passed", result: "passed", skipped: false, timestamp: new Date().toISOString() });
+    base.review = { status: "passed", summary: "Integrated review found no blocking issues.", findings: [], reviewedAt: new Date().toISOString() };
+    base.commitPlan = { generatedAt: new Date().toISOString(), note: "No commit has been executed.", groups: [{ message: "fix: preserve workflow context", files: ["src/a.ts"], rationale: "One scoped change.", commands: [] }] };
+
+    const cases: Array<{ type: WorkflowDecisionType; expected: string }> = [
+      { type: "clarification", expected: "Clarification" },
+      { type: "approach-approval", expected: "Workflow strategy" },
+      { type: "workflow-plan-approval", expected: "Workflow Plan" },
+      { type: "planning-fallback-review", expected: "Planning recovery" },
+      { type: "phase-brief-approval", expected: "Phase Execution Brief" },
+      { type: "workspace-bootstrap-approval", expected: "Workspace preparation" },
+      { type: "material-drift-review", expected: "Material drift review" },
+      { type: "execution-recovery", expected: "Execution recovery" },
+      { type: "integration-conflict", expected: "Integration conflict" },
+      { type: "final-review", expected: "Final integrated review" },
+      { type: "final-completion", expected: "Workflow completion" }
+    ];
+
+    for (const entry of cases) {
+      const state = structuredClone(base);
+      const decision = setPendingDecision(state, {
+        type: entry.type,
+        phaseId: "phase-a",
+        briefRevision: 1,
+        command: "git status --short",
+        riskSummary: ["Review workspace side effects."],
+        question: "Persisted recovery context that must remain visible in the selector.",
+        allowedActions: ["view-details", "cancel-workflow"]
+      });
+      expect(decision.selectorPreview).toContain(entry.expected);
+      expect(decision.question).toContain(entry.expected);
+      expect(decision.question).not.toMatch(/^Approve|^Choose|^Review|^Record|^Complete|^Resolve$/);
+      expect(decision.question.length).toBeLessThanOrEqual(800);
+    }
+  });
+
   it("normalizes a verbose persisted decision when it is read into the envelope", async () => {
     const harness = await createExecutionHarness({
       approveFirstPhase: false,
@@ -131,6 +176,7 @@ describe("normalized workflow decision envelopes", () => {
     const decision = state.approval?.pendingDecision;
     if (!decision) throw new Error("expected pending decision");
     decision.type = "approach-approval";
+    delete decision.selectorPreview;
     decision.question = "A long legacy strategy, with risks, constraints, and whitespace that must never be shown in the selector.\n\nApprove?";
 
     const envelope = workflowDecisionEnvelope(state);

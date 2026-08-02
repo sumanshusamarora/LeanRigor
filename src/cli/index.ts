@@ -83,7 +83,7 @@ import type { PhaseBriefPlanningProvider } from "../core/phase-brief-planner.js"
 import type { TriageProvider } from "../core/triage-runner.js";
 
 const program = new Command();
-program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.63");
+program.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.64");
 
 program.command("setup")
   .alias("init")

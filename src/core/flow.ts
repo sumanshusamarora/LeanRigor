@@ -84,6 +84,7 @@ import {
   requirePendingDecision,
   resolvePendingDecision,
   selectorQuestionForDecision,
+  selectorPreviewForDecision,
   setPendingDecision
 } from "./workflow-decision.js";
 
@@ -4040,28 +4041,41 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
       );
     }
   }
-  attachApproachSelectorPreview(migrated);
+  attachMissingSelectorPreview(migrated);
   return migrated;
 }
 
-function attachApproachSelectorPreview(migrated: Record<string, unknown>): void {
-  if (migrated.state !== "awaiting_approach_approval") return;
+function attachMissingSelectorPreview(migrated: Record<string, unknown>): void {
   const approval = migrated.approval;
   if (!approval || typeof approval !== "object") return;
   const pending = (approval as Record<string, unknown>).pendingDecision;
   if (!pending || typeof pending !== "object") return;
   const decision = pending as Record<string, unknown>;
-  if (decision.type !== "approach-approval" || typeof decision.selectorPreview === "string") return;
+  if (decision.status !== "pending" || (typeof decision.selectorPreview === "string" && decision.selectorPreview.trim())) return;
 
   const state = migrated as unknown as SequentialWorkflowState;
-  const selectorPreview = approachSelectorPreview(state);
+  const input = {
+    type: decision.type as WorkflowDecisionType,
+    phaseId: typeof decision.phaseId === "string" ? decision.phaseId : undefined,
+    briefRevision: typeof decision.briefRevision === "number" ? decision.briefRevision : undefined,
+    preparationRevision: typeof decision.preparationRevision === "number" ? decision.preparationRevision : undefined,
+    integrationRevision: typeof decision.integrationRevision === "number" ? decision.integrationRevision : undefined,
+    additionalTurns: typeof decision.additionalTurns === "number" ? decision.additionalTurns : undefined,
+    workspaceIdentity: typeof decision.workspaceIdentity === "string" ? decision.workspaceIdentity : undefined,
+    command: typeof decision.command === "string" ? decision.command : undefined,
+    riskSummary: Array.isArray(decision.riskSummary) ? decision.riskSummary.filter((value): value is string => typeof value === "string") : undefined,
+    question: typeof decision.question === "string" ? decision.question : "Choose the next persisted workflow action.",
+    allowedActions: Array.isArray(decision.allowedActions) ? decision.allowedActions.filter((value): value is string => typeof value === "string") : []
+  };
+  const selectorPreview = selectorPreviewForDecision(state, input);
+  if (!selectorPreview) return;
   decision.selectorPreview = selectorPreview;
   decision.question = selectorQuestionForDecision({
-    type: "approach-approval",
+    type: input.type,
+    phaseId: input.phaseId,
+    briefRevision: input.briefRevision,
     selectorPreview,
-    question: typeof decision.question === "string"
-      ? decision.question
-      : "Approve the workflow strategy before Workflow Plan generation?"
+    question: input.question
   });
 }
 
