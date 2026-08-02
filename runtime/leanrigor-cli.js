@@ -28433,34 +28433,41 @@ function normaliseValidationCommand(command) {
 
 // src/core/workflow-decision.ts
 import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
+var MAX_SELECTOR_PREVIEW_LENGTH = 720;
 function selectorQuestionForDecision(decision) {
   const phase2 = decision.phaseId ? ` for ${decision.phaseId}` : "";
-  switch (decision.type) {
-    case "clarification":
-      return compactClarificationQuestion(decision.question);
-    case "approach-approval":
-      return "Approve the workflow strategy before Workflow Plan generation?";
-    case "workflow-plan-approval":
-      return "Approve the Workflow Plan and its execution policy?";
-    case "planning-fallback-review":
-      return "Choose how to proceed with workflow planning?";
-    case "phase-brief-approval":
-      return `Review and approve ${decision.phaseId ?? "the current phase"} Execution Brief${decision.briefRevision === void 0 ? "" : ` revision ${decision.briefRevision}`}?`;
-    case "workspace-bootstrap-approval":
-      return `Approve workspace preparation${phase2}?`;
-    case "material-drift-review":
-      return `Review material drift${phase2}?`;
-    case "execution-recovery":
-      return `Choose a recovery action${phase2}?`;
-    case "integration-conflict":
-      return `Resolve the integration conflict${phase2}?`;
-    case "final-review":
-      return "Record the final integrated review?";
-    case "final-completion":
-      return "Complete the workflow?";
-    default:
-      return "Choose the next persisted workflow action.";
-  }
+  const action = (() => {
+    switch (decision.type) {
+      case "clarification":
+        return compactClarificationQuestion(decision.question);
+      case "approach-approval":
+        return "Approve the workflow strategy before Workflow Plan generation?";
+      case "workflow-plan-approval":
+        return "Approve the Workflow Plan and its execution policy?";
+      case "planning-fallback-review":
+        return "Choose how to proceed with workflow planning?";
+      case "phase-brief-approval":
+        return `Review and approve ${decision.phaseId ?? "the current phase"} Execution Brief${decision.briefRevision === void 0 ? "" : ` revision ${decision.briefRevision}`}?`;
+      case "workspace-bootstrap-approval":
+        return `Approve workspace preparation${phase2}?`;
+      case "material-drift-review":
+        return `Review material drift${phase2}?`;
+      case "execution-recovery":
+        return `Choose a recovery action${phase2}?`;
+      case "integration-conflict":
+        return `Resolve the integration conflict${phase2}?`;
+      case "final-review":
+        return "Record the final integrated review?";
+      case "final-completion":
+        return "Complete the workflow?";
+      default:
+        return "Choose the next persisted workflow action.";
+    }
+  })();
+  const preview = compactSelectorPreview(decision.selectorPreview);
+  return preview ? `${preview}
+
+${action}` : action;
 }
 function setPendingDecision(state, input) {
   ensureApprovalState(state);
@@ -28476,6 +28483,7 @@ function setPendingDecision(state, input) {
     preparationRevision: input.preparationRevision,
     integrationRevision: input.integrationRevision,
     additionalTurns: input.additionalTurns,
+    selectorPreview: compactSelectorPreview(input.selectorPreview),
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,
@@ -28542,10 +28550,12 @@ function migrateWorkflowDecision(raw, index) {
     ...decision,
     id,
     stateRevision: typeof decision.stateRevision === "number" ? decision.stateRevision : decision.workflowRevision ?? 0,
+    selectorPreview: compactSelectorPreview(typeof decision.selectorPreview === "string" ? decision.selectorPreview : void 0),
     question: selectorQuestionForDecision({
       type: decision.type,
       phaseId: typeof decision.phaseId === "string" ? decision.phaseId : void 0,
       briefRevision: typeof decision.briefRevision === "number" ? decision.briefRevision : void 0,
+      selectorPreview: typeof decision.selectorPreview === "string" ? decision.selectorPreview : void 0,
       question: typeof decision.question === "string" ? decision.question : legacyQuestion(decision.type)
     }),
     createdAt,
@@ -28566,6 +28576,13 @@ function compactClarificationQuestion(question) {
   const singleLine = question.replace(/\s+/g, " ").trim();
   if (!singleLine) return "Answer the persisted clarification question.";
   return singleLine.length <= 240 ? singleLine : `${singleLine.slice(0, 237).trimEnd()}\u2026`;
+}
+function compactSelectorPreview(preview) {
+  if (!preview) return void 0;
+  const lines = preview.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (lines.length === 0) return void 0;
+  const compact = lines.join("\n");
+  return compact.length <= MAX_SELECTOR_PREVIEW_LENGTH ? compact : `${compact.slice(0, MAX_SELECTOR_PREVIEW_LENGTH - 1).trimEnd()}\u2026`;
 }
 
 // src/core/flow.ts
@@ -29250,6 +29267,7 @@ var workflowDecisionBaseShape = {
   id: external_exports.string().min(1),
   workflowRevision: external_exports.number().int().min(0),
   stateRevision: external_exports.number().int().min(0),
+  selectorPreview: external_exports.string().min(1).optional(),
   question: external_exports.string().min(1),
   status: external_exports.enum(["pending", "approved", "answered", "rejected", "superseded", "cancelled"]),
   createdAt: external_exports.string(),
@@ -31889,7 +31907,25 @@ function migrateWorkflowState(raw, root, workflowId2) {
       );
     }
   }
+  attachApproachSelectorPreview(migrated);
   return migrated;
+}
+function attachApproachSelectorPreview(migrated) {
+  if (migrated.state !== "awaiting_approach_approval") return;
+  const approval = migrated.approval;
+  if (!approval || typeof approval !== "object") return;
+  const pending = approval.pendingDecision;
+  if (!pending || typeof pending !== "object") return;
+  const decision = pending;
+  if (decision.type !== "approach-approval" || typeof decision.selectorPreview === "string") return;
+  const state = migrated;
+  const selectorPreview = approachSelectorPreview(state);
+  decision.selectorPreview = selectorPreview;
+  decision.question = selectorQuestionForDecision({
+    type: "approach-approval",
+    selectorPreview,
+    question: typeof decision.question === "string" ? decision.question : "Approve the workflow strategy before Workflow Plan generation?"
+  });
 }
 function normalizeValidationRecoveryDecision(state) {
   const approval = state.approval;
@@ -32166,6 +32202,7 @@ function syncLifecycleDecision(state, lifecycle) {
   if (lifecycle === "awaiting_approach_approval") {
     setPendingDecision(state, {
       type: "approach-approval",
+      selectorPreview: approachSelectorPreview(state),
       question: "Approve the workflow strategy before Workflow Plan generation?",
       allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
     });
@@ -32216,6 +32253,34 @@ function syncLifecycleDecision(state, lifecycle) {
   if (lifecycle === "completed" || lifecycle === "cancelled") {
     resolvePendingDecision(state, lifecycle === "completed" ? "approved" : "cancelled", lifecycle === "completed" ? "complete-workflow" : "cancel-workflow", "user");
   }
+}
+function approachSelectorPreview(state) {
+  const approach = state.approach;
+  const constraints = state.constraints?.effective.map((constraint) => constraint.text) ?? state.triage?.constraints?.mustNot ?? [];
+  const provenance2 = state.triageRun;
+  const source = provenance2?.source === "deterministic-fallback" ? "deterministic fallback" : provenance2?.source === "model" ? "model output" : "unknown source";
+  const provider = provenance2?.provider ? `${provenance2.provider}${provenance2.model ? ` / ${provenance2.model}` : ""}` : "unknown provider";
+  const attempt = provenance2?.attempts === void 0 ? void 0 : `${provenance2.attempts} attempt${provenance2.attempts === 1 ? "" : "s"}`;
+  const lines = [
+    "Workflow strategy",
+    `Mode: ${state.mode[0].toUpperCase()}${state.mode.slice(1)}`,
+    `Approach: ${selectorText(approach?.proposed ?? "No approach summary was recorded.", 200)}`,
+    `Why: ${selectorText(approach?.preferredBecause ?? "The persisted triage policy selected this workflow mode.", 160)}`,
+    approach?.primaryRisks?.length ? `Key risks: ${selectorList(approach.primaryRisks, 2, 160)}` : void 0,
+    constraints.length ? `Key constraints: ${selectorList(constraints, 2, 180)}` : void 0,
+    `Triage: ${provider}; ${source}${attempt ? `; ${attempt}` : ""}`,
+    provenance2?.fallbackReason ? `Fallback: ${selectorText(provenance2.fallbackReason, 140)}` : void 0
+  ];
+  return lines.filter((line) => Boolean(line)).join("\n");
+}
+function selectorList(values, maximumItems, maximumLength) {
+  const listed = values.slice(0, maximumItems).map((value) => selectorText(value, maximumLength));
+  if (values.length > maximumItems) listed.push(`+${values.length - maximumItems} more`);
+  return selectorText(listed.join("; "), maximumLength);
+}
+function selectorText(value, maximumLength) {
+  const normalized2 = value.replace(/\s+/g, " ").trim();
+  return normalized2.length <= maximumLength ? normalized2 : `${normalized2.slice(0, maximumLength - 1).trimEnd()}\u2026`;
 }
 function assertState(state, allowed) {
   if (!allowed.includes(state.state)) {
@@ -35954,7 +36019,7 @@ var ScriptedExecutionProvider = class {
 
 // src/cli/index.ts
 var program2 = new Command();
-program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.62");
+program2.name("leanrigor").description("Adaptive rigor and model routing for AI coding agents").version("0.3.1-dev.63");
 program2.command("setup").alias("init").description("Create repository configuration and Claude Code adapter files").option("--root <path>", "repository root", process.cwd()).option("--adapter <adapter>", "harness adapter: claude", "claude").option("--force-owned-files", "replace LeanRigor-owned files that have local changes").action(async ({ root, adapter, forceOwnedFiles }) => {
   if (adapter !== "claude") throw new Error(`Unsupported adapter: ${adapter}. Only 'claude' is currently supported.`);
   const result = await ensureBootstrapped(root, { force: forceOwnedFiles });

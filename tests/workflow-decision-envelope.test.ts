@@ -90,7 +90,7 @@ describe("normalized workflow decision envelopes", () => {
     ]);
   });
 
-  it("uses compact selector prompts for every workflow decision stage", () => {
+  it("uses compact action prompts and bounded selector previews", () => {
     const question = (type: Parameters<typeof selectorQuestionForDecision>[0]["type"], phaseId?: string) =>
       selectorQuestionForDecision({ type, phaseId, briefRevision: 2, question: "Detailed persisted diagnostics that belong in Markdown." });
 
@@ -105,6 +105,19 @@ describe("normalized workflow decision envelopes", () => {
     expect(question("final-review")).toBe("Record the final integrated review?");
     expect(question("final-completion")).toBe("Complete the workflow?");
     expect(question("clarification")).toBe("Detailed persisted diagnostics that belong in Markdown.");
+
+    expect(selectorQuestionForDecision({
+      type: "approach-approval",
+      question: "Approve the workflow strategy before Workflow Plan generation?",
+      selectorPreview: "Workflow strategy\nMode: Rigorous\nApproach: Persist execution provenance.\nTriage: claude-cli / model-id; model output; 1 attempt"
+    })).toBe([
+      "Workflow strategy",
+      "Mode: Rigorous",
+      "Approach: Persist execution provenance.",
+      "Triage: claude-cli / model-id; model output; 1 attempt",
+      "",
+      "Approve the workflow strategy before Workflow Plan generation?"
+    ].join("\n"));
   });
 
   it("normalizes a verbose persisted decision when it is read into the envelope", async () => {

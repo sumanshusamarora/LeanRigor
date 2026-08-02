@@ -163,6 +163,8 @@ export interface WorkflowDecisionBase {
   preparationRevision?: number;
   integrationRevision?: number;
   additionalTurns?: number;
+  /** Bounded plain-text context rendered with the native decision selector. */
+  selectorPreview?: string;
   question: string;
   status: WorkflowDecisionStatus;
   allowedActions: string[];

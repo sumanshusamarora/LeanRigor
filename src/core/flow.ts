@@ -83,6 +83,7 @@ import {
   migrateWorkflowDecision,
   requirePendingDecision,
   resolvePendingDecision,
+  selectorQuestionForDecision,
   setPendingDecision
 } from "./workflow-decision.js";
 
@@ -800,6 +801,7 @@ const workflowDecisionBaseShape = {
   id: z.string().min(1),
   workflowRevision: z.number().int().min(0),
   stateRevision: z.number().int().min(0),
+  selectorPreview: z.string().min(1).optional(),
   question: z.string().min(1),
   status: z.enum(["pending", "approved", "answered", "rejected", "superseded", "cancelled"]),
   createdAt: z.string(),
@@ -4038,7 +4040,29 @@ function migrateWorkflowState(raw: unknown, root: string, workflowId: string): u
       );
     }
   }
+  attachApproachSelectorPreview(migrated);
   return migrated;
+}
+
+function attachApproachSelectorPreview(migrated: Record<string, unknown>): void {
+  if (migrated.state !== "awaiting_approach_approval") return;
+  const approval = migrated.approval;
+  if (!approval || typeof approval !== "object") return;
+  const pending = (approval as Record<string, unknown>).pendingDecision;
+  if (!pending || typeof pending !== "object") return;
+  const decision = pending as Record<string, unknown>;
+  if (decision.type !== "approach-approval" || typeof decision.selectorPreview === "string") return;
+
+  const state = migrated as unknown as SequentialWorkflowState;
+  const selectorPreview = approachSelectorPreview(state);
+  decision.selectorPreview = selectorPreview;
+  decision.question = selectorQuestionForDecision({
+    type: "approach-approval",
+    selectorPreview,
+    question: typeof decision.question === "string"
+      ? decision.question
+      : "Approve the workflow strategy before Workflow Plan generation?"
+  });
 }
 
 function normalizeValidationRecoveryDecision(state: Record<string, unknown>): void {
@@ -4354,6 +4378,7 @@ function syncLifecycleDecision(state: SequentialWorkflowState, lifecycle: Workfl
   if (lifecycle === "awaiting_approach_approval") {
     setPendingDecision(state, {
       type: "approach-approval",
+      selectorPreview: approachSelectorPreview(state),
       question: "Approve the workflow strategy before Workflow Plan generation?",
       allowedActions: ["approve-approach", "revise-approach", "view-details", "cancel-workflow"]
     });
@@ -4404,6 +4429,49 @@ function syncLifecycleDecision(state: SequentialWorkflowState, lifecycle: Workfl
   if (lifecycle === "completed" || lifecycle === "cancelled") {
     resolvePendingDecision(state, lifecycle === "completed" ? "approved" : "cancelled", lifecycle === "completed" ? "complete-workflow" : "cancel-workflow", "user");
   }
+}
+
+function approachSelectorPreview(state: SequentialWorkflowState): string {
+  const approach = state.approach;
+  const constraints = state.constraints?.effective.map((constraint) => constraint.text)
+    ?? state.triage?.constraints?.mustNot
+    ?? [];
+  const provenance = state.triageRun;
+  const source = provenance?.source === "deterministic-fallback"
+    ? "deterministic fallback"
+    : provenance?.source === "model"
+      ? "model output"
+      : "unknown source";
+  const provider = provenance?.provider
+    ? `${provenance.provider}${provenance.model ? ` / ${provenance.model}` : ""}`
+    : "unknown provider";
+  const attempt = provenance?.attempts === undefined
+    ? undefined
+    : `${provenance.attempts} attempt${provenance.attempts === 1 ? "" : "s"}`;
+  const lines = [
+    "Workflow strategy",
+    `Mode: ${state.mode[0].toUpperCase()}${state.mode.slice(1)}`,
+    `Approach: ${selectorText(approach?.proposed ?? "No approach summary was recorded.", 200)}`,
+    `Why: ${selectorText(approach?.preferredBecause ?? "The persisted triage policy selected this workflow mode.", 160)}`,
+    approach?.primaryRisks?.length ? `Key risks: ${selectorList(approach.primaryRisks, 2, 160)}` : undefined,
+    constraints.length ? `Key constraints: ${selectorList(constraints, 2, 180)}` : undefined,
+    `Triage: ${provider}; ${source}${attempt ? `; ${attempt}` : ""}`,
+    provenance?.fallbackReason ? `Fallback: ${selectorText(provenance.fallbackReason, 140)}` : undefined
+  ];
+  return lines.filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function selectorList(values: string[], maximumItems: number, maximumLength: number): string {
+  const listed = values.slice(0, maximumItems).map((value) => selectorText(value, maximumLength));
+  if (values.length > maximumItems) listed.push(`+${values.length - maximumItems} more`);
+  return selectorText(listed.join("; "), maximumLength);
+}
+
+function selectorText(value: string, maximumLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length <= maximumLength
+    ? normalized
+    : `${normalized.slice(0, maximumLength - 1).trimEnd()}…`;
 }
 
 function assertState(state: SequentialWorkflowState, allowed: WorkflowLifecycleState[]): void {

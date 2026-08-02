@@ -30,13 +30,12 @@ Behaviour:
 4. If multiple active workflows exist, use `AskUserQuestion` for the workflow
    selector when available. Do not render an ordinary text question first.
    Do not guess.
-5. At approval gates, render the persisted envelope `status` with a
-   concise summary and use `AskUserQuestion` for the action selector when
-   available. `flow next --json` always returns `presentation.markdown`; render
-   that Markdown as a normal assistant message before opening any selector.
-   The selector must contain only the short persisted `decision.question` and
-   its options; never put the brief, plan, status, or Markdown artifact into
-   the selector question. The post-triage approach selector options are exactly `Approve
+5. At approval gates, use `AskUserQuestion` for the action selector when
+   available. `decision.question` may contain a bounded, persisted plain-text
+   preview and must be used verbatim: it is the reliable native approval
+   surface. `presentation.markdown` remains available for explicit detail
+   requests; never copy the raw brief, plan, status, or Markdown artifact into
+   the selector. The post-triage approach selector options are exactly `Approve
    approach and create plan`, `Add constraints to workflow strategy`, `View workflow details`, and
    `Cancel workflow`; state that no implementation has started. After explicit
    approach approval, invoke
@@ -56,9 +55,9 @@ Behaviour:
    Preserve any explicit user request for deterministic planning.
 7. During execution, use `execution.mode = coordinator` when execution
    providers/workspaces are configured. After Workflow Plan approval, invoke
-   `flow next --json`, render `presentation.markdown` as normal assistant
-   Markdown and
-   its bounded-inspection provenance, and wait for exact brief approval. If the
+   `flow next --json` and wait for exact brief approval. Use the persisted
+   selector preview; show detailed bounded-inspection provenance when the user
+   requests details. If the
    brief is blocked, present the persisted recovery actions instead of a
    placeholder. Only then invoke `flow execute-next --provider auto`
    or `flow execution-poll --provider auto`, monitor persisted coordinator

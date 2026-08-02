@@ -16,6 +16,7 @@ export interface PendingDecisionInput {
   preparationRevision?: number;
   integrationRevision?: number;
   additionalTurns?: number;
+  selectorPreview?: string;
   workspaceIdentity?: string;
   command?: string;
   riskSummary?: string[];
@@ -24,16 +25,19 @@ export interface PendingDecisionInput {
   source?: WorkflowDecisionSource;
 }
 
-type DecisionQuestion = Pick<PendingDecisionInput, "type" | "phaseId" | "briefRevision" | "question">;
+type DecisionQuestion = Pick<PendingDecisionInput, "type" | "phaseId" | "briefRevision" | "selectorPreview" | "question">;
+
+const MAX_SELECTOR_PREVIEW_LENGTH = 720;
 
 /**
- * AskUserQuestion is a compact selector, not an artifact renderer. Keep its
- * prompt to one actionable sentence; the corresponding workflow summary is
- * rendered separately as normal assistant Markdown.
+ * AskUserQuestion is the only reliable visible surface at mandatory decision
+ * gates. Keep the action prompt compact, with an optional bounded plain-text
+ * preview that is safe to render in the selector itself.
  */
 export function selectorQuestionForDecision(decision: DecisionQuestion): string {
   const phase = decision.phaseId ? ` for ${decision.phaseId}` : "";
-  switch (decision.type) {
+  const action = (() => {
+    switch (decision.type) {
     case "clarification":
       return compactClarificationQuestion(decision.question);
     case "approach-approval":
@@ -58,7 +62,10 @@ export function selectorQuestionForDecision(decision: DecisionQuestion): string 
       return "Complete the workflow?";
     default:
       return "Choose the next persisted workflow action.";
-  }
+    }
+  })();
+  const preview = compactSelectorPreview(decision.selectorPreview);
+  return preview ? `${preview}\n\n${action}` : action;
 }
 
 export function setPendingDecision(state: SequentialWorkflowState, input: PendingDecisionInput): WorkflowPendingDecision {
@@ -75,6 +82,7 @@ export function setPendingDecision(state: SequentialWorkflowState, input: Pendin
     preparationRevision: input.preparationRevision,
     integrationRevision: input.integrationRevision,
     additionalTurns: input.additionalTurns,
+    selectorPreview: compactSelectorPreview(input.selectorPreview),
     workspaceIdentity: input.workspaceIdentity,
     command: input.command,
     riskSummary: input.riskSummary,
@@ -159,10 +167,12 @@ export function migrateWorkflowDecision(raw: unknown, index: number): unknown {
     ...decision,
     id,
     stateRevision: typeof decision.stateRevision === "number" ? decision.stateRevision : decision.workflowRevision ?? 0,
+    selectorPreview: compactSelectorPreview(typeof decision.selectorPreview === "string" ? decision.selectorPreview : undefined),
     question: selectorQuestionForDecision({
       type: decision.type as WorkflowDecisionType,
       phaseId: typeof decision.phaseId === "string" ? decision.phaseId : undefined,
       briefRevision: typeof decision.briefRevision === "number" ? decision.briefRevision : undefined,
+      selectorPreview: typeof decision.selectorPreview === "string" ? decision.selectorPreview : undefined,
       question: typeof decision.question === "string" ? decision.question : legacyQuestion(decision.type)
     }),
     createdAt,
@@ -186,4 +196,17 @@ function compactClarificationQuestion(question: string): string {
   const singleLine = question.replace(/\s+/g, " ").trim();
   if (!singleLine) return "Answer the persisted clarification question.";
   return singleLine.length <= 240 ? singleLine : `${singleLine.slice(0, 237).trimEnd()}…`;
+}
+
+function compactSelectorPreview(preview: string | undefined): string | undefined {
+  if (!preview) return undefined;
+  const lines = preview
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (lines.length === 0) return undefined;
+  const compact = lines.join("\n");
+  return compact.length <= MAX_SELECTOR_PREVIEW_LENGTH
+    ? compact
+    : `${compact.slice(0, MAX_SELECTOR_PREVIEW_LENGTH - 1).trimEnd()}…`;
 }

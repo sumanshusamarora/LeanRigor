@@ -173,6 +173,22 @@ describe("sequential workflow orchestration", () => {
     await expect(readFile(path.join(root, ".leanrigor", "workflows", `${state.id}.json`), "utf8")).resolves.toContain(state.request);
   });
 
+  it("persists a bounded plain-text preview for the native approach selector", async () => {
+    const root = await tempRepo();
+    const started = await startFlow({ request: "Fix the broken assignment API regression", root, config: defaultConfig() });
+    const pending = started.approval?.pendingDecision;
+
+    expect(pending?.type).toBe("approach-approval");
+    expect(pending?.selectorPreview).toMatch(/^Workflow strategy\nMode: Standard\nApproach:/);
+    expect(pending?.selectorPreview).toContain("Triage:");
+
+    const reloaded = await loadFlowState(root, started.id);
+    const selector = workflowNextSummary(reloaded).decisionEnvelope.decision?.question;
+    expect(selector).toContain("Workflow strategy\nMode: Standard");
+    expect(selector).toContain("Approve the workflow strategy before Workflow Plan generation?");
+    expect(selector).not.toContain("##");
+  });
+
   it("supports at most one blocking clarification and persists the answer", async () => {
     const root = await tempRepo();
     const state = await startFlow({ request: "fix", root, config: defaultConfig() });

@@ -112,12 +112,11 @@ at most four options for `AskUserQuestion`. Match the selected option by persist
 only its persisted command. Never infer, cache, or reconstruct a question.
 Never call `AskUserQuestion` without a current `decision`.
 
-Keep the two presentation surfaces separate throughout the workflow. `flow next
---json` always includes `presentation.markdown`; render it verbatim as normal
-assistant Markdown before calling `AskUserQuestion`. The selector question must be exactly
-`decision.question`; never copy `summary`, `status`, or
-`presentation.markdown` into it. The selector is for a compact choice, not for
-displaying an approval artifact.
+At a mandatory selector gate, use `decision.question` verbatim. It may include
+a bounded, persisted plain-text preview for the native selector; this is the
+reliable approval surface. `presentation.markdown` remains the detailed
+artifact for status and explicit detail requests. Never copy raw `summary`,
+`status`, or `presentation.markdown` into the selector.
 
 Use this `AskUserQuestion` input shape for approval selectors:
 
@@ -233,11 +232,9 @@ Ask one concise clarification for ambiguous responses.
 
 ## Phase And Review Rules
 
-Before phase approval, render the persisted Phase Execution Brief from `flow
-next --json`. Render `presentation.markdown` verbatim in a normal assistant
-message before the selector. The response also includes both
-`decisionEnvelope` (question and options for `AskUserQuestion`) and `summary`
-(the rich brief details). Show the
+Before phase approval, use the persisted `decisionEnvelope` question and
+options from `flow next --json`. The response also includes `summary` and
+`presentation.markdown` for explicit detail requests. Show the
 objective, concrete deliverable, inspected current behaviour, implementation
 approach, read/write paths, relevant files and symbols, acceptance criteria,
 test obligations, validation, dependencies, assumptions, exclusions, risks,
@@ -305,12 +302,11 @@ current integration head has passing combined validation.
 
 ## Presentation
 
-Render human summaries first. `flow next --json` returns both `decisionEnvelope`
-and the rich `summary` field, plus a deterministic `presentation.markdown`
-artifact for every workflow state. Always render that artifact as normal
-assistant Markdown before a decision selector. Never put that artifact inside
-`AskUserQuestion`: the selector receives only `decision.question` and its
-options.
+`flow next --json` returns both `decisionEnvelope` and the rich `summary`
+field, plus a deterministic `presentation.markdown` artifact for every
+workflow state. At a mandatory selector, use only `decision.question` and its
+options; its bounded native preview is the visible approval context. Reserve
+the full artifact for explicit detail requests.
 
 Render at minimum:
 
